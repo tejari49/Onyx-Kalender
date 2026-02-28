@@ -45,6 +45,8 @@
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
     body { background-color: #000000; color: #ffffff; overscroll-behavior-y: none; }
+    /* Audio Player Styling für dunkles Theme */
+    audio { filter: invert(100%) hue-rotate(180deg) brightness(1.5) contrast(1.2); border-radius: 8px; height: 36px; max-width: 220px; }
   </style>
 </head>
 <body class="selection:bg-neutral-800">
@@ -68,7 +70,7 @@
     import React, { useState, useEffect, useRef } from 'react';
     import { createRoot } from 'react-dom/client';
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Activity
     } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
@@ -145,10 +147,20 @@
       // Zitate & Bearbeiten
       const [replyingTo, setReplyingTo] = useState(null);
       const [editingMessage, setEditingMessage] = useState(null);
-      const [selectedMessageId, setSelectedMessageId] = useState(null); // Für Dropdown Aktionen
+      const [selectedMessageId, setSelectedMessageId] = useState(null); 
+      
+      // Audio Recording
+      const [isRecording, setIsRecording] = useState(false);
+      const mediaRecorderRef = useRef(null);
+      const audioChunksRef = useRef([]);
+
+      // Typing Indicator & Scroll
+      const typingTimeoutRef = useRef(null);
+      const messagesEndRef = useRef(null);
       
       // Chat Stats
       const [chatStats, setChatStats] = useState({ sent: 0, received: 0, total: 0 });
+      const [showPartnerStats, setShowPartnerStats] = useState(false); // Modal für Partner Stats
 
       const [lastChatVisit, setLastChatVisit] = useState(() => {
         const stored = localStorage.getItem('onyx_last_chat_visit');
@@ -236,7 +248,6 @@
           snapshot.forEach(doc => {
             const data = doc.data();
             loaded.push({ id: doc.id, ...data });
-            // Wenn ich im Chat bin und eine fremde Nachricht ungelesen ist, setze auf gelesen (zwei Augen)
             if (data.senderId !== user.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat') {
               unreadToUpdate.push(doc.id);
             }
@@ -259,7 +270,11 @@
         return () => unsubscribeMessages();
       }, [activeChat, user, currentView, secretView]);
 
-      // Globale Stats berechnen, wenn man in die Chat-Einstellungen geht
+      // Auto-Scroll zum Ende wenn neue Nachrichten kommen
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, [chatMessages, secretView]);
+
       useEffect(() => {
         if (secretView === 'settings' && user) {
           calculateGlobalChatStats();
@@ -423,7 +438,6 @@
         }
       };
 
-      // --- PULL TO REFRESH LOGIC ---
       const handleGlobalTouchStart = (e) => {
         if (window.scrollY === 0) {
           touchStartY.current = e.touches[0].clientY;
@@ -443,12 +457,9 @@
       const handleGlobalTouchEnd = async () => {
         if (pullDistance > 60 && !isRefreshing) {
           setIsRefreshing(true);
-          setPullDistance(60); // Halte kurz oben
+          setPullDistance(60); 
           showToast("Aktualisiere Daten...");
-          
-          // Re-fetch weather
           await fetchWeather();
-          
           setTimeout(() => {
             setIsRefreshing(false);
             setPullDistance(0);
@@ -474,19 +485,14 @@
 
       const handleTouchEnd = () => { if (pressTimer.current) clearTimeout(pressTimer.current); };
 
-      // --- CHAT EINSTELLUNGEN & PROFIL ---
       const updateProfileSettings = async (e) => {
         e.preventDefault();
         const uname = new FormData(e.target).get('username').trim();
         if (!uname) return;
-        
         if (allProfiles.some(p => p.username.toLowerCase() === uname.toLowerCase() && p.id !== user.uid)) return showToast("Name vergeben!");
-        
         try {
-          // Behalte evtl. bestehenden Avatar bei, wenn kein neuer hochgeladen wurde
           const dataToSave = { username: uname, uid: user.uid, email: user.email };
           if (userProfile?.avatarBase64) dataToSave.avatarBase64 = userProfile.avatarBase64;
-          
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), dataToSave, { merge: true });
           showToast("Profil aktualisiert!");
         } catch (error) { showToast("Fehler beim Speichern"); }
@@ -500,18 +506,14 @@
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            const size = 200; // Avatar Size
+            const size = 200; 
             canvas.width = size; canvas.height = size;
             const ctx = canvas.getContext('2d');
-            
-            // Cover Image logic
             const scale = Math.max(size / img.width, size / img.height);
             const x = (size / scale - img.width) / 2;
             const y = (size / scale - img.height) / 2;
             ctx.drawImage(img, x, y, img.width, img.height, 0, 0, size, size);
-            
             const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
-            
             if (user) {
               setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { avatarBase64: compressedBase64 }, { merge: true })
                 .then(() => showToast("Avatar geändert"))
@@ -541,11 +543,59 @@
         setSecretView('chat');
       };
 
-      const sendMessage = async (e, imageBase64 = null) => {
+      // --- VOICE RECORDING LOGIK ---
+      const startRecording = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorderRef.current = new MediaRecorder(stream);
+          mediaRecorderRef.current.ondataavailable = (e) => {
+            if (e.data.size > 0) audioChunksRef.current.push(e.data);
+          };
+          mediaRecorderRef.current.onstop = () => {
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            audioChunksRef.current = [];
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = () => {
+               sendMessage(null, null, reader.result); 
+            };
+          };
+          audioChunksRef.current = [];
+          mediaRecorderRef.current.start();
+          setIsRecording(true);
+        } catch (err) {
+          showToast("Mikrofon-Zugriff verweigert");
+        }
+      };
+
+      const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+          mediaRecorderRef.current.stop();
+          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+          setIsRecording(false);
+        }
+      };
+
+      // --- TYPING INDICATOR LOGIK ---
+      const handleTyping = (e) => {
+         setNewMessageText(e.target.value);
+         if (!activeChat || !user) return;
+         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+           [`typing.${user.uid}`]: true
+         }).catch(()=>{});
+
+         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+         typingTimeoutRef.current = setTimeout(() => {
+            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+              [`typing.${user.uid}`]: false
+            }).catch(()=>{});
+         }, 2000);
+      };
+
+      const sendMessage = async (e, imageBase64 = null, audioBase64 = null) => {
         if (e) e.preventDefault();
         
         if (editingMessage) {
-          // BEARBEITEN
           try {
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', editingMessage.id), {
               text: newMessageText.trim(),
@@ -557,7 +607,7 @@
           return;
         }
 
-        if (!newMessageText.trim() && !imageBase64) return;
+        if (!newMessageText.trim() && !imageBase64 && !audioBase64) return;
         if (!activeChat || !user) return;
         
         try {
@@ -565,6 +615,7 @@
             senderId: user.uid, 
             text: newMessageText.trim(), 
             image: imageBase64, 
+            audio: audioBase64,
             timestamp: Date.now(),
             read: false
           };
@@ -572,13 +623,17 @@
           if (replyingTo) {
             payload.replyTo = {
               id: replyingTo.id,
-              text: replyingTo.text,
+              text: replyingTo.text || 'Audio/Bild',
               senderName: replyingTo.senderId === user.uid ? 'Du' : getProfile(replyingTo.senderId)?.username || 'Unbekannt'
             };
           }
 
           await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { updatedAt: Date.now(), lastMessageSenderId: user.uid });
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { 
+            updatedAt: Date.now(), 
+            lastMessageSenderId: user.uid,
+            [`typing.${user.uid}`]: false
+          });
           
           setNewMessageText('');
           setReplyingTo(null);
@@ -592,7 +647,7 @@
         try {
           await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId));
           setSelectedMessageId(null);
-          showToast("Nachricht für alle gelöscht");
+          showToast("Nachricht gelöscht");
         } catch (error) {
           showToast("Fehler beim Löschen");
         }
@@ -621,12 +676,12 @@
       };
 
       const getChatPartnerName = (chat) => {
-        const partnerId = chat.participants.find(id => id !== user.uid);
+        const partnerId = chat?.participants.find(id => id !== user.uid);
         return getProfile(partnerId)?.username || 'Unbekannt';
       };
 
       const getChatPartnerAvatar = (chat) => {
-        const partnerId = chat.participants.find(id => id !== user.uid);
+        const partnerId = chat?.participants.find(id => id !== user.uid);
         return getProfile(partnerId)?.avatarBase64 || null;
       };
 
@@ -689,6 +744,11 @@
           </div>
         );
       }
+
+      // Aktive Chat Daten aufbereiten
+      const activeChatData = myChats.find(c => c.id === activeChat?.id);
+      const partnerId = activeChatData?.participants.find(id => id !== user?.uid);
+      const isPartnerTyping = activeChatData?.typing?.[partnerId];
 
       return (
         <div 
@@ -832,15 +892,28 @@
                 {/* Geheimer Chat Header */}
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
                   {secretView === 'chat' && activeChat ? (
-                    <button onClick={() => { setActiveChat(null); setSecretView('list'); }} className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors">
-                      <ArrowLeft className="w-5 h-5" /> 
-                      {getChatPartnerAvatar(activeChat) ? (
-                        <img src={getChatPartnerAvatar(activeChat)} className="w-8 h-8 rounded-full border border-neutral-700 object-cover" />
-                      ) : (
-                        <div className="w-8 h-8 bg-neutral-800 rounded-full flex items-center justify-center text-xs text-white">{getChatPartnerName(activeChat).substring(0,2)}</div>
-                      )}
-                      <span className="font-medium text-white">{getChatPartnerName(activeChat)}</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => { setActiveChat(null); setSecretView('list'); }} className="text-neutral-400 hover:text-white transition-colors mr-2">
+                        <ArrowLeft className="w-6 h-6" /> 
+                      </button>
+                      
+                      {/* Profil Klick für Partner-Stats */}
+                      <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setShowPartnerStats(true)}>
+                        {getChatPartnerAvatar(activeChat) ? (
+                          <img src={getChatPartnerAvatar(activeChat)} className="w-10 h-10 rounded-full border border-neutral-700 object-cover" />
+                        ) : (
+                          <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-sm font-bold text-white uppercase">{getChatPartnerName(activeChat).substring(0,2)}</div>
+                        )}
+                        <div className="flex flex-col">
+                          <span className="font-medium text-white leading-tight">{getChatPartnerName(activeChat)}</span>
+                          {isPartnerTyping ? (
+                             <span className="text-[11px] text-green-400 animate-pulse font-medium">schreibt...</span>
+                          ) : (
+                             <span className="text-[11px] text-neutral-500">Tippen für Profil</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   ) : secretView === 'settings' ? (
                     <button onClick={() => setSecretView('list')} className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors">
                       <ArrowLeft className="w-5 h-5" /> <span className="font-medium text-white">Chat Profil</span>
@@ -855,7 +928,7 @@
                         <Settings className="w-5 h-5" />
                       </button>
                     )}
-                    <button onClick={() => { setActiveChat(null); setCurrentView('calendar'); }} className="text-neutral-500 hover:text-white text-2xl leading-none">&times;</button>
+                    <button onClick={() => { setActiveChat(null); setCurrentView('calendar'); }} className="text-neutral-500 hover:text-white text-2xl leading-none p-2">&times;</button>
                   </div>
                 </header>
 
@@ -892,11 +965,11 @@
                       <div className="grid grid-cols-3 gap-4 text-center">
                         <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50">
                           <p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Gesendet</p>
-                          <p className="text-2xl font-light">{chatStats.sent}</p>
+                          <p className="text-2xl font-light text-white">{chatStats.sent}</p>
                         </div>
                         <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50">
                           <p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Empfangen</p>
-                          <p className="text-2xl font-light">{chatStats.received}</p>
+                          <p className="text-2xl font-light text-white">{chatStats.received}</p>
                         </div>
                         <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50">
                           <p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Total</p>
@@ -911,12 +984,14 @@
                         {chatSearchQuery.trim() !== '' && (<div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">{allProfiles.filter(p => p.username.toLowerCase().includes(chatSearchQuery.toLowerCase()) && p.id !== user.uid).length > 0 ? (allProfiles.filter(p => p.username.toLowerCase().includes(chatSearchQuery.toLowerCase()) && p.id !== user.uid).map(profile => (<div key={profile.id} onClick={() => startChatWith(profile.id)} className="p-4 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3"><div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">{profile.avatarBase64 ? <img src={profile.avatarBase64} className="w-full h-full object-cover"/> : profile.username.substring(0,2)}</div><span className="font-medium text-white">{profile.username}</span></div>))) : (<div className="p-4 text-neutral-500 text-sm text-center">Kein Nutzer gefunden.</div>)}</div>)}
                       </div>
                       <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-4 font-semibold px-2">Verlauf</h4>
-                      <div className="space-y-2">{myChats.length === 0 ? (<div className="p-8 text-center border border-dashed border-neutral-800 rounded-xl text-neutral-500 text-sm">Noch keine Chats vorhanden.</div>) : (myChats.map(chat => (<div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4"><div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">{getChatPartnerAvatar(chat) ? <img src={getChatPartnerAvatar(chat)} className="w-full h-full object-cover"/> : getChatPartnerName(chat).substring(0,2)}</div><div className="flex-1 overflow-hidden"><h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>{chat.lastMessageSenderId !== user.uid && chat.updatedAt > lastChatVisit && (<span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>)}</div></div>)))}</div>
+                      <div className="space-y-2">{myChats.length === 0 ? (<div className="p-8 text-center border border-dashed border-neutral-800 rounded-xl text-neutral-500 text-sm">Noch keine Chats vorhanden.</div>) : (myChats.map(chat => (<div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4"><div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">{getChatPartnerAvatar(chat) ? <img src={getChatPartnerAvatar(chat)} className="w-full h-full object-cover"/> : getChatPartnerName(chat).substring(0,2)}</div><div className="flex-1 overflow-hidden"><h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>{chat.lastMessageSenderId !== user.uid && chat.updatedAt > lastChatVisit ? (<span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>) : (<p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>)}</div></div>)))}</div>
                     </div>
                   ) : (
                     /* AKTIVER CHAT RAUM */
-                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900" onClick={() => setSelectedMessageId(null)}>
-                      <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col">
+                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => setSelectedMessageId(null)}>
+                      
+                      {/* Chat Verlauf (Flex 1, scrollbar) */}
+                      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 flex flex-col">
                         {chatMessages.map((msg) => {
                           const isMe = msg.senderId === user.uid;
                           const showActions = selectedMessageId === msg.id;
@@ -932,7 +1007,11 @@
                                     <span className="font-bold">{msg.replyTo.senderName}</span>: {msg.replyTo.text}
                                   </div>
                                 )}
+                                
+                                {/* Medien Rendering */}
                                 {msg.image && <img src={msg.image} alt="Upload" className="rounded-lg mb-2 max-h-64 object-contain" />}
+                                {msg.audio && <audio src={msg.audio} controls className="mb-2 w-full" />}
+                                
                                 {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
                                 
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
@@ -940,7 +1019,7 @@
                                   <span className="text-[10px] block text-right">
                                     {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                   </span>
-                                  {/* Lese-Bestätigung (Augen) - Nur bei eigenen Nachrichten */}
+                                  {/* Lese-Bestätigung (Augen) */}
                                   {isMe && (
                                     <span className="text-[10px] ml-1">{msg.read ? '👀' : '👁️'}</span>
                                   )}
@@ -950,7 +1029,7 @@
                                 {showActions && (
                                   <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
                                     <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Antworten"><CornerUpLeft className="w-4 h-4" /></button>
-                                    {isMe && !msg.image && (
+                                    {isMe && !msg.image && !msg.audio && (
                                       <button onClick={(e) => { e.stopPropagation(); setEditingMessage(msg); setNewMessageText(msg.text); setReplyingTo(null); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
                                     )}
                                     {isMe && (
@@ -962,32 +1041,60 @@
                             </div>
                           );
                         })}
+                        <div ref={messagesEndRef} />
                       </div>
+
+                      {/* Eingabebereich (Fixiert unten) */}
                       <div className="p-4 bg-neutral-950 border-t border-neutral-900 shrink-0">
                         {/* Status Bar für Reply / Edit */}
                         {(replyingTo || editingMessage) && (
                           <div className="flex items-center justify-between bg-neutral-900 border border-neutral-800 p-2 px-3 rounded-t-xl text-xs text-neutral-400 border-b-0">
-                            <span>
-                              {editingMessage ? 'Nachricht bearbeiten...' : `Antwort an ${replyingTo.senderId === user.uid ? 'Dich' : getProfile(replyingTo.senderId)?.username || 'Unbekannt'}: ${replyingTo.text.substring(0,30)}...`}
+                            <span className="truncate">
+                              {editingMessage ? 'Nachricht bearbeiten...' : `Antwort an ${replyingTo.senderId === user.uid ? 'Dich' : getProfile(replyingTo.senderId)?.username || 'Unbekannt'}: ${replyingTo.text?.substring(0,30) || 'Medien'}...`}
                             </span>
-                            <button onClick={() => { setReplyingTo(null); setEditingMessage(null); setNewMessageText(''); }} className="hover:text-white"><X className="w-4 h-4"/></button>
+                            <button onClick={() => { setReplyingTo(null); setEditingMessage(null); setNewMessageText(''); }} className="hover:text-white shrink-0 ml-2"><X className="w-4 h-4"/></button>
                           </div>
                         )}
+
                         <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
                           <div className={`relative shrink-0 ${editingMessage ? 'hidden' : ''}`}><label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center"><ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label></div>
-                          <div className={`relative shrink-0 hidden md:block lg:block sm:block xs:block ${editingMessage ? 'hidden' : ''}`}><label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center"><Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} /></label></div>
+                          <div className={`relative shrink-0 hidden md:flex sm:flex xs:flex ${editingMessage ? 'hidden' : ''}`}><label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center"><Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} /></label></div>
+                          
                           <div className="flex-1 relative">
-                            <textarea 
-                              id="chatInput"
-                              value={newMessageText} 
-                              onChange={(e) => setNewMessageText(e.target.value)} 
-                              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); } }} 
-                              placeholder="Nachricht..." 
-                              rows="1" 
-                              className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-12 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-hidden block text-sm ${(replyingTo || editingMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'}`} 
-                              style={{ minHeight: '44px', maxHeight: '120px' }} 
-                            />
-                            <button type="submit" disabled={!newMessageText.trim()} className="absolute right-2 bottom-1.5 p-2 text-white disabled:text-neutral-700 transition-colors"><Send className="w-5 h-5" /></button>
+                            {isRecording ? (
+                              <div className="w-full bg-red-950 border border-red-900 text-red-500 rounded-2xl pl-4 pr-12 py-3 flex items-center justify-between animate-pulse">
+                                <span className="text-sm font-medium">Aufnahme läuft...</span>
+                              </div>
+                            ) : (
+                              <textarea 
+                                id="chatInput"
+                                value={newMessageText} 
+                                onChange={handleTyping} 
+                                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); } }} 
+                                placeholder="Nachricht..." 
+                                rows="1" 
+                                className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(replyingTo || editingMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'}`} 
+                                style={{ minHeight: '44px', maxHeight: '120px' }} 
+                              />
+                            )}
+                            
+                            <div className="absolute right-1 bottom-1 flex items-center">
+                              {/* Audio Button */}
+                              {!newMessageText.trim() && !editingMessage && (
+                                <button 
+                                  type="button" 
+                                  onClick={isRecording ? stopRecording : startRecording} 
+                                  className={`p-2 rounded-full transition-colors ${isRecording ? 'text-red-500 hover:bg-red-900/30' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+                                >
+                                  {isRecording ? <Square className="w-5 h-5" fill="currentColor" /> : <Mic className="w-5 h-5" />}
+                                </button>
+                              )}
+                              
+                              {/* Send Button */}
+                              {(!isRecording && (newMessageText.trim() || editingMessage)) && (
+                                <button type="submit" className="p-2 text-white hover:bg-neutral-800 rounded-full transition-colors"><Send className="w-5 h-5" /></button>
+                              )}
+                            </div>
                           </div>
                         </form>
                       </div>
@@ -997,6 +1104,39 @@
               </div>
             )}
           </main>
+
+          {/* PARTNER STATS MODAL */}
+          {showPartnerStats && activeChat && (
+             <div className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+                <div className="w-full max-w-sm bg-neutral-950 border border-neutral-800 rounded-2xl p-6 relative animate-fade-in shadow-2xl">
+                   <button onClick={() => setShowPartnerStats(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white"><X className="w-5 h-5"/></button>
+                   <div className="flex flex-col items-center mb-8">
+                     {getChatPartnerAvatar(activeChat) ? (
+                        <img src={getChatPartnerAvatar(activeChat)} className="w-20 h-20 rounded-full border-2 border-neutral-700 object-cover mb-4" />
+                      ) : (
+                        <div className="w-20 h-20 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-2xl font-bold text-white uppercase mb-4">{getChatPartnerName(activeChat).substring(0,2)}</div>
+                      )}
+                      <h3 className="text-xl font-medium text-white">{getChatPartnerName(activeChat)}</h3>
+                      <p className="text-xs text-neutral-500 uppercase tracking-widest mt-1">Chat Analyse</p>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-4">
+                     <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
+                       <p className="text-xs text-neutral-500 uppercase mb-1">Von Dir</p>
+                       <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId === user.uid).length}</p>
+                     </div>
+                     <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
+                       <p className="text-xs text-neutral-500 uppercase mb-1">Von {getChatPartnerName(activeChat).substring(0,6)}.</p>
+                       <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId !== user.uid).length}</p>
+                     </div>
+                   </div>
+                   <div className="mt-4 bg-neutral-900 border border-neutral-800 p-4 rounded-xl text-center flex items-center justify-center gap-3">
+                     <Activity className="w-5 h-5 text-neutral-400" />
+                     <p className="text-sm text-neutral-300">Total <strong className="text-white ml-1">{chatMessages.length}</strong> Nachrichten</p>
+                   </div>
+                </div>
+             </div>
+          )}
 
           {isModalOpen && currentView !== 'secret_chat' && (
             <div className="fixed inset-0 bg-black/90 md:bg-black/80 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-0 md:p-4">

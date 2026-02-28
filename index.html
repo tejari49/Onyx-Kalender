@@ -463,6 +463,54 @@
         showToast(`Standort: ${loc.name}`);
       };
 
+      // --- PULL TO REFRESH & GESTURE LOGIK ---
+      const handleGlobalTouchStart = (e) => {
+        if (window.scrollY === 0) {
+          touchStartY.current = e.touches[0].clientY;
+        }
+      };
+
+      const handleGlobalTouchMove = (e) => {
+        if (touchStartY.current > 0 && window.scrollY === 0) {
+          touchCurrentY.current = e.touches[0].clientY;
+          const diff = touchCurrentY.current - touchStartY.current;
+          if (diff > 0 && diff < 150) {
+            setPullDistance(diff);
+          }
+        }
+      };
+
+      const handleGlobalTouchEnd = async () => {
+        if (pullDistance > 60 && !isRefreshing) {
+          setIsRefreshing(true);
+          setPullDistance(60); 
+          showToast("Aktualisiere Daten...");
+          await fetchWeather();
+          setTimeout(() => {
+            setIsRefreshing(false);
+            setPullDistance(0);
+            touchStartY.current = 0;
+          }, 1000);
+        } else {
+          setPullDistance(0);
+          touchStartY.current = 0;
+        }
+      };
+
+      const handleTouchStart = (day) => {
+        if (day === 5) {
+          isLongPressAction.current = false;
+          pressTimer.current = setTimeout(() => {
+            isLongPressAction.current = true; 
+            setCurrentView('secret_chat'); 
+            setSecretView('list');
+            showToast("Verbindung verschlüsselt...");
+          }, 3000);
+        }
+      };
+
+      const handleTouchEnd = () => { if (pressTimer.current) clearTimeout(pressTimer.current); };
+
       // --- KALENDER LOGIK ---
       const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
       const getFirstDayOfMonth = (date) => {
@@ -488,7 +536,7 @@
          setVisibleCalendars(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
       };
 
-      // --- NEU: PINSEL & LANGES DRÜCKEN LOGIK ---
+      // --- PINSEL & LANGES DRÜCKEN LOGIK ---
       const handleDayContextMenu = (e, dateStr) => {
          e.preventDefault();
          const activeCal = getCalendarById(activeCalendarId);
@@ -575,7 +623,6 @@
          isPaintingRef.current = false;
       };
 
-      // Regulärer Klick auf Tag
       const handleDayClick = async (dateStr) => {
          if (isLongPressAction.current) { isLongPressAction.current = false; return; }
          
@@ -611,6 +658,10 @@
              setSelectedDateForEvent(dateStr); 
              setIsModalOpen(true);
          }
+      };
+
+      const openNewEventModal = (dateStr = null) => {
+        setEventToEdit(null); setSelectedDateForEvent(dateStr || new Date().toISOString().split('T')[0]); setIsModalOpen(true);
       };
 
       const openEditEventModal = (event) => {
@@ -790,6 +841,37 @@
          typingTimeoutRef.current = setTimeout(() => {
             updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: false }).catch(()=>{});
          }, 2000);
+      };
+
+      const saveEventFromModal = async (e) => {
+        e.preventDefault();
+        if (!user) return;
+        const formData = new FormData(e.target);
+        
+        const targetCalId = eventToEdit ? eventToEdit.calendarId : activeCalendarId;
+        const eventData = {
+          title: formData.get('title'), date: formData.get('date'), time: formData.get('time'),
+          type: formData.get('type') || 'Standard', desc: formData.get('desc') || '', updatedAt: Date.now(),
+          calendarId: targetCalId
+        };
+
+        try {
+          if (targetCalId === 'default') {
+              if (eventToEdit && eventToEdit.id) {
+                await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventToEdit.id), eventData);
+              } else {
+                await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), { ...eventData, createdAt: Date.now() });
+              }
+          } else {
+              if (eventToEdit && eventToEdit.id) {
+                await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', targetCalId, 'events', eventToEdit.id), eventData);
+              } else {
+                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', targetCalId, 'events'), { ...eventData, createdAt: Date.now() });
+              }
+          }
+          showToast("Termin gespeichert");
+          setIsModalOpen(false);
+        } catch (error) { showToast("Fehler beim Speichern"); }
       };
 
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {

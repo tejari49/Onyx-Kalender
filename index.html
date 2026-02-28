@@ -551,7 +551,7 @@
                 <div>
                   <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda für heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
                   {hasUnreadMessages && (
-                    <div onClick={() => setCurrentView('secret_chat')} className="mb-4 p-4 border border-neutral-700 bg-neutral-900 rounded-xl flex items-center justify-between cursor-pointer hover:bg-neutral-800 transition-colors animate-fade-in">
+                    <div className="mb-4 p-4 border border-neutral-700 bg-neutral-900 rounded-xl flex items-center justify-between transition-colors animate-fade-in">
                       <div className="flex items-center gap-3"><div className="w-2 h-2 bg-white rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]"></div><span className="font-medium text-white uppercase tracking-widest text-sm">Kalender Aktuell</span></div>
                       <span className="text-sm text-neutral-400">Neue Nachricht</span>
                     </div>

@@ -13,7 +13,12 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
 
-  <!-- Tailwind CSS -->
+  
+
+  <!-- Favicon (verhindert /favicon.ico 404) -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Crect%20width='100'%20height='100'%20fill='black'/%3E%3Ctext%20x='50'%20y='68'%20font-size='60'%20text-anchor='middle'%20fill='white'%3EO%3C/text%3E%3C/svg%3E">
+  <link rel="alternate icon" href="icon-192.png">
+<!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
   <!-- Import Map für React & Firebase -->
@@ -142,6 +147,15 @@
       const [selectedDateForEvent, setSelectedDateForEvent] = useState(null);
       const [eventToEdit, setEventToEdit] = useState(null);
 
+      const [eventForm, setEventForm] = useState({
+        title: '',
+        date: '',
+        time: '',
+        type: 'Privat',
+        desc: '',
+        calendarId: 'default'
+      });
+
       const [isCalManageModalOpen, setIsCalManageModalOpen] = useState(false);
       const [calForm, setCalForm] = useState({ id: null, name: '', type: 'normal', shifts: [] });
       
@@ -196,6 +210,242 @@
       const [pullDistance, setPullDistance] = useState(0);
       const touchStartY = useRef(0);
       const touchCurrentY = useRef(0);
+
+
+// --- PULL TO REFRESH (GLOBAL TOUCH) ---
+const mainRef = useRef(null);
+const canPullRef = useRef(false);
+
+const handleGlobalTouchStart = (e) => {
+  if (!e.touches || e.touches.length === 0) return;
+  touchStartY.current = e.touches[0].clientY;
+  touchCurrentY.current = touchStartY.current;
+  setPullDistance(0);
+
+  // Nur ziehen, wenn der Scroll-Container oben ist
+  const atTop = (mainRef.current?.scrollTop ?? 0) <= 0;
+  canPullRef.current = atTop && !isRefreshing;
+};
+
+const handleGlobalTouchMove = (e) => {
+  if (!canPullRef.current || isRefreshing) return;
+  if (!e.touches || e.touches.length === 0) return;
+
+  touchCurrentY.current = e.touches[0].clientY;
+  const delta = touchCurrentY.current - touchStartY.current;
+
+  if (delta > 0) {
+    // iOS / mobile: verhindern, dass der Browser selbst "bounce" scrollt
+    if (typeof e.preventDefault === 'function') e.preventDefault();
+    setPullDistance(Math.min(delta, 120));
+  } else {
+    setPullDistance(0);
+  }
+};
+
+const handleGlobalTouchEnd = async () => {
+  if (!canPullRef.current) { setPullDistance(0); return; }
+  canPullRef.current = false;
+
+  const shouldRefresh = pullDistance >= 80;
+  setPullDistance(0);
+
+  if (!shouldRefresh || isRefreshing) return;
+
+  try {
+    setIsRefreshing(true);
+    await fetchWeather();
+    showToast("Aktualisiert");
+  } catch (_) {
+    // ignore
+  } finally {
+    setIsRefreshing(false);
+  }
+};
+
+// --- MODALS / ACTIONS (fehlende Handler) ---
+const openNewEventModal = (dateStr = null) => {
+  const d = dateStr || new Date().toISOString().split('T')[0];
+
+  // Default: aktiven Kalender nutzen, wenn er ein normaler Kalender mit Schreibrechten ist
+  let targetCalId = 'default';
+  try {
+    const activeCal = getCalendarById(activeCalendarId);
+    const canWriteActive =
+      activeCal &&
+      activeCal.id !== 'default' &&
+      activeCal.type !== 'shift' &&
+      (activeCal.ownerId === user?.uid || activeCal.sharedWith?.[user?.uid] === 'write');
+
+    if (canWriteActive) targetCalId = activeCal.id;
+  } catch (_) {}
+
+  setEventToEdit(null);
+  setSelectedDateForEvent(d);
+  setEventForm({
+    title: '',
+    date: d,
+    time: '',
+    type: 'Privat',
+    desc: '',
+    calendarId: targetCalId
+  });
+  setIsModalOpen(true);
+};
+
+const saveUsername = async (e) => {
+  e.preventDefault();
+  if (!user) return;
+  const unameRaw = new FormData(e.target).get('username') || '';
+  const uname = String(unameRaw).trim();
+  if (!uname) return showToast("Bitte Benutzernamen eingeben");
+  if (uname.length > 20) return showToast("Max. 20 Zeichen");
+  if (allProfiles.some(p => p.username?.toLowerCase() === uname.toLowerCase() && p.id !== user.uid)) {
+    return showToast("Name vergeben!");
+  }
+  try {
+    const dataToSave = {
+      username: uname,
+      uid: user.uid,
+      email: user.email
+    };
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), dataToSave, { merge: true });
+    showToast("Profil gespeichert");
+  } catch (err) {
+    showToast("Fehler beim Speichern");
+  }
+};
+
+// --- EVENT CRUD (Modal) ---
+const closeEventModal = () => {
+  setIsModalOpen(false);
+  setEventToEdit(null);
+};
+
+const canWriteCalendar = (calId) => {
+  if (calId === 'default') return true;
+  const cal = customCalendars.find(c => c.id === calId);
+  if (!cal) return false;
+  return cal.ownerId === user?.uid || cal.sharedWith?.[user?.uid] === 'write';
+};
+
+const eventCollectionRefFor = (calId) => {
+  if (!user) return null;
+  if (calId === 'default') {
+    return collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events');
+  }
+  return collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events');
+};
+
+const eventDocRefFor = (calId, eventId) => {
+  if (!user) return null;
+  if (calId === 'default') {
+    return doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventId);
+  }
+  return doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events', eventId);
+};
+
+const saveEvent = async (e) => {
+  e.preventDefault();
+  if (!user) return;
+
+  const title = (eventForm.title || '').trim();
+  if (!title) return showToast("Titel fehlt");
+  if (!eventForm.date) return showToast("Datum fehlt");
+
+  const targetCalId = eventForm.calendarId || 'default';
+  if (targetCalId !== 'default') {
+    const cal = getCalendarById(targetCalId);
+    if (!cal) return showToast("Kalender nicht gefunden");
+    if (cal.type === 'shift') return showToast("Schichtplan: keine normalen Termine");
+    if (!canWriteCalendar(targetCalId)) return showToast("Keine Schreibrechte");
+  }
+
+  const payload = {
+    title,
+    date: eventForm.date,
+    time: (eventForm.time || '').trim(),
+    type: (eventForm.type || 'Privat').trim(),
+    desc: (eventForm.desc || '').trim(),
+    updatedAt: Date.now()
+  };
+
+  try {
+    if (eventToEdit) {
+      const fromCalId = eventToEdit.calendarId || 'default';
+      const toCalId = targetCalId;
+
+      if (!canWriteCalendar(fromCalId)) return showToast("Keine Schreibrechte");
+
+      if (fromCalId === toCalId) {
+        await updateDoc(eventDocRefFor(fromCalId, eventToEdit.id), payload);
+        showToast("Termin gespeichert");
+      } else {
+        // Move between calendars: create new + delete old
+        const colRef = eventCollectionRefFor(toCalId);
+        await addDoc(colRef, {
+          ...payload,
+          createdAt: eventToEdit.createdAt || Date.now(),
+          movedAt: Date.now()
+        });
+        await deleteDoc(eventDocRefFor(fromCalId, eventToEdit.id));
+        showToast("Termin verschoben");
+        setActiveCalendarId(toCalId);
+      }
+    } else {
+      const colRef = eventCollectionRefFor(targetCalId);
+      await addDoc(colRef, { ...payload, createdAt: Date.now() });
+      showToast("Termin erstellt");
+    }
+
+    closeEventModal();
+  } catch (err) {
+    showToast("Fehler beim Speichern");
+  }
+};
+
+const deleteEvent = async () => {
+  if (!eventToEdit || !user) return;
+  if (!confirm("Termin löschen?")) return;
+
+  try {
+    const calId = eventToEdit.calendarId || 'default';
+    if (!canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
+    await deleteDoc(eventDocRefFor(calId, eventToEdit.id));
+    showToast("Termin gelöscht");
+    closeEventModal();
+  } catch (err) {
+    showToast("Fehler beim Löschen");
+  }
+};
+
+
+const openShiftPicker = (dateStr) => {
+  const activeCal = getCalendarById(activeCalendarId);
+  if (!activeCal || activeCal.type !== 'shift') return;
+  if (activeCal.id !== 'default' && activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
+    return showToast("Nur Lesezugriff auf diesen Kalender.");
+  }
+  if (!activeCal.shifts || activeCal.shifts.length === 0) return showToast("Keine Schichten konfiguriert.");
+  setShiftModalData({ dateStr, calId: activeCal.id, shifts: activeCal.shifts });
+};
+
+// Long-Press auf Tag (mobile) -> Shift-Auswahl (ersetzt ContextMenu)
+const handleTouchStart = (dateStr) => {
+  isLongPressAction.current = false;
+  if (pressTimer.current) clearTimeout(pressTimer.current);
+  pressTimer.current = setTimeout(() => {
+    isLongPressAction.current = true;
+    openShiftPicker(dateStr);
+  }, 550);
+};
+
+const handleTouchEnd = () => {
+  if (pressTimer.current) {
+    clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+  }
+};
 
       const activeChatData = activeChat ? myChats.find(c => c.id === activeChat.id) : null;
       const partnerId = activeChatData ? activeChatData.participants.find(id => id !== user?.uid) : null;
@@ -463,54 +713,6 @@
         showToast(`Standort: ${loc.name}`);
       };
 
-      // --- PULL TO REFRESH & GESTURE LOGIK ---
-      const handleGlobalTouchStart = (e) => {
-        if (window.scrollY === 0) {
-          touchStartY.current = e.touches[0].clientY;
-        }
-      };
-
-      const handleGlobalTouchMove = (e) => {
-        if (touchStartY.current > 0 && window.scrollY === 0) {
-          touchCurrentY.current = e.touches[0].clientY;
-          const diff = touchCurrentY.current - touchStartY.current;
-          if (diff > 0 && diff < 150) {
-            setPullDistance(diff);
-          }
-        }
-      };
-
-      const handleGlobalTouchEnd = async () => {
-        if (pullDistance > 60 && !isRefreshing) {
-          setIsRefreshing(true);
-          setPullDistance(60); 
-          showToast("Aktualisiere Daten...");
-          await fetchWeather();
-          setTimeout(() => {
-            setIsRefreshing(false);
-            setPullDistance(0);
-            touchStartY.current = 0;
-          }, 1000);
-        } else {
-          setPullDistance(0);
-          touchStartY.current = 0;
-        }
-      };
-
-      const handleTouchStart = (day) => {
-        if (day === 5) {
-          isLongPressAction.current = false;
-          pressTimer.current = setTimeout(() => {
-            isLongPressAction.current = true; 
-            setCurrentView('secret_chat'); 
-            setSecretView('list');
-            showToast("Verbindung verschlüsselt...");
-          }, 3000);
-        }
-      };
-
-      const handleTouchEnd = () => { if (pressTimer.current) clearTimeout(pressTimer.current); };
-
       // --- KALENDER LOGIK ---
       const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
       const getFirstDayOfMonth = (date) => {
@@ -536,7 +738,7 @@
          setVisibleCalendars(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
       };
 
-      // --- PINSEL & LANGES DRÜCKEN LOGIK ---
+      // --- NEU: PINSEL & LANGES DRÜCKEN LOGIK ---
       const handleDayContextMenu = (e, dateStr) => {
          e.preventDefault();
          const activeCal = getCalendarById(activeCalendarId);
@@ -623,6 +825,7 @@
          isPaintingRef.current = false;
       };
 
+      // Regulärer Klick auf Tag
       const handleDayClick = async (dateStr) => {
          if (isLongPressAction.current) { isLongPressAction.current = false; return; }
          
@@ -654,14 +857,8 @@
                  }
              }
          } else {
-             setEventToEdit(null); 
-             setSelectedDateForEvent(dateStr); 
-             setIsModalOpen(true);
+             openNewEventModal(dateStr);
          }
-      };
-
-      const openNewEventModal = (dateStr = null) => {
-        setEventToEdit(null); setSelectedDateForEvent(dateStr || new Date().toISOString().split('T')[0]); setIsModalOpen(true);
       };
 
       const openEditEventModal = (event) => {
@@ -670,7 +867,17 @@
              return showToast("Nur Lesezugriff.");
          }
          if (event.type === 'shift') return; 
-         setEventToEdit(event); setSelectedDateForEvent(event.date); setIsModalOpen(true);
+         setEventToEdit(event);
+         setSelectedDateForEvent(event.date);
+         setEventForm({
+           title: event.title || '',
+           date: event.date || new Date().toISOString().split('T')[0],
+           time: event.time || '',
+           type: event.type || 'Privat',
+           desc: event.desc || '',
+           calendarId: event.calendarId || 'default'
+         });
+         setIsModalOpen(true);
       };
 
       // --- KALENDER EINSTELLUNGEN LOGIK ---
@@ -704,26 +911,26 @@
       const addShiftToForm = () => {
           setCalForm(prev => ({
               ...prev, 
-              shifts: [...prev.shifts, { id: 's'+Date.now(), name: 'Neue Schicht', time: '08:00', color: PASTEL_COLORS[0] }]
+              shifts: [...(prev.shifts || []), { id: 's'+Date.now(), name: 'Neue Schicht', time: '08:00', color: PASTEL_COLORS[0] }]
           }));
       };
 
       const updateShiftInForm = (id, key, value) => {
           setCalForm(prev => ({
               ...prev,
-              shifts: prev.shifts.map(s => s.id === id ? { ...s, [key]: value } : s)
+              shifts: (prev.shifts || []).map(s => s.id === id ? { ...s, [key]: value } : s)
           }));
       };
 
       const removeShiftFromForm = (id) => {
-          setCalForm(prev => ({ ...prev, shifts: prev.shifts.filter(s => s.id !== id) }));
+          setCalForm(prev => ({ ...prev, shifts: (prev.shifts || []).filter(s => s.id !== id) }));
       };
 
       const shareCalendar = async (e) => {
           e.preventDefault();
           if(!shareCalData) return;
           const uname = shareUsername.trim().toLowerCase();
-          const targetProfile = allProfiles.find(p => p.username.toLowerCase() === uname);
+          const targetProfile = allProfiles.find(p => (p.username || '').toLowerCase() === uname);
           if(!targetProfile) return showToast("Benutzer nicht gefunden");
           if(targetProfile.id === user.uid) return showToast("Das bist du selbst.");
 
@@ -732,6 +939,7 @@
                  [`sharedWith.${targetProfile.id}`]: sharePerm
              });
              showToast(`Geteilt mit ${targetProfile.username} (${sharePerm})`);
+             setShareCalData(prev => prev && prev.id === shareCalData.id ? { ...prev, sharedWith: { ...(prev.sharedWith || {}), [targetProfile.id]: sharePerm } } : prev);
              setShareUsername('');
              setIsShareCalModalOpen(false);
           } catch(err) { showToast("Fehler beim Teilen"); }
@@ -740,9 +948,11 @@
       const unshareCalendar = async (calId, targetUid) => {
           try {
              const cal = customCalendars.find(c => c.id === calId);
-             const newShared = {...cal.sharedWith};
+             if (!cal) return;
+             const newShared = { ...(cal.sharedWith || {}) };
              delete newShared[targetUid];
              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId), { sharedWith: newShared });
+             setShareCalData(prev => prev && prev.id === calId ? { ...prev, sharedWith: newShared } : prev);
              showToast("Freigabe entfernt");
           } catch(err) {}
       };
@@ -751,7 +961,7 @@
         e.preventDefault();
         const uname = new FormData(e.target).get('username').trim();
         if (!uname) return;
-        if (allProfiles.some(p => p.username.toLowerCase() === uname.toLowerCase() && p.id !== user.uid)) return showToast("Name vergeben!");
+        if (allProfiles.some(p => (p.username || '').toLowerCase() === (uname || '').toLowerCase() && p.id !== user.uid)) return showToast("Name vergeben!");
         try {
           const dataToSave = { username: uname, uid: user.uid, email: user.email };
           if (userProfile?.avatarBase64) dataToSave.avatarBase64 = userProfile.avatarBase64;
@@ -841,37 +1051,6 @@
          typingTimeoutRef.current = setTimeout(() => {
             updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: false }).catch(()=>{});
          }, 2000);
-      };
-
-      const saveEventFromModal = async (e) => {
-        e.preventDefault();
-        if (!user) return;
-        const formData = new FormData(e.target);
-        
-        const targetCalId = eventToEdit ? eventToEdit.calendarId : activeCalendarId;
-        const eventData = {
-          title: formData.get('title'), date: formData.get('date'), time: formData.get('time'),
-          type: formData.get('type') || 'Standard', desc: formData.get('desc') || '', updatedAt: Date.now(),
-          calendarId: targetCalId
-        };
-
-        try {
-          if (targetCalId === 'default') {
-              if (eventToEdit && eventToEdit.id) {
-                await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventToEdit.id), eventData);
-              } else {
-                await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), { ...eventData, createdAt: Date.now() });
-              }
-          } else {
-              if (eventToEdit && eventToEdit.id) {
-                await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', targetCalId, 'events', eventToEdit.id), eventData);
-              } else {
-                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', targetCalId, 'events'), { ...eventData, createdAt: Date.now() });
-              }
-          }
-          showToast("Termin gespeichert");
-          setIsModalOpen(false);
-        } catch (error) { showToast("Fehler beim Speichern"); }
       };
 
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
@@ -1067,7 +1246,7 @@
             <button onClick={() => setCurrentView('settings')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-6 h-6" /></button>
           </nav>
 
-          <main className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative">
+          <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative">
             {currentView === 'dashboard' && (
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
                 <header className="flex justify-between items-center mb-8 md:mb-10">
@@ -1186,13 +1365,13 @@
                            data-date={dateStr}
                            onContextMenu={(e) => handleDayContextMenu(e, dateStr)}
                            onMouseDown={(e) => {
-                              handleTouchStart(day);
+                              handleTouchStart(dateStr);
                               if (isPaintbrushActive) handlePaintStart(e, dateStr);
                            }}
                            onMouseEnter={(e) => { if (isPaintbrushActive) handlePaintMove(e, dateStr); }}
                            onMouseUp={(e) => { handleTouchEnd(); if (isPaintbrushActive) handlePaintEnd(); }}
                            onTouchStart={(e) => {
-                              handleTouchStart(day);
+                              handleTouchStart(dateStr);
                               if (isPaintbrushActive) handlePaintStart(e, dateStr);
                            }}
                            onTouchMove={(e) => {
@@ -1387,7 +1566,7 @@
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
                       <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (Name suchen)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
-                        {chatSearchQuery.trim() !== '' && (<div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">{allProfiles.filter(p => p.username.toLowerCase().includes(chatSearchQuery.toLowerCase()) && p.id !== user.uid).length > 0 ? (allProfiles.filter(p => p.username.toLowerCase().includes(chatSearchQuery.toLowerCase()) && p.id !== user.uid).map(profile => (<div key={profile.id} onClick={() => startChatWith(profile.id)} className="p-4 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3"><div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">{profile.avatarBase64 ? <img src={profile.avatarBase64} className="w-full h-full object-cover"/> : profile.username.substring(0,2)}</div><span className="font-medium text-white">{profile.username}</span></div>))) : (<div className="p-4 text-neutral-500 text-sm text-center">Kein Nutzer gefunden.</div>)}</div>)}
+                        {chatSearchQuery.trim() !== '' && (<div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">{allProfiles.filter(p => (p.username || '').toLowerCase().includes(chatSearchQuery.toLowerCase()) && p.id !== user.uid).length > 0 ? (allProfiles.filter(p => (p.username || '').toLowerCase().includes(chatSearchQuery.toLowerCase()) && p.id !== user.uid).map(profile => (<div key={profile.id} onClick={() => startChatWith(profile.id)} className="p-4 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3"><div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">{profile.avatarBase64 ? <img src={profile.avatarBase64} className="w-full h-full object-cover"/> : profile.username.substring(0,2)}</div><span className="font-medium text-white">{profile.username}</span></div>))) : (<div className="p-4 text-neutral-500 text-sm text-center">Kein Nutzer gefunden.</div>)}</div>)}
                       </div>
                       <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-4 font-semibold px-2">Verlauf</h4>
                       <div className="space-y-2">{myChats.length === 0 ? (<div className="p-8 text-center border border-dashed border-neutral-800 rounded-xl text-neutral-500 text-sm">Noch keine Chats vorhanden.</div>) : (myChats.map(chat => (<div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4"><div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">{getChatPartnerAvatar(chat) ? <img src={getChatPartnerAvatar(chat)} className="w-full h-full object-cover"/> : getChatPartnerName(chat).substring(0,2)}</div><div className="flex-1 overflow-hidden"><h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>{chat.lastMessageSenderId !== user.uid && chat.updatedAt > lastChatVisit ? (<span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>) : (<p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>)}</div></div>)))}</div>
@@ -1541,6 +1720,411 @@
               </div>
             )}
           </main>
+
+          
+          {/* WETTER MODAL */}
+          {isWeatherModalOpen && (
+            <div className="fixed inset-0 z-[75] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }}>
+              <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</p>
+                    <h3 className="text-lg font-medium text-white flex items-center gap-2"><MapPin className="w-4 h-4 text-neutral-400" /> {location.name}</h3>
+                  </div>
+                  <button onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      {weather ? `Wind ${Math.round(weather.windspeed || 0)} km/h` : 'Lade Daten…'}
+                    </p>
+                  </div>
+                  <div className="shrink-0">
+                    {getWeatherIcon(weather?.weathercode, "w-12 h-12 text-white")}
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Vorhersage</h4>
+                  <div className="space-y-2">
+                    {(dailyForecast?.time || []).slice(0, 7).map((d, i) => (
+                      <div key={d} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-3 py-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 text-[11px] font-semibold text-neutral-300">{formatDayName(d)}</div>
+                          <div className="flex items-center gap-2">
+                            {getWeatherIcon(dailyForecast?.weathercode?.[i], "w-5 h-5 text-white")}
+                            <span className="text-xs text-neutral-400">{new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</span>
+                          </div>
+                        </div>
+                        <div className="text-sm tabular-nums">
+                          <span className="text-white">{Math.round(dailyForecast?.temperature_2m_max?.[i] ?? 0)}°</span>
+                          <span className="text-neutral-600 mx-1">/</span>
+                          <span className="text-neutral-400">{Math.round(dailyForecast?.temperature_2m_min?.[i] ?? 0)}°</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Standort suchen</h4>
+                  <form onSubmit={handleSearchLocation} className="flex gap-2">
+                    <input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Ort (z.B. Zürich)…"
+                      className="flex-1 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                    />
+                    <button type="submit" className="px-4 py-3 bg-white text-black rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+                      <Search className="w-4 h-4" />
+                    </button>
+                  </form>
+
+                  {searchResults.length > 0 && (
+                    <div className="mt-3 bg-black border border-neutral-800 rounded-xl overflow-hidden">
+                      {searchResults.map((loc) => (
+                        <button
+                          key={`${loc.id}-${loc.latitude}-${loc.longitude}`}
+                          onClick={() => { selectLocation(loc); }}
+                          className="w-full text-left px-4 py-3 text-sm hover:bg-neutral-900 transition-colors border-b border-neutral-900 last:border-0"
+                        >
+                          <span className="text-white font-medium">{loc.name}</span>
+                          <span className="text-neutral-500 text-xs ml-2">{loc.admin1 ? `${loc.admin1}` : ''} {loc.country ? `• ${loc.country}` : ''}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 mt-5">
+                  <button
+                    type="button"
+                    onClick={async () => { await fetchWeather(); showToast("Aktualisiert"); }}
+                    className="flex-1 py-3 rounded-lg text-sm bg-neutral-900 border border-neutral-800 hover:border-neutral-500 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    Aktualisieren
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }}
+                    className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors"
+                  >
+                    Schließen
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* EVENT MODAL */}
+          {isModalOpen && (
+            <div className="fixed inset-0 z-[85] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={closeEventModal}>
+              <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">{eventToEdit ? 'Bearbeiten' : 'Neu'}</p>
+                    <h3 className="text-lg font-medium text-white">{eventToEdit ? 'Termin bearbeiten' : 'Neuer Termin'}</h3>
+                  </div>
+                  <button onClick={closeEventModal} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={saveEvent} className="space-y-3">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Titel</label>
+                    <input
+                      value={eventForm.title}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, title: e.target.value }))}
+                      placeholder="z.B. Arzttermin"
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                      required
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Datum</label>
+                      <input
+                        type="date"
+                        value={eventForm.date}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, date: e.target.value }))}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                        required
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Zeit</label>
+                      <input
+                        type="time"
+                        value={eventForm.time}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, time: e.target.value }))}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kategorie</label>
+                    <input
+                      list="eventTypeList"
+                      value={eventForm.type}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, type: e.target.value }))}
+                      placeholder="z.B. Arbeit"
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                    />
+                    <datalist id="eventTypeList">
+                      <option value="Privat" />
+                      <option value="Arbeit" />
+                      <option value="Projekt" />
+                      <option value="Geburtstag" />
+                      <option value="Erinnerung" />
+                    </datalist>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Beschreibung</label>
+                    <textarea
+                      value={eventForm.desc}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, desc: e.target.value }))}
+                      placeholder="Optional…"
+                      rows={3}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kalender</label>
+                    <select
+                      value={eventForm.calendarId}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, calendarId: e.target.value }))}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="default">Privat (Standard)</option>
+                      {customCalendars
+                        .filter(c => c.type !== 'shift' && (c.ownerId === user.uid || c.sharedWith?.[user.uid] === 'write'))
+                        .map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}{c.ownerId !== user.uid ? ' (geteilt)' : ''}
+                          </option>
+                        ))
+                      }
+                    </select>
+                    <p className="mt-1 text-[11px] text-neutral-500">Schichtpläne können nur über die Tagesauswahl bearbeitet werden.</p>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    {eventToEdit ? (
+                      <button type="button" onClick={deleteEvent} className="py-3 px-4 rounded-lg text-sm text-red-500 bg-red-500/10 border border-red-900/40 hover:bg-red-500/20 transition-colors">
+                        Löschen
+                      </button>
+                    ) : (
+                      <button type="button" onClick={closeEventModal} className="py-3 px-4 rounded-lg text-sm text-neutral-400 bg-neutral-900 border border-neutral-800 hover:text-white transition-colors">
+                        Abbrechen
+                      </button>
+                    )}
+                    <button type="submit" className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">
+                      Speichern
+                    </button>
+                  </div>
+
+                  {eventToEdit && (
+                    <button type="button" onClick={closeEventModal} className="w-full py-3 rounded-lg text-sm text-neutral-400 bg-neutral-900 border border-neutral-800 hover:text-white transition-colors">
+                      Schließen
+                    </button>
+                  )}
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* KALENDER VERWALTEN MODAL */}
+          {isCalManageModalOpen && (
+            <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => setIsCalManageModalOpen(false)}>
+              <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">{calForm?.id ? 'Bearbeiten' : 'Neu'}</p>
+                    <h3 className="text-lg font-medium text-white">{calForm?.id ? 'Kalender bearbeiten' : 'Neuer Kalender'}</h3>
+                  </div>
+                  <button onClick={() => setIsCalManageModalOpen(false)} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={saveCalendarSettings} className="space-y-4">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Name</label>
+                    <input
+                      value={calForm?.name || ''}
+                      onChange={(e) => setCalForm(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="z.B. Arbeit / Schule / Team"
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Typ</label>
+                    <select
+                      value={calForm?.type || 'normal'}
+                      onChange={(e) => setCalForm(prev => ({ ...prev, type: e.target.value, shifts: prev.shifts || [] }))}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="normal">Normal (Termine)</option>
+                      <option value="shift">Schichtplan (Farben)</option>
+                    </select>
+                    <p className="mt-1 text-[11px] text-neutral-500">Schichtplan: Tippen wechselt Schichten, lang drücken öffnet Auswahl, „Pinsel“ malt mehrere Tage.</p>
+                  </div>
+
+                  {calForm?.type === 'shift' && (
+                    <div className="bg-black border border-neutral-800 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold">Schichten</h4>
+                        <button type="button" onClick={addShiftToForm} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">
+                          + Schicht
+                        </button>
+                      </div>
+
+                      {(calForm.shifts || []).length === 0 ? (
+                        <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
+                          Noch keine Schichten. Füge mindestens eine hinzu.
+                        </div>
+                      ) : (
+                        <div className="space-y-3 max-h-[45vh] overflow-y-auto no-scrollbar pr-1">
+                          {(calForm.shifts || []).map((sh) => (
+                            <div key={sh.id} className="border border-neutral-800 rounded-xl p-3 bg-neutral-950/30">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="color"
+                                  value={sh.color || '#ffffff'}
+                                  onChange={(e) => updateShiftInForm(sh.id, 'color', e.target.value)}
+                                  className="w-12 h-10 bg-transparent border border-neutral-800 rounded-lg"
+                                  title="Farbe"
+                                />
+                                <input
+                                  value={sh.name || ''}
+                                  onChange={(e) => updateShiftInForm(sh.id, 'name', e.target.value)}
+                                  placeholder="Name (z.B. Früh)"
+                                  className="flex-1 bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                                />
+                                <button type="button" onClick={() => removeShiftFromForm(sh.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors" title="Entfernen">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                              <div className="mt-2">
+                                <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Zeit</label>
+                                <input
+                                  type="time"
+                                  value={sh.time || '08:00'}
+                                  onChange={(e) => updateShiftInForm(sh.id, 'time', e.target.value)}
+                                  className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={() => setIsCalManageModalOpen(false)} className="flex-1 py-3 rounded-lg text-sm text-neutral-400 bg-neutral-900 border border-neutral-800 hover:text-white transition-colors">
+                      Abbrechen
+                    </button>
+                    <button type="submit" className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">
+                      Speichern
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* KALENDER TEILEN MODAL */}
+          {isShareCalModalOpen && shareCalData && (
+            <div className="fixed inset-0 z-[82] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => { setIsShareCalModalOpen(false); setShareUsername(''); }}>
+              <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">Teilen</p>
+                    <h3 className="text-lg font-medium text-white">{shareCalData.name}</h3>
+                  </div>
+                  <button onClick={() => { setIsShareCalModalOpen(false); setShareUsername(''); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={shareCalendar} className="space-y-3">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benutzername</label>
+                    <input
+                      value={shareUsername}
+                      onChange={(e) => setShareUsername(e.target.value)}
+                      placeholder="Exakter Username"
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                      required
+                    />
+                    <p className="mt-1 text-[11px] text-neutral-500">Hinweis: Der andere Nutzer muss einen Username gesetzt haben (Chat Profil).</p>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Rechte</label>
+                    <select
+                      value={sharePerm}
+                      onChange={(e) => setSharePerm(e.target.value)}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="read">Nur Lesen</option>
+                      <option value="write">Lesen & Schreiben</option>
+                    </select>
+                  </div>
+
+                  <button type="submit" className="w-full py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">
+                    Freigeben
+                  </button>
+                </form>
+
+                <div className="mt-5">
+                  <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Aktive Freigaben</h4>
+                  {Object.keys(shareCalData.sharedWith || {}).length === 0 ? (
+                    <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
+                      Noch keine Freigaben.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[35vh] overflow-y-auto no-scrollbar pr-1">
+                      {Object.entries(shareCalData.sharedWith || {}).map(([uid, perm]) => (
+                        <div key={uid} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
+                          <div className="flex flex-col">
+                            <span className="text-sm text-white font-medium">{getProfile(uid)?.username || uid.substring(0, 6)}</span>
+                            <span className="text-[11px] text-neutral-500">{perm === 'write' ? 'Lesen & Schreiben' : 'Nur Lesen'}</span>
+                          </div>
+                          <button onClick={() => unshareCalendar(shareCalData.id, uid)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors" title="Entfernen">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5">
+                  <button
+                    type="button"
+                    onClick={() => { setIsShareCalModalOpen(false); setShareUsername(''); }}
+                    className="w-full py-3 rounded-lg text-sm bg-neutral-900 border border-neutral-800 hover:border-neutral-500 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    Schließen
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
 
           {/* SCHICHT AUSWAHL MODAL (Langes Drücken) */}
           {shiftModalData && (

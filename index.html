@@ -79,7 +79,7 @@
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDocs } from "firebase/firestore";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDocs, arrayUnion, arrayRemove } from "firebase/firestore";
     import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
     const customFirebaseConfig = {
@@ -205,6 +205,14 @@
       
       const [chatStats, setChatStats] = useState({ sent: 0, received: 0, total: 0 });
       const [showPartnerStats, setShowPartnerStats] = useState(false);
+
+      const [showCreateGroup, setShowCreateGroup] = useState(false);
+      const [groupDraftName, setGroupDraftName] = useState('');
+      const [groupDraftMembers, setGroupDraftMembers] = useState([]); // array of userIds
+      const [groupMemberSearch, setGroupMemberSearch] = useState('');
+      const [groupEditSearch, setGroupEditSearch] = useState('');
+      const lastReadWriteRef = useRef(0);
+      const presenceHeartbeatRef = useRef(null);
 
       const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
       const [messageSearchQuery, setMessageSearchQuery] = useState('');
@@ -552,8 +560,8 @@ const handleTouchEnd = () => {
 };
 
       const activeChatData = activeChat ? myChats.find(c => c.id === activeChat.id) : null;
-      const partnerId = activeChatData ? activeChatData.participants.find(id => id !== user?.uid) : null;
-      const isPartnerTyping = activeChatData && partnerId ? activeChatData.typing?.[partnerId] : false;
+      const partnerId = activeChatData && !isGroupChat(activeChatData) ? activeChatData.participants.find(id => id !== user?.uid) : null;
+      const isPartnerTyping = activeChatData ? (getTypingUsers(activeChatData).length > 0) : false;
 
       const pinnedChatIds = (userProfile && Array.isArray(userProfile.pinnedChats)) ? userProfile.pinnedChats : [];
       const sortedMyChats = [...myChats].sort((a, b) => {
@@ -583,6 +591,30 @@ const handleTouchEnd = () => {
         });
         return () => unsubscribeAuth();
       }, []);
+
+      // --- PRESENCE (online/offline + last seen) ---
+      useEffect(() => {
+        if (!user) return;
+        const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+        const setPresence = (status) => {
+          setDoc(profileRef, { presenceStatus: status, presenceLastSeen: Date.now() }, { merge: true }).catch(()=>{});
+        };
+        setPresence('online');
+        const onVisibility = () => {
+          if (document.visibilityState === 'visible') setPresence('online');
+          else setPresence('offline');
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        window.addEventListener('beforeunload', () => { try { setPresence('offline'); } catch(e) {} });
+        if (presenceHeartbeatRef.current) clearInterval(presenceHeartbeatRef.current);
+        presenceHeartbeatRef.current = setInterval(() => {
+          if (document.visibilityState === 'visible') setPresence('online');
+        }, 25000);
+        return () => {
+          document.removeEventListener('visibilitychange', onVisibility);
+          if (presenceHeartbeatRef.current) { clearInterval(presenceHeartbeatRef.current); presenceHeartbeatRef.current = null; }
+        };
+      }, [user]);
 
       useEffect(() => {
         if (currentView === 'secret_chat') {
@@ -706,16 +738,25 @@ const handleTouchEnd = () => {
           snapshot.forEach(doc => {
             const data = doc.data();
             loaded.push({ id: doc.id, ...data });
-            if (data.senderId !== user.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat') {
+            if (data.senderId !== user.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
               unreadToUpdate.push(doc.id);
             }
           });
           loaded.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
           setChatMessages(loaded);
           
+          // lastRead (für Gruppen-Read-Receipts)
+          if (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible') {
+            const nowMs = Date.now();
+            if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
+              lastReadWriteRef.current = nowMs;
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`lastRead.${user.uid}`]: nowMs }).catch(()=>{});
+            }
+          }
+
           if (unreadToUpdate.length > 0) {
             unreadToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { read: true }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
             });
           }
 
@@ -1278,7 +1319,7 @@ const handleTouchEnd = () => {
       const getProfile = (uid) => allProfiles.find(p => p.id === uid) || null;
 
       const startChatWith = async (targetUserId) => {
-        const existingChat = myChats.find(c => c.participants.includes(targetUserId));
+        const existingChat = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(targetUserId));
         if (existingChat) {
           setActiveChat(existingChat);
         } else {
@@ -1292,6 +1333,69 @@ const handleTouchEnd = () => {
         setChatSearchQuery('');
         setSecretView('chat');
       };
+
+      const createGroupChat = async () => {
+        if (!user) return;
+        const title = (groupDraftName || '').trim() || 'Gruppe';
+        const members = Array.from(new Set([user.uid, ...(groupDraftMembers || [])])).filter(Boolean);
+        if (members.length < 3) return showToast('Wähle mindestens 2 Mitglieder aus');
+        try {
+          const newChat = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats'), {
+            type: 'group', title, participants: members, admins: [user.uid], createdAt: Date.now(), updatedAt: Date.now(), lastMessageSenderId: user.uid,
+            typing: {}, typingAt: {}, lastRead: { [user.uid]: Date.now() }
+          });
+          const chatObj = { id: newChat.id, type: 'group', title, participants: members, admins: [user.uid], createdAt: Date.now(), updatedAt: Date.now(), lastMessageSenderId: user.uid };
+          setActiveChat(chatObj);
+          setSecretView('chat');
+          setShowCreateGroup(false);
+          setGroupDraftName('');
+          setGroupDraftMembers([]);
+          setGroupMemberSearch('');
+        } catch (e) {
+          showToast('Fehler beim Erstellen');
+        }
+      };
+
+      const updateGroupTitle = async (chat, newTitle) => {
+        if (!user || !chat) return;
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id), { title: (newTitle || '').trim() || 'Gruppe', updatedAt: Date.now() });
+          showToast('Titel gespeichert');
+        } catch (e) { showToast('Fehler'); }
+      };
+
+      const addMemberToGroup = async (chat, memberId) => {
+        if (!user || !chat || !memberId) return;
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id), { participants: arrayUnion(memberId), updatedAt: Date.now() });
+          showToast('Mitglied hinzugefügt');
+        } catch(e) { showToast('Fehler'); }
+      };
+
+      const removeMemberFromGroup = async (chat, memberId) => {
+        if (!user || !chat || !memberId) return;
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id), { participants: arrayRemove(memberId), admins: arrayRemove(memberId), updatedAt: Date.now() });
+          if (memberId === user.uid) {
+            setShowPartnerStats(false);
+            setActiveChat(null);
+            setSecretView('list');
+          }
+          showToast('Mitglied entfernt');
+        } catch(e) { showToast('Fehler'); }
+      };
+
+      const leaveGroup = async (chat) => removeMemberFromGroup(chat, user.uid);
+
+      const toggleAdmin = async (chat, memberId) => {
+        if (!user || !chat || !memberId) return;
+        const isAdmin = Array.isArray(chat.admins) && chat.admins.includes(memberId);
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id), { admins: isAdmin ? arrayRemove(memberId) : arrayUnion(memberId), updatedAt: Date.now() });
+        } catch(e) { showToast('Fehler'); }
+      };
+
+      const isChatAdmin = (chat) => Array.isArray(chat?.admins) && chat.admins.includes(user?.uid);
 
       const togglePinChat = async (chatId) => {
         if (!user) return;
@@ -1334,13 +1438,14 @@ const handleTouchEnd = () => {
       };
 
       const handleTyping = (e) => {
-         setNewMessageText(e.target.value);
+         const value = e.target.value;
+         setNewMessageText(value);
          if (!activeChat || !user) return;
-         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: true }).catch(()=>{});
+         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: value.length > 0, [`typingAt.${user.uid}`]: Date.now() }).catch(()=>{});
          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
          typingTimeoutRef.current = setTimeout(() => {
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: false }).catch(()=>{});
-         }, 2000);
+            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: false, [`typingAt.${user.uid}`]: Date.now() }).catch(()=>{});
+         }, 2200);
       };
 
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
@@ -1366,7 +1471,7 @@ const handleTouchEnd = () => {
           }
 
           await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { updatedAt: Date.now(), lastMessageSenderId: user.uid, [`typing.${user.uid}`]: false });
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { updatedAt: Date.now(), lastMessageSenderId: user.uid, [`typing.${user.uid}`]: false, [`typingAt.${user.uid}`]: Date.now() });
           
           setNewMessageText(''); setReplyingTo(null); setSelfDestruct(false);
           const now = Date.now(); setLastChatVisit(now); localStorage.setItem('onyx_last_chat_visit', now.toString());
@@ -1413,8 +1518,45 @@ const handleTouchEnd = () => {
         reader.readAsDataURL(file);
       };
 
-      const getChatPartnerName = (chat) => { return getProfile(chat?.participants.find(id => id !== user?.uid))?.username || 'Unbekannt'; };
-      const getChatPartnerAvatar = (chat) => { return getProfile(chat?.participants.find(id => id !== user?.uid))?.avatarBase64 || null; };
+      const isGroupChat = (chat) => {
+        if (!chat) return false;
+        if (chat.type === 'group') return true;
+        return Array.isArray(chat.participants) && chat.participants.length > 2;
+      };
+
+      const formatTime = (ts) => {
+        if (!ts) return '';
+        try { return new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); } catch(e) { return ''; }
+      };
+
+      const getPresence = (uid) => {
+        const p = getProfile(uid);
+        if (!p) return { status: 'offline', lastSeen: 0, online: false };
+        const lastSeen = p.presenceLastSeen || 0;
+        const online = (p.presenceStatus === 'online') && (Date.now() - lastSeen < 45000);
+        return { status: online ? 'online' : 'offline', lastSeen, online };
+      };
+
+      const getChatPartnerName = (chat) => {
+        if (!chat) return 'Chat';
+        if (isGroupChat(chat)) return chat.title || 'Gruppe';
+        return getProfile(chat?.participants.find(id => id !== user?.uid))?.username || 'Unbekannt';
+      };
+      const getChatPartnerAvatar = (chat) => {
+        if (!chat) return null;
+        if (isGroupChat(chat)) return chat.avatarBase64 || null;
+        return getProfile(chat?.participants.find(id => id !== user?.uid))?.avatarBase64 || null;
+      };
+
+      const getChatParticipants = (chat) => Array.isArray(chat?.participants) ? chat.participants : [];
+
+      const getTypingUsers = (chat) => {
+        if (!chat || !chat.typing) return [];
+        const now = Date.now();
+        const typingMap = chat.typing || {};
+        const typingAt = chat.typingAt || {};
+        return Object.keys(typingMap).filter(uid => uid !== user?.uid && typingMap[uid] === true && (now - (typingAt[uid] || 0) < 6500));
+      };
 
       const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
       
@@ -1926,10 +2068,14 @@ const handleTouchEnd = () => {
                         )}
                         <div className="flex flex-col">
                           <span className="font-medium text-white leading-tight">{getChatPartnerName(activeChat)}</span>
-                          {isPartnerTyping ? (
-                             <span className="text-[11px] text-green-400 animate-pulse font-medium">schreibt...</span>
+                          {(activeChatData && getTypingUsers(activeChatData).length > 0) ? (
+                             <span className="text-[11px] text-green-400 animate-pulse font-medium">
+                               {isGroupChat(activeChatData) ? (getTypingUsers(activeChatData).length === 1 ? `${getProfile(getTypingUsers(activeChatData)[0])?.username || 'Jemand'} tippt...` : `${getTypingUsers(activeChatData).length} tippen...`) : 'tippt...'}
+                             </span>
                           ) : (
-                             <span className="text-[11px] text-neutral-500">Tippen für Profil</span>
+                             <span className="text-[11px] text-neutral-500">
+                               {isGroupChat(activeChatData) ? (() => { const ids = getChatParticipants(activeChatData); const onlineCount = ids.filter(id => getPresence(id).online).length; return `${onlineCount} online • ${ids.length} Mitglieder`; })() : (() => { const pr = getPresence(partnerId); if (pr.online) return 'online'; if (pr.lastSeen) return `zuletzt gesehen ${formatTime(pr.lastSeen)}`; return 'offline'; })()}
+                             </span>
                           )}
                         </div>
                       </div>
@@ -2006,6 +2152,11 @@ const handleTouchEnd = () => {
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
                       <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (Name suchen)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
                         {chatSearchQuery.trim() !== '' && (<div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">{allProfiles.filter(p => (p.username || '').toLowerCase().includes(chatSearchQuery.toLowerCase()) && p.id !== user.uid).length > 0 ? (allProfiles.filter(p => (p.username || '').toLowerCase().includes(chatSearchQuery.toLowerCase()) && p.id !== user.uid).map(profile => (<div key={profile.id} onClick={() => startChatWith(profile.id)} className="p-4 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3"><div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">{profile.avatarBase64 ? <img src={profile.avatarBase64} className="w-full h-full object-cover"/> : profile.username.substring(0,2)}</div><span className="font-medium text-white">{profile.username}</span></div>))) : (<div className="p-4 text-neutral-500 text-sm text-center">Kein Nutzer gefunden.</div>)}</div>)}
+                      </div>
+                      <div className="flex items-center justify-end mb-6 px-2">
+                        <button onClick={() => { setShowCreateGroup(true); setGroupDraftName(''); setGroupDraftMembers([]); setGroupMemberSearch(''); }} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">
+                          <Users className="w-4 h-4" /> Gruppe erstellen
+                        </button>
                       </div>
                       <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-4 font-semibold px-2">Verlauf</h4>
                       <div className="space-y-2">
@@ -2124,7 +2275,23 @@ const handleTouchEnd = () => {
                                     {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                   </span>
                                   {isMe && (
-                                    <span className="text-[10px] ml-1">{msg.read ? '👀' : '👁️'}</span>
+                                    <span className="text-[10px] ml-1">
+                                      {(() => {
+                                        const chat = activeChatData || activeChat;
+                                        const group = isGroupChat(chat);
+                                        if (group) {
+                                          const ids = getChatParticipants(chat);
+                                          const lastRead = (activeChatData && activeChatData.lastRead) ? activeChatData.lastRead : (chat && chat.lastRead) ? chat.lastRead : {};
+                                          const denom = Math.max(0, ids.length - 1);
+                                          const seenCount = ids.filter(id => id !== user.uid && (lastRead?.[id] || 0) >= (msg.timestamp || 0)).length;
+                                          if (seenCount > 0) return `gesehen von ${seenCount}/${denom}`;
+                                          return 'gesendet';
+                                        }
+                                        if (msg.readAt) return `gesehen um ${formatTime(msg.readAt)}`;
+                                        if (msg.read) return 'gesehen';
+                                        return 'gesendet';
+                                      })()}
+                                    </span>
                                   )}
                                 </div>
 
@@ -2758,6 +2925,73 @@ const handleTouchEnd = () => {
              </div>
           )}
 
+          {showCreateGroup && (
+            <div className="fixed inset-0 z-[75] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="w-full max-w-md bg-neutral-950 border border-neutral-800 rounded-2xl p-6 relative animate-fade-in shadow-2xl">
+                <button onClick={() => setShowCreateGroup(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white"><X className="w-5 h-5"/></button>
+                <h3 className="text-xl font-medium text-white mb-1">Gruppe erstellen</h3>
+                <p className="text-xs text-neutral-500 mb-6">Mindestens 3 Teilnehmer (du + 2)</p>
+
+                <label className="text-xs text-neutral-400">Gruppenname</label>
+                <input value={groupDraftName} onChange={(e) => setGroupDraftName(e.target.value)} placeholder="z.B. Team, Familie…" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500 mt-2" />
+
+                <div className="mt-5">
+                  <label className="text-xs text-neutral-400">Mitglieder hinzufügen</label>
+                  <div className="relative mt-2">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                    <input value={groupMemberSearch} onChange={(e) => setGroupMemberSearch(e.target.value)} placeholder="Name suchen…" className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
+                  </div>
+
+                  {(groupMemberSearch || '').trim() !== '' && (
+                    <div className="mt-2 max-h-52 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-xl">
+                      {allProfiles
+                        .filter(p => p.id !== user.uid)
+                        .filter(p => (p.username || '').toLowerCase().includes(groupMemberSearch.toLowerCase()))
+                        .filter(p => !(groupDraftMembers || []).includes(p.id))
+                        .slice(0, 20)
+                        .map(p => (
+                          <div key={p.id} onClick={() => { setGroupDraftMembers(prev => Array.from(new Set([...(prev || []), p.id]))); setGroupMemberSearch(''); }} className="p-3 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
+                            <div className="w-9 h-9 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
+                              {p.avatarBase64 ? <img src={p.avatarBase64} className="w-full h-full object-cover"/> : (p.username || '?').substring(0,2)}
+                            </div>
+                            <div className="flex-1">
+                              <div className="text-white text-sm font-medium">{p.username}</div>
+                              <div className="text-xs text-neutral-500">{getPresence(p.id).online ? 'online' : (getPresence(p.id).lastSeen ? `zuletzt ${formatTime(getPresence(p.id).lastSeen)}` : 'offline')}</div>
+                            </div>
+                            <Plus className="w-4 h-4 text-neutral-400" />
+                          </div>
+                        ))}
+                      {allProfiles.filter(p => p.id !== user.uid).filter(p => (p.username || '').toLowerCase().includes(groupMemberSearch.toLowerCase())).filter(p => !(groupDraftMembers || []).includes(p.id)).length === 0 && (
+                        <div className="p-3 text-neutral-500 text-sm text-center">Kein Treffer</div>
+                      )}
+                    </div>
+                  )}
+
+                  {(groupDraftMembers || []).length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {groupDraftMembers.map(id => {
+                        const p = getProfile(id);
+                        return (
+                          <span key={id} className="inline-flex items-center gap-2 bg-neutral-900 border border-neutral-800 text-white text-xs px-3 py-1.5 rounded-full">
+                            {(p?.username || 'User').substring(0, 18)}
+                            <button onClick={(e) => { e.stopPropagation(); setGroupDraftMembers(prev => (prev || []).filter(x => x !== id)); }} className="text-neutral-400 hover:text-white">×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 flex gap-2">
+                  <button onClick={() => setShowCreateGroup(false)} className="flex-1 bg-neutral-900 border border-neutral-800 text-white py-3 rounded-xl text-sm font-semibold hover:bg-neutral-800">Abbrechen</button>
+                  <button onClick={() => createGroupChat()} disabled={(groupDraftMembers || []).length < 2} className={`flex-1 py-3 rounded-xl text-sm font-semibold ${((groupDraftMembers || []).length < 2) ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed' : 'bg-white text-black hover:bg-gray-200'}`}>
+                    Erstellen
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* PARTNER STATS MODAL */}
           {showPartnerStats && activeChat && (
              <div className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
@@ -2774,15 +3008,100 @@ const handleTouchEnd = () => {
                    </div>
                    
                    <div className="grid grid-cols-2 gap-4">
-                     <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
-                       <p className="text-xs text-neutral-500 uppercase mb-1">Von Dir</p>
-                       <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId === user.uid).length}</p>
-                     </div>
-                     <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
-                       <p className="text-xs text-neutral-500 uppercase mb-1">Von {getChatPartnerName(activeChat).substring(0,6)}.</p>
-                       <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId !== user.uid).length}</p>
-                     </div>
+                     {isGroupChat(activeChatData || activeChat) ? (
+                       <>
+                         <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
+                           <p className="text-xs text-neutral-500 uppercase mb-1">Mitglieder</p>
+                           <p className="text-2xl font-light text-white">{getChatParticipants(activeChatData || activeChat).length}</p>
+                         </div>
+                         <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
+                           <p className="text-xs text-neutral-500 uppercase mb-1">Online</p>
+                           <p className="text-2xl font-light text-white">{getChatParticipants(activeChatData || activeChat).filter(id => getPresence(id).online).length}</p>
+                         </div>
+                       </>
+                     ) : (
+                       <>
+                         <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
+                           <p className="text-xs text-neutral-500 uppercase mb-1">Von Dir</p>
+                           <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId === user.uid).length}</p>
+                         </div>
+                         <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
+                           <p className="text-xs text-neutral-500 uppercase mb-1">Von {getChatPartnerName(activeChat).substring(0,6)}.</p>
+                           <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId !== user.uid).length}</p>
+                         </div>
+                       </>
+                     )}
                    </div>
+
+                   {isGroupChat(activeChatData || activeChat) && (
+                     <div className="mt-4 bg-neutral-900 border border-neutral-800 p-4 rounded-xl">
+                       <p className="text-xs text-neutral-500 uppercase tracking-widest mb-3">Mitglieder</p>
+                       <div className="max-h-48 overflow-y-auto space-y-2">
+                         {getChatParticipants(activeChatData || activeChat).map(uid => {
+                           const p = getProfile(uid);
+                           const pr = getPresence(uid);
+                           const me = uid === user.uid;
+                           return (
+                             <div key={uid} className="flex items-center gap-3 p-2 rounded-lg bg-black/40 border border-neutral-800">
+                               <div className="w-9 h-9 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase overflow-hidden shrink-0">
+                                 {p?.avatarBase64 ? <img src={p.avatarBase64} className="w-full h-full object-cover"/> : (p?.username || '?').substring(0,2)}
+                               </div>
+                               <div className="flex-1">
+                                 <div className="text-sm text-white font-medium truncate">{me ? 'Du' : (p?.username || 'Unbekannt')}</div>
+                                 <div className="text-[11px] text-neutral-500">{pr.online ? 'online' : (pr.lastSeen ? `zuletzt ${formatTime(pr.lastSeen)}` : 'offline')}</div>
+                               </div>
+                               {isChatAdmin(activeChatData || activeChat) && !me && (
+                                 <div className="flex items-center gap-1">
+                                   <button onClick={() => toggleAdmin(activeChatData || activeChat, uid)} className="text-[11px] px-2 py-1 rounded-md bg-neutral-900 border border-neutral-700 text-neutral-200 hover:border-neutral-500">{(activeChatData || activeChat)?.admins?.includes(uid) ? 'Admin' : 'Admin?'}</button>
+                                   <button onClick={() => removeMemberFromGroup(activeChatData || activeChat, uid)} className="text-[11px] px-2 py-1 rounded-md bg-red-500/10 border border-red-900/50 text-red-400 hover:bg-red-500/20">Entfernen</button>
+                                 </div>
+                               )}
+                             </div>
+                           );
+                         })}
+                       </div>
+                       {isChatAdmin(activeChatData || activeChat) && (
+                         <div className="mt-4">
+                           <label className="text-xs text-neutral-400">Gruppenname</label>
+                           <div className="flex gap-2 mt-2">
+                             <input defaultValue={(activeChatData || activeChat)?.title || ''} id="groupTitleInput" className="flex-1 bg-black border border-neutral-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-neutral-500" />
+                             <button onClick={() => updateGroupTitle(activeChatData || activeChat, document.getElementById('groupTitleInput')?.value)} className="px-4 py-2 rounded-lg bg-white text-black text-sm font-semibold hover:bg-gray-200">Speichern</button>
+                           </div>
+                           <div className="mt-3">
+                             <div className="relative">
+                               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                               <input value={groupEditSearch} onChange={(e) => setGroupEditSearch(e.target.value)} placeholder="Mitglied hinzufügen…" className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
+                             </div>
+                             {(groupEditSearch || '').trim() !== '' && (
+                               <div className="mt-2 max-h-40 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-xl">
+                                 {allProfiles
+                                   .filter(p => p.id !== user.uid)
+                                   .filter(p => (p.username || '').toLowerCase().includes(groupEditSearch.toLowerCase()))
+                                   .filter(p => !getChatParticipants(activeChatData || activeChat).includes(p.id))
+                                   .slice(0, 15)
+                                   .map(p => (
+                                     <div key={p.id} onClick={() => { addMemberToGroup(activeChatData || activeChat, p.id); setGroupEditSearch(''); }} className="p-3 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
+                                       <div className="w-9 h-9 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
+                                         {p.avatarBase64 ? <img src={p.avatarBase64} className="w-full h-full object-cover"/> : (p.username || '?').substring(0,2)}
+                                       </div>
+                                       <span className="font-medium text-white text-sm">{p.username}</span>
+                                       <Plus className="w-4 h-4 text-neutral-400 ml-auto" />
+                                     </div>
+                                   ))}
+                                 {allProfiles.filter(p => p.id !== user.uid).filter(p => (p.username || '').toLowerCase().includes(groupEditSearch.toLowerCase())).filter(p => !getChatParticipants(activeChatData || activeChat).includes(p.id)).length === 0 && (
+                                   <div className="p-3 text-neutral-500 text-sm text-center">Kein Treffer</div>
+                                 )}
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                       )}
+                       <div className="mt-4 flex gap-2">
+                         <button onClick={() => leaveGroup(activeChatData || activeChat)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-neutral-900 border border-neutral-800 text-white hover:bg-neutral-800">Gruppe verlassen</button>
+                       </div>
+                     </div>
+                   )}
+
                    <div className="mt-4 bg-neutral-900 border border-neutral-800 p-4 rounded-xl text-center flex items-center justify-center gap-3">
                      <Activity className="w-5 h-5 text-neutral-400" />
                      <p className="text-sm text-neutral-300">Total <strong className="text-white ml-1">{chatMessages.length}</strong> Nachrichten</p>

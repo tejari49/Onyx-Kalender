@@ -55,7 +55,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('firebase-messaging-sw.js').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -178,6 +178,11 @@
       const touchStartY = useRef(0);
       const touchCurrentY = useRef(0);
 
+      // GLOBALE VARIABLEN FÜR DEN RENDER-PROZESS
+      const activeChatData = activeChat ? myChats.find(c => c.id === activeChat.id) : null;
+      const partnerId = activeChatData ? activeChatData.participants.find(id => id !== user?.uid) : null;
+      const isPartnerTyping = activeChatData && partnerId ? activeChatData.typing?.[partnerId] : false;
+
       useEffect(() => {
         setDailyFact(wissenswertes[Math.floor(Math.random() * wissenswertes.length)]);
         const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -299,7 +304,14 @@
         try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
-            const token = await getToken(messaging, { vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI' });
+            // Service Worker exakt im aktuellen GitHub Pages Pfad registrieren
+            const swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+            
+            const token = await getToken(messaging, { 
+              vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI',
+              serviceWorkerRegistration: swRegistration
+            });
+            
             if (token) {
               await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid), { fcmToken: token }, { merge: true });
             }
@@ -693,12 +705,12 @@
       };
 
       const getChatPartnerName = (chat) => {
-        const partnerId = chat?.participants.find(id => id !== user.uid);
+        const partnerId = chat?.participants.find(id => id !== user?.uid);
         return getProfile(partnerId)?.username || 'Unbekannt';
       };
 
       const getChatPartnerAvatar = (chat) => {
-        const partnerId = chat?.participants.find(id => id !== user.uid);
+        const partnerId = chat?.participants.find(id => id !== user?.uid);
         return getProfile(partnerId)?.avatarBase64 || null;
       };
 

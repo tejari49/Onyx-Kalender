@@ -13,12 +13,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
 
-  
-
-  <!-- Favicon (verhindert /favicon.ico 404) -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Crect%20width='100'%20height='100'%20fill='black'/%3E%3Ctext%20x='50'%20y='68'%20font-size='60'%20text-anchor='middle'%20fill='white'%3EO%3C/text%3E%3C/svg%3E">
-  <link rel="alternate icon" href="icon-192.png">
-<!-- Tailwind CSS -->
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
   <!-- Import Map für React & Firebase -->
@@ -201,116 +196,6 @@
       const [pullDistance, setPullDistance] = useState(0);
       const touchStartY = useRef(0);
       const touchCurrentY = useRef(0);
-
-
-// --- PULL TO REFRESH (GLOBAL TOUCH) ---
-const mainRef = useRef(null);
-const canPullRef = useRef(false);
-
-const handleGlobalTouchStart = (e) => {
-  if (!e.touches || e.touches.length === 0) return;
-  touchStartY.current = e.touches[0].clientY;
-  touchCurrentY.current = touchStartY.current;
-  setPullDistance(0);
-
-  // Nur ziehen, wenn der Scroll-Container oben ist
-  const atTop = (mainRef.current?.scrollTop ?? 0) <= 0;
-  canPullRef.current = atTop && !isRefreshing;
-};
-
-const handleGlobalTouchMove = (e) => {
-  if (!canPullRef.current || isRefreshing) return;
-  if (!e.touches || e.touches.length === 0) return;
-
-  touchCurrentY.current = e.touches[0].clientY;
-  const delta = touchCurrentY.current - touchStartY.current;
-
-  if (delta > 0) {
-    // iOS / mobile: verhindern, dass der Browser selbst "bounce" scrollt
-    if (typeof e.preventDefault === 'function') e.preventDefault();
-    setPullDistance(Math.min(delta, 120));
-  } else {
-    setPullDistance(0);
-  }
-};
-
-const handleGlobalTouchEnd = async () => {
-  if (!canPullRef.current) { setPullDistance(0); return; }
-  canPullRef.current = false;
-
-  const shouldRefresh = pullDistance >= 80;
-  setPullDistance(0);
-
-  if (!shouldRefresh || isRefreshing) return;
-
-  try {
-    setIsRefreshing(true);
-    await fetchWeather();
-    showToast("Aktualisiert");
-  } catch (_) {
-    // ignore
-  } finally {
-    setIsRefreshing(false);
-  }
-};
-
-// --- MODALS / ACTIONS (fehlende Handler) ---
-const openNewEventModal = () => {
-  const todayStr = new Date().toISOString().split('T')[0];
-  setEventToEdit(null);
-  setSelectedDateForEvent(todayStr);
-  setIsModalOpen(true);
-};
-
-const saveUsername = async (e) => {
-  e.preventDefault();
-  if (!user) return;
-  const unameRaw = new FormData(e.target).get('username') || '';
-  const uname = String(unameRaw).trim();
-  if (!uname) return showToast("Bitte Benutzernamen eingeben");
-  if (uname.length > 20) return showToast("Max. 20 Zeichen");
-  if (allProfiles.some(p => p.username?.toLowerCase() === uname.toLowerCase() && p.id !== user.uid)) {
-    return showToast("Name vergeben!");
-  }
-  try {
-    const dataToSave = {
-      username: uname,
-      uid: user.uid,
-      email: user.email
-    };
-    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), dataToSave, { merge: true });
-    showToast("Profil gespeichert");
-  } catch (err) {
-    showToast("Fehler beim Speichern");
-  }
-};
-
-const openShiftPicker = (dateStr) => {
-  const activeCal = getCalendarById(activeCalendarId);
-  if (!activeCal || activeCal.type !== 'shift') return;
-  if (activeCal.id !== 'default' && activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
-    return showToast("Nur Lesezugriff auf diesen Kalender.");
-  }
-  if (!activeCal.shifts || activeCal.shifts.length === 0) return showToast("Keine Schichten konfiguriert.");
-  setShiftModalData({ dateStr, calId: activeCal.id, shifts: activeCal.shifts });
-};
-
-// Long-Press auf Tag (mobile) -> Shift-Auswahl (ersetzt ContextMenu)
-const handleTouchStart = (dateStr) => {
-  isLongPressAction.current = false;
-  if (pressTimer.current) clearTimeout(pressTimer.current);
-  pressTimer.current = setTimeout(() => {
-    isLongPressAction.current = true;
-    openShiftPicker(dateStr);
-  }, 550);
-};
-
-const handleTouchEnd = () => {
-  if (pressTimer.current) {
-    clearTimeout(pressTimer.current);
-    pressTimer.current = null;
-  }
-};
 
       const activeChatData = activeChat ? myChats.find(c => c.id === activeChat.id) : null;
       const partnerId = activeChatData ? activeChatData.participants.find(id => id !== user?.uid) : null;
@@ -578,6 +463,54 @@ const handleTouchEnd = () => {
         showToast(`Standort: ${loc.name}`);
       };
 
+      // --- PULL TO REFRESH & GESTURE LOGIK ---
+      const handleGlobalTouchStart = (e) => {
+        if (window.scrollY === 0) {
+          touchStartY.current = e.touches[0].clientY;
+        }
+      };
+
+      const handleGlobalTouchMove = (e) => {
+        if (touchStartY.current > 0 && window.scrollY === 0) {
+          touchCurrentY.current = e.touches[0].clientY;
+          const diff = touchCurrentY.current - touchStartY.current;
+          if (diff > 0 && diff < 150) {
+            setPullDistance(diff);
+          }
+        }
+      };
+
+      const handleGlobalTouchEnd = async () => {
+        if (pullDistance > 60 && !isRefreshing) {
+          setIsRefreshing(true);
+          setPullDistance(60); 
+          showToast("Aktualisiere Daten...");
+          await fetchWeather();
+          setTimeout(() => {
+            setIsRefreshing(false);
+            setPullDistance(0);
+            touchStartY.current = 0;
+          }, 1000);
+        } else {
+          setPullDistance(0);
+          touchStartY.current = 0;
+        }
+      };
+
+      const handleTouchStart = (day) => {
+        if (day === 5) {
+          isLongPressAction.current = false;
+          pressTimer.current = setTimeout(() => {
+            isLongPressAction.current = true; 
+            setCurrentView('secret_chat'); 
+            setSecretView('list');
+            showToast("Verbindung verschlüsselt...");
+          }, 3000);
+        }
+      };
+
+      const handleTouchEnd = () => { if (pressTimer.current) clearTimeout(pressTimer.current); };
+
       // --- KALENDER LOGIK ---
       const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
       const getFirstDayOfMonth = (date) => {
@@ -603,7 +536,7 @@ const handleTouchEnd = () => {
          setVisibleCalendars(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
       };
 
-      // --- NEU: PINSEL & LANGES DRÜCKEN LOGIK ---
+      // --- PINSEL & LANGES DRÜCKEN LOGIK ---
       const handleDayContextMenu = (e, dateStr) => {
          e.preventDefault();
          const activeCal = getCalendarById(activeCalendarId);
@@ -690,7 +623,6 @@ const handleTouchEnd = () => {
          isPaintingRef.current = false;
       };
 
-      // Regulärer Klick auf Tag
       const handleDayClick = async (dateStr) => {
          if (isLongPressAction.current) { isLongPressAction.current = false; return; }
          
@@ -726,6 +658,10 @@ const handleTouchEnd = () => {
              setSelectedDateForEvent(dateStr); 
              setIsModalOpen(true);
          }
+      };
+
+      const openNewEventModal = (dateStr = null) => {
+        setEventToEdit(null); setSelectedDateForEvent(dateStr || new Date().toISOString().split('T')[0]); setIsModalOpen(true);
       };
 
       const openEditEventModal = (event) => {
@@ -905,6 +841,37 @@ const handleTouchEnd = () => {
          typingTimeoutRef.current = setTimeout(() => {
             updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: false }).catch(()=>{});
          }, 2000);
+      };
+
+      const saveEventFromModal = async (e) => {
+        e.preventDefault();
+        if (!user) return;
+        const formData = new FormData(e.target);
+        
+        const targetCalId = eventToEdit ? eventToEdit.calendarId : activeCalendarId;
+        const eventData = {
+          title: formData.get('title'), date: formData.get('date'), time: formData.get('time'),
+          type: formData.get('type') || 'Standard', desc: formData.get('desc') || '', updatedAt: Date.now(),
+          calendarId: targetCalId
+        };
+
+        try {
+          if (targetCalId === 'default') {
+              if (eventToEdit && eventToEdit.id) {
+                await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventToEdit.id), eventData);
+              } else {
+                await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), { ...eventData, createdAt: Date.now() });
+              }
+          } else {
+              if (eventToEdit && eventToEdit.id) {
+                await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', targetCalId, 'events', eventToEdit.id), eventData);
+              } else {
+                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', targetCalId, 'events'), { ...eventData, createdAt: Date.now() });
+              }
+          }
+          showToast("Termin gespeichert");
+          setIsModalOpen(false);
+        } catch (error) { showToast("Fehler beim Speichern"); }
       };
 
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
@@ -1100,7 +1067,7 @@ const handleTouchEnd = () => {
             <button onClick={() => setCurrentView('settings')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-6 h-6" /></button>
           </nav>
 
-          <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative">
+          <main className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative">
             {currentView === 'dashboard' && (
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
                 <header className="flex justify-between items-center mb-8 md:mb-10">
@@ -1219,13 +1186,13 @@ const handleTouchEnd = () => {
                            data-date={dateStr}
                            onContextMenu={(e) => handleDayContextMenu(e, dateStr)}
                            onMouseDown={(e) => {
-                              handleTouchStart(dateStr);
+                              handleTouchStart(day);
                               if (isPaintbrushActive) handlePaintStart(e, dateStr);
                            }}
                            onMouseEnter={(e) => { if (isPaintbrushActive) handlePaintMove(e, dateStr); }}
                            onMouseUp={(e) => { handleTouchEnd(); if (isPaintbrushActive) handlePaintEnd(); }}
                            onTouchStart={(e) => {
-                              handleTouchStart(dateStr);
+                              handleTouchStart(day);
                               if (isPaintbrushActive) handlePaintStart(e, dateStr);
                            }}
                            onTouchMove={(e) => {

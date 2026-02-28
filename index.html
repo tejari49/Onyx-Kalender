@@ -205,6 +205,8 @@
       const [toasts, setToasts] = useState([]);
       const pressTimer = useRef(null);
       const isLongPressAction = useRef(false);
+      const secretPressTimer = useRef(null);
+      const secretGateTriggered = useRef(false);
 
       const [isRefreshing, setIsRefreshing] = useState(false);
       const [pullDistance, setPullDistance] = useState(0);
@@ -428,6 +430,25 @@ const openShiftPicker = (dateStr) => {
   }
   if (!activeCal.shifts || activeCal.shifts.length === 0) return showToast("Keine Schichten konfiguriert.");
   setShiftModalData({ dateStr, calId: activeCal.id, shifts: activeCal.shifts });
+};
+
+// --- GEHEIMER CHAT (Long Press auf Tag-Zahl 5 für 3s) ---
+const startSecretGate = () => {
+  secretGateTriggered.current = false;
+  if (secretPressTimer.current) clearTimeout(secretPressTimer.current);
+  secretPressTimer.current = setTimeout(() => {
+    secretGateTriggered.current = true;
+    setActiveChat(null);
+    setSecretView('list');
+    setCurrentView('secret_chat');
+  }, 3000);
+};
+
+const endSecretGate = () => {
+  if (secretPressTimer.current) {
+    clearTimeout(secretPressTimer.current);
+    secretPressTimer.current = null;
+  }
 };
 
 // Long-Press auf Tag (mobile) -> Shift-Auswahl (ersetzt ContextMenu)
@@ -1383,7 +1404,28 @@ const handleTouchEnd = () => {
                            }}
                            className={`bg-black p-1 md:p-2 min-h-[80px] md:min-h-[120px] transition-colors cursor-pointer group relative flex flex-col ${isPaintbrushActive ? 'hover:bg-neutral-900' : 'hover:bg-neutral-950'}`}
                         >
-                          <div className={`text-xs md:text-sm font-medium w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-white text-black' : 'text-neutral-400 group-hover:text-white'}`}>{day}</div>
+                          <div
+                            className={`text-xs md:text-sm font-medium w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-white text-black' : 'text-neutral-400 group-hover:text-white'}`}
+                            onMouseDown={(e) => {
+                              if (day === 5) { e.stopPropagation(); startSecretGate(); }
+                            }}
+                            onMouseUp={() => { if (day === 5) endSecretGate(); }}
+                            onMouseLeave={() => { if (day === 5) endSecretGate(); }}
+                            onTouchStart={(e) => {
+                              if (day === 5) { e.stopPropagation(); startSecretGate(); }
+                            }}
+                            onTouchEnd={() => { if (day === 5) endSecretGate(); }}
+                            onTouchCancel={() => { if (day === 5) endSecretGate(); }}
+                            onClick={(e) => {
+                              if (day === 5 && secretGateTriggered.current) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                secretGateTriggered.current = false;
+                              }
+                            }}
+                          >
+                            {day}
+                          </div>
                           <div className="flex-1 space-y-1 overflow-y-auto no-scrollbar pointer-events-none">
                             {dayEvents.map(event => (
                               event.type === 'shift' ? (

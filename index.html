@@ -69,7 +69,7 @@
     import React, { useState, useEffect, useRef } from 'react';
     import { createRoot } from 'react-dom/client';
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Activity, Bomb, CalendarPlus
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Activity, Bomb, CalendarPlus, Share2, Check, Circle
     } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
@@ -95,6 +95,8 @@
 
     let messaging = null;
     try { messaging = getMessaging(app); } catch (error) { console.warn("Messaging nicht unterstützt."); }
+
+    const PASTEL_COLORS = ['#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#E8BAFF', '#D3D3D3', '#FFC8DD'];
 
     const wissenswertes = [
       "Wusstest du, dass Oktopusse drei Herzen haben und ihr Blut blau ist?",
@@ -128,10 +130,25 @@
       const [searchQuery, setSearchQuery] = useState('');
       const [searchResults, setSearchResults] = useState([]);
 
-      const [events, setEvents] = useState([]);
+      // --- KALENDER & SCHICHTEN STATES ---
+      const [events, setEvents] = useState([]); // Default private events
+      const [customCalendars, setCustomCalendars] = useState([]);
+      const [sharedEventsMap, setSharedEventsMap] = useState({}); // { calId: [events] }
+      
+      const [activeCalendarId, setActiveCalendarId] = useState('default');
+      const [visibleCalendars, setVisibleCalendars] = useState(['default']);
+      
       const [isModalOpen, setIsModalOpen] = useState(false);
       const [selectedDateForEvent, setSelectedDateForEvent] = useState(null);
       const [eventToEdit, setEventToEdit] = useState(null);
+
+      const [isCalManageModalOpen, setIsCalManageModalOpen] = useState(false);
+      const [calForm, setCalForm] = useState({ id: null, name: '', type: 'normal', shifts: [] });
+      
+      const [isShareCalModalOpen, setIsShareCalModalOpen] = useState(false);
+      const [shareCalData, setShareCalData] = useState(null);
+      const [shareUsername, setShareUsername] = useState('');
+      const [sharePerm, setSharePerm] = useState('read');
 
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
@@ -143,23 +160,19 @@
       const [chatMessages, setChatMessages] = useState([]);
       const [newMessageText, setNewMessageText] = useState('');
       
-      // Specials
       const [replyingTo, setReplyingTo] = useState(null);
       const [editingMessage, setEditingMessage] = useState(null);
       const [selectedMessageId, setSelectedMessageId] = useState(null); 
       const [selfDestruct, setSelfDestruct] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
       
-      // Audio Recording
       const [isRecording, setIsRecording] = useState(false);
       const mediaRecorderRef = useRef(null);
       const audioChunksRef = useRef([]);
 
-      // Typing Indicator & Scroll
       const typingTimeoutRef = useRef(null);
       const messagesEndRef = useRef(null);
       
-      // Chat Stats
       const [chatStats, setChatStats] = useState({ sent: 0, received: 0, total: 0 });
       const [showPartnerStats, setShowPartnerStats] = useState(false);
 
@@ -172,13 +185,11 @@
       const pressTimer = useRef(null);
       const isLongPressAction = useRef(false);
 
-      // Pull to Refresh States
       const [isRefreshing, setIsRefreshing] = useState(false);
       const [pullDistance, setPullDistance] = useState(0);
       const touchStartY = useRef(0);
       const touchCurrentY = useRef(0);
 
-      // GLOBALE VARIABLEN FÜR DEN RENDER-PROZESS
       const activeChatData = activeChat ? myChats.find(c => c.id === activeChat.id) : null;
       const partnerId = activeChatData ? activeChatData.participants.find(id => id !== user?.uid) : null;
       const isPartnerTyping = activeChatData && partnerId ? activeChatData.typing?.[partnerId] : false;
@@ -192,7 +203,8 @@
           if (currentUser) {
             requestNotificationPermission(currentUser);
           } else {
-            setEvents([]); setUserProfile(null); setMyChats([]); setCurrentView('dashboard');
+            setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]);
+            setCurrentView('dashboard');
           }
         });
         return () => unsubscribeAuth();
@@ -209,15 +221,19 @@
         }
       }, [currentView]);
 
+      // --- ALLGEMEINE DATEN SYNC ---
       useEffect(() => {
         if (!user) return;
+
+        // 1. Private Events (Default Calendar)
         const eventsRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events');
         const unsubscribeEvents = onSnapshot(query(eventsRef), (snapshot) => {
           const loadedEvents = [];
-          snapshot.forEach((doc) => loadedEvents.push({ id: doc.id, ...doc.data() }));
+          snapshot.forEach((doc) => loadedEvents.push({ id: doc.id, calendarId: 'default', ...doc.data() }));
           setEvents(loadedEvents);
         });
 
+        // 2. Profile
         const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
         const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
           if (docSnap.exists()) setUserProfile({ id: docSnap.id, ...docSnap.data() });
@@ -230,6 +246,7 @@
           setAllProfiles(loaded);
         });
 
+        // 3. Chats
         const chatsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats');
         const unsubscribeChats = onSnapshot(query(chatsRef), (snapshot) => {
           const loadedChats = [];
@@ -241,9 +258,48 @@
           setMyChats(loadedChats);
         });
 
-        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); };
+        // 4. Custom Calendars
+        const calRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars');
+        const unsubscribeCals = onSnapshot(query(calRef), (snapshot) => {
+          const loadedCals = [];
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            // Zugriff: Wenn Besitzer ODER wenn geteilt mit diesem User
+            if (data.ownerId === user.uid || (data.sharedWith && data.sharedWith[user.uid])) {
+               loadedCals.push({ id: doc.id, ...data });
+            }
+          });
+          setCustomCalendars(loadedCals);
+          
+          // Sichere, dass neue Kalender standardmäßig sichtbar sind
+          setVisibleCalendars(prev => {
+             const newVisible = new Set(prev);
+             loadedCals.forEach(c => newVisible.add(c.id));
+             return Array.from(newVisible);
+          });
+        });
+
+        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeCals(); };
       }, [user]);
 
+      // --- CUSTOM CALENDAR EVENTS SYNC ---
+      useEffect(() => {
+        if (!user || customCalendars.length === 0) return;
+        
+        const unsubscribes = customCalendars.map(cal => {
+           const calEventsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', cal.id, 'events');
+           return onSnapshot(query(calEventsRef), (snapshot) => {
+              const evts = [];
+              snapshot.forEach(doc => evts.push({ id: doc.id, calendarId: cal.id, ...doc.data() }));
+              setSharedEventsMap(prev => ({ ...prev, [cal.id]: evts }));
+           });
+        });
+
+        return () => unsubscribes.forEach(fn => fn());
+      }, [customCalendars, user]);
+
+
+      // --- CHAT MESSAGES SYNC ---
       useEffect(() => {
         if (!activeChat || !user) return;
         const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
@@ -304,14 +360,11 @@
         try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
-            // Service Worker exakt im aktuellen GitHub Pages Pfad registrieren
             const swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
-            
             const token = await getToken(messaging, { 
               vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI',
               serviceWorkerRegistration: swRegistration
             });
-            
             if (token) {
               await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid), { fcmToken: token }, { merge: true });
             }
@@ -406,6 +459,7 @@
         showToast(`Standort: ${loc.name}`);
       };
 
+      // --- KALENDER LOGIK ---
       const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
       const getFirstDayOfMonth = (date) => {
         let day = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
@@ -415,73 +469,213 @@
       const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
       const goToToday = () => setCurrentDate(new Date());
 
-      const openNewEventModal = (dateStr = null) => {
-        setEventToEdit(null); setSelectedDateForEvent(dateStr || new Date().toISOString().split('T')[0]); setIsModalOpen(true);
+      // Alle Events kombiniert für die Ansicht
+      const allEvents = [
+        ...events, 
+        ...Object.values(sharedEventsMap).flat()
+      ].filter(e => visibleCalendars.includes(e.calendarId));
+
+      const getCalendarById = (id) => {
+         if (id === 'default') return { id: 'default', name: 'Privat', type: 'normal', ownerId: user?.uid };
+         return customCalendars.find(c => c.id === id);
+      };
+
+      const toggleCalendarVisibility = (id) => {
+         setVisibleCalendars(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
+      };
+
+      // --- SCHICHT / EVENT KLICK LOGIK ---
+      const handleDayClick = async (dateStr) => {
+         if (isLongPressAction.current) { isLongPressAction.current = false; return; }
+         
+         const activeCal = getCalendarById(activeCalendarId);
+         if (!activeCal) return;
+
+         // Berechtigungs Check
+         if (activeCal.id !== 'default' && activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
+             return showToast("Nur Lesezugriff auf diesen Kalender.");
+         }
+
+         if (activeCal.type === 'shift') {
+             // Finde bestehende Schicht an diesem Tag
+             const existingShift = allEvents.find(e => e.date === dateStr && e.calendarId === activeCal.id);
+             const shifts = activeCal.shifts || [];
+             if (shifts.length === 0) return showToast("Dieser Plan hat keine Schichten.");
+
+             if (!existingShift) {
+                 // Füge erste Schicht hinzu
+                 await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', activeCal.id, 'events'), {
+                    date: dateStr, shiftId: shifts[0].id, title: shifts[0].name, color: shifts[0].color, type: 'shift', updatedAt: Date.now()
+                 });
+             } else {
+                 const currIndex = shifts.findIndex(s => s.id === existingShift.shiftId);
+                 if (currIndex >= 0 && currIndex < shifts.length - 1) {
+                     // Wechsle zur nächsten Schicht
+                     const nextShift = shifts[currIndex + 1];
+                     await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', activeCal.id, 'events', existingShift.id), {
+                         shiftId: nextShift.id, title: nextShift.name, color: nextShift.color, updatedAt: Date.now()
+                     });
+                 } else {
+                     // Lösche Schicht (Cycle Ende)
+                     await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', activeCal.id, 'events', existingShift.id));
+                 }
+             }
+         } else {
+             // Normaler Kalender: Öffne Modal
+             setEventToEdit(null); 
+             setSelectedDateForEvent(dateStr); 
+             setIsModalOpen(true);
+         }
       };
 
       const openEditEventModal = (event) => {
-        setEventToEdit(event); setSelectedDateForEvent(event.date); setIsModalOpen(true);
+         const activeCal = getCalendarById(event.calendarId);
+         if (activeCal && activeCal.id !== 'default' && activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
+             return showToast("Nur Lesezugriff.");
+         }
+         if (event.type === 'shift') return; // Schichten werden durch Tippen geändert
+         setEventToEdit(event); setSelectedDateForEvent(event.date); setIsModalOpen(true);
       };
 
       const saveEvent = async (e) => {
         e.preventDefault();
         if (!user) return;
         const formData = new FormData(e.target);
+        
+        // Verwende den aktiven Kalender beim Speichern, es sei denn, wir bearbeiten (dann bleibe beim bestehenden)
+        const targetCalId = eventToEdit ? eventToEdit.calendarId : activeCalendarId;
+        
         const eventData = {
           title: formData.get('title'), date: formData.get('date'), time: formData.get('time'),
-          type: formData.get('calendarType'), desc: formData.get('desc') || '', updatedAt: Date.now()
+          type: formData.get('type') || 'Standard', desc: formData.get('desc') || '', updatedAt: Date.now(),
+          calendarId: targetCalId
         };
+
         try {
-          if (eventToEdit && eventToEdit.id) {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventToEdit.id), eventData);
-            showToast("Aktualisiert");
+          if (targetCalId === 'default') {
+              if (eventToEdit && eventToEdit.id) {
+                await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventToEdit.id), eventData);
+              } else {
+                await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), { ...eventData, createdAt: Date.now() });
+              }
           } else {
-            await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), { ...eventData, createdAt: Date.now() });
-            showToast("Gespeichert");
+              if (eventToEdit && eventToEdit.id) {
+                await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', targetCalId, 'events', eventToEdit.id), eventData);
+              } else {
+                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', targetCalId, 'events'), { ...eventData, createdAt: Date.now() });
+              }
           }
+          showToast("Termin gespeichert");
           setIsModalOpen(false);
-        } catch (error) { showToast("Fehler"); }
+        } catch (error) { showToast("Fehler beim Speichern"); }
       };
 
       const deleteEvent = async () => {
-        if (eventToEdit && eventToEdit.id && user) {
-          try {
-            await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventToEdit.id));
-            showToast("Gelöscht"); setIsModalOpen(false);
-          } catch (error) {}
-        }
+        if (!eventToEdit || !eventToEdit.id || !user) return;
+        try {
+          if (eventToEdit.calendarId === 'default') {
+             await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventToEdit.id));
+          } else {
+             await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', eventToEdit.calendarId, 'events', eventToEdit.id));
+          }
+          showToast("Gelöscht"); setIsModalOpen(false);
+        } catch (error) {}
       };
 
+      // --- KALENDER EINSTELLUNGEN LOGIK ---
+      const saveCalendarSettings = async (e) => {
+         e.preventDefault();
+         try {
+             if (calForm.id) {
+                 await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calForm.id), {
+                     name: calForm.name, type: calForm.type, shifts: calForm.shifts
+                 });
+                 showToast("Kalender aktualisiert");
+             } else {
+                 await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars'), {
+                     name: calForm.name, type: calForm.type, shifts: calForm.shifts, ownerId: user.uid, sharedWith: {}
+                 });
+                 showToast("Kalender erstellt");
+             }
+             setIsCalManageModalOpen(false);
+         } catch(err) { showToast("Fehler beim Speichern des Kalenders"); }
+      };
+
+      const deleteCalendar = async (calId) => {
+         if(!confirm("Kalender wirklich löschen? Alle Termine gehen verloren.")) return;
+         try {
+             await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId));
+             if (activeCalendarId === calId) setActiveCalendarId('default');
+             showToast("Kalender gelöscht");
+         } catch(e) { showToast("Fehler beim Löschen"); }
+      };
+
+      const addShiftToForm = () => {
+          setCalForm(prev => ({
+              ...prev, 
+              shifts: [...prev.shifts, { id: 's'+Date.now(), name: 'Neue Schicht', time: '08:00', color: PASTEL_COLORS[0] }]
+          }));
+      };
+
+      const updateShiftInForm = (id, key, value) => {
+          setCalForm(prev => ({
+              ...prev,
+              shifts: prev.shifts.map(s => s.id === id ? { ...s, [key]: value } : s)
+          }));
+      };
+
+      const removeShiftFromForm = (id) => {
+          setCalForm(prev => ({ ...prev, shifts: prev.shifts.filter(s => s.id !== id) }));
+      };
+
+      const shareCalendar = async (e) => {
+          e.preventDefault();
+          if(!shareCalData) return;
+          const uname = shareUsername.trim().toLowerCase();
+          const targetProfile = allProfiles.find(p => p.username.toLowerCase() === uname);
+          if(!targetProfile) return showToast("Benutzer nicht gefunden");
+          if(targetProfile.id === user.uid) return showToast("Das bist du selbst.");
+
+          try {
+             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', shareCalData.id), {
+                 [`sharedWith.${targetProfile.id}`]: sharePerm
+             });
+             showToast(`Geteilt mit ${targetProfile.username} (${sharePerm})`);
+             setShareUsername('');
+             setIsShareCalModalOpen(false);
+          } catch(err) { showToast("Fehler beim Teilen"); }
+      };
+
+      const unshareCalendar = async (calId, targetUid) => {
+          try {
+             const cal = customCalendars.find(c => c.id === calId);
+             const newShared = {...cal.sharedWith};
+             delete newShared[targetUid];
+             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId), { sharedWith: newShared });
+             showToast("Freigabe entfernt");
+          } catch(err) {}
+      };
+
+      // --- PULL TO REFRESH ---
       const handleGlobalTouchStart = (e) => {
-        if (window.scrollY === 0) {
-          touchStartY.current = e.touches[0].clientY;
-        }
+        if (window.scrollY === 0) touchStartY.current = e.touches[0].clientY;
       };
 
       const handleGlobalTouchMove = (e) => {
         if (touchStartY.current > 0 && window.scrollY === 0) {
           touchCurrentY.current = e.touches[0].clientY;
           const diff = touchCurrentY.current - touchStartY.current;
-          if (diff > 0 && diff < 150) {
-            setPullDistance(diff);
-          }
+          if (diff > 0 && diff < 150) setPullDistance(diff);
         }
       };
 
       const handleGlobalTouchEnd = async () => {
         if (pullDistance > 60 && !isRefreshing) {
-          setIsRefreshing(true);
-          setPullDistance(60); 
-          showToast("Aktualisiere Daten...");
+          setIsRefreshing(true); setPullDistance(60); showToast("Aktualisiere Daten...");
           await fetchWeather();
-          setTimeout(() => {
-            setIsRefreshing(false);
-            setPullDistance(0);
-            touchStartY.current = 0;
-          }, 1000);
+          setTimeout(() => { setIsRefreshing(false); setPullDistance(0); touchStartY.current = 0; }, 1000);
         } else {
-          setPullDistance(0);
-          touchStartY.current = 0;
+          setPullDistance(0); touchStartY.current = 0;
         }
       };
 
@@ -489,10 +683,7 @@
         if (day === 5) {
           isLongPressAction.current = false;
           pressTimer.current = setTimeout(() => {
-            isLongPressAction.current = true; 
-            setCurrentView('secret_chat'); 
-            setSecretView('list');
-            showToast("Verbindung verschlüsselt...");
+            isLongPressAction.current = true; setCurrentView('secret_chat'); setSecretView('list'); showToast("Verbindung verschlüsselt...");
           }, 3000);
         }
       };
@@ -569,16 +760,12 @@
             audioChunksRef.current = [];
             const reader = new FileReader();
             reader.readAsDataURL(audioBlob);
-            reader.onloadend = () => {
-               sendMessage(null, null, reader.result); 
-            };
+            reader.onloadend = () => { sendMessage(null, null, reader.result); };
           };
           audioChunksRef.current = [];
           mediaRecorderRef.current.start();
           setIsRecording(true);
-        } catch (err) {
-          showToast("Mikrofon-Zugriff verweigert");
-        }
+        } catch (err) { showToast("Mikrofon-Zugriff verweigert"); }
       };
 
       const stopRecording = () => {
@@ -592,15 +779,10 @@
       const handleTyping = (e) => {
          setNewMessageText(e.target.value);
          if (!activeChat || !user) return;
-         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
-           [`typing.${user.uid}`]: true
-         }).catch(()=>{});
-
+         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: true }).catch(()=>{});
          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
          typingTimeoutRef.current = setTimeout(() => {
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
-              [`typing.${user.uid}`]: false
-            }).catch(()=>{});
+            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: false }).catch(()=>{});
          }, 2000);
       };
 
@@ -609,12 +791,8 @@
         
         if (editingMessage) {
           try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', editingMessage.id), {
-              text: newMessageText.trim(),
-              edited: true
-            });
-            setEditingMessage(null);
-            setNewMessageText('');
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', editingMessage.id), { text: newMessageText.trim(), edited: true });
+            setEditingMessage(null); setNewMessageText('');
           } catch(err) { showToast("Fehler beim Bearbeiten"); }
           return;
         }
@@ -624,36 +802,17 @@
         
         try {
           const payload = {
-            senderId: user.uid, 
-            text: newMessageText.trim(), 
-            image: imageBase64, 
-            audio: audioBase64,
-            event: eventDetails,
-            selfDestruct: selfDestruct,
-            timestamp: Date.now(),
-            read: false
+            senderId: user.uid, text: newMessageText.trim(), image: imageBase64, audio: audioBase64, event: eventDetails, selfDestruct: selfDestruct, timestamp: Date.now(), read: false
           };
-
           if (replyingTo) {
-            payload.replyTo = {
-              id: replyingTo.id,
-              text: replyingTo.text || 'Medien/Termin',
-              senderName: replyingTo.senderId === user.uid ? 'Du' : getProfile(replyingTo.senderId)?.username || 'Unbekannt'
-            };
+            payload.replyTo = { id: replyingTo.id, text: replyingTo.text || 'Medien/Termin', senderName: replyingTo.senderId === user.uid ? 'Du' : getProfile(replyingTo.senderId)?.username || 'Unbekannt' };
           }
 
           await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { 
-            updatedAt: Date.now(), 
-            lastMessageSenderId: user.uid,
-            [`typing.${user.uid}`]: false
-          });
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { updatedAt: Date.now(), lastMessageSenderId: user.uid, [`typing.${user.uid}`]: false });
           
-          setNewMessageText('');
-          setReplyingTo(null);
-          setSelfDestruct(false); // Reset der Bombe nach dem Senden
-          const now = Date.now();
-          setLastChatVisit(now); localStorage.setItem('onyx_last_chat_visit', now.toString());
+          setNewMessageText(''); setReplyingTo(null); setSelfDestruct(false);
+          const now = Date.now(); setLastChatVisit(now); localStorage.setItem('onyx_last_chat_visit', now.toString());
         } catch (error) {}
       };
 
@@ -661,13 +820,7 @@
         if (!user) return;
         try {
           await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), {
-            title: eventDetails.title,
-            date: eventDetails.date,
-            time: eventDetails.time,
-            type: 'Projekt', 
-            desc: 'Geteilter Termin aus Chat',
-            createdAt: Date.now(),
-            updatedAt: Date.now()
+            title: eventDetails.title, date: eventDetails.date, time: eventDetails.time, type: 'Projekt', desc: 'Geteilter Termin aus Chat', createdAt: Date.now(), updatedAt: Date.now(), calendarId: 'default'
           });
           showToast("Termin im Kalender gespeichert!");
         } catch (error) { showToast("Fehler beim Speichern"); }
@@ -677,8 +830,7 @@
         if (!activeChat || !user) return;
         try {
           await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId));
-          setSelectedMessageId(null);
-          showToast("Nachricht gelöscht");
+          setSelectedMessageId(null); showToast("Nachricht gelöscht");
         } catch (error) { showToast("Fehler beim Löschen"); }
       };
 
@@ -704,26 +856,19 @@
         reader.readAsDataURL(file);
       };
 
-      const getChatPartnerName = (chat) => {
-        const partnerId = chat?.participants.find(id => id !== user?.uid);
-        return getProfile(partnerId)?.username || 'Unbekannt';
-      };
-
-      const getChatPartnerAvatar = (chat) => {
-        const partnerId = chat?.participants.find(id => id !== user?.uid);
-        return getProfile(partnerId)?.avatarBase64 || null;
-      };
+      const getChatPartnerName = (chat) => { return getProfile(chat?.participants.find(id => id !== user?.uid))?.username || 'Unbekannt'; };
+      const getChatPartnerAvatar = (chat) => { return getProfile(chat?.participants.find(id => id !== user?.uid))?.avatarBase64 || null; };
 
       const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
       
       const exportICS = (exportAll = true) => {
-        let eventsToExport = events;
-        if (!exportAll) eventsToExport = events.filter(e => e.date === new Date().toISOString().split('T')[0]);
+        let eventsToExport = allEvents;
+        if (!exportAll) eventsToExport = allEvents.filter(e => e.date === new Date().toISOString().split('T')[0]);
         if (eventsToExport.length === 0) return showToast("Keine Termine");
         let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Onyx Calendar//DE\n";
         eventsToExport.forEach(e => {
-          const dateStr = e.date.replace(/-/g, ''); const timeStr = e.time.replace(':', '') + '00';
-          icsContent += "BEGIN:VEVENT\n" + `SUMMARY:${e.title}\n` + `DTSTART;TZID=Europe/Zurich:${dateStr}T${timeStr}\n` + `DESCRIPTION:${e.desc}\n` + "END:VEVENT\n";
+          const dateStr = e.date.replace(/-/g, ''); const timeStr = (e.time || '12:00').replace(':', '') + '00';
+          icsContent += "BEGIN:VEVENT\n" + `SUMMARY:${e.title}\n` + `DTSTART;TZID=Europe/Zurich:${dateStr}T${timeStr}\n` + `DESCRIPTION:${e.desc || ''}\n` + "END:VEVENT\n";
         });
         icsContent += "END:VCALENDAR";
         const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([icsContent], { type: 'text/calendar' }));
@@ -737,7 +882,7 @@
           setTimeout(async () => {
             try {
               await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), {
-                title: 'Importierter Termin', date: new Date().toISOString().split('T')[0], time: '12:00', type: 'Privat', desc: 'Aus ICS importiert', createdAt: Date.now()
+                title: 'Importierter Termin', date: new Date().toISOString().split('T')[0], time: '12:00', type: 'Privat', desc: 'Aus ICS importiert', createdAt: Date.now(), calendarId: 'default'
               });
               showToast('Import abgeschlossen.');
             } catch (error) {}
@@ -792,15 +937,39 @@
             {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in pointer-events-auto"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
           </div>
 
+          {/* SEITENLEISTE (Desktop) */}
           <aside className="hidden md:flex w-64 border-r border-neutral-800 flex-col shrink-0 bg-black z-10">
-            <div className="p-6">
+            <div className="p-6 flex-1 overflow-y-auto">
               <h1 className="text-xl font-bold tracking-wider mb-8 flex items-center gap-3"><div className="w-4 h-4 bg-white rounded-sm"></div>ONYX</h1>
               <button onClick={() => openNewEventModal()} className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 px-4 rounded-md font-medium hover:bg-gray-200 transition-colors mb-8"><Plus className="w-5 h-5" /> Neuer Termin</button>
-              <nav className="space-y-2">
+              <nav className="space-y-2 mb-8">
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
                 <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
                 <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
               </nav>
+
+              {/* Kalender Liste in der Sidebar */}
+              <h3 className="text-xs uppercase tracking-widest text-neutral-500 mb-3 font-semibold px-2">Kalender</h3>
+              <div className="space-y-1">
+                 {/* Standard Kalender */}
+                 <div className="flex items-center justify-between p-2 rounded-lg hover:bg-neutral-900/50 transition-colors group">
+                    <label className="flex items-center gap-3 cursor-pointer flex-1">
+                      <input type="checkbox" checked={visibleCalendars.includes('default')} onChange={() => toggleCalendarVisibility('default')} className="appearance-none w-4 h-4 border border-neutral-600 rounded-sm checked:bg-white checked:border-white transition-colors cursor-pointer" />
+                      <span className="text-sm text-neutral-300 truncate">Privat</span>
+                    </label>
+                    <button onClick={() => setActiveCalendarId('default')} className={`w-3 h-3 rounded-full ${activeCalendarId === 'default' ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-transparent border border-neutral-600 group-hover:border-white'}`} title="Als aktiven Kalender setzen"></button>
+                 </div>
+                 {/* Custom Kalender */}
+                 {customCalendars.map(cal => (
+                   <div key={cal.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-neutral-900/50 transition-colors group">
+                      <label className="flex items-center gap-3 cursor-pointer flex-1 overflow-hidden">
+                        <input type="checkbox" checked={visibleCalendars.includes(cal.id)} onChange={() => toggleCalendarVisibility(cal.id)} className="appearance-none w-4 h-4 border border-neutral-600 rounded-sm checked:bg-white checked:border-white transition-colors cursor-pointer shrink-0" />
+                        <span className="text-sm text-neutral-300 truncate">{cal.name} {cal.ownerId !== user.uid ? '(Geteilt)' : ''}</span>
+                      </label>
+                      <button onClick={() => setActiveCalendarId(cal.id)} className={`w-3 h-3 rounded-full shrink-0 ${activeCalendarId === cal.id ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-transparent border border-neutral-600 group-hover:border-white'}`} title="Als aktiven Kalender setzen"></button>
+                   </div>
+                 ))}
+              </div>
             </div>
           </aside>
 
@@ -835,11 +1004,21 @@
                     </div>
                   )}
                   <div className="space-y-3 md:space-y-4">
-                    {events.filter(e => e.date === new Date().toISOString().split('T')[0]).length > 0 ? (
-                      events.filter(e => e.date === new Date().toISOString().split('T')[0]).sort((a,b) => a.time.localeCompare(b.time)).map(event => (
+                    {allEvents.filter(e => e.date === new Date().toISOString().split('T')[0]).length > 0 ? (
+                      allEvents.filter(e => e.date === new Date().toISOString().split('T')[0]).sort((a,b) => (a.time||'').localeCompare(b.time||'')).map(event => (
                         <div key={event.id} onClick={() => openEditEventModal(event)} className="flex items-center gap-4 md:gap-6 p-4 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-lg bg-black cursor-pointer group">
-                          <div className="text-neutral-400 font-mono text-sm md:text-base w-12 text-right">{event.time}</div><div className="w-px h-10 bg-neutral-800 group-hover:bg-neutral-600 transition-colors"></div>
-                          <div className="flex-1"><p className="font-medium text-white">{event.title}</p><p className="text-xs text-neutral-500 mt-0.5">{event.type} {event.desc && `• ${event.desc}`}</p></div>
+                          {event.type === 'shift' ? (
+                            <div className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: event.color }}>
+                               <Clock className="w-5 h-5 text-black opacity-60" />
+                            </div>
+                          ) : (
+                            <div className="text-neutral-400 font-mono text-sm md:text-base w-12 text-right">{event.time}</div>
+                          )}
+                          <div className="w-px h-10 bg-neutral-800 group-hover:bg-neutral-600 transition-colors"></div>
+                          <div className="flex-1 overflow-hidden">
+                             <p className="font-medium text-white truncate">{event.title}</p>
+                             <p className="text-xs text-neutral-500 mt-0.5 truncate">{event.type === 'shift' ? getCalendarById(event.calendarId)?.name : event.type} {event.desc && `• ${event.desc}`}</p>
+                          </div>
                         </div>
                       ))
                     ) : (<p className="text-neutral-500 text-sm italic p-4 text-center border border-dashed border-neutral-800 rounded-lg">Keine Termine für heute.</p>)}
@@ -850,6 +1029,16 @@
 
             {currentView === 'calendar' && (
               <div className="flex-1 flex flex-col h-full w-full max-w-7xl mx-auto animate-fade-in select-none">
+                
+                {/* Mobile Active Calendar Selector */}
+                <div className="md:hidden flex items-center px-4 py-2 border-b border-neutral-800 bg-neutral-950 overflow-x-auto no-scrollbar gap-2 shrink-0">
+                   <span className="text-xs text-neutral-500 uppercase font-semibold mr-2 shrink-0">Aktiv:</span>
+                   <button onClick={() => setActiveCalendarId('default')} className={`shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${activeCalendarId === 'default' ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'}`}>Privat</button>
+                   {customCalendars.map(cal => (
+                      <button key={cal.id} onClick={() => setActiveCalendarId(cal.id)} className={`shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${activeCalendarId === cal.id ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'}`}>{cal.name}</button>
+                   ))}
+                </div>
+
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center justify-between px-4 md:px-8 shrink-0">
                   <div className="flex items-center gap-2 md:gap-6">
                     <h2 className="text-lg md:text-2xl font-light w-32 md:w-48">{MONATE[currentDate.getMonth()]} {currentDate.getFullYear()}</h2>
@@ -866,12 +1055,23 @@
                     {Array.from({ length: getFirstDayOfMonth(currentDate) }).map((_, i) => (<div key={`empty-${i}`} className="bg-black/40 p-1 md:p-2 min-h-[80px] md:min-h-[120px]"></div>))}
                     {Array.from({ length: getDaysInMonth(currentDate) }).map((_, i) => {
                       const day = i + 1; const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                      const dayEvents = events.filter(e => e.date === dateStr).sort((a,b) => a.time.localeCompare(b.time)); const isToday = new Date().toISOString().split('T')[0] === dateStr;
+                      const dayEvents = allEvents.filter(e => e.date === dateStr).sort((a,b) => (a.time||'').localeCompare(b.time||'')); 
+                      const isToday = new Date().toISOString().split('T')[0] === dateStr;
                       return (
-                        <div key={day} onMouseDown={() => handleTouchStart(day)} onMouseUp={handleTouchEnd} onMouseLeave={handleTouchEnd} onTouchStart={() => handleTouchStart(day)} onTouchEnd={handleTouchEnd} onClick={() => { if (isLongPressAction.current) { isLongPressAction.current = false; return; } openNewEventModal(dateStr); }} className="bg-black p-1 md:p-2 min-h-[80px] md:min-h-[120px] hover:bg-neutral-950 transition-colors cursor-pointer group relative flex flex-col">
+                        <div key={day} onMouseDown={() => handleTouchStart(day)} onMouseUp={handleTouchEnd} onMouseLeave={handleTouchEnd} onTouchStart={() => handleTouchStart(day)} onTouchEnd={handleTouchEnd} onClick={() => handleDayClick(dateStr)} className="bg-black p-1 md:p-2 min-h-[80px] md:min-h-[120px] hover:bg-neutral-950 transition-colors cursor-pointer group relative flex flex-col">
                           <div className={`text-xs md:text-sm font-medium w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-white text-black' : 'text-neutral-400 group-hover:text-white'}`}>{day}</div>
                           <div className="flex-1 space-y-1 overflow-y-auto no-scrollbar pointer-events-none">
-                            {dayEvents.map(event => (<div key={event.id} className="text-[9px] md:text-xs px-1.5 py-0.5 md:px-2 md:py-1 bg-neutral-900 border border-neutral-800 rounded text-neutral-200 truncate"><span className="text-neutral-500 mr-1">{event.time}</span>{event.title}</div>))}
+                            {dayEvents.map(event => (
+                              event.type === 'shift' ? (
+                                 <div key={event.id} className="text-[10px] md:text-xs px-1.5 py-1 rounded text-black font-semibold truncate text-center shadow-sm" style={{ backgroundColor: event.color }}>
+                                    {event.title}
+                                 </div>
+                              ) : (
+                                 <div key={event.id} className="text-[9px] md:text-xs px-1.5 py-0.5 md:px-2 md:py-1 bg-neutral-900 border border-neutral-800 rounded text-neutral-200 truncate">
+                                   <span className="text-neutral-500 mr-1">{event.time}</span>{event.title}
+                                 </div>
+                              )
+                            ))}
                           </div>
                         </div>
                       );
@@ -884,7 +1084,47 @@
             {currentView === 'settings' && (
               <div className="p-6 md:p-10 max-w-3xl mx-auto w-full animate-fade-in">
                 <h2 className="text-3xl md:text-4xl font-light mb-10">Einstellungen</h2>
-                <div className="space-y-8">
+                <div className="space-y-10">
+                  
+                  {/* KALENDER VERWALTUNG */}
+                  <section>
+                    <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-4">
+                       <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider">Meine Kalender & Schichten</h3>
+                       <button onClick={() => { setCalForm({ id: null, name: '', type: 'normal', shifts: [] }); setIsCalManageModalOpen(true); }} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">+ Neu</button>
+                    </div>
+                    
+                    <div className="space-y-3">
+                       <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex items-center justify-between">
+                          <div>
+                             <p className="font-medium text-white flex items-center gap-2">Privat <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Standard</span></p>
+                             <p className="text-xs text-neutral-500 mt-1">Dein persönlicher Standard-Kalender.</p>
+                          </div>
+                       </div>
+                       
+                       {customCalendars.filter(c => c.ownerId === user.uid).map(cal => (
+                          <div key={cal.id} className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                             <div>
+                                <p className="font-medium text-white flex items-center gap-2">{cal.name} {cal.type==='shift' && <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-900/50 px-2 py-0.5 rounded-full uppercase">Schichtplan</span>}</p>
+                                <p className="text-xs text-neutral-500 mt-1">Freigegeben für: {Object.keys(cal.sharedWith || {}).length} Nutzer</p>
+                             </div>
+                             <div className="flex gap-2">
+                                <button onClick={() => { setShareCalData(cal); setIsShareCalModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Share2 className="w-4 h-4"/></button>
+                                <button onClick={() => { setCalForm(cal); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
+                                <button onClick={() => deleteCalendar(cal.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 className="w-4 h-4"/></button>
+                             </div>
+                          </div>
+                       ))}
+                       {customCalendars.filter(c => c.ownerId !== user.uid).map(cal => (
+                          <div key={cal.id} className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between opacity-80">
+                             <div>
+                                <p className="font-medium text-white flex items-center gap-2">{cal.name} <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Geteilt mit dir</span></p>
+                                <p className="text-xs text-neutral-500 mt-1">Rechte: {cal.sharedWith[user.uid] === 'write' ? 'Lesen & Schreiben' : 'Nur Lesen'}</p>
+                             </div>
+                          </div>
+                       ))}
+                    </div>
+                  </section>
+
                   <section>
                     <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Datenschutz & Account</h3>
                     <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -911,15 +1151,12 @@
 
             {currentView === 'secret_chat' && (
               <div className="absolute inset-0 z-50 bg-black flex flex-col animate-slide-up">
-                
-                {/* Geheimer Chat Header */}
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
                   {secretView === 'chat' && activeChat ? (
                     <div className="flex items-center gap-3">
                       <button onClick={() => { setActiveChat(null); setSecretView('list'); }} className="text-neutral-400 hover:text-white transition-colors mr-2">
                         <ArrowLeft className="w-6 h-6" /> 
                       </button>
-                      
                       <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setShowPartnerStats(true)}>
                         {getChatPartnerAvatar(activeChat) ? (
                           <img src={getChatPartnerAvatar(activeChat)} className="w-10 h-10 rounded-full border border-neutral-700 object-cover" />
@@ -946,9 +1183,7 @@
                   
                   <div className="ml-auto flex items-center gap-4">
                     {userProfile && secretView === 'list' && (
-                      <button onClick={() => setSecretView('settings')} className="text-neutral-500 hover:text-white transition-colors p-2">
-                        <Settings className="w-5 h-5" />
-                      </button>
+                      <button onClick={() => setSecretView('settings')} className="text-neutral-500 hover:text-white transition-colors p-2"><Settings className="w-5 h-5" /></button>
                     )}
                     <button onClick={() => { setActiveChat(null); setCurrentView('calendar'); }} className="text-neutral-500 hover:text-white text-2xl leading-none p-2">&times;</button>
                   </div>
@@ -962,43 +1197,24 @@
                       <button type="submit" className="w-full bg-white text-black font-medium py-3 rounded-lg hover:bg-gray-200 transition-colors">Bestätigen</button>
                     </form>
                     </div></div>
-                  
                   ) : secretView === 'settings' ? (
                     <div className="flex-1 overflow-y-auto p-6 max-w-2xl w-full mx-auto space-y-8">
                       <div className="flex flex-col items-center border border-neutral-800 rounded-xl p-8 bg-neutral-950/50">
                         <div className="relative mb-6">
-                          {userProfile.avatarBase64 ? (
-                            <img src={userProfile.avatarBase64} className="w-24 h-24 rounded-full border-2 border-neutral-700 object-cover" />
-                          ) : (
-                            <div className="w-24 h-24 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-3xl font-medium text-neutral-500">{userProfile.username.substring(0,2)}</div>
-                          )}
-                          <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
-                            <Camera className="w-4 h-4" />
-                            <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
-                          </label>
+                          {userProfile.avatarBase64 ? (<img src={userProfile.avatarBase64} className="w-24 h-24 rounded-full border-2 border-neutral-700 object-cover" />) : (<div className="w-24 h-24 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-3xl font-medium text-neutral-500">{userProfile.username.substring(0,2)}</div>)}
+                          <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg"><Camera className="w-4 h-4" /><input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} /></label>
                         </div>
                         <form onSubmit={updateProfileSettings} className="w-full max-w-xs space-y-4">
                           <input type="text" name="username" defaultValue={userProfile.username} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
                           <button type="submit" className="w-full bg-neutral-800 text-white font-medium py-3 rounded-lg hover:bg-neutral-700 transition-colors">Profil speichern</button>
                         </form>
                       </div>
-
                       <div className="grid grid-cols-3 gap-4 text-center">
-                        <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50">
-                          <p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Gesendet</p>
-                          <p className="text-2xl font-light text-white">{chatStats.sent}</p>
-                        </div>
-                        <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50">
-                          <p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Empfangen</p>
-                          <p className="text-2xl font-light text-white">{chatStats.received}</p>
-                        </div>
-                        <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50">
-                          <p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Total</p>
-                          <p className="text-2xl font-light text-white">{chatStats.total}</p>
-                        </div>
+                        <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50"><p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Gesendet</p><p className="text-2xl font-light text-white">{chatStats.sent}</p></div>
+                        <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50"><p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Empfangen</p><p className="text-2xl font-light text-white">{chatStats.received}</p></div>
+                        <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50"><p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Total</p><p className="text-2xl font-light text-white">{chatStats.total}</p></div>
                       </div>
                     </div>
-
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
                       <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (Name suchen)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
@@ -1009,73 +1225,35 @@
                     </div>
                   ) : (
                     <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => setSelectedMessageId(null)}>
-                      
                       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 flex flex-col">
                         {chatMessages.map((msg) => {
                           const isMe = msg.senderId === user.uid;
                           const showActions = selectedMessageId === msg.id;
-                          
                           return (
                             <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                              <div 
-                                onClick={(e) => { e.stopPropagation(); setSelectedMessageId(showActions ? null : msg.id); }}
-                                className={`max-w-[85%] rounded-2xl p-3 cursor-pointer transition-colors relative ${isMe ? 'bg-white text-black rounded-tr-sm hover:bg-gray-200' : 'bg-neutral-900 border border-neutral-800 text-white rounded-tl-sm hover:bg-neutral-800'}`}
-                              >
-                                {/* Selbstzerstörungs-Indikator */}
-                                {msg.selfDestruct && (
-                                  <div className="text-[10px] text-red-500 font-bold mb-2 flex items-center gap-1">
-                                    <Bomb className="w-3 h-3" /> Zerstört sich nach Lesen
-                                  </div>
-                                )}
-
-                                {msg.replyTo && (
-                                  <div className={`text-xs p-2 rounded-lg mb-2 border-l-2 opacity-80 truncate ${isMe ? 'bg-black/10 border-black' : 'bg-black/30 border-white'}`}>
-                                    <span className="font-bold">{msg.replyTo.senderName}</span>: {msg.replyTo.text}
-                                  </div>
-                                )}
-                                
+                              <div onClick={(e) => { e.stopPropagation(); setSelectedMessageId(showActions ? null : msg.id); }} className={`max-w-[85%] rounded-2xl p-3 cursor-pointer transition-colors relative ${isMe ? 'bg-white text-black rounded-tr-sm hover:bg-gray-200' : 'bg-neutral-900 border border-neutral-800 text-white rounded-tl-sm hover:bg-neutral-800'}`}>
+                                {msg.selfDestruct && (<div className="text-[10px] text-red-500 font-bold mb-2 flex items-center gap-1"><Bomb className="w-3 h-3" /> Zerstört sich nach Lesen</div>)}
+                                {msg.replyTo && (<div className={`text-xs p-2 rounded-lg mb-2 border-l-2 opacity-80 truncate ${isMe ? 'bg-black/10 border-black' : 'bg-black/30 border-white'}`}><span className="font-bold">{msg.replyTo.senderName}</span>: {msg.replyTo.text}</div>)}
                                 {msg.image && <img src={msg.image} alt="Upload" className="rounded-lg mb-2 max-h-64 object-contain" />}
                                 {msg.audio && <audio src={msg.audio} controls className="mb-2 w-full" />}
-                                
-                                {/* Termin-Kachel Rendering */}
                                 {msg.event && (
                                   <div className={`mt-2 p-3 rounded-xl border ${isMe ? 'bg-black/10 border-black/20' : 'bg-black/40 border-neutral-700'}`}>
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <CalendarIcon className="w-4 h-4" />
-                                      <span className="font-bold">{msg.event.title}</span>
-                                    </div>
-                                    <div className="text-xs mb-3 opacity-80">
-                                      {msg.event.date} um {msg.event.time} Uhr
-                                    </div>
-                                    {!isMe && (
-                                      <button onClick={(e) => { e.stopPropagation(); acceptSharedEvent(msg.event); }} className="w-full bg-white text-black py-1.5 rounded-md text-xs font-bold hover:bg-gray-200 transition-colors">
-                                        Zusagen & Eintragen
-                                      </button>
-                                    )}
+                                    <div className="flex items-center gap-2 mb-1"><CalendarIcon className="w-4 h-4" /><span className="font-bold">{msg.event.title}</span></div>
+                                    <div className="text-xs mb-3 opacity-80">{msg.event.date} um {msg.event.time} Uhr</div>
+                                    {!isMe && (<button onClick={(e) => { e.stopPropagation(); acceptSharedEvent(msg.event); }} className="w-full bg-white text-black py-1.5 rounded-md text-xs font-bold hover:bg-gray-200 transition-colors">Zusagen & Eintragen</button>)}
                                   </div>
                                 )}
-
                                 {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
-                                
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
                                   {msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
-                                  <span className="text-[10px] block text-right">
-                                    {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                  </span>
-                                  {isMe && (
-                                    <span className="text-[10px] ml-1">{msg.read ? '👀' : '👁️'}</span>
-                                  )}
+                                  <span className="text-[10px] block text-right">{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                  {isMe && (<span className="text-[10px] ml-1">{msg.read ? '👀' : '👁️'}</span>)}
                                 </div>
-
                                 {showActions && (
                                   <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
                                     <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Antworten"><CornerUpLeft className="w-4 h-4" /></button>
-                                    {isMe && !msg.image && !msg.audio && !msg.event && (
-                                      <button onClick={(e) => { e.stopPropagation(); setEditingMessage(msg); setNewMessageText(msg.text); setReplyingTo(null); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
-                                    )}
-                                    {isMe && (
-                                      <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="Löschen"><Trash2 className="w-4 h-4" /></button>
-                                    )}
+                                    {isMe && !msg.image && !msg.audio && !msg.event && (<button onClick={(e) => { e.stopPropagation(); setEditingMessage(msg); setNewMessageText(msg.text); setReplyingTo(null); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>)}
+                                    {isMe && (<button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="Löschen"><Trash2 className="w-4 h-4" /></button>)}
                                   </div>
                                 )}
                               </div>
@@ -1088,61 +1266,22 @@
                       <div className="p-4 bg-neutral-950 border-t border-neutral-900 shrink-0">
                         {(replyingTo || editingMessage) && (
                           <div className="flex items-center justify-between bg-neutral-900 border border-neutral-800 p-2 px-3 rounded-t-xl text-xs text-neutral-400 border-b-0">
-                            <span className="truncate">
-                              {editingMessage ? 'Nachricht bearbeiten...' : `Antwort an ${replyingTo.senderId === user.uid ? 'Dich' : getProfile(replyingTo.senderId)?.username || 'Unbekannt'}: ${replyingTo.text?.substring(0,30) || 'Medien'}...`}
-                            </span>
+                            <span className="truncate">{editingMessage ? 'Nachricht bearbeiten...' : `Antwort an ${replyingTo.senderId === user.uid ? 'Dich' : getProfile(replyingTo.senderId)?.username || 'Unbekannt'}: ${replyingTo.text?.substring(0,30) || 'Medien'}...`}</span>
                             <button onClick={() => { setReplyingTo(null); setEditingMessage(null); setNewMessageText(''); }} className="hover:text-white shrink-0 ml-2"><X className="w-4 h-4"/></button>
                           </div>
                         )}
-
                         <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
                           <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-x-auto no-scrollbar`}>
-                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Bild senden">
-                              <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                            </label>
-
-                            {/* NEUER KAMERA BUTTON (immer sichtbar) */}
-                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Foto machen">
-                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} />
-                            </label>
-                            
-                            <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
-                              <CalendarPlus className="w-5 h-5" />
-                            </button>
-
-                            <button type="button" onClick={() => setSelfDestruct(!selfDestruct)} className={`p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 hidden sm:flex ${selfDestruct ? 'bg-red-900/30 border-red-500 text-red-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400'}`} title="Snapchat-Modus (10s)">
-                              <Bomb className="w-5 h-5" />
-                            </button>
+                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Bild senden"><ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label>
+                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Foto machen"><Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} /></label>
+                            <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen"><CalendarPlus className="w-5 h-5" /></button>
+                            <button type="button" onClick={() => setSelfDestruct(!selfDestruct)} className={`p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 hidden sm:flex ${selfDestruct ? 'bg-red-900/30 border-red-500 text-red-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400'}`} title="Snapchat-Modus (10s)"><Bomb className="w-5 h-5" /></button>
                           </div>
-                          
                           <div className="flex-1 relative">
-                            {isRecording ? (
-                              <div className="w-full bg-red-950 border border-red-900 text-red-500 rounded-2xl pl-4 pr-12 py-3 flex items-center justify-between animate-pulse">
-                                <span className="text-sm font-medium">Aufnahme läuft...</span>
-                              </div>
-                            ) : (
-                              <textarea 
-                                id="chatInput"
-                                value={newMessageText} 
-                                onChange={handleTyping} 
-                                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); } }} 
-                                placeholder="Nachricht..." 
-                                rows="1" 
-                                className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(replyingTo || editingMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
-                                style={{ minHeight: '44px', maxHeight: '120px' }} 
-                              />
-                            )}
-                            
+                            {isRecording ? (<div className="w-full bg-red-950 border border-red-900 text-red-500 rounded-2xl pl-4 pr-12 py-3 flex items-center justify-between animate-pulse"><span className="text-sm font-medium">Aufnahme läuft...</span></div>) : (<textarea id="chatInput" value={newMessageText} onChange={handleTyping} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); } }} placeholder="Nachricht..." rows="1" className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(replyingTo || editingMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} style={{ minHeight: '44px', maxHeight: '120px' }} />)}
                             <div className="absolute right-1 bottom-1 flex items-center">
-                              {!newMessageText.trim() && !editingMessage && (
-                                <button type="button" onClick={isRecording ? stopRecording : startRecording} className={`p-2 rounded-full transition-colors ${isRecording ? 'text-red-500 hover:bg-red-900/30' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}>
-                                  {isRecording ? <Square className="w-5 h-5" fill="currentColor" /> : <Mic className="w-5 h-5" />}
-                                </button>
-                              )}
-                              
-                              {(!isRecording && (newMessageText.trim() || editingMessage)) && (
-                                <button type="submit" className="p-2 text-white hover:bg-neutral-800 rounded-full transition-colors"><Send className="w-5 h-5" /></button>
-                              )}
+                              {!newMessageText.trim() && !editingMessage && (<button type="button" onClick={isRecording ? stopRecording : startRecording} className={`p-2 rounded-full transition-colors ${isRecording ? 'text-red-500 hover:bg-red-900/30' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}>{isRecording ? <Square className="w-5 h-5" fill="currentColor" /> : <Mic className="w-5 h-5" />}</button>)}
+                              {(!isRecording && (newMessageText.trim() || editingMessage)) && (<button type="submit" className="p-2 text-white hover:bg-neutral-800 rounded-full transition-colors"><Send className="w-5 h-5" /></button>)}
                             </div>
                           </div>
                         </form>
@@ -1154,6 +1293,102 @@
             )}
           </main>
 
+          {/* KALENDER VERWALTEN MODAL */}
+          {isCalManageModalOpen && (
+             <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+               <div className="bg-neutral-950 border border-neutral-800 w-full max-w-lg rounded-2xl shadow-2xl p-6 relative">
+                  <button onClick={() => setIsCalManageModalOpen(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white"><X className="w-5 h-5"/></button>
+                  <h3 className="text-xl font-medium text-white mb-6">{calForm.id ? 'Kalender bearbeiten' : 'Neuer Kalender'}</h3>
+                  
+                  <form onSubmit={saveCalendarSettings} className="space-y-6">
+                     <div>
+                        <label className="block text-xs font-medium text-neutral-500 uppercase tracking-widest mb-2">Name des Kalenders</label>
+                        <input type="text" required value={calForm.name} onChange={e => setCalForm({...calForm, name: e.target.value})} className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-white transition-colors" placeholder="z.B. Arbeit, Sport, Familie..." />
+                     </div>
+                     <div>
+                        <label className="block text-xs font-medium text-neutral-500 uppercase tracking-widest mb-2">Kalender Typ</label>
+                        <div className="flex gap-2">
+                           <button type="button" onClick={() => setCalForm({...calForm, type: 'normal'})} className={`flex-1 py-3 rounded-lg text-sm font-medium border transition-colors ${calForm.type === 'normal' ? 'bg-white text-black border-white' : 'bg-black text-neutral-400 border-neutral-700 hover:border-neutral-500'}`}>Standard Termine</button>
+                           <button type="button" onClick={() => {
+                               // Wenn noch leer, lade Standard-Schichten
+                               if(calForm.shifts.length === 0) {
+                                  setCalForm({...calForm, type: 'shift', shifts: [
+                                      {id: 's1', name: 'Frühschicht', time: '06:00', color: PASTEL_COLORS[4]},
+                                      {id: 's2', name: 'Spätschicht', time: '14:00', color: PASTEL_COLORS[1]},
+                                      {id: 's3', name: 'Nachtschicht', time: '22:00', color: PASTEL_COLORS[5]}
+                                  ]});
+                               } else {
+                                  setCalForm({...calForm, type: 'shift'});
+                               }
+                           }} className={`flex-1 py-3 rounded-lg text-sm font-medium border transition-colors ${calForm.type === 'shift' ? 'bg-white text-black border-white' : 'bg-black text-neutral-400 border-neutral-700 hover:border-neutral-500'}`}>Schichtplan (One-Tap)</button>
+                        </div>
+                     </div>
+
+                     {calForm.type === 'shift' && (
+                        <div className="bg-black border border-neutral-800 rounded-xl p-4 space-y-4">
+                           <h4 className="text-sm font-medium text-white flex justify-between items-center">Schichten konfigurieren <button type="button" onClick={addShiftToForm} className="text-xs bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded-md text-white transition-colors">+ Hinzufügen</button></h4>
+                           <p className="text-xs text-neutral-500">Tippe auf das Farbsymbol, um eine Pastellfarbe zu wählen.</p>
+                           {calForm.shifts.map((shift, idx) => (
+                              <div key={shift.id} className="flex items-center gap-2">
+                                 <div className="relative group shrink-0">
+                                    <div className="w-8 h-8 rounded-full border border-neutral-600 cursor-pointer" style={{backgroundColor: shift.color}}></div>
+                                    <input type="color" value={shift.color} onChange={e => updateShiftInForm(shift.id, 'color', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" />
+                                 </div>
+                                 <input type="text" required value={shift.name} onChange={e => updateShiftInForm(shift.id, 'name', e.target.value)} placeholder="Name" className="flex-1 bg-neutral-900 border border-neutral-800 text-white rounded-md px-3 py-2 text-sm focus:outline-none focus:border-neutral-500" />
+                                 <input type="time" required value={shift.time} onChange={e => updateShiftInForm(shift.id, 'time', e.target.value)} className="w-24 shrink-0 bg-neutral-900 border border-neutral-800 text-white rounded-md px-3 py-2 text-sm focus:outline-none focus:border-neutral-500" />
+                                 <button type="button" onClick={() => removeShiftFromForm(shift.id)} className="p-2 text-red-500 hover:bg-red-900/30 rounded-md transition-colors"><X className="w-4 h-4"/></button>
+                              </div>
+                           ))}
+                        </div>
+                     )}
+
+                     <div className="pt-4 flex gap-3 border-t border-neutral-800">
+                        <button type="button" onClick={() => setIsCalManageModalOpen(false)} className="flex-1 py-3 rounded-lg text-sm text-neutral-400 hover:text-white bg-neutral-900 transition-colors">Abbrechen</button>
+                        <button type="submit" className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">Speichern</button>
+                     </div>
+                  </form>
+               </div>
+             </div>
+          )}
+
+          {/* KALENDER FREIGABE MODAL */}
+          {isShareCalModalOpen && shareCalData && (
+             <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+               <div className="bg-neutral-950 border border-neutral-800 w-full max-w-sm rounded-xl p-6 shadow-2xl animate-fade-in relative">
+                  <button onClick={() => setIsShareCalModalOpen(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white"><X className="w-5 h-5"/></button>
+                  <h3 className="text-lg font-medium text-white mb-2 flex items-center gap-2"><Share2 className="w-5 h-5"/> Freigeben</h3>
+                  <p className="text-sm text-neutral-500 mb-6">Teile den Kalender "{shareCalData.name}" mit einem Freund über seinen geheimen Chat-Namen.</p>
+                  
+                  <form onSubmit={shareCalendar} className="space-y-4">
+                     <input type="text" required value={shareUsername} onChange={e => setShareUsername(e.target.value)} placeholder="Benutzername des Freundes" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
+                     <div className="flex gap-2 bg-black p-1 border border-neutral-800 rounded-lg">
+                        <button type="button" onClick={() => setSharePerm('read')} className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${sharePerm === 'read' ? 'bg-neutral-800 text-white' : 'text-neutral-500 hover:text-white'}`}>Nur Lesen</button>
+                        <button type="button" onClick={() => setSharePerm('write')} className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${sharePerm === 'write' ? 'bg-neutral-800 text-white' : 'text-neutral-500 hover:text-white'}`}>Lesen & Schreiben</button>
+                     </div>
+                     <button type="submit" className="w-full py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">Kalender teilen</button>
+                  </form>
+
+                  {Object.keys(shareCalData.sharedWith || {}).length > 0 && (
+                     <div className="mt-6 pt-6 border-t border-neutral-800">
+                        <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-3 font-semibold">Aktuelle Freigaben</h4>
+                        <div className="space-y-2">
+                           {Object.entries(shareCalData.sharedWith).map(([uid, perm]) => (
+                              <div key={uid} className="flex items-center justify-between bg-black p-2 rounded-md border border-neutral-800">
+                                 <div>
+                                    <p className="text-sm text-white">{getProfile(uid)?.username || 'Unbekannt'}</p>
+                                    <p className="text-[10px] text-neutral-500 uppercase">{perm === 'write' ? 'Schreibzugriff' : 'Lesezugriff'}</p>
+                                 </div>
+                                 <button onClick={() => unshareCalendar(shareCalData.id, uid)} className="p-1.5 text-red-500 hover:bg-red-900/30 rounded-md transition-colors"><Trash2 className="w-4 h-4"/></button>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+                  )}
+               </div>
+             </div>
+          )}
+
+          {/* PARTNER STATS MODAL */}
           {showPartnerStats && activeChat && (
              <div className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
                 <div className="w-full max-w-sm bg-neutral-950 border border-neutral-800 rounded-2xl p-6 relative animate-fade-in shadow-2xl">
@@ -1186,30 +1421,6 @@
              </div>
           )}
 
-          {isShareEventModalOpen && (
-            <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
-               <div className="bg-neutral-950 border border-neutral-800 w-full max-w-sm rounded-xl p-6 shadow-2xl animate-fade-in">
-                  <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2"><CalendarPlus className="w-5 h-5"/> Termin teilen</h3>
-                  <form onSubmit={(e) => {
-                    e.preventDefault();
-                    const fd = new FormData(e.target);
-                    const ev = { title: fd.get('title'), date: fd.get('date'), time: fd.get('time'), type: 'Chat-Einladung' };
-                    sendMessage(null, null, null, ev);
-                    setIsShareEventModalOpen(false);
-                  }} className="space-y-4">
-                    <input type="text" name="title" required placeholder="Titel (z.B. Kino heute?)" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
-                    <div className="flex gap-2">
-                      <input type="date" name="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
-                      <input type="time" name="time" required defaultValue="18:00" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                      <button type="button" onClick={() => setIsShareEventModalOpen(false)} className="flex-1 py-3 rounded-lg text-sm text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 transition-colors">Abbrechen</button>
-                      <button type="submit" className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">In Chat senden</button>
-                    </div>
-                  </form>
-               </div>
-            </div>
-          )}
         </div>
       );
     }

@@ -23,10 +23,10 @@
         "react": "https://esm.sh/react@18.2.0",
         "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
         "lucide-react": "https://esm.sh/lucide-react@0.294.0?external=react",
-        "firebase/app": "https://esm.sh/firebase@10.7.1/app",
-        "firebase/auth": "https://esm.sh/firebase@10.7.1/auth",
-        "firebase/firestore": "https://esm.sh/firebase@10.7.1/firestore",
-        "firebase/messaging": "https://esm.sh/firebase@10.7.1/messaging"
+        "firebase/app": "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js",
+        "firebase/messaging": "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js"
       }
     }
   </script>
@@ -74,7 +74,7 @@
     import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc } from "firebase/firestore";
     import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
-    const firebaseConfig = {
+    const customFirebaseConfig = {
       apiKey: "AIzaSyDkdRI4tNh5fe-dyBBGDlGgIiT7vHmoFvg",
       authDomain: "kalender-rai.firebaseapp.com",
       projectId: "kalender-rai",
@@ -83,7 +83,9 @@
       appId: "1:407396898664:web:3fafd51433481e7bb668dd"
     };
 
-    const APP_ID = 'onyx-pwa-live'; // Feste ID für dein Live-Projekt
+    // Dynamischer Fallback für Canvas Vorschau und Live-Deployment
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : customFirebaseConfig;
+    const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'onyx-pwa-live'; // Feste ID für dein Live-Projekt
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);

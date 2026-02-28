@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Onyx</title>
+  <meta name="description" content="Dein AMOLED optimierter Kalender.">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Import Map für React & Firebase -->
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.294.0?external=react",
+        "firebase/app": "https://esm.sh/firebase@10.7.1/app",
+        "firebase/auth": "https://esm.sh/firebase@10.7.1/auth",
+        "firebase/firestore": "https://esm.sh/firebase@10.7.1/firestore",
+        "firebase/messaging": "https://esm.sh/firebase@10.7.1/messaging"
+      }
+    }
+  </script>
+
+  <!-- Babel für JSX Kompilierung im Browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .animate-fade-in { animation: fade-in 0.2s ease-out forwards; }
+    .animate-slide-up { animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+    body { background-color: #000000; color: #ffffff; }
+  </style>
+</head>
+<body class="selection:bg-neutral-800 overscroll-none">
+  <div id="root"></div>
+
+  <!-- PWA Service Worker Registrierung -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').then(registration => {
+          console.log('ServiceWorker registriert:', registration.scope);
+        }).catch(err => {
+          console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
+        });
+      });
+    }
+  </script>
+
+  <!-- Deine React App -->
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useRef } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { 
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft
+    } from 'lucide-react';
+
+    import { initializeApp } from "firebase/app";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc } from "firebase/firestore";
+    import { getMessaging, getToken, onMessage } from "firebase/messaging";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDkdRI4tNh5fe-dyBBGDlGgIiT7vHmoFvg",
+      authDomain: "kalender-rai.firebaseapp.com",
+      projectId: "kalender-rai",
+      storageBucket: "kalender-rai.firebasestorage.app",
+      messagingSenderId: "407396898664",
+      appId: "1:407396898664:web:3fafd51433481e7bb668dd"
+    };
+
+    const APP_ID = 'onyx-pwa-live'; // Feste ID für dein Live-Projekt
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    let messaging = null;
+    try { messaging = getMessaging(app); } catch (error) { console.warn("Messaging nicht unterstützt."); }
+
+    const wissenswertes = [
+      "Wusstest du, dass Oktopusse drei Herzen haben und ihr Blut blau ist?",
+      "Wusstest du, dass Honig niemals verdirbt? Man fand essbaren Honig in ägyptischen Gräbern.",
+      "Wusstest du, dass die Schweiz über 1.500 Seen hat? Du bist nie weiter als 16 km von einem See entfernt.",
+      "Wusstest du, dass Bananen leicht radioaktiv sind, weil sie viel Kalium enthalten?"
+    ];
+
+    const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+    const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+
+    function AmoledCalendarApp() {
+      const [isAppReady, setIsAppReady] = useState(false);
+      const [user, setUser] = useState(null);
+      const [isLoggedIn, setIsLoggedIn] = useState(false);
+      
+      const [isRegistering, setIsRegistering] = useState(false);
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [authError, setAuthError] = useState('');
+      
+      const [currentView, setCurrentView] = useState('dashboard');
+      const [currentDate, setCurrentDate] = useState(new Date());
+      
+      const [weather, setWeather] = useState(null);
+      const [dailyForecast, setDailyForecast] = useState(null);
+      const [location, setLocation] = useState({ name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 });
+      const [dailyFact, setDailyFact] = useState('');
+      
+      const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
+      const [searchQuery, setSearchQuery] = useState('');
+      const [searchResults, setSearchResults] = useState([]);
+
+      const [events, setEvents] = useState([]);
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [selectedDateForEvent, setSelectedDateForEvent] = useState(null);
+      const [eventToEdit, setEventToEdit] = useState(null);
+
+      const [userProfile, setUserProfile] = useState(null);
+      const [allProfiles, setAllProfiles] = useState([]);
+      const [chatSearchQuery, setChatSearchQuery] = useState('');
+      const [myChats, setMyChats] = useState([]);
+      const [activeChat, setActiveChat] = useState(null);
+      const [chatMessages, setChatMessages] = useState([]);
+      const [newMessageText, setNewMessageText] = useState('');
+      
+      const [lastChatVisit, setLastChatVisit] = useState(() => {
+        const stored = localStorage.getItem('onyx_last_chat_visit');
+        return stored ? parseInt(stored, 10) : 0;
+      });
+
+      const [toasts, setToasts] = useState([]);
+
+      const pressTimer = useRef(null);
+      const isLongPressAction = useRef(false);
+
+      useEffect(() => {
+        setDailyFact(wissenswertes[Math.floor(Math.random() * wissenswertes.length)]);
+        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+          setUser(currentUser);
+          setIsLoggedIn(!!currentUser);
+          setIsAppReady(true);
+          if (currentUser) {
+            requestNotificationPermission();
+          } else {
+            setEvents([]); setUserProfile(null); setMyChats([]); setCurrentView('dashboard');
+          }
+        });
+        return () => unsubscribeAuth();
+      }, []);
+
+      useEffect(() => {
+        if (currentView === 'secret_chat') {
+          const now = Date.now();
+          setLastChatVisit(now);
+          localStorage.setItem('onyx_last_chat_visit', now.toString());
+        }
+      }, [currentView]);
+
+      useEffect(() => {
+        if (!user) return;
+        const eventsRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events');
+        const unsubscribeEvents = onSnapshot(query(eventsRef), (snapshot) => {
+          const loadedEvents = [];
+          snapshot.forEach((doc) => loadedEvents.push({ id: doc.id, ...doc.data() }));
+          setEvents(loadedEvents);
+        });
+
+        const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+        const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
+          if (docSnap.exists()) setUserProfile({ id: docSnap.id, ...docSnap.data() });
+        });
+
+        const allProfilesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+        const unsubscribeAllProfiles = onSnapshot(query(allProfilesRef), (snapshot) => {
+          const loaded = [];
+          snapshot.forEach(doc => loaded.push({ id: doc.id, ...doc.data() }));
+          setAllProfiles(loaded);
+        });
+
+        const chatsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats');
+        const unsubscribeChats = onSnapshot(query(chatsRef), (snapshot) => {
+          const loadedChats = [];
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.participants && data.participants.includes(user.uid)) loadedChats.push({ id: doc.id, ...data });
+          });
+          loadedChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          setMyChats(loadedChats);
+        });
+
+        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); };
+      }, [user]);
+
+      useEffect(() => {
+        if (!activeChat || !user) return;
+        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+        const unsubscribeMessages = onSnapshot(query(messagesRef), (snapshot) => {
+          const loaded = [];
+          snapshot.forEach(doc => loaded.push({ id: doc.id, ...doc.data() }));
+          loaded.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+          setChatMessages(loaded);
+          
+          if (currentView === 'secret_chat') {
+            const now = Date.now();
+            setLastChatVisit(now);
+            localStorage.setItem('onyx_last_chat_visit', now.toString());
+          }
+        });
+        return () => unsubscribeMessages();
+      }, [activeChat, user, currentView]);
+
+      const requestNotificationPermission = async () => {
+        if (!messaging) return;
+        try {
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+            await getToken(messaging, { vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI' });
+          }
+        } catch (err) { console.log('FCM Error', err); }
+      };
+
+      useEffect(() => {
+        if (!messaging) return;
+        const unsubscribeMessage = onMessage(messaging, (payload) => {
+          showToast(payload.notification?.title || "Neue Benachrichtigung!");
+        });
+        return () => unsubscribeMessage();
+      }, []);
+
+      useEffect(() => {
+        const fetchWeather = async () => {
+          try {
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto`);
+            const data = await res.json();
+            setWeather(data.current_weather);
+            setDailyForecast(data.daily);
+          } catch (error) {}
+        };
+        if (isLoggedIn) fetchWeather();
+      }, [location, isLoggedIn]);
+
+      const showToast = (message) => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, message }]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+      };
+
+      const getWeatherIcon = (code, className = "w-8 h-8 text-white") => {
+        if (code === undefined || code === null) return <Cloud className={className} />;
+        if (code <= 3) return <Sun className={className} />;
+        if (code >= 50 && code <= 69) return <CloudRain className={className} />;
+        return <Cloud className={className} />;
+      };
+
+      const formatDayName = (dateString) => {
+        const date = new Date(dateString);
+        return WOCHENTAGE[date.getDay() === 0 ? 6 : date.getDay() - 1];
+      };
+
+      const handleAuth = async (e) => {
+        e.preventDefault();
+        setAuthError('');
+        if (!email || !password) return setAuthError('Bitte E-Mail und Passwort eingeben.');
+        try {
+          if (isRegistering) {
+            await createUserWithEmailAndPassword(auth, email, password);
+            showToast("Erfolgreich registriert!");
+          } else {
+            await signInWithEmailAndPassword(auth, email, password);
+            showToast("Erfolgreich angemeldet!");
+          }
+        } catch (error) {
+          switch (error.code) {
+            case 'auth/email-already-in-use': setAuthError('Diese E-Mail wird bereits verwendet.'); break;
+            case 'auth/invalid-credential':
+            case 'auth/user-not-found':
+            case 'auth/wrong-password': setAuthError('E-Mail oder Passwort falsch.'); break;
+            case 'auth/weak-password': setAuthError('Passwort min. 6 Zeichen.'); break;
+            default: setAuthError('Fehler: ' + error.message);
+          }
+        }
+      };
+
+      const handleLogout = async () => {
+        try {
+          await signOut(auth);
+          showToast("Abgemeldet");
+          setEmail(''); setPassword('');
+        } catch (error) {}
+      };
+
+      const handleSearchLocation = async (e) => {
+        e.preventDefault();
+        if (!searchQuery) return;
+        try {
+          const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${searchQuery}&count=5&language=de&format=json`);
+          const data = await res.json();
+          setSearchResults(data.results || []);
+        } catch (error) {}
+      };
+
+      const selectLocation = (loc) => {
+        setLocation({ name: `${loc.name}${loc.admin1 ? `, ${loc.admin1}` : ''}`, lat: loc.latitude, lon: loc.longitude });
+        setSearchResults([]); setSearchQuery('');
+        showToast(`Standort: ${loc.name}`);
+      };
+
+      const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+      const getFirstDayOfMonth = (date) => {
+        let day = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+        return day === 0 ? 6 : day - 1;
+      };
+      const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+      const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+      const goToToday = () => setCurrentDate(new Date());
+
+      const openNewEventModal = (dateStr = null) => {
+        setEventToEdit(null); setSelectedDateForEvent(dateStr || new Date().toISOString().split('T')[0]); setIsModalOpen(true);
+      };
+
+      const openEditEventModal = (event) => {
+        setEventToEdit(event); setSelectedDateForEvent(event.date); setIsModalOpen(true);
+      };
+
+      const saveEvent = async (e) => {
+        e.preventDefault();
+        if (!user) return;
+        const formData = new FormData(e.target);
+        const eventData = {
+          title: formData.get('title'), date: formData.get('date'), time: formData.get('time'),
+          type: formData.get('calendarType'), desc: formData.get('desc') || '', updatedAt: Date.now()
+        };
+        try {
+          if (eventToEdit && eventToEdit.id) {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventToEdit.id), eventData);
+            showToast("Aktualisiert");
+          } else {
+            await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), { ...eventData, createdAt: Date.now() });
+            showToast("Gespeichert");
+          }
+          setIsModalOpen(false);
+        } catch (error) { showToast("Fehler"); }
+      };
+
+      const deleteEvent = async () => {
+        if (eventToEdit && eventToEdit.id && user) {
+          try {
+            await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventToEdit.id));
+            showToast("Gelöscht"); setIsModalOpen(false);
+          } catch (error) {}
+        }
+      };
+
+      const handleTouchStart = (day) => {
+        if (day === 5) {
+          isLongPressAction.current = false;
+          pressTimer.current = setTimeout(() => {
+            isLongPressAction.current = true; setCurrentView('secret_chat'); showToast("Verbindung verschlüsselt...");
+          }, 3000);
+        }
+      };
+
+      const handleTouchEnd = () => { if (pressTimer.current) clearTimeout(pressTimer.current); };
+
+      const saveUsername = async (e) => {
+        e.preventDefault();
+        const uname = new FormData(e.target).get('username').trim();
+        if (!uname) return;
+        if (allProfiles.some(p => p.username.toLowerCase() === uname.toLowerCase() && p.id !== user.uid)) return showToast("Name vergeben!");
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { username: uname, uid: user.uid, email: user.email });
+          showToast("Profil erstellt!");
+        } catch (error) {}
+      };
+
+      const startChatWith = async (targetUserId) => {
+        const existingChat = myChats.find(c => c.participants.includes(targetUserId));
+        if (existingChat) {
+          setActiveChat(existingChat);
+        } else {
+          try {
+            const newChat = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats'), {
+              participants: [user.uid, targetUserId], updatedAt: Date.now(), lastMessageSenderId: user.uid
+            });
+            setActiveChat({ id: newChat.id, participants: [user.uid, targetUserId] });
+          } catch (error) {}
+        }
+        setChatSearchQuery('');
+      };
+
+      const sendMessage = async (e, imageBase64 = null) => {
+        if (e) e.preventDefault();
+        if (!newMessageText.trim() && !imageBase64) return;
+        if (!activeChat || !user) return;
+        try {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), {
+            senderId: user.uid, text: newMessageText.trim(), image: imageBase64, timestamp: Date.now()
+          });
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { updatedAt: Date.now(), lastMessageSenderId: user.uid });
+          setNewMessageText('');
+          const now = Date.now();
+          setLastChatVisit(now); localStorage.setItem('onyx_last_chat_visit', now.toString());
+        } catch (error) {}
+      };
+
+      const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 800; const MAX_HEIGHT = 800;
+            let width = img.width; let height = img.height;
+            if (width > height) { if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } } 
+            else { if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; } }
+            canvas.width = width; canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            sendMessage(null, canvas.toDataURL('image/jpeg', 0.7));
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      };
+
+      const getChatPartnerName = (chat) => {
+        const partnerId = chat.participants.find(id => id !== user.uid);
+        const partner = allProfiles.find(p => p.id === partnerId);
+        return partner ? partner.username : 'Unbekannt';
+      };
+
+      const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
+      
+      const exportICS = (exportAll = true) => {
+        let eventsToExport = events;
+        if (!exportAll) eventsToExport = events.filter(e => e.date === new Date().toISOString().split('T')[0]);
+        if (eventsToExport.length === 0) return showToast("Keine Termine");
+        let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Onyx Calendar//DE\n";
+        eventsToExport.forEach(e => {
+          const dateStr = e.date.replace(/-/g, ''); const timeStr = e.time.replace(':', '') + '00';
+          icsContent += "BEGIN:VEVENT\n" + `SUMMARY:${e.title}\n` + `DTSTART;TZID=Europe/Zurich:${dateStr}T${timeStr}\n` + `DESCRIPTION:${e.desc}\n` + "END:VEVENT\n";
+        });
+        icsContent += "END:VCALENDAR";
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([icsContent], { type: 'text/calendar' }));
+        a.download = exportAll ? 'onyx_alle.ics' : 'onyx_heute.ics'; a.click(); showToast("Download gestartet");
+      };
+
+      const handleImportICS = (e) => {
+        const file = e.target.files[0];
+        if (file && user) {
+          showToast(`Datei "${file.name}" wird gelesen...`);
+          setTimeout(async () => {
+            try {
+              await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), {
+                title: 'Importierter Termin', date: new Date().toISOString().split('T')[0], time: '12:00', type: 'Privat', desc: 'Aus ICS importiert', createdAt: Date.now()
+              });
+              showToast('Import abgeschlossen.');
+            } catch (error) {}
+          }, 1000);
+        }
+      };
+
+      if (!isAppReady) {
+        return (
+          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4">
+            <div className="flex flex-col items-center animate-pulse"><div className="w-12 h-12 bg-white rounded-sm mb-6"></div><h1 className="text-xl tracking-widest text-neutral-500">ONYX LÄDT...</h1></div>
+          </div>
+        );
+      }
+
+      if (!isLoggedIn) {
+        return (
+          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4 relative overflow-hidden">
+            <div className="fixed top-4 right-4 z-[60] space-y-2">
+              {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
+            </div>
+            <div className="max-w-md w-full p-8 flex flex-col items-center bg-black border border-neutral-800 rounded-2xl shadow-2xl z-10">
+              <div className="w-10 h-10 bg-white rounded-sm mb-6"></div><h1 className="text-3xl font-bold tracking-widest mb-2">ONYX</h1>
+              <p className="text-neutral-500 mb-8 text-center text-sm">{isRegistering ? 'Erstelle deinen Account.' : 'Melde dich an, um fortzufahren.'}</p>
+              {authError && <div className="w-full bg-red-950/30 border border-red-900/50 text-red-400 p-3 rounded-lg mb-6 text-xs flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><p>{authError}</p></div>}
+              <form onSubmit={handleAuth} className="w-full space-y-4">
+                <div className="relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-600" /><input type="email" placeholder="E-Mail Adresse" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-neutral-900/50 border border-neutral-800 text-white placeholder-neutral-600 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500 transition-colors" /></div>
+                <div className="relative"><Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-600" /><input type="password" placeholder="Passwort" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-neutral-900/50 border border-neutral-800 text-white placeholder-neutral-600 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500 transition-colors" /></div>
+                <button type="submit" className="w-full bg-white text-black py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors mt-2">{isRegistering ? 'Account erstellen' : 'Anmelden'}</button>
+              </form>
+              <div className="mt-8 text-center text-sm text-neutral-500">{isRegistering ? 'Bereits einen Account? ' : 'Noch keinen Account? '}<button onClick={() => { setIsRegistering(!isRegistering); setAuthError(''); }} className="text-white hover:underline font-medium">{isRegistering ? 'Hier anmelden' : 'Jetzt registrieren'}</button></div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative">
+          <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
+            {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in pointer-events-auto"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
+          </div>
+
+          <aside className="hidden md:flex w-64 border-r border-neutral-800 flex-col shrink-0 bg-black z-10">
+            <div className="p-6">
+              <h1 className="text-xl font-bold tracking-wider mb-8 flex items-center gap-3"><div className="w-4 h-4 bg-white rounded-sm"></div>ONYX</h1>
+              <button onClick={() => openNewEventModal()} className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 px-4 rounded-md font-medium hover:bg-gray-200 transition-colors mb-8"><Plus className="w-5 h-5" /> Neuer Termin</button>
+              <nav className="space-y-2">
+                <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
+                <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
+                <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
+              </nav>
+            </div>
+          </aside>
+
+          <nav className="md:hidden fixed bottom-0 left-0 w-full h-16 bg-black border-t border-neutral-800 flex items-center justify-around z-40 px-2 pb-safe">
+            <button onClick={() => setCurrentView('dashboard')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-6 h-6" /></button>
+            <button onClick={() => setCurrentView('calendar')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-6 h-6" /></button>
+            <button onClick={() => openNewEventModal()} className="p-3 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg"><Plus className="w-6 h-6" /></button>
+            <button onClick={() => setCurrentView('settings')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-6 h-6" /></button>
+          </nav>
+
+          <main className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative">
+            {currentView === 'dashboard' && (
+              <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
+                <header className="flex justify-between items-center mb-8 md:mb-10">
+                  <h2 className="text-3xl md:text-4xl font-light">Guten Morgen{user?.email ? `, ${user.email.split('@')[0]}` : ''}.</h2>
+                </header>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
+                  <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between cursor-pointer hover:border-neutral-600 transition-colors group">
+                    <div><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider mb-1 flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {location.name}</h3><p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p></div>
+                    <div>{getWeatherIcon(weather?.weathercode, "w-10 h-10 md:w-12 md:h-12 text-white")}</div>
+                  </div>
+                  <div className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-start gap-4">
+                    <Info className="w-5 h-5 md:w-6 md:h-6 text-neutral-400 shrink-0 mt-1" />
+                    <div><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider mb-2">Wissenswertes</h3><p className="text-sm text-neutral-200 leading-relaxed">{dailyFact}</p></div>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda für heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
+                  {hasUnreadMessages && (
+                    <div onClick={() => setCurrentView('secret_chat')} className="mb-4 p-4 border border-neutral-700 bg-neutral-900 rounded-xl flex items-center justify-between cursor-pointer hover:bg-neutral-800 transition-colors animate-fade-in">
+                      <div className="flex items-center gap-3"><div className="w-2 h-2 bg-white rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]"></div><span className="font-medium text-white uppercase tracking-widest text-sm">Kalender Aktuell</span></div>
+                      <span className="text-sm text-neutral-400">Neue Nachricht</span>
+                    </div>
+                  )}
+                  <div className="space-y-3 md:space-y-4">
+                    {events.filter(e => e.date === new Date().toISOString().split('T')[0]).length > 0 ? (
+                      events.filter(e => e.date === new Date().toISOString().split('T')[0]).sort((a,b) => a.time.localeCompare(b.time)).map(event => (
+                        <div key={event.id} onClick={() => openEditEventModal(event)} className="flex items-center gap-4 md:gap-6 p-4 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-lg bg-black cursor-pointer group">
+                          <div className="text-neutral-400 font-mono text-sm md:text-base w-12 text-right">{event.time}</div><div className="w-px h-10 bg-neutral-800 group-hover:bg-neutral-600 transition-colors"></div>
+                          <div className="flex-1"><p className="font-medium text-white">{event.title}</p><p className="text-xs text-neutral-500 mt-0.5">{event.type} {event.desc && `• ${event.desc}`}</p></div>
+                        </div>
+                      ))
+                    ) : (<p className="text-neutral-500 text-sm italic p-4 text-center border border-dashed border-neutral-800 rounded-lg">Keine Termine für heute.</p>)}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentView === 'calendar' && (
+              <div className="flex-1 flex flex-col h-full w-full max-w-7xl mx-auto animate-fade-in select-none">
+                <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center justify-between px-4 md:px-8 shrink-0">
+                  <div className="flex items-center gap-2 md:gap-6">
+                    <h2 className="text-lg md:text-2xl font-light w-32 md:w-48">{MONATE[currentDate.getMonth()]} {currentDate.getFullYear()}</h2>
+                    <div className="flex items-center gap-1 md:gap-2">
+                      <button onClick={prevMonth} className="p-1.5 md:p-2 hover:bg-neutral-900 rounded-full transition-colors border border-transparent hover:border-neutral-800"><ChevronLeft className="w-5 h-5 md:w-6 md:h-6" /></button>
+                      <button onClick={goToToday} className="px-3 py-1.5 text-xs md:text-sm border border-neutral-800 hover:bg-neutral-900 rounded-md transition-colors">Heute</button>
+                      <button onClick={nextMonth} className="p-1.5 md:p-2 hover:bg-neutral-900 rounded-full transition-colors border border-transparent hover:border-neutral-800"><ChevronRight className="w-5 h-5 md:w-6 md:h-6" /></button>
+                    </div>
+                  </div>
+                </header>
+                <div className="flex-1 flex flex-col bg-neutral-900 gap-px p-px">
+                  <div className="grid grid-cols-7 gap-px shrink-0">{WOCHENTAGE.map(tag => <div key={tag} className="bg-black py-2 md:py-3 text-center text-[10px] md:text-xs font-semibold uppercase tracking-wider text-neutral-500">{tag}</div>)}</div>
+                  <div className="flex-1 grid grid-cols-7 gap-px overflow-y-auto">
+                    {Array.from({ length: getFirstDayOfMonth(currentDate) }).map((_, i) => (<div key={`empty-${i}`} className="bg-black/40 p-1 md:p-2 min-h-[80px] md:min-h-[120px]"></div>))}
+                    {Array.from({ length: getDaysInMonth(currentDate) }).map((_, i) => {
+                      const day = i + 1; const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                      const dayEvents = events.filter(e => e.date === dateStr).sort((a,b) => a.time.localeCompare(b.time)); const isToday = new Date().toISOString().split('T')[0] === dateStr;
+                      return (
+                        <div key={day} onMouseDown={() => handleTouchStart(day)} onMouseUp={handleTouchEnd} onMouseLeave={handleTouchEnd} onTouchStart={() => handleTouchStart(day)} onTouchEnd={handleTouchEnd} onClick={() => { if (isLongPressAction.current) { isLongPressAction.current = false; return; } openNewEventModal(dateStr); }} className="bg-black p-1 md:p-2 min-h-[80px] md:min-h-[120px] hover:bg-neutral-950 transition-colors cursor-pointer group relative flex flex-col">
+                          <div className={`text-xs md:text-sm font-medium w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-white text-black' : 'text-neutral-400 group-hover:text-white'}`}>{day}</div>
+                          <div className="flex-1 space-y-1 overflow-y-auto no-scrollbar pointer-events-none">
+                            {dayEvents.map(event => (<div key={event.id} className="text-[9px] md:text-xs px-1.5 py-0.5 md:px-2 md:py-1 bg-neutral-900 border border-neutral-800 rounded text-neutral-200 truncate"><span className="text-neutral-500 mr-1">{event.time}</span>{event.title}</div>))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentView === 'settings' && (
+              <div className="p-6 md:p-10 max-w-3xl mx-auto w-full animate-fade-in">
+                <h2 className="text-3xl md:text-4xl font-light mb-10">Einstellungen</h2>
+                <div className="space-y-8">
+                  <section>
+                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Datenschutz & Account</h3>
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div><p className="font-medium text-white">Angemeldet als: {user?.email}</p>{userProfile && <p className="text-sm text-neutral-400">Alias: {userProfile.username}</p>}</div>
+                      <button onClick={handleLogout} className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors">Abmelden</button>
+                    </div>
+                  </section>
+                  <section>
+                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Import / Export (.ics)</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                        <Download className="w-6 h-6 text-white mb-4" /><h4 className="font-medium text-white mb-1">Kalender exportieren</h4><p className="text-xs text-neutral-500 mb-4 h-8">Lade deine Termine als Standard .ics Datei herunter.</p>
+                        <div className="flex gap-2"><button onClick={() => exportICS(true)} className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-md text-sm hover:bg-neutral-800 transition-colors">Alle</button><button onClick={() => exportICS(false)} className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-md text-sm hover:bg-neutral-800 transition-colors">Nur Heute</button></div>
+                      </div>
+                      <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 relative overflow-hidden group">
+                        <Upload className="w-6 h-6 text-white mb-4" /><h4 className="font-medium text-white mb-1">Datei importieren</h4><p className="text-xs text-neutral-500 mb-4 h-8">Füge Termine aus einer externen .ics Datei hinzu.</p>
+                        <div className="relative"><button className="w-full px-3 py-2 bg-white text-black rounded-md text-sm font-medium group-hover:bg-gray-200 transition-colors text-center">Datei auswählen</button><input type="file" accept=".ics" onChange={handleImportICS} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" /></div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            )}
+
+            {currentView === 'secret_chat' && (
+              <div className="absolute inset-0 z-50 bg-black flex flex-col animate-slide-up">
+                <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
+                  {activeChat ? (<button onClick={() => setActiveChat(null)} className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors"><ArrowLeft className="w-5 h-5" /> <span className="font-medium text-white">{getChatPartnerName(activeChat)}</span></button>) : (<div className="flex items-center gap-3"><MessageSquare className="w-5 h-5 text-white" /><h2 className="text-lg md:text-xl font-medium text-white">Sichere Verbindung</h2></div>)}
+                  <button onClick={() => { setActiveChat(null); setCurrentView('calendar'); }} className="ml-auto text-neutral-500 hover:text-white text-2xl leading-none">&times;</button>
+                </header>
+                <div className="flex-1 overflow-hidden flex flex-col">
+                  {!userProfile ? (
+                    <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">Identität festlegen</h3><p className="text-sm text-neutral-500 mb-6">Wähle einen einzigartigen Benutzernamen.</p><form onSubmit={saveUsername}><input type="text" name="username" placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" /><button type="submit" className="w-full bg-white text-black font-medium py-3 rounded-lg hover:bg-gray-200 transition-colors">Bestätigen</button></form></div></div>
+                  ) : !activeChat ? (
+                    <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
+                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (Name suchen)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
+                        {chatSearchQuery.trim() !== '' && (<div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">{allProfiles.filter(p => p.username.toLowerCase().includes(chatSearchQuery.toLowerCase()) && p.id !== user.uid).length > 0 ? (allProfiles.filter(p => p.username.toLowerCase().includes(chatSearchQuery.toLowerCase()) && p.id !== user.uid).map(profile => (<div key={profile.id} onClick={() => startChatWith(profile.id)} className="p-4 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3"><div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase">{profile.username.substring(0,2)}</div><span className="font-medium text-white">{profile.username}</span></div>))) : (<div className="p-4 text-neutral-500 text-sm text-center">Kein Nutzer gefunden.</div>)}</div>)}
+                      </div>
+                      <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-4 font-semibold px-2">Verlauf</h4>
+                      <div className="space-y-2">{myChats.length === 0 ? (<div className="p-8 text-center border border-dashed border-neutral-800 rounded-xl text-neutral-500 text-sm">Noch keine Chats vorhanden.</div>) : (myChats.map(chat => (<div key={chat.id} onClick={() => setActiveChat(chat)} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4"><div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0">{getChatPartnerName(chat).substring(0,2)}</div><div className="flex-1 overflow-hidden"><h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>{chat.lastMessageSenderId !== user.uid && chat.updatedAt > lastChatVisit && (<span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>)}</div></div>)))}</div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900">
+                      <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col">
+                        {chatMessages.map((msg) => {
+                          const isMe = msg.senderId === user.uid;
+                          return (
+                            <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                              <div className={`max-w-[75%] rounded-2xl p-3 ${isMe ? 'bg-white text-black rounded-tr-sm' : 'bg-neutral-900 border border-neutral-800 text-white rounded-tl-sm'}`}>
+                                {msg.image && <img src={msg.image} alt="Upload" className="rounded-lg mb-2 max-h-64 object-contain" />}
+                                {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
+                                <span className={`text-[10px] block text-right mt-1 opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="p-4 bg-neutral-950 border-t border-neutral-900 shrink-0">
+                        <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
+                          <div className="relative shrink-0"><label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center"><ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label></div>
+                          <div className="relative shrink-0"><label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center"><Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} /></label></div>
+                          <div className="flex-1 relative"><textarea value={newMessageText} onChange={(e) => setNewMessageText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); } }} placeholder="Nachricht..." rows="1" className="w-full bg-black border border-neutral-800 text-white rounded-2xl pl-4 pr-12 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-hidden block text-sm" style={{ minHeight: '44px', maxHeight: '120px' }} /><button type="submit" disabled={!newMessageText.trim()} className="absolute right-2 bottom-1.5 p-2 text-white disabled:text-neutral-700 transition-colors"><Send className="w-5 h-5" /></button></div>
+                        </form>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </main>
+
+          {isModalOpen && currentView !== 'secret_chat' && (
+            <div className="fixed inset-0 bg-black/90 md:bg-black/80 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-0 md:p-4">
+              <div className="bg-black border border-neutral-700 w-full max-w-lg md:rounded-xl shadow-2xl overflow-hidden rounded-t-2xl animate-slide-up md:animate-fade-in max-h-[90vh] flex flex-col">
+                <div className="px-6 py-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-950 shrink-0">
+                  <h3 className="text-lg font-medium">{eventToEdit ? 'Termin bearbeiten' : 'Neuer Termin'}</h3>
+                  <button onClick={() => setIsModalOpen(false)} className="text-neutral-400 hover:text-white text-xl leading-none p-2 -mr-2">&times;</button>
+                </div>
+                <div className="overflow-y-auto">
+                  <form onSubmit={saveEvent} className="p-6 space-y-6">
+                    <div><input type="text" name="title" required defaultValue={eventToEdit?.title} placeholder="Titel hinzufügen" className="w-full bg-transparent border-b border-neutral-700 pb-2 text-xl md:text-2xl text-white placeholder-neutral-600 focus:outline-none focus:border-white transition-colors" autoFocus={!eventToEdit} /></div>
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <div className="flex-1 flex gap-3 items-center bg-neutral-900/50 p-2 md:p-0 md:bg-transparent rounded-lg"><Clock className="w-5 h-5 text-neutral-500 shrink-0 ml-2 md:ml-0" /><input type="date" name="date" defaultValue={selectedDateForEvent} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-md px-3 py-2.5 md:py-2 text-sm focus:outline-none focus:border-neutral-500" /></div>
+                      <div className="flex-1 flex gap-3 items-center bg-neutral-900/50 p-2 md:p-0 md:bg-transparent rounded-lg"><input type="time" name="time" defaultValue={eventToEdit?.time || "12:00"} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-md px-3 py-2.5 md:py-2 text-sm focus:outline-none focus:border-neutral-500 ml-10 md:ml-0" /></div>
+                    </div>
+                    <div className="flex gap-4 items-center">
+                      <CalendarIcon className="w-5 h-5 text-neutral-500 shrink-0" /><select name="calendarType" defaultValue={eventToEdit?.type || "Privat"} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-md px-3 py-3 md:py-2 text-sm focus:outline-none focus:border-neutral-500 appearance-none"><option value="Privat">Privat</option><option value="Arbeit">Arbeit</option><option value="Projekt">Projekt</option></select>
+                    </div>
+                    <div className="flex gap-4 items-start"><AlignLeft className="w-5 h-5 text-neutral-500 shrink-0 mt-3 md:mt-2" /><textarea name="desc" rows="3" defaultValue={eventToEdit?.desc} placeholder="Beschreibung hinzufügen..." className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-md px-3 py-3 md:py-2 text-sm focus:outline-none focus:border-neutral-500 placeholder-neutral-600 resize-none"></textarea></div>
+                    <div className="pt-6 flex justify-between gap-3 border-t border-neutral-800 pb-safe">
+                      {eventToEdit ? (<button type="button" onClick={deleteEvent} className="px-4 py-3 md:py-2 text-sm text-red-500 bg-red-500/10 border border-red-900/50 rounded-md hover:bg-red-500/20 transition-colors flex items-center gap-2"><Trash2 className="w-4 h-4" /> <span className="hidden md:inline">Löschen</span></button>) : <div></div>}
+                      <div className="flex gap-3 w-full md:w-auto"><button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 md:flex-none px-4 py-3 md:py-2 text-sm text-neutral-400 border border-neutral-800 rounded-md md:border-none md:bg-transparent hover:text-white transition-colors">Abbrechen</button><button type="submit" className="flex-1 md:flex-none px-6 py-3 md:py-2 text-sm bg-white text-black font-medium rounded-md hover:bg-gray-200 transition-colors">Speichern</button></div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isWeatherModalOpen && (
+            <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <div className="bg-black border border-neutral-700 w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="px-5 py-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-950"><h3 className="text-lg font-medium flex items-center gap-2"><Cloud className="w-5 h-5"/> Wetter</h3><button onClick={() => setIsWeatherModalOpen(false)} className="text-neutral-400 hover:text-white text-xl leading-none">&times;</button></div>
+                <div className="p-5 overflow-y-auto space-y-6">
+                  <form onSubmit={handleSearchLocation} className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" /><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Standort suchen..." className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-neutral-500" /><button type="submit" className="hidden"></button>
+                    {searchResults.length > 0 && (<div className="absolute top-full left-0 w-full mt-1 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-10">{searchResults.map((res, i) => (<div key={i} onClick={() => selectLocation(res)} className="px-4 py-3 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer text-sm"><p className="font-medium">{res.name}</p><p className="text-xs text-neutral-500">{res.admin1}, {res.country}</p></div>))}</div>)}
+                  </form>
+                  <div className="text-center py-4 border border-neutral-800 rounded-xl bg-neutral-950"><h4 className="text-neutral-400 text-sm mb-2">{location.name}</h4><div className="flex justify-center items-center gap-4">{getWeatherIcon(weather?.weathercode, "w-12 h-12 text-white")}<span className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</span></div></div>
+                  <div><h4 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-3">7-Tage Vorschau</h4><div className="space-y-2">{dailyForecast?.time?.map((dateStr, index) => (<div key={dateStr} className="flex items-center justify-between p-3 bg-neutral-950 border border-neutral-800 rounded-lg"><span className="w-12 font-medium text-sm text-neutral-300">{index === 0 ? 'Heute' : formatDayName(dateStr)}</span>{getWeatherIcon(dailyForecast.weathercode[index], "w-5 h-5 text-white")}<div className="flex gap-3 text-sm w-24 justify-end"><span className="text-white">{Math.round(dailyForecast.temperature_2m_max[index])}°</span><span className="text-neutral-500">{Math.round(dailyForecast.temperature_2m_min[index])}°</span></div></div>))}</div></div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<AmoledCalendarApp />);
+  </script>
+</body>
+</html>

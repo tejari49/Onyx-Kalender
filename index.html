@@ -830,9 +830,8 @@
                 <div>
                   <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda für heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
                   {hasUnreadMessages && (
-                    <div className="mb-4 p-4 border border-neutral-700 bg-neutral-900 rounded-xl flex items-center justify-between transition-colors animate-fade-in">
+                    <div className="mb-4 p-4 border border-neutral-700 bg-neutral-900 rounded-xl flex items-center justify-center transition-colors animate-fade-in">
                       <div className="flex items-center gap-3"><div className="w-2 h-2 bg-white rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]"></div><span className="font-medium text-white uppercase tracking-widest text-sm">Kalender Aktuell</span></div>
-                      <span className="text-sm text-neutral-400">Neue Nachricht</span>
                     </div>
                   )}
                   <div className="space-y-3 md:space-y-4">
@@ -1097,16 +1096,21 @@
                         )}
 
                         <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
-                          <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''}`}>
-                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center" title="Bild senden">
+                          <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-x-auto no-scrollbar`}>
+                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Bild senden">
                               <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                             </label>
+
+                            {/* NEUER KAMERA BUTTON (immer sichtbar) */}
+                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Foto machen">
+                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} />
+                            </label>
                             
-                            <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white" title="Termin teilen">
+                            <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
                               <CalendarPlus className="w-5 h-5" />
                             </button>
 
-                            <button type="button" onClick={() => setSelfDestruct(!selfDestruct)} className={`p-3 border transition-colors rounded-full flex items-center justify-center hidden sm:flex ${selfDestruct ? 'bg-red-900/30 border-red-500 text-red-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400'}`} title="Snapchat-Modus (10s)">
+                            <button type="button" onClick={() => setSelfDestruct(!selfDestruct)} className={`p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 hidden sm:flex ${selfDestruct ? 'bg-red-900/30 border-red-500 text-red-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400'}`} title="Snapchat-Modus (10s)">
                               <Bomb className="w-5 h-5" />
                             </button>
                           </div>

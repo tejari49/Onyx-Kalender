@@ -60,7 +60,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=16').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -103,12 +103,33 @@
 
     const PASTEL_COLORS = ['#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#E8BAFF', '#D3D3D3', '#FFC8DD'];
 
-    const wissenswertes = [
-      "Wusstest du, dass Oktopusse drei Herzen haben und ihr Blut blau ist?",
-      "Wusstest du, dass Honig niemals verdirbt? Man fand essbaren Honig in ägyptischen Gräbern.",
-      "Wusstest du, dass die Schweiz über 1.500 Seen hat? Du bist nie weiter als 16 km von einem See entfernt.",
-      "Wusstest du, dass Bananen leicht radioaktiv sind, weil sie viel Kalium enthalten?"
+    
+    const QUOTES_URL = 'quotes.json';
+
+    // Fallback quotes (wird genutzt, falls quotes.json nicht geladen werden kann)
+    const DEFAULT_QUOTES = [
+      "Struktur bringt Ruhe.",
+      "Fokus ist eine Entscheidung.",
+      "Kleine Schritte, große Wirkung.",
+      "Wenn&apos;s brennt: Wasser. Wenn&apos;s chaotisch ist: Kalender.",
+      "Planung ist die halbe Miete – die andere Hälfte ist Kaffee."
     ];
+
+    const stableHash = (str) => {
+      let h = 2166136261;
+      for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0);
+    };
+
+    const pickQuoteForDay = (quotes, dayKey) => {
+      const list = (Array.isArray(quotes) && quotes.length) ? quotes : DEFAULT_QUOTES;
+      const idx = stableHash(String(dayKey)) % list.length;
+      return list[idx];
+    };
+
 
     const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
     const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
@@ -166,7 +187,7 @@
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v15 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v16 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -197,6 +218,7 @@ function AmoledCalendarApp() {
       const [dailyForecast, setDailyForecast] = useState(null);
       const [location, setLocation] = useState({ name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 });
       const [dailyFact, setDailyFact] = useState('');
+      const [quotes, setQuotes] = useState([]);
       
       const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
       const [searchQuery, setSearchQuery] = useState('');
@@ -251,6 +273,7 @@ function AmoledCalendarApp() {
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
       const dashboardName = (userProfile && userProfile.username) ? userProfile.username : (user?.email ? user.email.split('@')[0] : '');
+      const todayKey = new Date().toISOString().split('T')[0];
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
       const [myChats, setMyChats] = useState([]);
@@ -642,6 +665,14 @@ const handleTouchEnd = () => {
       const partnerId = activeChatData && !isGroupChat(activeChatData) ? activeChatData.participants.find(id => id !== user?.uid) : null;
       const isPartnerTyping = activeChatData ? (getTypingUsers(activeChatData).length > 0) : false;
 
+      const refreshDailyFact = () => {
+        const list = (quotes && quotes.length) ? quotes : DEFAULT_QUOTES;
+        const q = list[Math.floor(Math.random() * list.length)];
+        setDailyFact(q);
+        try { localStorage.setItem('onyx_quote_override', q); localStorage.setItem('onyx_quote_override_day', todayKey); } catch(e) {}
+      };
+
+
       const pinnedChatIds = (userProfile && Array.isArray(userProfile.pinnedChats)) ? userProfile.pinnedChats : [];
       const sortedMyChats = [...myChats].sort((a, b) => {
         const ap = pinnedChatIds.includes(a.id) ? 1 : 0;
@@ -656,7 +687,29 @@ const handleTouchEnd = () => {
 
 
       useEffect(() => {
-        setDailyFact(wissenswertes[Math.floor(Math.random() * wissenswertes.length)]);
+        const dayKey = new Date().toISOString().split('T')[0];
+        // Optionaler Override (User klickt "Neuer Spruch")
+        try {
+          const od = localStorage.getItem('onyx_quote_override_day');
+          const oq = localStorage.getItem('onyx_quote_override');
+          if (od === dayKey && oq) setDailyFact(oq);
+        } catch (e) {}
+
+        const loadQuotes = async () => {
+          try {
+            const res = await fetch(QUOTES_URL, { cache: 'no-store' });
+            const data = await res.json();
+            const list = Array.isArray(data) ? data : (Array.isArray(data.quotes) ? data.quotes : []);
+            setQuotes(list);
+            const q = pickQuoteForDay(list, dayKey);
+            setDailyFact(q);
+          } catch (e) {
+            const q = pickQuoteForDay(DEFAULT_QUOTES, dayKey);
+            setDailyFact(q);
+          }
+        };
+        loadQuotes();
+
         const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           setUser(currentUser);
           setIsLoggedIn(!!currentUser);
@@ -1755,7 +1808,7 @@ const handleTouchEnd = () => {
                   </div>
                   <div className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-start gap-4">
                     <Info className="w-5 h-5 md:w-6 md:h-6 text-neutral-400 shrink-0 mt-1" />
-                    <div><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider mb-2">Wissenswertes</h3><p className="text-sm text-neutral-200 leading-relaxed">{dailyFact}</p></div>
+                    <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-sm text-neutral-200 leading-relaxed">{dailyFact}</p><p className="text-[11px] text-neutral-500 mt-2">Tipp: Du kannst deine eigene Spruchliste als <span className="font-mono">quotes.json</span> hochladen.</p></div>
                   </div>
                 </div>
                 <div>

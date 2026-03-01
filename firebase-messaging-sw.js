@@ -14,11 +14,12 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-const CACHE_NAME = 'onyx-v14';
+const CACHE_NAME = 'onyx-v16';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './quotes.json'
 ];
 
 // Install: cache only static assets (NOT index.html to avoid stale UI)

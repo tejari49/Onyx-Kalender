@@ -79,7 +79,7 @@
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDocs, arrayUnion, arrayRemove, where, getDoc } from "firebase/firestore";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDocs, arrayUnion, arrayRemove } from "firebase/firestore";
     import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
     const customFirebaseConfig = {
@@ -166,7 +166,7 @@
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v9 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v14 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -250,53 +250,6 @@ function AmoledCalendarApp() {
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
-      const sanitizeUsername = (s) => (s || '').toLowerCase()
-        .replace(/[^a-z0-9_]/g, '_')
-        .replace(/_+/g,'_')
-        .replace(/^_+|_+$/g,'');
-      const buildDefaultUsername = (u) => {
-        const base = sanitizeUsername(((u?.email || '').split('@')[0]) || 'user').slice(0, 12) || 'user';
-        const suf = (u?.uid || '').slice(0, 4) || Math.random().toString(36).slice(2, 6);
-        return (base + '_' + suf).slice(0, 20);
-      };
-
-      const ensureCanonicalProfile = async (u) => {
-        if (!u) return;
-        const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
-        const canonicalRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', u.uid);
-        try {
-          const now = Date.now();
-          const canonicalSnap = await getDoc(canonicalRef);
-          const canonicalData = canonicalSnap.exists() ? (canonicalSnap.data() || {}) : {};
-          const needsUsername = !(canonicalData.username && String(canonicalData.username).trim());
-
-          const basePatch = { uid: u.uid, email: u.email || null, updatedAt: now };
-          if (!canonicalSnap.exists()) basePatch.createdAt = now;
-          if (needsUsername) basePatch.username = buildDefaultUsername(u);
-
-          await setDoc(canonicalRef, basePatch, { merge: true });
-
-          // migrate legacy/random-id profile docs where uid == u.uid (except canonical)
-          const dupSnap = await getDocs(query(profilesCol, where('uid', '==', u.uid)));
-          for (const d of dupSnap.docs) {
-            if (d.id === u.uid) continue;
-            const data = d.data() || {};
-            const patch = {};
-            if (data.username && String(data.username).trim()) patch.username = String(data.username).trim();
-            if (data.avatarBase64) patch.avatarBase64 = data.avatarBase64;
-            if (data.fcmToken) patch.fcmToken = data.fcmToken;
-            if (Array.isArray(data.pinnedChats)) patch.pinnedChats = data.pinnedChats;
-            if (Object.keys(patch).length) {
-              patch.updatedAt = now;
-              await setDoc(canonicalRef, patch, { merge: true });
-            }
-            await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', d.id)).catch(()=>{});
-          }
-        } catch (e) {
-          console.log('ensureCanonicalProfile error', e);
-        }
-      };
-
       const dashboardName = (userProfile && userProfile.username) ? userProfile.username : (user?.email ? user.email.split('@')[0] : '');
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
@@ -453,8 +406,7 @@ const saveUsername = async (e) => {
     const dataToSave = {
       username: uname,
       uid: user.uid,
-      email: user.email || null,
-      updatedAt: Date.now()
+      email: user.email
     };
     await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), dataToSave, { merge: true });
     showToast("Profil gespeichert");
@@ -649,11 +601,6 @@ const startSecretGate = () => {
     secretGateTriggered.current = true;
     setActiveChat(null);
     setSecretView('list');
-    if (!(userProfile && userProfile.username && String(userProfile.username).trim())) {
-      showToast('Bitte zuerst einen Namen setzen');
-      setCurrentView('settings');
-      return;
-    }
     setCurrentView('secret_chat');
   }, 3000);
 };
@@ -683,6 +630,15 @@ const handleTouchEnd = () => {
 };
 
       const activeChatData = activeChat ? myChats.find(c => c.id === activeChat.id) : null;
+
+      const getTypingUsers = (chat) => {
+        if (!chat || !chat.typing) return [];
+        const now = Date.now();
+        const typingMap = chat.typing || {};
+        const typingAt = chat.typingAt || {};
+        return Object.keys(typingMap).filter(uid => uid !== user?.uid && typingMap[uid] === true && (now - (typingAt[uid] || 0) < 6500));
+      };
+
       const partnerId = activeChatData && !isGroupChat(activeChatData) ? activeChatData.participants.find(id => id !== user?.uid) : null;
       const isPartnerTyping = activeChatData ? (getTypingUsers(activeChatData).length > 0) : false;
 
@@ -707,7 +663,6 @@ const handleTouchEnd = () => {
           setIsAppReady(true);
           if (currentUser) {
             requestNotificationPermission(currentUser);
-            ensureCanonicalProfile(currentUser);
           } else {
             setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]);
             setCurrentView('dashboard');
@@ -794,20 +749,7 @@ const handleTouchEnd = () => {
 
         const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
         const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data() || {};
-            if (!(data.username && String(data.username).trim())) {
-              const repaired = buildDefaultUsername(user);
-              setDoc(profileRef, { username: repaired, uid: user.uid, email: user.email || null, updatedAt: Date.now() }, { merge: true }).catch(()=>{});
-              setUserProfile({ id: docSnap.id, ...data, username: repaired });
-            } else {
-              setUserProfile({ id: docSnap.id, ...data });
-            }
-          } else {
-            const uname = buildDefaultUsername(user);
-            setDoc(profileRef, { username: uname, uid: user.uid, email: user.email || null, createdAt: Date.now(), updatedAt: Date.now() }, { merge: true }).catch(()=>{});
-            setUserProfile({ id: user.uid, username: uname, uid: user.uid, email: user.email || null });
-          }
+          if (docSnap.exists()) setUserProfile({ id: docSnap.id, ...docSnap.data() });
         });
 
         const allProfilesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
@@ -1419,12 +1361,7 @@ const handleTouchEnd = () => {
         if (!uname) return;
         if (allProfiles.some(p => (p.username || '').toLowerCase() === (uname || '').toLowerCase() && p.id !== user.uid)) return showToast("Name vergeben!");
         try {
-          const dataToSave = {
-      username: uname,
-      uid: user.uid,
-      email: user.email || null,
-      updatedAt: Date.now()
-    };
+          const dataToSave = { username: uname, uid: user.uid, email: user.email };
           if (userProfile?.avatarBase64) dataToSave.avatarBase64 = userProfile.avatarBase64;
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), dataToSave, { merge: true });
           showToast("Profil aktualisiert!");
@@ -1461,7 +1398,6 @@ const handleTouchEnd = () => {
       const getProfile = (uid) => allProfiles.find(p => p.id === uid) || null;
 
       const startChatWith = async (targetUserId) => {
-        if (!(userProfile && userProfile.username && String(userProfile.username).trim())) { showToast('Bitte zuerst einen Namen setzen'); setCurrentView('settings'); return; }
         const existingChat = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(targetUserId));
         if (existingChat) {
           setActiveChat(existingChat);
@@ -1478,7 +1414,6 @@ const handleTouchEnd = () => {
       };
 
       const createGroupChat = async () => {
-        if (!(userProfile && userProfile.username && String(userProfile.username).trim())) { showToast('Bitte zuerst einen Namen setzen'); setCurrentView('settings'); return; }
         if (!user) return;
         const title = (groupDraftName || '').trim() || 'Gruppe';
         const members = Array.from(new Set([user.uid, ...(groupDraftMembers || [])])).filter(Boolean);
@@ -1687,15 +1622,6 @@ const handleTouchEnd = () => {
       };
 
       const getChatParticipants = (chat) => Array.isArray(chat?.participants) ? chat.participants : [];
-
-      const getTypingUsers = (chat) => {
-        if (!chat || !chat.typing) return [];
-        const now = Date.now();
-        const typingMap = chat.typing || {};
-        const typingAt = chat.typingAt || {};
-        return Object.keys(typingMap).filter(uid => uid !== user?.uid && typingMap[uid] === true && (now - (typingAt[uid] || 0) < 6500));
-      };
-
       const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
       
       const exportICS = (exportAll = true) => {

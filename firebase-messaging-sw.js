@@ -14,15 +14,63 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-const CACHE_NAME = 'onyx-v2';
-const urlsToCache = ['./', './index.html', './manifest.json'];
+const CACHE_NAME = 'onyx-v14';
+const STATIC_ASSETS = [
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png'
+];
 
-self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)));
+// Install: cache only static assets (NOT index.html to avoid stale UI)
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+  );
 });
 
-self.addEventListener('fetch', event => {
-  event.respondWith(caches.match(event.request).then(response => response || fetch(event.request)));
+// Activate: clean old caches and take control immediately
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : Promise.resolve())));
+      await self.clients.claim();
+    })()
+  );
+});
+
+// Fetch strategy:
+// - Navigation requests (index.html / SPA routes): network-first, cache fallback
+// - Static assets: cache-first
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+
+  // SPA navigations
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      (async () => {
+        try {
+          const fresh = await fetch(req);
+          const cache = await caches.open(CACHE_NAME);
+          cache.put('./index.html', fresh.clone());
+          return fresh;
+        } catch (e) {
+          const cached = await caches.match('./index.html');
+          return cached || new Response('Offline', { status: 503, statusText: 'Offline' });
+        }
+      })()
+    );
+    return;
+  }
+
+  // Cache-first for other requests
+  event.respondWith(
+    caches.match(req).then((cached) => cached || fetch(req))
+  );
+});
+
+
 });
 
 // Hintergrund Push-Benachrichtigungen empfangen

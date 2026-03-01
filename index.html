@@ -164,7 +164,23 @@
       }
     }
 
+
+// ===== Build marker (v9) =====
+console.log('[Onyx-Kalender] build v9 loaded @', new Date().toISOString());
+
+// Ensure isGroupChat is always available (avoids hoisting/scope issues)
+window.isGroupChat = window.isGroupChat || function(chat) {
+  try {
+    if (!chat) return false;
+    if (chat.type === 'group') return true;
+    return Array.isArray(chat.participants) && chat.participants.length > 2;
+  } catch (e) { return false; }
+};
+
 function AmoledCalendarApp() {
+  // Stable alias
+  const isGroupChat = window.isGroupChat;
+
       const [isAppReady, setIsAppReady] = useState(false);
       const [user, setUser] = useState(null);
       const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -1571,12 +1587,6 @@ const handleTouchEnd = () => {
         };
         reader.readAsDataURL(file);
       };
-
-      function isGroupChat(chat) {
-        if (!chat) return false;
-        if (chat.type === 'group') return true;
-        return Array.isArray(chat.participants) && chat.participants.length > 2;
-      }
 
       const formatTime = (ts) => {
         if (!ts) return '';

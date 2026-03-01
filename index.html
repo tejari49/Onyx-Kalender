@@ -60,7 +60,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=19').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=20').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -97,6 +97,31 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+
+
+    // --- Auth hardening: if the browser keeps a stale Firebase auth cache after project reset,
+    // identitytoolkit accounts:lookup can return 400 and break flows. We auto-signout + clear caches.
+    (function hardenAuthFetch() {
+      try {
+        const _fetch = window.fetch ? window.fetch.bind(window) : null;
+        if (!_fetch) return;
+        window.fetch = async (...args) => {
+          const res = await _fetch(...args);
+          try {
+            const url = (typeof args[0] === "string") ? args[0] : (args[0] && args[0].url) ? args[0].url : "";
+            if (url.includes("identitytoolkit.googleapis.com") && url.includes("accounts:lookup") && res && res.status === 400) {
+              console.warn("[Auth] accounts:lookup 400 -> signing out and clearing local auth caches");
+              try { await signOut(auth); } catch (e) {}
+              try { indexedDB.deleteDatabase("firebaseLocalStorageDb"); } catch (e) {}
+              try { indexedDB.deleteDatabase("firebase-installations-database"); } catch (e) {}
+              try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+            }
+          } catch (e) {}
+          return res;
+        };
+      } catch (e) {}
+    })();
+
 
     let messaging = null;
     try { messaging = getMessaging(app); } catch (error) { console.warn("Messaging nicht unterstützt."); }
@@ -187,7 +212,7 @@
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v19 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v20 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -197,6 +222,23 @@ window.isGroupChat = window.isGroupChat || function(chat) {
     return Array.isArray(chat.participants) && chat.participants.length > 2;
   } catch (e) { return false; }
 };
+
+
+    // --- Robust helper functions (v20) ---
+    function safeTrim(v) {
+      return (v ?? "").toString().trim();
+    }
+    function initialsFrom(nameOrEmail) {
+      const s = safeTrim(nameOrEmail);
+      if (!s) return "??";
+      const parts = s.split(/\s+/).filter(Boolean);
+      const first = (parts[0] || "");
+      const second = (parts[1] || "");
+      const a = first.charAt(0);
+      const b = (second.charAt(0) || first.charAt(1));
+      const out = (a + b).toUpperCase();
+      return out || "??";
+    }
 
 function AmoledCalendarApp() {
   // Stable alias

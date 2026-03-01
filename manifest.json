@@ -1,17 +1,21 @@
 {
-  "name": "Onyx Kalender",
+  "name": "Onyx",
   "short_name": "Onyx",
-  "start_url": "./index.html",
+  "start_url": ".",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
-  "description": "Ein AMOLED optimierter Kalender mit integriertem, geheimen Chat.",
+  "description": "Dein AMOLED optimierter Kalender.",
   "icons": [
     {
-      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzAwMCIvPjxyZWN0IHg9IjE1NiIgeT0iMTU2IiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZiIgcng9IjI0Ii8+PC9zdmc+",
-      "sizes": "192x192 512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
     }
   ]
 }

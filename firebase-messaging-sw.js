@@ -13,23 +13,78 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// PWA Offline Caching
-const CACHE_NAME = 'onyx-v2';
-const urlsToCache = ['./', './index.html', './manifest.json'];
+/**
+ * Offline cache (safe):
+ * - Network-first for navigations (index.html), updates cache when online
+ * - Cache-first for static assets
+ */
+const CACHE_NAME = 'onyx-v10';
+const STATIC_ASSETS = [
+  './',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png'
+];
 
-self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)));
+// Install: pre-cache static assets (NOT index.html to avoid stale app shell)
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+  );
 });
 
-self.addEventListener('fetch', event => {
-  event.respondWith(caches.match(event.request).then(response => response || fetch(event.request)));
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    // Cleanup old caches
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : Promise.resolve())));
+    await self.clients.claim();
+  })());
 });
 
-// Hintergrund Push-Benachrichtigungen empfangen
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  const url = new URL(req.url);
+
+  // Only handle same-origin requests
+  if (url.origin !== self.location.origin) return;
+
+  const isNav = req.mode === 'navigate' || (req.destination === 'document');
+  const isIndex = url.pathname.endsWith('/index.html') || url.pathname.endsWith('/');
+
+  if (isNav || isIndex) {
+    // Network-first for app shell
+    event.respondWith((async () => {
+      try {
+        const fresh = await fetch(req);
+        const cache = await caches.open(CACHE_NAME);
+        // Store a copy under index.html for offline fallback
+        cache.put('./index.html', fresh.clone());
+        return fresh;
+      } catch (e) {
+        const cached = await caches.match('./index.html');
+        return cached || caches.match('./');
+      }
+    })());
+    return;
+  }
+
+  // Cache-first for static assets, fallback to network
+  event.respondWith(
+    caches.match(req).then((cached) => cached || fetch(req).then((resp) => {
+      const copy = resp.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+      return resp;
+    }))
+  );
+});
+
+// Background push notifications
 messaging.onBackgroundMessage(function(payload) {
-  const notificationTitle = payload.notification.title;
+  const notificationTitle = payload?.notification?.title || 'Onyx';
   const notificationOptions = {
-    body: payload.notification.body,
+    body: payload?.notification?.body || '',
     icon: './icon-192.png',
     badge: './icon-192.png',
     vibrate: [200, 100, 200]

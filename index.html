@@ -79,7 +79,7 @@
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDocs, arrayUnion, arrayRemove } from "firebase/firestore";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDocs, arrayUnion, arrayRemove, where, getDoc } from "firebase/firestore";
     import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
     const customFirebaseConfig = {
@@ -250,6 +250,53 @@ function AmoledCalendarApp() {
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
+      const sanitizeUsername = (s) => (s || '').toLowerCase()
+        .replace(/[^a-z0-9_]/g, '_')
+        .replace(/_+/g,'_')
+        .replace(/^_+|_+$/g,'');
+      const buildDefaultUsername = (u) => {
+        const base = sanitizeUsername(((u?.email || '').split('@')[0]) || 'user').slice(0, 12) || 'user';
+        const suf = (u?.uid || '').slice(0, 4) || Math.random().toString(36).slice(2, 6);
+        return (base + '_' + suf).slice(0, 20);
+      };
+
+      const ensureCanonicalProfile = async (u) => {
+        if (!u) return;
+        const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+        const canonicalRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', u.uid);
+        try {
+          const now = Date.now();
+          const canonicalSnap = await getDoc(canonicalRef);
+          const canonicalData = canonicalSnap.exists() ? (canonicalSnap.data() || {}) : {};
+          const needsUsername = !(canonicalData.username && String(canonicalData.username).trim());
+
+          const basePatch = { uid: u.uid, email: u.email || null, updatedAt: now };
+          if (!canonicalSnap.exists()) basePatch.createdAt = now;
+          if (needsUsername) basePatch.username = buildDefaultUsername(u);
+
+          await setDoc(canonicalRef, basePatch, { merge: true });
+
+          // migrate legacy/random-id profile docs where uid == u.uid (except canonical)
+          const dupSnap = await getDocs(query(profilesCol, where('uid', '==', u.uid)));
+          for (const d of dupSnap.docs) {
+            if (d.id === u.uid) continue;
+            const data = d.data() || {};
+            const patch = {};
+            if (data.username && String(data.username).trim()) patch.username = String(data.username).trim();
+            if (data.avatarBase64) patch.avatarBase64 = data.avatarBase64;
+            if (data.fcmToken) patch.fcmToken = data.fcmToken;
+            if (Array.isArray(data.pinnedChats)) patch.pinnedChats = data.pinnedChats;
+            if (Object.keys(patch).length) {
+              patch.updatedAt = now;
+              await setDoc(canonicalRef, patch, { merge: true });
+            }
+            await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', d.id)).catch(()=>{});
+          }
+        } catch (e) {
+          console.log('ensureCanonicalProfile error', e);
+        }
+      };
+
       const dashboardName = (userProfile && userProfile.username) ? userProfile.username : (user?.email ? user.email.split('@')[0] : '');
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
@@ -406,18 +453,13 @@ const saveUsername = async (e) => {
     const dataToSave = {
       username: uname,
       uid: user.uid,
-      email: user.email
+      email: user.email || null,
+      updatedAt: Date.now()
     };
     await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), dataToSave, { merge: true });
-
-    // optimistic UI + local fallback (falls Rules/Cache später Probleme machen)
-    try { localStorage.setItem(`onyx_username_${user.uid}`, uname); } catch (_) {}
-    setUserProfile(prev => (prev ? { ...prev, username: uname } : { id: user.uid, ...dataToSave }));
-
     showToast("Profil gespeichert");
   } catch (err) {
-    console.error("saveUsername failed", err);
-    showToast("Fehler beim Speichern" + (err?.message ? (": " + err.message) : ""));
+    showToast("Fehler beim Speichern");
   }
 };
 
@@ -607,6 +649,11 @@ const startSecretGate = () => {
     secretGateTriggered.current = true;
     setActiveChat(null);
     setSecretView('list');
+    if (!(userProfile && userProfile.username && String(userProfile.username).trim())) {
+      showToast('Bitte zuerst einen Namen setzen');
+      setCurrentView('settings');
+      return;
+    }
     setCurrentView('secret_chat');
   }, 3000);
 };
@@ -660,6 +707,7 @@ const handleTouchEnd = () => {
           setIsAppReady(true);
           if (currentUser) {
             requestNotificationPermission(currentUser);
+            ensureCanonicalProfile(currentUser);
           } else {
             setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]);
             setCurrentView('dashboard');
@@ -746,32 +794,19 @@ const handleTouchEnd = () => {
 
         const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
         const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
-          try {
-            if (docSnap.exists()) {
-              const data = docSnap.data() || {};
-              let uname = data.username || '';
-              if (uname) {
-                try { localStorage.setItem(`onyx_username_${user.uid}`, uname); } catch (_) {}
-              } else {
-                try { uname = localStorage.getItem(`onyx_username_${user.uid}`) || ''; } catch (_) {}
-                if (!uname && user?.email) uname = user.email.split('@')[0];
-                if (uname) {
-                  // Best effort: sync missing username back to Firestore
-                  setDoc(profileRef, { username: uname, uid: user.uid, email: user.email }, { merge: true }).catch(()=>{});
-                }
-              }
-              setUserProfile({ id: docSnap.id, ...data, username: uname });
+          if (docSnap.exists()) {
+            const data = docSnap.data() || {};
+            if (!(data.username && String(data.username).trim())) {
+              const repaired = buildDefaultUsername(user);
+              setDoc(profileRef, { username: repaired, uid: user.uid, email: user.email || null, updatedAt: Date.now() }, { merge: true }).catch(()=>{});
+              setUserProfile({ id: docSnap.id, ...data, username: repaired });
             } else {
-              // No profile yet -> create a minimal one (best effort)
-              let uname = '';
-              try { uname = localStorage.getItem(`onyx_username_${user.uid}`) || ''; } catch (_) {}
-              if (!uname && user?.email) uname = user.email.split('@')[0];
-              const dataToSave = { username: uname, uid: user.uid, email: user.email };
-              if (uname) setDoc(profileRef, dataToSave, { merge: true }).catch(()=>{});
-              setUserProfile({ id: user.uid, ...dataToSave });
+              setUserProfile({ id: docSnap.id, ...data });
             }
-          } catch (err) {
-            console.error("profile snapshot handler failed", err);
+          } else {
+            const uname = buildDefaultUsername(user);
+            setDoc(profileRef, { username: uname, uid: user.uid, email: user.email || null, createdAt: Date.now(), updatedAt: Date.now() }, { merge: true }).catch(()=>{});
+            setUserProfile({ id: user.uid, username: uname, uid: user.uid, email: user.email || null });
           }
         });
 
@@ -1380,29 +1415,20 @@ const handleTouchEnd = () => {
 
       const updateProfileSettings = async (e) => {
         e.preventDefault();
-        if (!user) return;
-        const unameRaw = new FormData(e.target).get('username') || '';
-        const uname = String(unameRaw).trim();
-        if (!uname) return showToast("Bitte Benutzernamen eingeben");
-        if (uname.length > 20) return showToast("Max. 20 Zeichen");
-        if (allProfiles.some(p => (p.username || '').toLowerCase() === (uname || '').toLowerCase() && p.id !== user.uid)) {
-          return showToast("Name vergeben!");
-        }
+        const uname = new FormData(e.target).get('username').trim();
+        if (!uname) return;
+        if (allProfiles.some(p => (p.username || '').toLowerCase() === (uname || '').toLowerCase() && p.id !== user.uid)) return showToast("Name vergeben!");
         try {
-          const dataToSave = { username: uname, uid: user.uid, email: user.email };
+          const dataToSave = {
+      username: uname,
+      uid: user.uid,
+      email: user.email || null,
+      updatedAt: Date.now()
+    };
           if (userProfile?.avatarBase64) dataToSave.avatarBase64 = userProfile.avatarBase64;
-
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), dataToSave, { merge: true });
-
-          // optimistic UI + local fallback
-          try { localStorage.setItem(`onyx_username_${user.uid}`, uname); } catch (_) {}
-          setUserProfile(prev => (prev ? { ...prev, username: uname } : { id: user.uid, ...dataToSave }));
-
           showToast("Profil aktualisiert!");
-        } catch (error) {
-          console.error("updateProfileSettings failed", error);
-          showToast("Fehler beim Speichern" + (error?.message ? (": " + error.message) : ""));
-        }
+        } catch (error) { showToast("Fehler beim Speichern"); }
       };
 
       const handleAvatarUpload = (e) => {
@@ -1435,6 +1461,7 @@ const handleTouchEnd = () => {
       const getProfile = (uid) => allProfiles.find(p => p.id === uid) || null;
 
       const startChatWith = async (targetUserId) => {
+        if (!(userProfile && userProfile.username && String(userProfile.username).trim())) { showToast('Bitte zuerst einen Namen setzen'); setCurrentView('settings'); return; }
         const existingChat = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(targetUserId));
         if (existingChat) {
           setActiveChat(existingChat);
@@ -1451,6 +1478,7 @@ const handleTouchEnd = () => {
       };
 
       const createGroupChat = async () => {
+        if (!(userProfile && userProfile.username && String(userProfile.username).trim())) { showToast('Bitte zuerst einen Namen setzen'); setCurrentView('settings'); return; }
         if (!user) return;
         const title = (groupDraftName || '').trim() || 'Gruppe';
         const members = Array.from(new Set([user.uid, ...(groupDraftMembers || [])])).filter(Boolean);

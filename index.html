@@ -60,7 +60,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=17').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=18').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -187,7 +187,7 @@
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v17 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v18 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -2182,7 +2182,7 @@ const handleTouchEnd = () => {
                         {getChatPartnerAvatar(activeChat) ? (
                           <img src={getChatPartnerAvatar(activeChat)} className="w-10 h-10 rounded-full border border-neutral-700 object-cover" />
                         ) : (
-                          <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-sm font-bold text-white uppercase">{getChatPartnerName(activeChat).substring(0,2)}</div>
+                          <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-sm font-bold text-white uppercase">{initialsFrom(getChatPartnerName(activeChat))}</div>
                         )}
                         <div className="flex flex-col">
                           <span className="font-medium text-white leading-tight">{getChatPartnerName(activeChat)}</span>
@@ -2237,7 +2237,7 @@ const handleTouchEnd = () => {
                           {userProfile.avatarBase64 ? (
                             <img src={userProfile.avatarBase64} className="w-24 h-24 rounded-full border-2 border-neutral-700 object-cover" />
                           ) : (
-                            <div className="w-24 h-24 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-3xl font-medium text-neutral-500">{userProfile.username.substring(0,2)}</div>
+                            <div className="w-24 h-24 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-3xl font-medium text-neutral-500">{initialsFrom(userProfile?.username)}</div>
                           )}
                           <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
                             <Camera className="w-4 h-4" />
@@ -2287,7 +2287,7 @@ const handleTouchEnd = () => {
                               ))}
                             </div>
                           );
-                        })()}}
+                        })()}
                       </div>
                       <div className="flex items-center justify-end mb-6 px-2">
                         <button onClick={() => { setShowCreateGroup(true); setGroupDraftName(''); setGroupDraftMembers([]); setGroupMemberSearch(''); }} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">
@@ -2308,7 +2308,7 @@ const handleTouchEnd = () => {
                               return (
                                 <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
                                   <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
-                                    {getChatPartnerAvatar(chat) ? <img src={getChatPartnerAvatar(chat)} className="w-full h-full object-cover"/> : getChatPartnerName(chat).substring(0,2)}
+                                    {getChatPartnerAvatar(chat) ? <img src={getChatPartnerAvatar(chat)} className="w-full h-full object-cover"/> : initialsFrom(getChatPartnerName(chat))}
                                   </div>
                                   <div className="flex-1 overflow-hidden">
                                     <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
@@ -3015,7 +3015,7 @@ const handleTouchEnd = () => {
                       {Object.entries(shareCalData.sharedWith || {}).map(([uid, perm]) => (
                         <div key={uid} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
                           <div className="flex flex-col">
-                            <span className="text-sm text-white font-medium">{getProfile(uid)?.username || uid.substring(0, 6)}</span>
+                            <span className="text-sm text-white font-medium">{getProfile(uid)?.username || shortId(uid,6)}</span>
                             <span className="text-[11px] text-neutral-500">{perm === 'write' ? 'Lesen & Schreiben' : 'Nur Lesen'}</span>
                           </div>
                           <button onClick={() => unshareCalendar(shareCalData.id, uid)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors" title="Entfernen">
@@ -3138,7 +3138,7 @@ const handleTouchEnd = () => {
                      {getChatPartnerAvatar(activeChat) ? (
                         <img src={getChatPartnerAvatar(activeChat)} className="w-20 h-20 rounded-full border-2 border-neutral-700 object-cover mb-4" />
                       ) : (
-                        <div className="w-20 h-20 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-2xl font-bold text-white uppercase mb-4">{getChatPartnerName(activeChat).substring(0,2)}</div>
+                        <div className="w-20 h-20 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-2xl font-bold text-white uppercase mb-4">{initialsFrom(getChatPartnerName(activeChat))}</div>
                       )}
                       <h3 className="text-xl font-medium text-white">{getChatPartnerName(activeChat)}</h3>
                       <p className="text-xs text-neutral-500 uppercase tracking-widest mt-1">Chat Analyse</p>
@@ -3163,7 +3163,7 @@ const handleTouchEnd = () => {
                            <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId === user.uid).length}</p>
                          </div>
                          <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
-                           <p className="text-xs text-neutral-500 uppercase mb-1">Von {getChatPartnerName(activeChat).substring(0,6)}.</p>
+                           <p className="text-xs text-neutral-500 uppercase mb-1">Von {safeTrim(getChatPartnerName(activeChat), "Unbekannt").slice(0,6)}.</p>
                            <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId !== user.uid).length}</p>
                          </div>
                        </>

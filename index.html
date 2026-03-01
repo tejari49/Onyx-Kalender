@@ -60,7 +60,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=20').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=21').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -212,7 +212,7 @@
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v20 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v21 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -251,6 +251,7 @@ function AmoledCalendarApp() {
       const [isRegistering, setIsRegistering] = useState(false);
       const [email, setEmail] = useState('');
       const [password, setPassword] = useState('');
+      const [fullName, setFullName] = useState('');
       const [authError, setAuthError] = useState('');
       
       const [currentView, setCurrentView] = useState('dashboard');
@@ -314,7 +315,7 @@ function AmoledCalendarApp() {
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
-      const dashboardName = (userProfile && userProfile.username) ? userProfile.username : (user?.email ? user.email.split('@')[0] : '');
+      const dashboardName = (userProfile && (userProfile.displayName || userProfile.username)) ? (userProfile.displayName || userProfile.username) : (user?.email ? user.email.split('@')[0] : '');
       const todayKey = new Date().toISOString().split('T')[0];
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
@@ -469,11 +470,17 @@ const saveUsername = async (e) => {
   }
   try {
     const dataToSave = {
-      username: uname,
+      displayName: uname,
+      username: uname, // legacy compatibility
       uid: user.uid,
-      email: user.email
+      email: user.email,
+      updatedAt: Date.now(),
     };
     await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), dataToSave, { merge: true });
+    // UI sofort aktualisieren
+    try { setUserProfile(prev => ({ ...(prev||{}), ...dataToSave })); } catch(_) {}
+    try { localStorage.setItem(`onyx_displayName_${user.uid}`, uname); localStorage.setItem(`onyx_username_${user.uid}`, uname); } catch(_) {}
+
     showToast("Profil gespeichert");
   } catch (err) {
     showToast("Fehler beim Speichern");
@@ -482,7 +489,7 @@ const saveUsername = async (e) => {
 
 
 // --- PROFILE BOOTSTRAP (bombensicher) ---
-const ensureProfileAfterAuth = async (authUser) => {
+const ensureProfileAfterAuth = async (authUser, opts = {}) => {
   try {
     if (!authUser || !authUser.uid) return;
     const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', authUser.uid);
@@ -501,6 +508,45 @@ const ensureProfileAfterAuth = async (authUser) => {
       email: emailVal,
       updatedAt: Date.now(),
     };
+    // displayName setzen (für Begrüßung). Nur überschreiben, wenn leer/kurz.
+    const desiredName = (opts && opts.fullName) ? String(opts.fullName).trim() : '';
+    if (desiredName && desiredName.length >= 2 && (!existing || !existing.displayName || String(existing.displayName).trim().length < 2)) {
+      next.displayName = desiredName.slice(0, 40);
+      // legacy: auch username setzen, falls nicht vorhanden (UI nutzt teils noch username)
+      if ((!existing || !existing.username || String(existing.username).trim().length < 2) && !next.username) {
+        next.username = next.displayName.slice(0, 20);
+      }
+    }
+
+    // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt
+    if (!existing || !existing.friendCode || !/^\d{5}$/.test(String(existing.friendCode))) {
+      try {
+        const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+        const snaps = await getDocs(profilesCol);
+        const used = new Set();
+        snaps.forEach(s => {
+          const d = s.data() || {};
+          const fc = d.friendCode;
+          if (typeof fc === 'string' && /^\d{5}$/.test(fc)) used.add(fc);
+          if (typeof fc === 'number') {
+            const sfc = String(fc).padStart(5,'0');
+            if (/^\d{5}$/.test(sfc)) used.add(sfc);
+          }
+        });
+
+        let code = '';
+        for (let i=0;i<20;i++) {
+          code = String(Math.floor(Math.random()*100000)).padStart(5,'0');
+          if (!used.has(code)) break;
+        }
+        if (!code) code = String(Math.floor(Math.random()*100000)).padStart(5,'0');
+        next.friendCode = code;
+        next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
+      } catch (e) {
+        console.warn('friendCode generation failed', e);
+      }
+    }
+
 
     // username nur setzen, wenn fehlt/leer
     if (!existing || !existing.username || String(existing.username).trim().length < 2) {
@@ -510,7 +556,10 @@ const ensureProfileAfterAuth = async (authUser) => {
 
     await setDoc(profileRef, next, { merge: true });
     // local fallback (falls Firestore offline/hakt)
-    try { localStorage.setItem(`onyx_username_${authUser.uid}`, (next.username || existing?.username || '')); } catch(_) {}
+    try { localStorage.setItem(`onyx_username_${authUser.uid}`, (next.username || existing?.username || ''));
+      localStorage.setItem(`onyx_displayName_${authUser.uid}`, (next.displayName || existing?.displayName || next.username || existing?.username || ''));
+      localStorage.setItem(`onyx_friendCode_${authUser.uid}`, (next.friendCode || existing?.friendCode || ''));
+    } catch(_) {}
   } catch (e) {
     console.warn("ensureProfileAfterAuth failed", e);
   }
@@ -1071,6 +1120,7 @@ const handleAuth = async (e) => {
   e.preventDefault();
   setAuthError('');
   if (!email || !password) return setAuthError('Bitte E-Mail und Passwort eingeben.');
+  if (isRegistering && (!fullName || String(fullName).trim().length < 2)) return setAuthError('Bitte deinen Namen eingeben.');
 
   try {
     let cred = null;
@@ -1092,7 +1142,7 @@ const handleAuth = async (e) => {
     setUser(signedInUser);
     setIsLoggedIn(true);
 
-    await ensureProfileAfterAuth(signedInUser);
+    await ensureProfileAfterAuth(signedInUser, { fullName: String(fullName||'').trim(), isRegistering });
   } catch (error) {
     console.error("AUTH_ERROR", error);
 
@@ -1841,6 +1891,10 @@ const handleAuth = async (e) => {
               <p className="text-neutral-500 mb-8 text-center text-sm">{isRegistering ? 'Erstelle deinen Account.' : 'Melde dich an, um fortzufahren.'}</p>
               {authError && <div className="w-full bg-red-950/30 border border-red-900/50 text-red-400 p-3 rounded-lg mb-6 text-xs flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><p>{authError}</p></div>}
               <form onSubmit={handleAuth} className="w-full space-y-4">
+                {isRegistering && (
+                  <div className="relative"><User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-600" /><input type="text" placeholder="Dein Name" value={fullName} onChange={(e) => setFullName(e.target.value)} required className="w-full bg-neutral-900/50 border border-neutral-800 text-white placeholder-neutral-600 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500 transition-colors" /></div>
+                )}
+
                 <div className="relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-600" /><input type="email" placeholder="E-Mail Adresse" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-neutral-900/50 border border-neutral-800 text-white placeholder-neutral-600 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500 transition-colors" /></div>
                 <div className="relative"><Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-600" /><input type="password" placeholder="Passwort" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-neutral-900/50 border border-neutral-800 text-white placeholder-neutral-600 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500 transition-colors" /></div>
                 <button type="submit" className="w-full bg-white text-black py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors mt-2">{isRegistering ? 'Account erstellen' : 'Anmelden'}</button>
@@ -2341,7 +2395,15 @@ const handleAuth = async (e) => {
                   {!userProfile ? (
                     <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">Identität festlegen</h3><p className="text-sm text-neutral-500 mb-6">Wähle einen einzigartigen Benutzernamen.</p>
                     <form onSubmit={saveUsername}>
-                      <input type="text" name="username" defaultValue={user?.email?.split('@')[0]} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
+                      <input type="text" name="username" defaultValue={userProfile?.displayName || userProfile?.username || user?.email?.split('@')[0] || ''} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
+                      <div className="flex items-center justify-between text-xs text-neutral-500 mb-4">
+                        <div>Deine Chat-ID:</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-neutral-200">{userProfile?.friendCode || '-----'}</span>
+                          <button type="button" onClick={() => { const v = String(userProfile?.friendCode||''); if (v) { navigator.clipboard?.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-2 py-1 rounded bg-neutral-900 border border-neutral-700 text-neutral-200 hover:bg-neutral-800">Kopieren</button>
+                        </div>
+                      </div>
+
                       <button type="submit" className="w-full bg-white text-black font-medium py-3 rounded-lg hover:bg-gray-200 transition-colors">Bestätigen</button>
                     </form>
                     </div></div>
@@ -2384,21 +2446,22 @@ const handleAuth = async (e) => {
 
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
-                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (vollständigen Namen eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
-                        <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib den <span className="text-neutral-300">vollständigen Benutzernamen</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
+                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
+                        <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
                         {(() => {
-                          const q = (chatSearchQuery || '').trim().toLowerCase();
-                          if (!q) return null;
-                          const matches = (allProfiles || []).filter(p => ((p.username || '').trim().toLowerCase() === q) && p.id !== user.uid);
+                          const raw = (chatSearchQuery || '').trim();
+                          const q = raw.replace(/\D/g,'');
+                          if (!q || q.length !== 5) return null;
+                          const matches = (allProfiles || []).filter(p => (String(p.friendCode || '').padStart(5,'0') === q) && p.id !== user.uid);
                           if (matches.length === 0) return null;
                           return (
                             <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">
                               {matches.map(profile => (
                                 <div key={profile.id} onClick={() => startChatWith(profile.id)} className="p-4 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
                                   <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
-                                    {profile.avatarBase64 ? <img src={profile.avatarBase64} className="w-full h-full object-cover"/> : ((profile.username || '??').substring(0,2))}
+                                    {profile.avatarBase64 ? <img src={profile.avatarBase64} className="w-full h-full object-cover"/> : initialsFrom(profile.displayName || profile.username || profile.email || '')}
                                   </div>
-                                  <span className="font-medium text-white">{profile.username}</span>
+                                  <span className="font-medium text-white">{profile.displayName || profile.username || profile.email}</span>
                                 </div>
                               ))}
                             </div>

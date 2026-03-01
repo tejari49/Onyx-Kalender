@@ -60,7 +60,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=18').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=19').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -79,7 +79,7 @@
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDocs, arrayUnion, arrayRemove } from "firebase/firestore";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove } from "firebase/firestore";
     import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
     const customFirebaseConfig = {
@@ -187,7 +187,7 @@
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v18 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v19 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -435,6 +435,42 @@ const saveUsername = async (e) => {
     showToast("Profil gespeichert");
   } catch (err) {
     showToast("Fehler beim Speichern");
+  }
+};
+
+
+// --- PROFILE BOOTSTRAP (bombensicher) ---
+const ensureProfileAfterAuth = async (authUser) => {
+  try {
+    if (!authUser || !authUser.uid) return;
+    const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', authUser.uid);
+    const snap = await getDoc(profileRef);
+    const existing = snap.exists() ? snap.data() : null;
+
+    const emailVal = authUser.email || (existing && existing.email) || '';
+    const base = (emailVal ? emailVal.split('@')[0] : 'user')
+      .replace(/[^a-zA-Z0-9._-]/g, '')
+      .slice(0, 12) || 'user';
+    const suffix = String(authUser.uid).slice(0, 4);
+    const autoUsername = `${base}_${suffix}`.slice(0, 20);
+
+    const next = {
+      uid: authUser.uid,
+      email: emailVal,
+      updatedAt: Date.now(),
+    };
+
+    // username nur setzen, wenn fehlt/leer
+    if (!existing || !existing.username || String(existing.username).trim().length < 2) {
+      next.username = autoUsername;
+      next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
+    }
+
+    await setDoc(profileRef, next, { merge: true });
+    // local fallback (falls Firestore offline/hakt)
+    try { localStorage.setItem(`onyx_username_${authUser.uid}`, (next.username || existing?.username || '')); } catch(_) {}
+  } catch (e) {
+    console.warn("ensureProfileAfterAuth failed", e);
   }
 };
 
@@ -710,17 +746,24 @@ const handleTouchEnd = () => {
         };
         loadQuotes();
 
-        const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-          setUser(currentUser);
-          setIsLoggedIn(!!currentUser);
-          setIsAppReady(true);
-          if (currentUser) {
-            requestNotificationPermission(currentUser);
-          } else {
-            setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]);
-            setCurrentView('dashboard');
-          }
-        });
+        
+const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+  setUser(currentUser);
+  setIsLoggedIn(!!currentUser);
+  setIsAppReady(true);
+
+  if (currentUser) {
+    // Profil immer sicherstellen (nach Reset/neu)
+    (async () => {
+      await ensureProfileAfterAuth(currentUser);
+      try { requestNotificationPermission(currentUser); } catch(_) {}
+    })();
+  } else {
+    setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]);
+    setCurrentView('dashboard');
+  }
+});
+
         return () => unsubscribeAuth();
       }, []);
 
@@ -981,29 +1024,60 @@ const handleTouchEnd = () => {
         return WOCHENTAGE[date.getDay() === 0 ? 6 : date.getDay() - 1];
       };
 
-      const handleAuth = async (e) => {
-        e.preventDefault();
-        setAuthError('');
-        if (!email || !password) return setAuthError('Bitte E-Mail und Passwort eingeben.');
-        try {
-          if (isRegistering) {
-            await createUserWithEmailAndPassword(auth, email, password);
-            showToast("Erfolgreich registriert!");
-          } else {
-            await signInWithEmailAndPassword(auth, email, password);
-            showToast("Erfolgreich angemeldet!");
-          }
-        } catch (error) {
-          switch (error.code) {
-            case 'auth/email-already-in-use': setAuthError('Diese E-Mail wird bereits verwendet.'); break;
-            case 'auth/invalid-credential':
-            case 'auth/user-not-found':
-            case 'auth/wrong-password': setAuthError('E-Mail oder Passwort falsch.'); break;
-            case 'auth/weak-password': setAuthError('Passwort min. 6 Zeichen.'); break;
-            default: setAuthError('Fehler: ' + error.message);
-          }
-        }
-      };
+      
+const handleAuth = async (e) => {
+  e.preventDefault();
+  setAuthError('');
+  if (!email || !password) return setAuthError('Bitte E-Mail und Passwort eingeben.');
+
+  try {
+    let cred = null;
+    if (isRegistering) {
+      cred = await createUserWithEmailAndPassword(auth, email, password);
+      showToast("Erfolgreich registriert!");
+    } else {
+      cred = await signInWithEmailAndPassword(auth, email, password);
+      showToast("Erfolgreich angemeldet!");
+    }
+
+    // Bombensicher: UID muss existieren
+    const signedInUser = cred && cred.user;
+    if (!signedInUser || !signedInUser.uid) {
+      throw new Error("AUTH_NO_UID");
+    }
+
+    // Sofort State setzen (nicht nur auf onAuthStateChanged warten)
+    setUser(signedInUser);
+    setIsLoggedIn(true);
+
+    await ensureProfileAfterAuth(signedInUser);
+  } catch (error) {
+    console.error("AUTH_ERROR", error);
+
+    const code = error && error.code ? String(error.code) : '';
+    const msg = error && error.message ? String(error.message) : '';
+
+    if (msg === "AUTH_NO_UID") {
+      setAuthError("Registrierung/Login fehlgeschlagen (keine Benutzer-ID). Bitte erneut versuchen.");
+      return;
+    }
+
+    switch (code) {
+      case 'auth/email-already-in-use': setAuthError('Diese E-Mail wird bereits verwendet.'); break;
+      case 'auth/invalid-email': setAuthError('Ungültige E-Mail-Adresse.'); break;
+      case 'auth/invalid-credential':
+      case 'auth/user-not-found':
+      case 'auth/wrong-password': setAuthError('E-Mail oder Passwort falsch.'); break;
+      case 'auth/weak-password': setAuthError('Passwort min. 6 Zeichen.'); break;
+      case 'auth/operation-not-allowed': setAuthError('Email/Passwort Login ist in Firebase Auth deaktiviert. Bitte in Firebase → Authentication → Sign-in method aktivieren.'); break;
+      case 'auth/unauthorized-domain': setAuthError('Domain nicht autorisiert. In Firebase Auth → Settings → Authorized domains muss tejari49.github.io erlaubt sein.'); break;
+      case 'auth/network-request-failed': setAuthError('Netzwerkfehler. Bitte Internet prüfen.'); break;
+      default:
+        setAuthError('Fehler: ' + (code || msg || 'Unbekannt'));
+    }
+  }
+};
+
 
       const handleLogout = async () => {
         try {

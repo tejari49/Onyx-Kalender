@@ -60,7 +60,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=16').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=17').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -187,7 +187,7 @@
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v16 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v17 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -2287,7 +2287,7 @@ const handleTouchEnd = () => {
                               ))}
                             </div>
                           );
-                        })()}</div>)}
+                        })()}}
                       </div>
                       <div className="flex items-center justify-end mb-6 px-2">
                         <button onClick={() => { setShowCreateGroup(true); setGroupDraftName(''); setGroupDraftMembers([]); setGroupMemberSearch(''); }} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">

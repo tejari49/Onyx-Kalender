@@ -14,7 +14,7 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-const CACHE_NAME = 'onyx-v16';
+const CACHE_NAME = 'onyx-v17';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -69,9 +69,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(req).then((cached) => cached || fetch(req))
   );
-});
-
-
 });
 
 // Hintergrund Push-Benachrichtigungen empfangen

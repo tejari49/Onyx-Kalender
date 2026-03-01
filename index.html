@@ -128,9 +128,7 @@
       }
       render() {
         if (this.state.hasError) {
-                const dashboardName = (userProfile && userProfile.username) ? userProfile.username : (user?.email ? user.email.split('@')[0] : '');
-
-return (
+          return (
             <div className="absolute inset-0 bg-black text-white flex items-center justify-center p-6">
               <div className="max-w-md w-full border border-neutral-800 rounded-2xl p-6 bg-neutral-950/60">
                 <h3 className="text-lg font-semibold mb-2">Ups – ein Fehler ist passiert</h3>
@@ -314,7 +312,9 @@ const handleGlobalTouchMove = (e) => {
 
   if (delta > 0) {
     // iOS / mobile: verhindern, dass der Browser selbst "bounce" scrollt
-    if (typeof e.preventDefault === 'function') e.preventDefault();
+    // React registriert Touch-Events oft als passive -> preventDefault würde warnen
+    const cancelable = (e?.cancelable ?? e?.nativeEvent?.cancelable);
+    if (cancelable !== false && typeof e.preventDefault === 'function') e.preventDefault();
     setPullDistance(Math.min(delta, 120));
   } else {
     setPullDistance(0);
@@ -1572,11 +1572,11 @@ const handleTouchEnd = () => {
         reader.readAsDataURL(file);
       };
 
-      const isGroupChat = (chat) => {
+      function isGroupChat(chat) {
         if (!chat) return false;
         if (chat.type === 'group') return true;
         return Array.isArray(chat.participants) && chat.participants.length > 2;
-      };
+      }
 
       const formatTime = (ts) => {
         if (!ts) return '';

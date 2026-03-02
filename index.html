@@ -6,18 +6,19 @@
   <title>Onyx</title>
   <meta name="description" content="Dein AMOLED optimierter Kalender.">
   <meta name="theme-color" content="#000000">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  
+
   <!-- PWA Manifest -->
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="manifest" href="manifest.json?v=24">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=24">
 
-  
+  <!-- Favicons -->
+  <link rel="icon" href="favicon.ico?v=24" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=24">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png?v=24">
 
-  <!-- Favicon (verhindert /favicon.ico 404) -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Crect%20width='100'%20height='100'%20fill='black'/%3E%3Ctext%20x='50'%20y='68'%20font-size='60'%20text-anchor='middle'%20fill='white'%3EO%3C/text%3E%3C/svg%3E">
-  <link rel="alternate icon" href="icon-192.png">
 <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
@@ -49,9 +50,26 @@
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-    body { background-color: #000000; color: #ffffff; overscroll-behavior-y: none; }
+    :root { --app-height: 100vh; }
+    html, body { height: 100%; width: 100%; margin: 0; padding: 0; }
+    body { background-color: #000000; color: #ffffff; overscroll-behavior-y: none; overflow: hidden; }
+    #root { height: var(--app-height); }
+    @media (max-width: 768px) { input, textarea, select { font-size: 16px; } }
     audio { filter: invert(100%) hue-rotate(180deg) brightness(1.5) contrast(1.2); border-radius: 8px; height: 36px; max-width: 220px; }
   </style>
+  <script>
+    // /* APP HEIGHT VAR */
+    (function() {
+      const setAppHeight = () => {
+        const h = (window.visualViewport && window.visualViewport.height) ? window.visualViewport.height : window.innerHeight;
+        document.documentElement.style.setProperty('--app-height', `${Math.round(h)}px`);
+      };
+      setAppHeight();
+      window.addEventListener('resize', setAppHeight);
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', setAppHeight);
+    })();
+  </script>
+
 </head>
 <body class="selection:bg-neutral-800">
   <div id="root"></div>
@@ -60,7 +78,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=23').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=24').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -2127,7 +2145,7 @@ const handleAuth = async (e) => {
 
       if (!isAppReady) {
         return (
-          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4">
+          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4" style={{ height: 'var(--app-height)' }}>
             <div className="flex flex-col items-center animate-pulse"><div className="w-12 h-12 bg-white rounded-sm mb-6"></div><h1 className="text-xl tracking-widest text-neutral-500">ONYX LÄDT...</h1></div>
           </div>
         );
@@ -2135,7 +2153,7 @@ const handleAuth = async (e) => {
 
       if (!isLoggedIn) {
         return (
-          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4 relative overflow-hidden">
+          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4 relative overflow-hidden" style={{ height: 'var(--app-height)' }}>
             <div className="fixed top-4 right-4 z-[60] space-y-2">
               {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
             </div>
@@ -2162,7 +2180,7 @@ const handleAuth = async (e) => {
 
       return (
         <div 
-          className="flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative"
+          className="flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative" style={{ height: 'var(--app-height)' }}
           onTouchStart={handleGlobalTouchStart}
           onTouchMove={handleGlobalTouchMove}
           onTouchEnd={handleGlobalTouchEnd}
@@ -2231,7 +2249,7 @@ const handleAuth = async (e) => {
                   </div>
                   <div className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-start gap-4">
                     <Info className="w-5 h-5 md:w-6 md:h-6 text-neutral-400 shrink-0 mt-1" />
-                    <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-sm text-neutral-200 leading-relaxed">{dailyFact}</p><p className="text-[11px] text-neutral-500 mt-2">Tipp: Du kannst deine eigene Spruchliste als <span className="font-mono">quotes.json</span> hochladen.</p></div>
+                    <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-sm text-neutral-200 leading-relaxed">{dailyFact}</p></div>
                   </div>
                 </div>
                 <div>
@@ -2591,7 +2609,7 @@ const handleAuth = async (e) => {
 
             {currentView === 'secret_chat' && (
               <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>
-              <div className="absolute inset-0 z-50 bg-black flex flex-col animate-slide-up">
+              <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up" style={{ height: 'var(--app-height)' }}>
                 
                 {/* Geheimer Chat Header */}
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">

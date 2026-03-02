@@ -14,11 +14,17 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-const CACHE_NAME = 'onyx-v23';
+const CACHE_NAME = 'onyx-v27';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './icon-192-maskable.png',
+  './icon-512-maskable.png',
+  './apple-touch-icon.png',
+  './favicon.ico',
+  './favicon-16.png',
+  './favicon-32.png',
   './quotes.json'
 ];
 
@@ -80,12 +86,27 @@ self.addEventListener('fetch', (event) => {
 
 // Hintergrund Push-Benachrichtigungen empfangen
 messaging.onBackgroundMessage(function(payload) {
-  const notificationTitle = payload.notification.title;
+  const notificationTitle = (payload && payload.notification && payload.notification.title) ? payload.notification.title : 'Onyx';
   const notificationOptions = {
-    body: payload.notification.body,
+    body: (payload && payload.notification && payload.notification.body ? (payload.notification.body + '\nKalender aktuell') : 'Kalender aktuell'),
     icon: './icon-192.png',
     badge: './icon-192.png',
     vibrate: [200, 100, 200]
   };
   return self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+
+// Notification click: focus existing window or open app
+self.addEventListener('notificationclick', (event) => {
+  try {
+    event.notification.close();
+    event.waitUntil((async () => {
+      const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of allClients) {
+        if ('focus' in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow('./');
+    })());
+  } catch (e) {}
 });

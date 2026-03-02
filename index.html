@@ -332,6 +332,9 @@ function AmoledCalendarApp() {
         time: '',
         type: 'Privat',
         desc: '',
+        // Reminder per Termin: 'default' | 'none' | 'custom'
+        reminderMode: 'default',
+        reminderMinutes: 15,
         calendarId: 'default',
         recurrenceFreq: 'NONE',
         recurrenceInterval: 1,
@@ -494,6 +497,8 @@ const openNewEventModal = (dateStr = null) => {
     time: '',
     type: 'Privat',
     desc: '',
+    reminderMode: 'default',
+    reminderMinutes: 15,
     calendarId: targetCalId,
     recurrenceFreq: 'NONE',
     recurrenceInterval: 1,
@@ -683,6 +688,9 @@ const saveEvent = async (e) => {
   const typeVal = (eventForm.type || 'Privat').trim();
   const descVal = (eventForm.desc || '').trim();
 
+  const reminderModeVal = (eventForm.reminderMode || 'default');
+  const reminderMinutesVal = (reminderModeVal === 'custom') ? Math.max(0, parseInt(eventForm.reminderMinutes || 0, 10) || 0) : null;
+
   const targetCalId = eventForm.calendarId || 'default';
   if (targetCalId !== 'default') {
     const cal = getCalendarById(targetCalId);
@@ -708,7 +716,9 @@ const saveEvent = async (e) => {
           title,
           time: timeVal,
           type: typeVal,
-          desc: descVal
+          desc: descVal,
+          reminderMode: reminderModeVal,
+          reminderMinutes: reminderMinutesVal
         }
       };
       const ex = Array.isArray(eventToEdit.exDates) ? eventToEdit.exDates : [];
@@ -730,6 +740,8 @@ const saveEvent = async (e) => {
     time: timeVal,
     type: typeVal,
     desc: descVal,
+    reminderMode: reminderModeVal,
+    reminderMinutes: reminderMinutesVal,
     updatedAt: Date.now(),
     recurrence: recurrence || null,
     exDates: isEditing ? (Array.isArray(eventToEdit.exDates) ? eventToEdit.exDates : []) : [],
@@ -1537,6 +1549,137 @@ const handleAuth = async (e) => {
         return out;
       };
 
+      // --- REMINDER ENGINE (Kalender) ---
+      const remindersIndexRef = useRef([]);
+
+      const parseDateTimeLocalMs = (dateStr, timeStr) => {
+        try {
+          if (!dateStr || !timeStr) return null;
+          const [y, m, d] = String(dateStr).split('-').map(n => parseInt(n, 10));
+          const [hh, mm] = String(timeStr).split(':').map(n => parseInt(n, 10));
+          if (!y || !m || !d || isNaN(hh) || isNaN(mm)) return null;
+          return new Date(y, (m - 1), d, hh, mm, 0, 0).getTime();
+        } catch (e) {
+          return null;
+        }
+      };
+
+      const effectiveReminderMinutes = (occ) => {
+        try {
+          const mode = (occ && typeof occ.reminderMode === 'string') ? occ.reminderMode : 'default';
+          if (mode === 'none') return null;
+          if (mode === 'custom') {
+            const m = (typeof occ.reminderMinutes === 'number') ? occ.reminderMinutes : parseInt(occ.reminderMinutes || 0, 10);
+            if (isNaN(m)) return null;
+            return Math.max(0, m);
+          }
+          const def = (userProfile && typeof userProfile.defaultReminderMinutes === 'number') ? userProfile.defaultReminderMinutes : null;
+          if (typeof def === 'number' && !isNaN(def)) return Math.max(0, def);
+          return null;
+        } catch (e) {
+          return null;
+        }
+      };
+
+      const buildRemindersIndex = () => {
+        try {
+          const today = new Date().toISOString().split('T')[0];
+          const startStr = addDaysStr(today, -1);
+          const endStr = addDaysStr(today, 60);
+          const occs = getOccurrencesInRange(startStr, endStr)
+            .filter(o => o && o.type !== 'shift');
+
+          const now = Date.now();
+          const idx = [];
+          for (const occ of occs) {
+            const mins = effectiveReminderMinutes(occ);
+            if (mins === null) continue;
+            if (!occ.time) continue;
+            const startMs = parseDateTimeLocalMs(occ.date, occ.time);
+            if (!startMs) continue;
+            const dueMs = startMs - (mins * 60000);
+            if (dueMs < (now - 60000)) continue; // zu alt
+            const baseId = occ._baseId || occ.id || 'event';
+            const occDate = occ._occurrenceDate || occ.date || '';
+            const rid = `${baseId}__${occDate}__${startMs}__${mins}`;
+            idx.push({
+              rid,
+              dueMs,
+              startMs,
+              title: occ.title || 'Termin',
+              time: occ.time || '',
+              calendarId: occ.calendarId || 'default',
+              occDate
+            });
+          }
+          idx.sort((a, b) => a.dueMs - b.dueMs);
+          remindersIndexRef.current = idx;
+        } catch (e) {
+          remindersIndexRef.current = [];
+        }
+      };
+
+      const fireReminderIfDue = async (item) => {
+        try {
+          const firedKey = `onyx_reminder_fired_${item.rid}`;
+          if (localStorage.getItem(firedKey)) return;
+          localStorage.setItem(firedKey, String(Date.now()));
+
+          const calName = (item.calendarId === 'default') ? 'Privat' : (getCalendarById(item.calendarId)?.name || 'Kalender');
+          const body = `${item.title}${item.time ? ' • ' + item.time : ''} • ${calName}`;
+
+          // In-App Hinweis immer
+          showToast(`⏰ ${body}`);
+
+          // System Notification falls erlaubt
+          try {
+            await showSystemNotification('Erinnerung', body, `onyx_rem_${item.rid}`);
+          } catch (_) {}
+
+          try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch (_) {}
+        } catch (e) {}
+      };
+
+      // Index rebuild on relevant changes
+      useEffect(() => {
+        if (!user) return;
+        buildRemindersIndex();
+      }, [user, events, sharedEventsMap, visibleCalendars, userProfile && userProfile.defaultReminderMinutes]);
+
+      // Periodic due-check (works without long setTimeouts)
+      useEffect(() => {
+        if (!user) return;
+        let timer = null;
+        const tick = () => {
+          try {
+            const now = Date.now();
+            const idx = remindersIndexRef.current || [];
+            // check due in last 60s
+            for (const item of idx) {
+              if (item.dueMs <= now && item.dueMs > (now - 60000)) {
+                fireReminderIfDue(item);
+              }
+            }
+          } catch (e) {}
+        };
+        timer = setInterval(tick, 20000);
+        tick();
+
+        const onVis = () => {
+          if (document.visibilityState === 'visible') {
+            buildRemindersIndex();
+            setTimeout(tick, 200);
+          }
+        };
+        document.addEventListener('visibilitychange', onVis);
+
+        return () => {
+          if (timer) clearInterval(timer);
+          document.removeEventListener('visibilitychange', onVis);
+        };
+      }, [user, userProfile]);
+
+
 
       // --- NEU: PINSEL & LANGES DRÜCKEN LOGIK ---
       const handleDayContextMenu = (e, dateStr) => {
@@ -1684,6 +1827,8 @@ const handleAuth = async (e) => {
            time: effective.time || '',
            type: effective.type || 'Privat',
            desc: effective.desc || '',
+           reminderMode: (typeof effective.reminderMode === 'string') ? effective.reminderMode : ((typeof baseEvent.reminderMode === 'string') ? baseEvent.reminderMode : 'default'),
+           reminderMinutes: (typeof effective.reminderMinutes === 'number') ? effective.reminderMinutes : (typeof baseEvent.reminderMinutes === 'number' ? baseEvent.reminderMinutes : 15),
            calendarId: baseEvent.calendarId || 'default',
            recurrenceFreq: (rec && rec.freq) ? rec.freq : 'NONE',
            recurrenceInterval: (rec && rec.interval) ? rec.interval : 1,
@@ -2210,7 +2355,7 @@ setSelfDestruct(false);
         if (!user) return;
         try {
           await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), {
-            title: eventDetails.title, date: eventDetails.date, time: eventDetails.time, type: 'Projekt', desc: 'Geteilter Termin aus Chat', createdAt: Date.now(), updatedAt: Date.now(), calendarId: 'default'
+            title: eventDetails.title, date: eventDetails.date, time: eventDetails.time, type: 'Projekt', desc: 'Geteilter Termin aus Chat', reminderMode: 'default', reminderMinutes: null, createdAt: Date.now(), updatedAt: Date.now(), calendarId: 'default'
           });
           showToast("Termin im Kalender gespeichert!");
         } catch (error) { showToast("Fehler beim Speichern"); }
@@ -2762,6 +2907,63 @@ setSelfDestruct(false);
                     </div>
                   </section>
 
+
+
+                  <section>
+                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Benachrichtigungen</h3>
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-white">Kalender-Erinnerungen</p>
+                          <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit „Standard“). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { try { requestNotificationPermission(user); } catch(e) {} }}
+                          className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors"
+                        >
+                          Erlauben
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Standard-Erinnerung</label>
+                          <select
+                            value={(() => {
+                              const v = (userProfile && typeof userProfile.defaultReminderMinutes === 'number') ? String(userProfile.defaultReminderMinutes) : 'none';
+                              return v;
+                            })()}
+                            onChange={async (e) => {
+                              try {
+                                const v = e.target.value;
+                                const next = (v === 'none') ? null : (parseInt(v, 10) || 0);
+                                await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultReminderMinutes: next }, { merge: true });
+                                showToast('Gespeichert');
+                              } catch (err) {
+                                showToast('Fehler');
+                              }
+                            }}
+                            className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                          >
+                            <option value="none">Keine</option>
+                            <option value="0">Bei Beginn</option>
+                            <option value="5">5 Minuten vorher</option>
+                            <option value="10">10 Minuten vorher</option>
+                            <option value="15">15 Minuten vorher</option>
+                            <option value="30">30 Minuten vorher</option>
+                            <option value="60">1 Stunde vorher</option>
+                            <option value="120">2 Stunden vorher</option>
+                            <option value="1440">1 Tag vorher</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] text-neutral-500">
+                        Status: <span className="text-neutral-300">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</span>
+                      </div>
+                    </div>
+                  </section>
                   <section>
                     <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Datenschutz & Account</h3>
                     <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -3356,6 +3558,41 @@ setSelfDestruct(false);
                       />
                     </div>
                   </div>
+
+                  <div className="bg-black border border-neutral-800 rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Erinnerung</label>
+                      {!eventForm.time && <span className="text-[10px] text-neutral-500">benötigt Uhrzeit</span>}
+                    </div>
+                    <select
+                      value={(eventForm.reminderMode === 'custom') ? String(eventForm.reminderMinutes ?? 15) : (eventForm.reminderMode === 'none' ? 'none' : 'default')}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === 'default') {
+                          setEventForm(prev => ({ ...prev, reminderMode: 'default' }));
+                        } else if (v === 'none') {
+                          setEventForm(prev => ({ ...prev, reminderMode: 'none', reminderMinutes: 15 }));
+                        } else {
+                          const m = parseInt(v, 10);
+                          setEventForm(prev => ({ ...prev, reminderMode: 'custom', reminderMinutes: isNaN(m) ? 15 : m }));
+                        }
+                      }}
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="default">Standard (Einstellungen)</option>
+                      <option value="none">Keine</option>
+                      <option value="0">Bei Beginn</option>
+                      <option value="5">5 Minuten vorher</option>
+                      <option value="10">10 Minuten vorher</option>
+                      <option value="15">15 Minuten vorher</option>
+                      <option value="30">30 Minuten vorher</option>
+                      <option value="60">1 Stunde vorher</option>
+                      <option value="120">2 Stunden vorher</option>
+                      <option value="1440">1 Tag vorher</option>
+                    </select>
+                    <p className="mt-2 text-[11px] text-neutral-500">Hinweis: In der PWA funktionieren Erinnerungen zuverlässig, wenn Benachrichtigungen erlaubt sind und Onyx mindestens im Hintergrund aktiv ist.</p>
+                  </div>
+
 
                   <div className="bg-black border border-neutral-800 rounded-2xl p-4">
                     <div className="flex items-center justify-between mb-2">

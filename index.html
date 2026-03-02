@@ -11,13 +11,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
   <!-- PWA Manifest -->
-  <link rel="manifest" href="manifest.json?v=24">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=24">
+  <link rel="manifest" href="manifest.json?v=25">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=25">
 
   <!-- Favicons -->
-  <link rel="icon" href="favicon.ico?v=24" sizes="any">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=24">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png?v=24">
+  <link rel="icon" href="favicon.ico?v=25" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=25">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png?v=25">
 
 <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -78,7 +78,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=24').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=25').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -230,7 +230,7 @@
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v23 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v24 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -1986,6 +1986,18 @@ const handleAuth = async (e) => {
          }, 2200);
       };
 
+      // Keep mobile keyboard open after send/edit by re-focusing the chat input.
+      const refocusChatInput = () => {
+        try {
+          requestAnimationFrame(() => {
+            const el = document.getElementById('chatInput');
+            if (!el) return;
+            try { el.focus({ preventScroll: true }); }
+            catch (e) { try { el.focus(); } catch (e2) {} }
+          });
+        } catch (e) {}
+      };
+
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
         if (e) e.preventDefault();
 
@@ -2002,6 +2014,7 @@ const handleAuth = async (e) => {
             setEditingMessage(null);
             setNewMessageText('');
             showToast('Gespeichert');
+            refocusChatInput();
           } catch (err) {
             console.error('edit message failed', err);
             showToast('Fehler beim Bearbeiten');
@@ -2046,6 +2059,7 @@ const handleAuth = async (e) => {
         setNewMessageText('');
         setReplyingTo(null);
         setSelfDestruct(false);
+        refocusChatInput();
 
         try {
           await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
@@ -2064,6 +2078,7 @@ const handleAuth = async (e) => {
           // Optimistic rollback
           setChatMessages(prev => (prev || []).filter(m => m.clientMsgId !== clientMsgId));
           showToast('Senden fehlgeschlagen');
+          refocusChatInput();
         }
       };
 
@@ -2080,8 +2095,23 @@ const handleAuth = async (e) => {
       const deleteMessage = async (msgId) => {
         if (!activeChat || !user) return;
         try {
-          await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId));
-          setSelectedMessageId(null); showToast("Nachricht gelöscht");
+          // Soft-delete: keep message visible with a "gelöscht" hint instead of removing it.
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), {
+            deleted: true,
+            deletedAt: Date.now(),
+            deletedBy: user.uid,
+            text: '',
+            image: null,
+            audio: null,
+            event: null
+          });
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+            updatedAt: Date.now(),
+            lastMessageSenderId: user.uid
+          }).catch(()=>{});
+          setSelectedMessageId(null);
+          showToast("Nachricht gelöscht");
+          refocusChatInput();
         } catch (error) { showToast("Fehler beim Löschen"); }
       };
 
@@ -2887,7 +2917,7 @@ const handleAuth = async (e) => {
                                   </div>
                                 )}
                                 
-                                {msg.image && (
+                                {!msg.deleted && msg.image && (
                                   <img
                                     src={msg.image}
                                     alt="Upload"
@@ -2895,10 +2925,10 @@ const handleAuth = async (e) => {
                                     onClick={(e) => { e.stopPropagation(); openImageViewer(msg.image); }}
                                   />
                                 )}
-                                {msg.audio && <audio src={msg.audio} controls className="mb-2 w-full" />}
+                                {!msg.deleted && msg.audio && <audio src={msg.audio} controls className="mb-2 w-full" />}
                                 
                                 {/* Termin-Kachel Rendering */}
-                                {msg.event && (
+                                {!msg.deleted && msg.event && (
                                   <div className={`mt-2 p-3 rounded-xl border ${isMe ? 'bg-black/10 border-black/20' : 'bg-black/40 border-neutral-700'}`}>
                                     <div className="flex items-center gap-2 mb-1">
                                       <CalendarIcon className="w-4 h-4" />
@@ -2915,10 +2945,17 @@ const handleAuth = async (e) => {
                                   </div>
                                 )}
 
-                                {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
+                                {msg.deleted ? (
+                                  <p className={`text-sm italic whitespace-pre-wrap ${isMe ? 'text-neutral-600' : 'text-neutral-500'}`}>
+                                    Nachricht gelöscht
+                                  </p>
+                                ) : (
+                                  msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                                )}
                                 
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
-                                  {msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
+                                  {msg.deleted && <span className="text-[9px] mr-1">(gelöscht)</span>}
+                                  {!msg.deleted && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
                                   <span className="text-[10px] block text-right">
                                     {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                   </span>
@@ -2946,10 +2983,10 @@ const handleAuth = async (e) => {
                                 {showActions && (
                                   <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
                                     <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Antworten"><CornerUpLeft className="w-4 h-4" /></button>
-                                    {isMe && !msg.image && !msg.audio && !msg.event && (
+                                    {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
                                       <button onClick={(e) => { e.stopPropagation(); setEditingMessage(msg); setNewMessageText(msg.text); setReplyingTo(null); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
                                     )}
-                                    {isMe && (
+                                    {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="Löschen"><Trash2 className="w-4 h-4" /></button>
                                     )}
                                   </div>
@@ -3020,7 +3057,15 @@ const handleAuth = async (e) => {
                               )}
                               
                               {(!isRecording && (newMessageText.trim() || editingMessage)) && (
-                                <button type="submit" className="p-2 text-white hover:bg-neutral-800 rounded-full transition-colors"><Send className="w-5 h-5" /></button>
+                                <button
+                                  type="submit"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onPointerDown={(e) => e.preventDefault()}
+                                  className="p-2 text-white hover:bg-neutral-800 rounded-full transition-colors"
+                                  title="Senden"
+                                >
+                                  <Send className="w-5 h-5" />
+                                </button>
                               )}
                             </div>
                           </div>

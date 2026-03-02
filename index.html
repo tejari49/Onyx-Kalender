@@ -1185,7 +1185,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             if (lastMsg && lastMsg.senderId !== user.uid) {
               const mutedChatIds = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
               const isMuted = mutedChatIds.includes(activeChat.id);
-              const pushEnabled = (userProfile && userProfile.fcmToken && ('Notification' in window) && Notification.permission === 'granted');
+              const pushEnabled = (userProfile && (userProfile.fcmTokenWeb || userProfile.fcmToken) && ('Notification' in window) && Notification.permission === 'granted');
               const key = `onyx_last_notify_${activeChat.id}`;
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
@@ -1267,7 +1267,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
               serviceWorkerRegistration: swRegistration
             });
             if (token) {
-              await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid), { fcmToken: token }, { merge: true });
+              await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid), { fcmTokenWeb: token, lastWebTokenAt: Date.now() }, { merge: true });
             }
           }
         } catch (err) { console.log('FCM Error', err); }
@@ -1674,7 +1674,7 @@ const handleAuth = async (e) => {
 
           // System Notification falls erlaubt
           try {
-            const pushEnabled = (userProfile && userProfile.fcmToken && ('Notification' in window) && Notification.permission === 'granted');
+            const pushEnabled = (userProfile && (userProfile.fcmTokenWeb || userProfile.fcmToken) && ('Notification' in window) && Notification.permission === 'granted');
             // Wenn Push aktiv ist, kommt die System-Notification vom Server (oxynoti). Lokal nur als Fallback.
             if (!pushEnabled) await showSystemNotification('Erinnerung', body, `onyx_rem_${item.rid}`);
           } catch (_) {}
@@ -3047,6 +3047,37 @@ setSelfDestruct(false);
                             <option value="silent">Stumm</option>
                           </select>
                           <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – du kannst nur Systemton nutzen oder stumm schalten.</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Push-Ziel</label>
+                          <select
+                            value={(() => {
+                              const v = (userProfile && userProfile.pushTarget) ? String(userProfile.pushTarget) : 'auto';
+                              return (v === 'android' || v === 'web' || v === 'both') ? v : 'auto';
+                            })()}
+                            onChange={async (e) => {
+                              try {
+                                const v = e.target.value;
+                                const next = (v === 'auto') ? null : v;
+                                await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { pushTarget: next }, { merge: true });
+                                showToast('Gespeichert');
+                              } catch (err) {
+                                showToast('Fehler');
+                              }
+                            }}
+                            className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                          >
+                            <option value="auto">Automatisch</option>
+                            <option value="web">Nur Web/PWA</option>
+                            <option value="android">Nur Android (APK)</option>
+                            <option value="both">Beide</option>
+                          </select>
+                          <p className="mt-2 text-[11px] text-neutral-500">Automatisch = oxynoti sendet an die vorhandenen Tokens (Android/Web).</p>
+                        </div>
+                      </div>
                         </div>
                       </div>
 

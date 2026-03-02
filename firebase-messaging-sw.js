@@ -86,12 +86,23 @@ self.addEventListener('fetch', (event) => {
 
 // Hintergrund Push-Benachrichtigungen empfangen
 messaging.onBackgroundMessage(function(payload) {
-  const notificationTitle = (payload && payload.notification && payload.notification.title) ? payload.notification.title : 'Onyx';
+  const data = (payload && payload.data) ? payload.data : {};
+  const notificationTitle = (data && data.title) ? data.title : ((payload && payload.notification && payload.notification.title) ? payload.notification.title : 'Onyx');
+  const rawBody = (data && data.body) ? data.body : ((payload && payload.notification && payload.notification.body) ? payload.notification.body : 'Kalender aktuell');
   const notificationOptions = {
-    body: (payload && payload.notification && payload.notification.body ? (payload.notification.body + '\nKalender aktuell') : 'Kalender aktuell'),
+    body: (rawBody ? (String(rawBody).trim() + '\nKalender aktuell') : 'Kalender aktuell'),
     icon: './icon-192.png',
     badge: './icon-192.png',
-    vibrate: [200, 100, 200]
+    vibrate: [200, 100, 200],
+    tag: (data && data.tag) ? data.tag : 'onyx',
+    renotify: true,
+    data: {
+      kind: (data && data.kind) ? data.kind : '',
+      chatId: (data && data.chatId) ? data.chatId : '',
+      calendarId: (data && data.calendarId) ? data.calendarId : '',
+      eventId: (data && data.eventId) ? data.eventId : '',
+      occurrenceDate: (data && data.occurrenceDate) ? data.occurrenceDate : ''
+    }
   };
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });

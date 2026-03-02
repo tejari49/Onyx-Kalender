@@ -92,7 +92,7 @@
     import React, { useState, useEffect, useRef } from 'react';
     import { createRoot } from 'react-dom/client';
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin
     } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
@@ -508,16 +508,15 @@ const openNewEventModal = (dateStr = null) => {
   setIsModalOpen(true);
 };
 
-const saveUsername = async (e) => {
-  e.preventDefault();
+const persistDisplayName = async (rawName, opts = {}) => {
   if (!user) return;
-  const unameRaw = new FormData(e.target).get('username') || '';
-  const uname = String(unameRaw).trim();
+  const uname = String(rawName || '').trim();
   if (!uname) return showToast('Bitte Namen eingeben');
   if (uname.length < 2) return showToast('Name zu kurz');
   if (uname.length > 40) return showToast('Max. 40 Zeichen');
 
   try {
+    const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
     const dataToSave = {
       displayName: uname,
       username: uname.slice(0, 20), // legacy compatibility
@@ -526,21 +525,40 @@ const saveUsername = async (e) => {
       emailLower: (user.email || '').toLowerCase(),
       updatedAt: Date.now(),
     };
-    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), dataToSave, { merge: true });
+    if (opts && opts.avatarBase64) dataToSave.avatarBase64 = opts.avatarBase64;
+
+    await setDoc(profileRef, dataToSave, { merge: true });
     try { await updateProfile(auth.currentUser, { displayName: uname }); } catch (_) {}
 
-    // UI sofort aktualisieren
-    try { setUserProfile(prev => ({ ...(prev||{}), ...dataToSave })); } catch(_) {}
+    // UI sofort aktualisieren + lokale Fallbacks
+    try { setUserProfile(prev => ({ ...(prev || {}), ...dataToSave })); } catch (_) {}
     try {
       localStorage.setItem(`onyx_displayName_${user.uid}`, uname);
       localStorage.setItem(`onyx_username_${user.uid}`, dataToSave.username);
-    } catch(_) {}
+    } catch (_) {}
 
-    showToast('Profil gespeichert');
+    // Best-effort: displayName in bestehenden Chats aktualisieren (damit es überall konsistent ist)
+    try {
+      const updates = myChats.slice(0, 75).map(c => {
+        if (!c?.id) return null;
+        return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user.uid}`]: uname }).catch(()=>{});
+      }).filter(Boolean);
+      await Promise.all(updates);
+    } catch (_) {}
+
+    showToast((opts && opts.toast) ? opts.toast : 'Profil gespeichert');
   } catch (err) {
-    console.error('saveUsername failed', err);
+    console.error('persistDisplayName failed', err);
     showToast('Fehler beim Speichern');
   }
+};
+
+const saveUsername = async (e) => {
+  e.preventDefault();
+  if (!user) return;
+  const unameRaw = new FormData(e.target).get('username') || '';
+  const uname = String(unameRaw).trim();
+  await persistDisplayName(uname, { toast: 'Profil gespeichert' });
 };
 
 
@@ -1158,10 +1176,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           try {
             const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user.uid) {
+              const mutedChatIds = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+              const isMuted = mutedChatIds.includes(activeChat.id);
+              const pushEnabled = (userProfile && userProfile.fcmToken && ('Notification' in window) && Notification.permission === 'granted');
               const key = `onyx_last_notify_${activeChat.id}`;
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
-              if (!isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
+              if (!isMuted && !pushEnabled && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
                 const title = getChatPartnerName(activeChat);
                 const preview = lastMsg.deleted ? 'Nachricht gelöscht' : (lastMsg.image ? '📷 Bild' : (lastMsg.audio ? '🎙️ Audio' : (lastMsg.event ? '📅 Termin' : (String(lastMsg.text || '').slice(0, 120) || 'Neue Nachricht'))));
                 showSystemNotification(title, preview, `onyx_chat_${activeChat.id}`);
@@ -1202,7 +1223,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           showToast('Chat Live-Sync Fehler');
         });
         return () => unsubscribeMessages();
-      }, [activeChat, user, currentView, secretView]);
+      }, [activeChat, user, currentView, secretView, userProfile]);
 
       useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1233,7 +1254,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
-            const swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js?v=26');
+            const swRegistration = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register('./firebase-messaging-sw.js?v=26'));
             const token = await getToken(messaging, { 
               vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI',
               serviceWorkerRegistration: swRegistration
@@ -1248,13 +1269,25 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       useEffect(() => {
         if (!messaging) return;
         const unsubscribeMessage = onMessage(messaging, (payload) => {
-          const title = payload?.notification?.title || 'Neue Benachrichtigung!';
-          const body = payload?.notification?.body || '';
-          showToast(title);
-          showSystemNotification(title, body, 'onyx_fcm');
+          const kind = payload?.data?.kind || '';
+          const chatId = payload?.data?.chatId || '';
+          const title = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
+          const body = payload?.data?.body || payload?.notification?.body || '';
+
+          // Wenn Chat stummgeschaltet ist: keine In-App Benachrichtigung
+          try {
+            const muted = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+            if (kind === 'chat' && chatId && muted.includes(chatId)) return;
+          } catch (_) {}
+
+          // Foreground: nur Toast. System-Notifications übernimmt der Service Worker (Background).
+          try {
+            if (document.visibilityState === 'visible') showToast(title);
+            else showToast(title);
+          } catch (_) { showToast(title); }
         });
         return () => unsubscribeMessage();
-      }, []);
+      }, [userProfile]);
 
       const fetchWeather = async () => {
         try {
@@ -1633,7 +1666,9 @@ const handleAuth = async (e) => {
 
           // System Notification falls erlaubt
           try {
-            await showSystemNotification('Erinnerung', body, `onyx_rem_${item.rid}`);
+            const pushEnabled = (userProfile && userProfile.fcmToken && ('Notification' in window) && Notification.permission === 'granted');
+            // Wenn Push aktiv ist, kommt die System-Notification vom Server (oxynoti). Lokal nur als Fallback.
+            if (!pushEnabled) await showSystemNotification('Erinnerung', body, `onyx_rem_${item.rid}`);
           } catch (_) {}
 
           try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch (_) {}
@@ -1922,45 +1957,7 @@ const handleAuth = async (e) => {
         if (!user) return;
         const nameRaw = new FormData(e.target).get('displayName') || new FormData(e.target).get('username') || '';
         const displayName = String(nameRaw).trim();
-        if (!displayName || displayName.length < 2) return showToast('Bitte Namen eingeben (min. 2 Zeichen)');
-        if (displayName.length > 40) return showToast('Name zu lang (max. 40)');
-
-        try {
-          const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
-          const dataToSave = {
-            displayName,
-            username: displayName.slice(0, 20), // legacy compatibility
-            uid: user.uid,
-            email: user.email,
-            emailLower: (user.email || '').toLowerCase(),
-            updatedAt: Date.now(),
-          };
-          if (userProfile?.avatarBase64) dataToSave.avatarBase64 = userProfile.avatarBase64;
-
-          await setDoc(profileRef, dataToSave, { merge: true });
-          try { await updateProfile(auth.currentUser, { displayName }); } catch (_) {}
-
-          // UI sofort aktualisieren + lokale Fallbacks
-          setUserProfile(prev => ({ ...(prev || {}), ...dataToSave }));
-          try {
-            localStorage.setItem(`onyx_displayName_${user.uid}`, displayName);
-            localStorage.setItem(`onyx_username_${user.uid}`, dataToSave.username);
-          } catch (_) {}
-
-          // Best-effort: displayName in bestehenden Chats aktualisieren (damit es überall konsistent ist)
-          try {
-            const updates = myChats.slice(0, 50).map(c => {
-              if (!c?.id) return null;
-              return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user.uid}`]: displayName }).catch(()=>{});
-            }).filter(Boolean);
-            await Promise.all(updates);
-          } catch (_) {}
-
-          showToast('Profil aktualisiert!');
-        } catch (error) {
-          console.error('PROFILE_SAVE_ERROR', error);
-          showToast('Fehler beim Speichern');
-        }
+        await persistDisplayName(displayName, { avatarBase64: userProfile?.avatarBase64, toast: 'Profil aktualisiert!' });
       };
 
       const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
@@ -2218,6 +2215,19 @@ const handleAuth = async (e) => {
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { pinnedChats: next });
         } catch (e) {
           showToast("Fehler beim Pinnen");
+        }
+      };
+
+      const toggleMuteChat = async (chatId) => {
+        if (!user) return;
+        try {
+          const muted = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+          const isMuted = muted.includes(chatId);
+          const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+          await updateDoc(profileRef, { mutedChatIds: isMuted ? arrayRemove(chatId) : arrayUnion(chatId) });
+          showToast(isMuted ? 'Stumm aus' : 'Chat stumm');
+        } catch (e) {
+          showToast('Fehler beim Stummschalten');
         }
       };
 
@@ -3039,6 +3049,15 @@ setSelfDestruct(false);
                         <Search className="w-5 h-5" />
                       </button>
                     )}
+                    {secretView === 'chat' && activeChat && userProfile && (
+                      <button
+                        onClick={() => toggleMuteChat(activeChat.id)}
+                        className="text-neutral-500 hover:text-white transition-colors p-2"
+                        title={(Array.isArray(userProfile?.mutedChatIds) && userProfile.mutedChatIds.includes(activeChat.id)) ? 'Stumm aus' : 'Stumm schalten'}
+                      >
+                        {(Array.isArray(userProfile?.mutedChatIds) && userProfile.mutedChatIds.includes(activeChat.id)) ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+                      </button>
+                    )}
                     <button onClick={() => { setActiveChat(null); setCurrentView('calendar'); }} className="text-neutral-500 hover:text-white text-2xl leading-none p-2">&times;</button>
                   </div>
                 </header>
@@ -3160,6 +3179,8 @@ setSelfDestruct(false);
                             )}
                             {sortedMyChats.map(chat => {
                               const isPinned = pinnedChatIds.includes(chat.id);
+                              const mutedChatIds = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+                              const isMuted = mutedChatIds.includes(chat.id);
                               return (
                                 <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
                                   <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
@@ -3180,6 +3201,9 @@ setSelfDestruct(false);
                                       <p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>
                                     )}
                                   </div>
+                                  <button onClick={(e) => { e.stopPropagation(); toggleMuteChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isMuted ? 'bg-neutral-950 text-white border-neutral-500' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isMuted ? 'Stumm aus' : 'Stumm schalten'}>
+                                    {isMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                                  </button>
                                   <button onClick={(e) => { e.stopPropagation(); togglePinChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isPinned ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isPinned ? 'Unpin' : 'Pin'}>
                                     <Pin className="w-4 h-4" />
                                   </button>

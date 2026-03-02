@@ -14,7 +14,7 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-const CACHE_NAME = 'onyx-v27';
+const CACHE_NAME = 'onyx-v28';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -85,17 +85,23 @@ self.addEventListener('fetch', (event) => {
 });
 
 // Hintergrund Push-Benachrichtigungen empfangen
+// Hintergrund Push-Benachrichtigungen empfangen
 messaging.onBackgroundMessage(function(payload) {
   const data = (payload && payload.data) ? payload.data : {};
   const notificationTitle = (data && data.title) ? data.title : ((payload && payload.notification && payload.notification.title) ? payload.notification.title : 'Onyx');
   const rawBody = (data && data.body) ? data.body : ((payload && payload.notification && payload.notification.body) ? payload.notification.body : 'Kalender aktuell');
+
+  // In einer PWA ist kein Custom-Sound möglich. Wir unterstützen nur: Systemton oder stumm.
+  const silent = String((data && (data.silent ?? data.sound)) || '').toLowerCase() === '1' || String((data && (data.silent ?? data.sound)) || '').toLowerCase() === 'silent';
+
   const notificationOptions = {
     body: (rawBody ? (String(rawBody).trim() + '\nKalender aktuell') : 'Kalender aktuell'),
     icon: './icon-192.png',
     badge: './icon-192.png',
-    vibrate: [200, 100, 200],
     tag: (data && data.tag) ? data.tag : 'onyx',
     renotify: true,
+    silent: silent,
+    ...(silent ? {} : { vibrate: [200, 100, 200] }),
     data: {
       kind: (data && data.kind) ? data.kind : '',
       chatId: (data && data.chatId) ? data.chatId : '',

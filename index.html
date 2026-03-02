@@ -11,13 +11,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
   <!-- PWA Manifest -->
-  <link rel="manifest" href="manifest.json?v=25">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=25">
+  <link rel="manifest" href="manifest.json?v=26">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=26">
 
   <!-- Favicons -->
-  <link rel="icon" href="favicon.ico?v=25" sizes="any">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=25">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png?v=25">
+  <link rel="icon" href="favicon.ico?v=26" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=26">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png?v=26">
 
 <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -32,7 +32,8 @@
         "firebase/app": "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js",
         "firebase/auth": "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js",
         "firebase/firestore": "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js",
-        "firebase/messaging": "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js"
+        "firebase/messaging": "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js",
+        "heic2any": "https://esm.sh/heic2any@0.0.4"
       }
     }
   </script>
@@ -78,7 +79,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=26').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=27').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -99,6 +100,7 @@
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "firebase/auth";
     import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction } from "firebase/firestore";
     import { getMessaging, getToken, onMessage } from "firebase/messaging";
+    import heic2any from 'heic2any';
 
     const customFirebaseConfig = {
       apiKey: "AIzaSyDkdRI4tNh5fe-dyBBGDlGgIiT7vHmoFvg",
@@ -525,7 +527,12 @@ const persistDisplayName = async (rawName, opts = {}) => {
       emailLower: (user.email || '').toLowerCase(),
       updatedAt: Date.now(),
     };
-    if (opts && opts.avatarBase64) dataToSave.avatarBase64 = opts.avatarBase64;
+    if (opts && opts.avatarThumbBase64) {
+      dataToSave.avatarThumbBase64 = opts.avatarThumbBase64;
+      dataToSave.avatarBase64 = opts.avatarThumbBase64; // legacy
+    }
+    if (opts && opts.avatarFullBase64) dataToSave.avatarFullBase64 = opts.avatarFullBase64;
+    if (opts && opts.avatarBase64 && !dataToSave.avatarBase64) dataToSave.avatarBase64 = opts.avatarBase64;
 
     await setDoc(profileRef, dataToSave, { merge: true });
     try { await updateProfile(auth.currentUser, { displayName: uname }); } catch (_) {}
@@ -1254,7 +1261,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
-            const swRegistration = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register('./firebase-messaging-sw.js?v=26'));
+            const swRegistration = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register('./firebase-messaging-sw.js?v=27'));
             const token = await getToken(messaging, { 
               vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI',
               serviceWorkerRegistration: swRegistration
@@ -1280,11 +1287,9 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             if (kind === 'chat' && chatId && muted.includes(chatId)) return;
           } catch (_) {}
 
-          // Foreground: nur Toast. System-Notifications übernimmt der Service Worker (Background).
-          try {
-            if (document.visibilityState === 'visible') showToast(title);
-            else showToast(title);
-          } catch (_) { showToast(title); }
+          // Foreground: keine In-App Toasts/Banner (UI aktualisiert sich via Firestore Listener).
+          // Hinweis: Custom-Sounds sind in einer PWA nicht wählbar (nur System / stumm).
+          
         });
         return () => unsubscribeMessage();
       }, [userProfile]);
@@ -1317,13 +1322,16 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
           const finalBody = (body && String(body).trim().length > 0) ? `${body}
 Kalender aktuell` : 'Kalender aktuell';
+          const silentMode = (userProfile && String(userProfile.notificationSoundMode||'system') === 'silent');
+
           const options = {
             body: finalBody,
             icon: './icon-192.png',
             badge: './icon-192.png',
             tag,
             renotify: true,
-            vibrate: [200, 100, 200]
+            silent: silentMode,
+            ...(silentMode ? {} : { vibrate: [200, 100, 200] })
           };
 
           if ('serviceWorker' in navigator) {
@@ -1957,7 +1965,7 @@ const handleAuth = async (e) => {
         if (!user) return;
         const nameRaw = new FormData(e.target).get('displayName') || new FormData(e.target).get('username') || '';
         const displayName = String(nameRaw).trim();
-        await persistDisplayName(displayName, { avatarBase64: userProfile?.avatarBase64, toast: 'Profil aktualisiert!' });
+        await persistDisplayName(displayName, { avatarThumbBase64: userProfile?.avatarThumbBase64 || userProfile?.avatarBase64, avatarFullBase64: userProfile?.avatarFullBase64 || null, toast: 'Profil aktualisiert!' });
       };
 
       const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
@@ -1968,6 +1976,36 @@ const handleAuth = async (e) => {
           reader.readAsDataURL(file);
         } catch (e) { reject(e); }
       });
+
+      const looksLikeHeic = (file) => {
+        try {
+          const name = String(file?.name || '').toLowerCase();
+          const type = String(file?.type || '').toLowerCase();
+          return type === 'image/heic' || type === 'image/heif' || name.endsWith('.heic') || name.endsWith('.heif');
+        } catch (_) { return false; }
+      };
+
+      const isProbablyImageFile = (file) => {
+        try {
+          const type = String(file?.type || '').toLowerCase();
+          if (type.startsWith('image/')) return true;
+          const name = String(file?.name || '').toLowerCase();
+          if (looksLikeHeic(file)) return true;
+          return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(name);
+        } catch (_) { return false; }
+      };
+
+      const ensureJpegBlobIfHeic = async (file) => {
+        if (!file || !looksLikeHeic(file)) return file;
+        try {
+          const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+          const blob = Array.isArray(out) ? out[0] : out;
+          return blob || file;
+        } catch (e) {
+          console.warn('HEIC convert failed', e);
+          return file;
+        }
+      };
 
       const loadImageFromDataUrl = (dataUrl) => new Promise((resolve, reject) => {
         try {
@@ -2035,19 +2073,25 @@ const handleAuth = async (e) => {
         }
       };
       const handleAvatarUpload = async (e) => {
-        const file = e?.target?.files && e.target.files[0];
-        if (!file) return;
+        const file0 = e?.target?.files && e.target.files[0];
+        if (!file0) return;
         try { e.target.value = ''; } catch (_) {}
 
-        if (!file.type || !String(file.type).startsWith('image/')) {
+        if (!isProbablyImageFile(file0)) {
           showToast('Nur Bilder unterstützt');
           return;
         }
 
         try {
-          const compressedBase64 = await compressAvatarFileToDataUrl(file, { size: 256, quality: 0.82 });
+          const file = await ensureJpegBlobIfHeic(file0);
+          const thumb = await compressAvatarFileToDataUrl(file, { size: 256, quality: 0.86 });
+          const full = await compressImageFileToDataUrl(file, { maxDim: 1200, quality: 0.78 });
           if (user) {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { avatarBase64: compressedBase64 }, { merge: true });
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+              avatarBase64: thumb,
+              avatarThumbBase64: thumb,
+              avatarFullBase64: full
+            }, { merge: true });
             showToast('Avatar geändert');
           }
         } catch (err) {
@@ -2394,22 +2438,23 @@ setSelfDestruct(false);
         } catch (error) { showToast("Fehler beim Löschen"); }
       };
       const handleImageUpload = async (e) => {
-        const file = e?.target?.files && e.target.files[0];
-        if (!file) return;
+        const file0 = e?.target?.files && e.target.files[0];
+        if (!file0) return;
         try { e.target.value = ''; } catch (_) {}
 
-        if (!file.type || !String(file.type).startsWith('image/')) {
+        if (!isProbablyImageFile(file0)) {
           showToast('Nur Bilder unterstützt');
           return;
         }
 
         try {
+          const file = await ensureJpegBlobIfHeic(file0);
           const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
           await sendMessage(null, compressed);
         } catch (err) {
           console.warn('image compress/upload failed', err);
           try {
-            const fallback = await readFileAsDataUrl(file);
+            const fallback = await readFileAsDataUrl(file0);
             await sendMessage(null, fallback);
           } catch (_) {
             showToast('Bild konnte nicht verarbeitet werden');
@@ -2442,7 +2487,15 @@ setSelfDestruct(false);
         if (isGroupChat(chat)) return chat.avatarBase64 || null;
         const pid = (chat?.participants || []).find(id => id !== user?.uid);
         const prof = pid ? getProfile(pid) : null;
-        return prof?.avatarBase64 || null;
+        return prof?.avatarThumbBase64 || prof?.avatarBase64 || null;
+      };
+
+      const getChatPartnerAvatarFull = (chat) => {
+        if (!chat) return null;
+        if (isGroupChat(chat)) return chat.avatarBase64 || null;
+        const pid = (chat?.participants || []).find(id => id !== user?.uid);
+        const prof = pid ? getProfile(pid) : null;
+        return prof?.avatarFullBase64 || prof?.avatarBase64 || prof?.avatarThumbBase64 || null;
       };
 
       const getChatParticipants = (chat) => Array.isArray(chat?.participants) ? chat.participants : [];
@@ -2969,7 +3022,35 @@ setSelfDestruct(false);
                         </div>
                       </div>
 
-                      <div className="text-[11px] text-neutral-500">
+                      
+
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benachrichtigungston</label>
+                          <select
+                            value={(() => {
+                              const v = (userProfile && userProfile.notificationSoundMode) ? String(userProfile.notificationSoundMode) : 'system';
+                              return (v === 'silent') ? 'silent' : 'system';
+                            })()}
+                            onChange={async (e) => {
+                              try {
+                                const v = e.target.value;
+                                await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { notificationSoundMode: v }, { merge: true });
+                                showToast('Gespeichert');
+                              } catch (err) {
+                                showToast('Fehler');
+                              }
+                            }}
+                            className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                          >
+                            <option value="system">System (Standard)</option>
+                            <option value="silent">Stumm</option>
+                          </select>
+                          <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – du kannst nur Systemton nutzen oder stumm schalten.</p>
+                        </div>
+                      </div>
+
+<div className="text-[11px] text-neutral-500">
                         Status: <span className="text-neutral-300">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</span>
                       </div>
                     </div>
@@ -3085,17 +3166,17 @@ setSelfDestruct(false);
                         <div className="relative mb-6">
                           {userProfile.avatarBase64 ? (
                             <img
-                              src={userProfile.avatarBase64}
+                              src={userProfile.avatarThumbBase64 || userProfile.avatarBase64}
                               className="w-24 h-24 rounded-full border-2 border-neutral-700 object-cover cursor-zoom-in"
                               alt="Profilbild"
-                              onClick={() => openImageViewer(userProfile.avatarBase64)}
+                              onClick={() => openImageViewer(userProfile.avatarFullBase64 || userProfile.avatarBase64 || userProfile.avatarThumbBase64)}
                             />
                           ) : (
                             <div className="w-24 h-24 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-3xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile?.email || '')}</div>
                           )}
                           <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
                             <Camera className="w-4 h-4" />
-                            <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                            <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleAvatarUpload} />
                           </label>
                         </div>
                         <form onSubmit={updateProfileSettings} className="w-full max-w-xs space-y-4">
@@ -3148,10 +3229,10 @@ setSelfDestruct(false);
                               <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
                                 {chatFriendResult.avatarBase64 ? (
                                   <img
-                                    src={chatFriendResult.avatarBase64}
+                                    src={chatFriendResult.avatarThumbBase64 || chatFriendResult.avatarBase64}
                                     className="w-full h-full object-cover cursor-zoom-in"
                                     alt="Profilbild"
-                                    onClick={(e) => { e.stopPropagation(); openImageViewer(chatFriendResult.avatarBase64); }}
+                                    onClick={(e) => { e.stopPropagation(); openImageViewer(chatFriendResult.avatarFullBase64 || chatFriendResult.avatarBase64 || chatFriendResult.avatarThumbBase64); }}
                                   />
                                 ) : initialsFrom(chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email || '')}
                               </div>
@@ -3189,7 +3270,7 @@ setSelfDestruct(false);
                                       src={getChatPartnerAvatar(chat)}
                                       className="w-full h-full object-cover cursor-zoom-in"
                                       alt="Profilbild"
-                                      onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatar(chat)); }}
+                                      onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatarFull(chat) || getChatPartnerAvatar(chat)); }}
                                     />
                                   ) : initialsFrom(getChatPartnerName(chat))}
                                   </div>
@@ -3355,11 +3436,11 @@ setSelfDestruct(false);
                         <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
                           <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-x-auto no-scrollbar`}>
                             <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Bild senden">
-                              <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                              <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleImageUpload} />
                             </label>
 
                             <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Foto machen">
-                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageUpload} />
+                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={handleImageUpload} />
                             </label>
                             
                             <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
@@ -4027,10 +4108,10 @@ setSelfDestruct(false);
                             <div className="w-9 h-9 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
                               {p.avatarBase64 ? (
                                  <img
-                                   src={p.avatarBase64}
+                                   src={p.avatarThumbBase64 || p.avatarBase64}
                                    className="w-full h-full object-cover cursor-zoom-in"
                                    alt="Profilbild"
-                                   onClick={(e) => { e.stopPropagation(); openImageViewer(p.avatarBase64); }}
+                                   onClick={(e) => { e.stopPropagation(); openImageViewer(p.avatarFullBase64 || p.avatarBase64 || p.avatarThumbBase64); }}
                                  />
                                ) : (p.username || '?').substring(0,2)}
                             </div>
@@ -4083,7 +4164,7 @@ setSelfDestruct(false);
                         src={getChatPartnerAvatar(activeChat)}
                         className="w-20 h-20 rounded-full border-2 border-neutral-700 object-cover mb-4 cursor-zoom-in"
                         alt="Profilbild"
-                        onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatar(activeChat)); }}
+                        onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatarFull(activeChat) || getChatPartnerAvatar(activeChat)); }}
                       />
                       ) : (
                         <div className="w-20 h-20 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-2xl font-bold text-white uppercase mb-4">{initialsFrom(getChatPartnerName(activeChat))}</div>
@@ -4129,7 +4210,7 @@ setSelfDestruct(false);
                            return (
                              <div key={uid} className="flex items-center gap-3 p-2 rounded-lg bg-black/40 border border-neutral-800">
                                <div className="w-9 h-9 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase overflow-hidden shrink-0">
-                                 {p?.avatarBase64 ? <img src={p.avatarBase64} className="w-full h-full object-cover"/> : (p?.username || '?').substring(0,2)}
+                                 {p?.avatarBase64 ? <img src={p.avatarThumbBase64 || p.avatarBase64} className="w-full h-full object-cover"/> : (p?.username || '?').substring(0,2)}
                                </div>
                                <div className="flex-1">
                                  <div className="text-sm text-white font-medium truncate">{me ? 'Du' : (p?.username || 'Unbekannt')}</div>
@@ -4169,10 +4250,10 @@ setSelfDestruct(false);
                                        <div className="w-9 h-9 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
                                          {p.avatarBase64 ? (
                                  <img
-                                   src={p.avatarBase64}
+                                   src={p.avatarThumbBase64 || p.avatarBase64}
                                    className="w-full h-full object-cover cursor-zoom-in"
                                    alt="Profilbild"
-                                   onClick={(e) => { e.stopPropagation(); openImageViewer(p.avatarBase64); }}
+                                   onClick={(e) => { e.stopPropagation(); openImageViewer(p.avatarFullBase64 || p.avatarBase64 || p.avatarThumbBase64); }}
                                  />
                                ) : (p.username || '?').substring(0,2)}
                                        </div>

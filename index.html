@@ -78,7 +78,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=25').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=26').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -370,9 +370,7 @@ function AmoledCalendarApp() {
       const [activeChat, setActiveChat] = useState(null);
       const [chatMessages, setChatMessages] = useState([]);
       const [newMessageText, setNewMessageText] = useState('');
-      
-      const [replyingTo, setReplyingTo] = useState(null);
-      const [editingMessage, setEditingMessage] = useState(null);
+const [editingMessage, setEditingMessage] = useState(null);
       const [selectedMessageId, setSelectedMessageId] = useState(null); 
       const [selfDestruct, setSelfDestruct] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
@@ -1123,11 +1121,16 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         const unsubscribeMessages = onSnapshot(query(messagesRef, orderBy('timestamp')), (snapshot) => {
           const loaded = [];
           const unreadToUpdate = [];
+          const deliveredToUpdate = [];
           snapshot.forEach(doc => {
             const data = doc.data();
             loaded.push({ id: doc.id, ...data });
             if (data.senderId !== user.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
               unreadToUpdate.push(doc.id);
+            }
+            // Zustellung markieren (1:1 Chats): sobald die Nachricht beim Empfänger ankommt
+            if (data.senderId !== user.uid && !data.deliveredAt && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
+              deliveredToUpdate.push(doc.id);
             }
           });
           loaded.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
@@ -1138,7 +1141,23 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
             return merged;
           });
-          
+
+          // System-Notification für neue eingehende Nachrichten (wenn App nicht im Vordergrund ist)
+          try {
+            const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
+            if (lastMsg && lastMsg.senderId !== user.uid) {
+              const key = `onyx_last_notify_${activeChat.id}`;
+              const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
+              const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
+              if (!isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
+                const title = getChatPartnerName(activeChat);
+                const preview = lastMsg.deleted ? 'Nachricht gelöscht' : (lastMsg.image ? '📷 Bild' : (lastMsg.audio ? '🎙️ Audio' : (lastMsg.event ? '📅 Termin' : (String(lastMsg.text || '').slice(0, 120) || 'Neue Nachricht'))));
+                showSystemNotification(title, preview, `onyx_chat_${activeChat.id}`);
+                localStorage.setItem(key, String(lastMsg.timestamp || Date.now()));
+              }
+            }
+          } catch (e) {}
+
           // lastRead (für Gruppen-Read-Receipts)
           if (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible') {
             const nowMs = Date.now();
@@ -1151,6 +1170,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           if (unreadToUpdate.length > 0) {
             unreadToUpdate.forEach(msgId => {
               updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
+            });
+          }
+
+          if (deliveredToUpdate.length > 0) {
+            const deliveredAt = Date.now();
+            deliveredToUpdate.forEach(msgId => {
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
             });
           }
 
@@ -1195,7 +1221,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
-            const swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+            const swRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js?v=26');
             const token = await getToken(messaging, { 
               vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI',
               serviceWorkerRegistration: swRegistration
@@ -1210,7 +1236,10 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       useEffect(() => {
         if (!messaging) return;
         const unsubscribeMessage = onMessage(messaging, (payload) => {
-          showToast(payload.notification?.title || "Neue Benachrichtigung!");
+          const title = payload?.notification?.title || 'Neue Benachrichtigung!';
+          const body = payload?.notification?.body || '';
+          showToast(title);
+          showSystemNotification(title, body, 'onyx_fcm');
         });
         return () => unsubscribeMessage();
       }, []);
@@ -1232,6 +1261,38 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         const id = Date.now();
         setToasts(prev => [...prev, { id, message }]);
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+      };
+
+
+      const showSystemNotification = async (title, body, tag = 'onyx') => {
+        try {
+          if (typeof window === 'undefined') return;
+          if (!('Notification' in window)) return;
+          if (Notification.permission !== 'granted') return;
+
+          const finalBody = (body && String(body).trim().length > 0) ? `${body}
+Kalender aktuell` : 'Kalender aktuell';
+          const options = {
+            body: finalBody,
+            icon: './icon-192.png',
+            badge: './icon-192.png',
+            tag,
+            renotify: true,
+            vibrate: [200, 100, 200]
+          };
+
+          if ('serviceWorker' in navigator) {
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (reg && reg.showNotification) {
+              await reg.showNotification(title, options);
+              return;
+            }
+          }
+
+          // Fallback (falls kein SW verfügbar ist)
+          // eslint-disable-next-line no-new
+          new Notification(title, options);
+        } catch (e) {}
       };
 
       const getWeatherIcon = (code, className = "w-8 h-8 text-white") => {
@@ -1757,31 +1818,100 @@ const handleAuth = async (e) => {
         }
       };
 
-      const handleAvatarUpload = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onloadend = () => {
+      const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+        try {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('FILE_READ_ERROR'));
+          reader.readAsDataURL(file);
+        } catch (e) { reject(e); }
+      });
+
+      const loadImageFromDataUrl = (dataUrl) => new Promise((resolve, reject) => {
+        try {
           const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const size = 200; 
-            canvas.width = size; canvas.height = size;
-            const ctx = canvas.getContext('2d');
-            const scale = Math.max(size / img.width, size / img.height);
-            const x = (size / scale - img.width) / 2;
-            const y = (size / scale - img.height) / 2;
-            ctx.drawImage(img, x, y, img.width, img.height, 0, 0, size, size);
-            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
-            if (user) {
-              setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { avatarBase64: compressedBase64 }, { merge: true })
-                .then(() => showToast("Avatar geändert"))
-                .catch(() => showToast("Fehler bei Avatar"));
-            }
-          };
-          img.src = reader.result;
-        };
-        reader.readAsDataURL(file);
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('IMAGE_DECODE_ERROR'));
+          img.src = dataUrl;
+        } catch (e) { reject(e); }
+      });
+
+      const compressImageFileToDataUrl = async (file, { maxDim = 1600, quality = 0.72 } = {}) => {
+        const original = await readFileAsDataUrl(file);
+        let img;
+        try { img = await loadImageFromDataUrl(original); } catch (_) { return original; }
+
+        const w = img.naturalWidth || img.width || 0;
+        const h = img.naturalHeight || img.height || 0;
+        if (!w || !h) return original;
+
+        const scale = Math.min(1, maxDim / Math.max(w, h));
+        const nw = Math.max(1, Math.round(w * scale));
+        const nh = Math.max(1, Math.round(h * scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = nw;
+        canvas.height = nh;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, nw, nh);
+
+        // Prefer WebP when available (smaller); fallback to JPEG.
+        try {
+          const webp = canvas.toDataURL('image/webp', quality);
+          if (webp && webp.startsWith('data:image/webp') && webp.length < original.length * 0.98) return webp;
+        } catch (_) {}
+        try {
+          return canvas.toDataURL('image/jpeg', quality);
+        } catch (_) {
+          return original;
+        }
+      };
+
+      const compressAvatarFileToDataUrl = async (file, { size = 256, quality = 0.82 } = {}) => {
+        const original = await readFileAsDataUrl(file);
+        let img;
+        try { img = await loadImageFromDataUrl(original); } catch (_) { return original; }
+
+        const w = img.naturalWidth || img.width || 0;
+        const h = img.naturalHeight || img.height || 0;
+        if (!w || !h) return original;
+
+        const minDim = Math.min(w, h);
+        const sx = Math.max(0, Math.round((w - minDim) / 2));
+        const sy = Math.max(0, Math.round((h - minDim) / 2));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+
+        try {
+          return canvas.toDataURL('image/jpeg', quality);
+        } catch (_) {
+          return original;
+        }
+      };
+      const handleAvatarUpload = async (e) => {
+        const file = e?.target?.files && e.target.files[0];
+        if (!file) return;
+        try { e.target.value = ''; } catch (_) {}
+
+        if (!file.type || !String(file.type).startsWith('image/')) {
+          showToast('Nur Bilder unterstützt');
+          return;
+        }
+
+        try {
+          const compressedBase64 = await compressAvatarFileToDataUrl(file, { size: 256, quality: 0.82 });
+          if (user) {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { avatarBase64: compressedBase64 }, { merge: true });
+            showToast('Avatar geändert');
+          }
+        } catch (err) {
+          console.warn('avatar compress/upload failed', err);
+          showToast('Fehler bei Avatar');
+        }
       };
 
       const getProfile = (uid) => allProfiles.find(p => p.id === uid) || null;
@@ -1986,15 +2116,18 @@ const handleAuth = async (e) => {
          }, 2200);
       };
 
-      // Keep mobile keyboard open after send/edit by re-focusing the chat input.
+      // Keep mobile keyboard open after send/edit by aggressively re-focusing the chat input.
       const refocusChatInput = () => {
         try {
-          requestAnimationFrame(() => {
+          const tryFocus = () => {
             const el = document.getElementById('chatInput');
             if (!el) return;
             try { el.focus({ preventScroll: true }); }
             catch (e) { try { el.focus(); } catch (e2) {} }
-          });
+          };
+          requestAnimationFrame(tryFocus);
+          setTimeout(tryFocus, 30);
+          setTimeout(tryFocus, 120);
         } catch (e) {}
       };
 
@@ -2039,14 +2172,6 @@ const handleAuth = async (e) => {
           read: false
         };
 
-        if (replyingTo) {
-          payload.replyTo = {
-            id: replyingTo.id,
-            text: replyingTo.text || 'Medien/Termin',
-            senderName: replyingTo.senderId === user.uid ? 'Du' : (getProfile(replyingTo.senderId)?.displayName || getProfile(replyingTo.senderId)?.username || 'Unbekannt')
-          };
-        }
-
         // Optimistic UI (erscheint sofort)
         const optimistic = { id: `local_${clientMsgId}`, ...payload, pending: true };
         setChatMessages(prev => {
@@ -2057,8 +2182,7 @@ const handleAuth = async (e) => {
 
         // Input sofort leeren
         setNewMessageText('');
-        setReplyingTo(null);
-        setSelfDestruct(false);
+setSelfDestruct(false);
         refocusChatInput();
 
         try {
@@ -2114,27 +2238,28 @@ const handleAuth = async (e) => {
           refocusChatInput();
         } catch (error) { showToast("Fehler beim Löschen"); }
       };
-
-      const handleImageUpload = (e) => {
-        const file = e.target.files[0];
+      const handleImageUpload = async (e) => {
+        const file = e?.target?.files && e.target.files[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 800; const MAX_HEIGHT = 800;
-            let width = img.width; let height = img.height;
-            if (width > height) { if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } } 
-            else { if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; } }
-            canvas.width = width; canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            sendMessage(null, canvas.toDataURL('image/jpeg', 0.7));
-          };
-          img.src = reader.result;
-        };
-        reader.readAsDataURL(file);
+        try { e.target.value = ''; } catch (_) {}
+
+        if (!file.type || !String(file.type).startsWith('image/')) {
+          showToast('Nur Bilder unterstützt');
+          return;
+        }
+
+        try {
+          const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
+          await sendMessage(null, compressed);
+        } catch (err) {
+          console.warn('image compress/upload failed', err);
+          try {
+            const fallback = await readFileAsDataUrl(file);
+            await sendMessage(null, fallback);
+          } catch (_) {
+            showToast('Bild konnte nicht verarbeitet werden');
+          }
+        }
       };
 
       const formatTime = (ts) => {
@@ -2910,14 +3035,7 @@ const handleAuth = async (e) => {
                                     <Bomb className="w-3 h-3" /> Zerstört sich nach Lesen
                                   </div>
                                 )}
-
-                                {msg.replyTo && (
-                                  <div className={`text-xs p-2 rounded-lg mb-2 border-l-2 opacity-80 truncate ${isMe ? 'bg-black/10 border-black' : 'bg-black/30 border-white'}`}>
-                                    <span className="font-bold">{msg.replyTo.senderName}</span>: {msg.replyTo.text}
-                                  </div>
-                                )}
-                                
-                                {!msg.deleted && msg.image && (
+{!msg.deleted && msg.image && (
                                   <img
                                     src={msg.image}
                                     alt="Upload"
@@ -2974,6 +3092,8 @@ const handleAuth = async (e) => {
                                         }
                                         if (msg.readAt) return `gesehen um ${formatTime(msg.readAt)}`;
                                         if (msg.read) return 'gesehen';
+                                        if (msg.deliveredAt) return `zugestellt um ${formatTime(msg.deliveredAt)}`;
+                                        if (msg.delivered) return 'zugestellt';
                                         return 'gesendet';
                                       })()}
                                     </span>
@@ -2982,9 +3102,9 @@ const handleAuth = async (e) => {
 
                                 {showActions && (
                                   <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
-                                    <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Antworten"><CornerUpLeft className="w-4 h-4" /></button>
+                                    
                                     {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
-                                      <button onClick={(e) => { e.stopPropagation(); setEditingMessage(msg); setNewMessageText(msg.text); setReplyingTo(null); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
+                                      <button onClick={(e) => { e.stopPropagation(); setEditingMessage(msg); setNewMessageText(msg.text); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
                                     )}
                                     {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="Löschen"><Trash2 className="w-4 h-4" /></button>
@@ -2999,12 +3119,10 @@ const handleAuth = async (e) => {
                       </div>
 
                       <div className="p-4 bg-neutral-950 border-t border-neutral-900 shrink-0">
-                        {(replyingTo || editingMessage) && (
+                        {editingMessage && (
                           <div className="flex items-center justify-between bg-neutral-900 border border-neutral-800 p-2 px-3 rounded-t-xl text-xs text-neutral-400 border-b-0">
-                            <span className="truncate">
-                              {editingMessage ? 'Nachricht bearbeiten...' : `Antwort an ${replyingTo.senderId === user.uid ? 'Dich' : getProfile(replyingTo.senderId)?.username || 'Unbekannt'}: ${replyingTo.text?.substring(0,30) || 'Medien'}...`}
-                            </span>
-                            <button onClick={() => { setReplyingTo(null); setEditingMessage(null); setNewMessageText(''); }} className="hover:text-white shrink-0 ml-2"><X className="w-4 h-4"/></button>
+                            <span className="truncate">Nachricht bearbeiten...</span>
+                            <button onClick={() => { setEditingMessage(null); setNewMessageText(''); }} className="hover:text-white shrink-0 ml-2"><X className="w-4 h-4"/></button>
                           </div>
                         )}
 
@@ -3040,7 +3158,7 @@ const handleAuth = async (e) => {
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); } }} 
                                 placeholder="Nachricht..." 
                                 rows="1" 
-                                className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(replyingTo || editingMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
+                                className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(editingMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
                                 style={{ minHeight: '44px', maxHeight: '120px' }} 
                               />
                             )}

@@ -285,6 +285,30 @@ function AmoledCalendarApp() {
       const [searchQuery, setSearchQuery] = useState('');
       const [searchResults, setSearchResults] = useState([]);
 
+      // --- BILD-VOLLBILD VIEWER ---
+      const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
+      const [imageViewerSrc, setImageViewerSrc] = useState(null);
+
+      const openImageViewer = (src) => {
+        if (!src) return;
+        setImageViewerSrc(src);
+        setIsImageViewerOpen(true);
+      };
+
+      const closeImageViewer = () => {
+        setIsImageViewerOpen(false);
+        setImageViewerSrc(null);
+      };
+
+      useEffect(() => {
+        if (!isImageViewerOpen) return;
+        const onKey = (e) => {
+          if (e.key === 'Escape') closeImageViewer();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [isImageViewerOpen]);
+
       // --- KALENDER & SCHICHTEN STATES ---
       const [events, setEvents] = useState([]); // Default private events
       const [customCalendars, setCustomCalendars] = useState([]);
@@ -2684,7 +2708,12 @@ const handleAuth = async (e) => {
                       <div className="flex flex-col items-center border border-neutral-800 rounded-xl p-8 bg-neutral-950/50">
                         <div className="relative mb-6">
                           {userProfile.avatarBase64 ? (
-                            <img src={userProfile.avatarBase64} className="w-24 h-24 rounded-full border-2 border-neutral-700 object-cover" />
+                            <img
+                              src={userProfile.avatarBase64}
+                              className="w-24 h-24 rounded-full border-2 border-neutral-700 object-cover cursor-zoom-in"
+                              alt="Profilbild"
+                              onClick={() => openImageViewer(userProfile.avatarBase64)}
+                            />
                           ) : (
                             <div className="w-24 h-24 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-3xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile?.email || '')}</div>
                           )}
@@ -2741,7 +2770,14 @@ const handleAuth = async (e) => {
                           <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">
                             <div onClick={() => startChatWithProfile(chatFriendResult)} className="p-4 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
                               <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
-                                {chatFriendResult.avatarBase64 ? <img src={chatFriendResult.avatarBase64} className="w-full h-full object-cover"/> : initialsFrom(chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email || '')}
+                                {chatFriendResult.avatarBase64 ? (
+                                  <img
+                                    src={chatFriendResult.avatarBase64}
+                                    className="w-full h-full object-cover cursor-zoom-in"
+                                    alt="Profilbild"
+                                    onClick={(e) => { e.stopPropagation(); openImageViewer(chatFriendResult.avatarBase64); }}
+                                  />
+                                ) : initialsFrom(chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email || '')}
                               </div>
                               <div className="flex flex-col">
                                 <span className="font-medium text-white">{chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email}</span>
@@ -2770,7 +2806,14 @@ const handleAuth = async (e) => {
                               return (
                                 <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
                                   <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
-                                    {getChatPartnerAvatar(chat) ? <img src={getChatPartnerAvatar(chat)} className="w-full h-full object-cover"/> : initialsFrom(getChatPartnerName(chat))}
+                                    {getChatPartnerAvatar(chat) ? (
+                                    <img
+                                      src={getChatPartnerAvatar(chat)}
+                                      className="w-full h-full object-cover cursor-zoom-in"
+                                      alt="Profilbild"
+                                      onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatar(chat)); }}
+                                    />
+                                  ) : initialsFrom(getChatPartnerName(chat))}
                                   </div>
                                   <div className="flex-1 overflow-hidden">
                                     <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
@@ -2844,7 +2887,14 @@ const handleAuth = async (e) => {
                                   </div>
                                 )}
                                 
-                                {msg.image && <img src={msg.image} alt="Upload" className="rounded-lg mb-2 max-h-64 object-contain" />}
+                                {msg.image && (
+                                  <img
+                                    src={msg.image}
+                                    alt="Upload"
+                                    className="rounded-lg mb-2 max-h-64 object-contain cursor-zoom-in"
+                                    onClick={(e) => { e.stopPropagation(); openImageViewer(msg.image); }}
+                                  />
+                                )}
                                 {msg.audio && <audio src={msg.audio} controls className="mb-2 w-full" />}
                                 
                                 {/* Termin-Kachel Rendering */}
@@ -3551,7 +3601,14 @@ const handleAuth = async (e) => {
                         .map(p => (
                           <div key={p.id} onClick={() => { setGroupDraftMembers(prev => Array.from(new Set([...(prev || []), p.id]))); setGroupMemberSearch(''); }} className="p-3 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
                             <div className="w-9 h-9 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
-                              {p.avatarBase64 ? <img src={p.avatarBase64} className="w-full h-full object-cover"/> : (p.username || '?').substring(0,2)}
+                              {p.avatarBase64 ? (
+                                 <img
+                                   src={p.avatarBase64}
+                                   className="w-full h-full object-cover cursor-zoom-in"
+                                   alt="Profilbild"
+                                   onClick={(e) => { e.stopPropagation(); openImageViewer(p.avatarBase64); }}
+                                 />
+                               ) : (p.username || '?').substring(0,2)}
                             </div>
                             <div className="flex-1">
                               <div className="text-white text-sm font-medium">{p.username}</div>
@@ -3598,7 +3655,12 @@ const handleAuth = async (e) => {
                    <button onClick={() => setShowPartnerStats(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white"><X className="w-5 h-5"/></button>
                    <div className="flex flex-col items-center mb-8">
                      {getChatPartnerAvatar(activeChat) ? (
-                        <img src={getChatPartnerAvatar(activeChat)} className="w-20 h-20 rounded-full border-2 border-neutral-700 object-cover mb-4" />
+                        <img
+                        src={getChatPartnerAvatar(activeChat)}
+                        className="w-20 h-20 rounded-full border-2 border-neutral-700 object-cover mb-4 cursor-zoom-in"
+                        alt="Profilbild"
+                        onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatar(activeChat)); }}
+                      />
                       ) : (
                         <div className="w-20 h-20 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-2xl font-bold text-white uppercase mb-4">{initialsFrom(getChatPartnerName(activeChat))}</div>
                       )}
@@ -3681,7 +3743,14 @@ const handleAuth = async (e) => {
                                    .map(p => (
                                      <div key={p.id} onClick={() => { addMemberToGroup(activeChatData || activeChat, p.id); setGroupEditSearch(''); }} className="p-3 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
                                        <div className="w-9 h-9 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
-                                         {p.avatarBase64 ? <img src={p.avatarBase64} className="w-full h-full object-cover"/> : (p.username || '?').substring(0,2)}
+                                         {p.avatarBase64 ? (
+                                 <img
+                                   src={p.avatarBase64}
+                                   className="w-full h-full object-cover cursor-zoom-in"
+                                   alt="Profilbild"
+                                   onClick={(e) => { e.stopPropagation(); openImageViewer(p.avatarBase64); }}
+                                 />
+                               ) : (p.username || '?').substring(0,2)}
                                        </div>
                                        <span className="font-medium text-white text-sm">{p.username}</span>
                                        <Plus className="w-4 h-4 text-neutral-400 ml-auto" />
@@ -3731,6 +3800,29 @@ const handleAuth = async (e) => {
                     </div>
                   </form>
                </div>
+            </div>
+          )}
+
+          {/* IMAGE VIEWER (Vollbild) */}
+          {isImageViewerOpen && imageViewerSrc && (
+            <div
+              className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={closeImageViewer}
+            >
+              <button
+                onClick={(e) => { e.stopPropagation(); closeImageViewer(); }}
+                className="absolute top-4 right-4 p-2 rounded-full bg-neutral-900/70 border border-neutral-700 text-white hover:bg-neutral-800 transition-colors"
+                aria-label="Schließen"
+                title="Schließen"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <img
+                src={imageViewerSrc}
+                alt="Bild"
+                className="max-h-[90vh] max-w-[95vw] object-contain rounded-2xl border border-neutral-800 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              />
             </div>
           )}
         </div>

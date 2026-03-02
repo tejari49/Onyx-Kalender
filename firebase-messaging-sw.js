@@ -14,7 +14,7 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-const CACHE_NAME = 'onyx-v22';
+const CACHE_NAME = 'onyx-v23';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -46,6 +46,13 @@ self.addEventListener('activate', (event) => {
 // - Static assets: cache-first
 self.addEventListener('fetch', (event) => {
   const req = event.request;
+  const url = new URL(req.url);
+
+  // NEVER cache Firebase/Google API calls (needed for real-time listeners)
+  if (url.hostname.endsWith('googleapis.com') || url.hostname.endsWith('gstatic.com') || url.hostname.endsWith('firebaseapp.com') || url.hostname.endsWith('firebaseio.com')) {
+    event.respondWith(fetch(req));
+    return;
+  }
 
   // SPA navigations
   if (req.mode === 'navigate') {

@@ -60,7 +60,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=21').then(registration => {
+        navigator.serviceWorker.register('./firebase-messaging-sw.js?v=23').then(registration => {
           console.log('ServiceWorker registriert:', registration.scope);
         }).catch(err => {
           console.log('ServiceWorker Registrierung fehlgeschlagen:', err);
@@ -78,8 +78,8 @@
     } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
-    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove } from "firebase/firestore";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "firebase/auth";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction } from "firebase/firestore";
     import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
     const customFirebaseConfig = {
@@ -212,7 +212,7 @@
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v22 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v23 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -319,6 +319,11 @@ function AmoledCalendarApp() {
       const todayKey = new Date().toISOString().split('T')[0];
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
+      const [chatFriendResult, setChatFriendResult] = useState(null);
+      const [chatFriendLoading, setChatFriendLoading] = useState(false);
+      const [chatFriendError, setChatFriendError] = useState('');
+      const chatFriendLookupTimer = useRef(null);
+
       const [myChats, setMyChats] = useState([]);
       const [activeChat, setActiveChat] = useState(null);
       const [chatMessages, setChatMessages] = useState([]);
@@ -463,27 +468,33 @@ const saveUsername = async (e) => {
   if (!user) return;
   const unameRaw = new FormData(e.target).get('username') || '';
   const uname = String(unameRaw).trim();
-  if (!uname) return showToast("Bitte Benutzernamen eingeben");
-  if (uname.length > 20) return showToast("Max. 20 Zeichen");
-  if (allProfiles.some(p => p.username?.toLowerCase() === uname.toLowerCase() && p.id !== user.uid)) {
-    return showToast("Name vergeben!");
-  }
+  if (!uname) return showToast('Bitte Namen eingeben');
+  if (uname.length < 2) return showToast('Name zu kurz');
+  if (uname.length > 40) return showToast('Max. 40 Zeichen');
+
   try {
     const dataToSave = {
       displayName: uname,
-      username: uname, // legacy compatibility
+      username: uname.slice(0, 20), // legacy compatibility
       uid: user.uid,
       email: user.email,
+      emailLower: (user.email || '').toLowerCase(),
       updatedAt: Date.now(),
     };
     await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), dataToSave, { merge: true });
+    try { await updateProfile(auth.currentUser, { displayName: uname }); } catch (_) {}
+
     // UI sofort aktualisieren
     try { setUserProfile(prev => ({ ...(prev||{}), ...dataToSave })); } catch(_) {}
-    try { localStorage.setItem(`onyx_displayName_${user.uid}`, uname); localStorage.setItem(`onyx_username_${user.uid}`, uname); } catch(_) {}
+    try {
+      localStorage.setItem(`onyx_displayName_${user.uid}`, uname);
+      localStorage.setItem(`onyx_username_${user.uid}`, dataToSave.username);
+    } catch(_) {}
 
-    showToast("Profil gespeichert");
+    showToast('Profil gespeichert');
   } catch (err) {
-    showToast("Fehler beim Speichern");
+    console.error('saveUsername failed', err);
+    showToast('Fehler beim Speichern');
   }
 };
 
@@ -506,6 +517,7 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
     const next = {
       uid: authUser.uid,
       email: emailVal,
+      emailLower: (emailVal || '').toLowerCase(),
       updatedAt: Date.now(),
     };
     // displayName setzen (für Begrüßung). Nur überschreiben, wenn leer/kurz.
@@ -518,33 +530,57 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
       }
     }
 
-    // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt
-    if (!existing || !existing.friendCode || !/^\d{5}$/.test(String(existing.friendCode))) {
-      try {
-        const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
-        const snaps = await getDocs(profilesCol);
-        const used = new Set();
-        snaps.forEach(s => {
-          const d = s.data() || {};
-          const fc = d.friendCode;
-          if (typeof fc === 'string' && /^\d{5}$/.test(fc)) used.add(fc);
-          if (typeof fc === 'number') {
-            const sfc = String(fc).padStart(5,'0');
-            if (/^\d{5}$/.test(sfc)) used.add(sfc);
-          }
-        });
-
-        let code = '';
-        for (let i=0;i<20;i++) {
-          code = String(Math.floor(Math.random()*100000)).padStart(5,'0');
-          if (!used.has(code)) break;
-        }
-        if (!code) code = String(Math.floor(Math.random()*100000)).padStart(5,'0');
-        next.friendCode = code;
-        next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
-      } catch (e) {
-        console.warn('friendCode generation failed', e);
+    // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt (bombensicher, ohne Full-Scan)
+    const normalizeFriendCode = (v) => {
+      const s = String(v ?? '').trim();
+      if (/^\d{5}$/.test(s)) return s;
+      if (/^\d+$/.test(s)) {
+        try { return String(parseInt(s, 10)).padStart(5, '0'); } catch(e) { return ''; }
       }
+      return '';
+    };
+
+    if (!existing || !normalizeFriendCode(existing.friendCode)) {
+      let claimed = '';
+      for (let i = 0; i < 25 && !claimed; i++) {
+        const candidate = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+        const codeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendCodes', candidate);
+        try {
+          await runTransaction(db, async (tx) => {
+            const ds = await tx.get(codeRef);
+            if (ds.exists()) throw new Error('CODE_TAKEN');
+            tx.set(codeRef, { uid: authUser.uid, createdAt: Date.now() });
+          });
+          claimed = candidate;
+        } catch (e) {
+          const code = String(e?.code || '');
+          const msg = String(e?.message || '');
+          // Wenn friendCodes wegen Rules nicht erlaubt ist, fallback auf random ohne Reservierung
+          if (code === 'permission-denied' || msg.toLowerCase().includes('permission')) {
+            // friendCodes-Registry nicht erlaubt -> uniqueness best-effort über profiles Query
+            try {
+              const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+              const q2 = query(profilesCol, where('friendCode', '==', candidate), limit(1));
+              const s2 = await getDocs(q2);
+              if (s2.empty) {
+                claimed = candidate;
+                break;
+              }
+              // sonst weiter versuchen
+            } catch (_) {
+              // im Zweifel trotzdem setzen
+              claimed = candidate;
+              break;
+            }
+          }
+          // sonst: erneut versuchen
+        }
+      }
+      if (!claimed) claimed = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+      next.friendCode = claimed;
+      next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
+    } else {
+      next.friendCode = normalizeFriendCode(existing.friendCode);
     }
 
 
@@ -977,6 +1013,50 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeCals(); };
       }, [user]);
 
+      // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---
+      useEffect(() => {
+        if (!user) return;
+        const code = normalizeChatId(chatSearchQuery);
+        // nur Ziffern + max 5
+        if (code !== (chatSearchQuery || '')) {
+          setChatSearchQuery(code);
+          return;
+        }
+        if (!/^\d{5}$/.test(code)) {
+          setChatFriendResult(null);
+          setChatFriendError('');
+          setChatFriendLoading(false);
+          return;
+        }
+        setChatFriendLoading(true);
+        setChatFriendError('');
+        if (chatFriendLookupTimer.current) clearTimeout(chatFriendLookupTimer.current);
+        chatFriendLookupTimer.current = setTimeout(async () => {
+          try {
+            const prof = await findProfileByFriendCode(code);
+            if (!prof) {
+              setChatFriendResult(null);
+              setChatFriendError('Kein Nutzer gefunden');
+            } else if (prof.id === user.uid) {
+              setChatFriendResult(null);
+              setChatFriendError('Das bist du selbst');
+            } else {
+              setChatFriendResult(prof);
+              setChatFriendError('');
+            }
+          } catch (e) {
+            console.warn('friend lookup failed', e);
+            setChatFriendResult(null);
+            setChatFriendError('Suche fehlgeschlagen');
+          } finally {
+            setChatFriendLoading(false);
+          }
+        }, 250);
+        return () => {
+          if (chatFriendLookupTimer.current) clearTimeout(chatFriendLookupTimer.current);
+        };
+      }, [chatSearchQuery, user]);
+
       // --- CUSTOM CALENDAR EVENTS SYNC ---
       useEffect(() => {
         if (!user || customCalendars.length === 0) return;
@@ -998,7 +1078,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       useEffect(() => {
         if (!activeChat || !user) return;
         const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
-        const unsubscribeMessages = onSnapshot(query(messagesRef), (snapshot) => {
+        const unsubscribeMessages = onSnapshot(query(messagesRef, orderBy('timestamp')), (snapshot) => {
           const loaded = [];
           const unreadToUpdate = [];
           snapshot.forEach(doc => {
@@ -1009,7 +1089,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             }
           });
           loaded.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-          setChatMessages(loaded);
+          const serverIds = new Set(loaded.map(m => m.clientMsgId).filter(Boolean));
+          setChatMessages(prev => {
+            const pending = (prev || []).filter(m => m && m.pending && m.clientMsgId && !serverIds.has(m.clientMsgId));
+            const merged = [...loaded, ...pending];
+            merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            return merged;
+          });
           
           // lastRead (für Gruppen-Read-Receipts)
           if (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible') {
@@ -1031,6 +1117,9 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             setLastChatVisit(now);
             localStorage.setItem('onyx_last_chat_visit', now.toString());
           }
+        }, (err) => {
+          console.error('CHAT_MESSAGES_SNAPSHOT_ERROR', err);
+          showToast('Chat Live-Sync Fehler');
         });
         return () => unsubscribeMessages();
       }, [activeChat, user, currentView, secretView]);
@@ -1141,6 +1230,10 @@ const handleAuth = async (e) => {
     // Sofort State setzen (nicht nur auf onAuthStateChanged warten)
     setUser(signedInUser);
     setIsLoggedIn(true);
+
+    if (isRegistering && String(fullName||'').trim().length >= 2) {
+      try { await updateProfile(signedInUser, { displayName: String(fullName||'').trim() }); } catch(_) {}
+    }
 
     await ensureProfileAfterAuth(signedInUser, { fullName: String(fullName||'').trim(), isRegistering });
   } catch (error) {
@@ -1548,8 +1641,7 @@ const handleAuth = async (e) => {
           if(!shareCalData) return;
           const email = shareUsername.trim().toLowerCase();
           // Kalender-Freunde werden über E-Mail hinzugefügt (nicht über Username)
-          const targetProfile = allProfiles.find(p => (p.email || '').toLowerCase() === email) 
-                             || allProfiles.find(p => (p.username || '').toLowerCase() === email); // fallback
+          const targetProfile = await findProfileByEmailLower(email);
           if(!targetProfile) return showToast("Nutzer nicht gefunden (E-Mail prüfen)");
           if(targetProfile.id === user.uid) return showToast("Das bist du selbst.");
 
@@ -1579,15 +1671,48 @@ const handleAuth = async (e) => {
 
       const updateProfileSettings = async (e) => {
         e.preventDefault();
-        const uname = new FormData(e.target).get('username').trim();
-        if (!uname) return;
-        if (allProfiles.some(p => (p.username || '').toLowerCase() === (uname || '').toLowerCase() && p.id !== user.uid)) return showToast("Name vergeben!");
+        if (!user) return;
+        const nameRaw = new FormData(e.target).get('displayName') || new FormData(e.target).get('username') || '';
+        const displayName = String(nameRaw).trim();
+        if (!displayName || displayName.length < 2) return showToast('Bitte Namen eingeben (min. 2 Zeichen)');
+        if (displayName.length > 40) return showToast('Name zu lang (max. 40)');
+
         try {
-          const dataToSave = { username: uname, uid: user.uid, email: user.email };
+          const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+          const dataToSave = {
+            displayName,
+            username: displayName.slice(0, 20), // legacy compatibility
+            uid: user.uid,
+            email: user.email,
+            emailLower: (user.email || '').toLowerCase(),
+            updatedAt: Date.now(),
+          };
           if (userProfile?.avatarBase64) dataToSave.avatarBase64 = userProfile.avatarBase64;
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), dataToSave, { merge: true });
-          showToast("Profil aktualisiert!");
-        } catch (error) { showToast("Fehler beim Speichern"); }
+
+          await setDoc(profileRef, dataToSave, { merge: true });
+          try { await updateProfile(auth.currentUser, { displayName }); } catch (_) {}
+
+          // UI sofort aktualisieren + lokale Fallbacks
+          setUserProfile(prev => ({ ...(prev || {}), ...dataToSave }));
+          try {
+            localStorage.setItem(`onyx_displayName_${user.uid}`, displayName);
+            localStorage.setItem(`onyx_username_${user.uid}`, dataToSave.username);
+          } catch (_) {}
+
+          // Best-effort: displayName in bestehenden Chats aktualisieren (damit es überall konsistent ist)
+          try {
+            const updates = myChats.slice(0, 50).map(c => {
+              if (!c?.id) return null;
+              return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user.uid}`]: displayName }).catch(()=>{});
+            }).filter(Boolean);
+            await Promise.all(updates);
+          } catch (_) {}
+
+          showToast('Profil aktualisiert!');
+        } catch (error) {
+          console.error('PROFILE_SAVE_ERROR', error);
+          showToast('Fehler beim Speichern');
+        }
       };
 
       const handleAvatarUpload = (e) => {
@@ -1619,18 +1744,88 @@ const handleAuth = async (e) => {
 
       const getProfile = (uid) => allProfiles.find(p => p.id === uid) || null;
 
-      const startChatWith = async (targetUserId) => {
+      function normalizeChatId(raw) { return String(raw || '').replace(/\D/g, '').slice(0, 5); }
+
+      const findProfileByFriendCode = async (code5) => {
+        const code = normalizeChatId(code5);
+        if (!/^\d{5}$/.test(code)) return null;
+        try {
+          const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+          // friendCode wird als String gespeichert
+          const q = query(profilesCol, where('friendCode', '==', code), limit(1));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const d = snap.docs[0].data() || {};
+            return { id: snap.docs[0].id, ...d };
+          }
+          // Fallback: alte Profile hatten friendCode evtl. als Number → suche über local allProfiles
+          const local = (allProfiles || []).find(p => String(p.friendCode || '').padStart(5, '0') === code);
+          return local || null;
+        } catch (e) {
+          console.warn('findProfileByFriendCode failed', e);
+          const local = (allProfiles || []).find(p => String(p.friendCode || '').padStart(5, '0') === code);
+          return local || null;
+        }
+      };
+
+      const findProfileByEmailLower = async (emailRaw) => {
+        const email = String(emailRaw || '').trim().toLowerCase();
+        if (!email || !email.includes('@')) return null;
+        try {
+          const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+          const q = query(profilesCol, where('emailLower', '==', email), limit(1));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const d = snap.docs[0].data() || {};
+            return { id: snap.docs[0].id, ...d };
+          }
+          const local = (allProfiles || []).find(p => (p.email || '').toLowerCase() === email || (p.emailLower || '').toLowerCase() === email);
+          return local || null;
+        } catch (e) {
+          const local = (allProfiles || []).find(p => (p.email || '').toLowerCase() === email || (p.emailLower || '').toLowerCase() === email);
+          return local || null;
+        }
+      };
+
+      const startChatWithProfile = async (profileOrId) => {
+        if (!user) return;
+        const targetUserId = (typeof profileOrId === 'string') ? profileOrId : (profileOrId && profileOrId.id);
+        const targetProfile = (typeof profileOrId === 'object' && profileOrId) ? profileOrId : (targetUserId ? getProfile(targetUserId) : null);
+        if (!targetUserId) return;
+        if (targetUserId === user.uid) return showToast('Das bist du selbst');
+
         const existingChat = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(targetUserId));
         if (existingChat) {
           setActiveChat(existingChat);
-        } else {
-          try {
-            const newChat = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats'), {
-              participants: [user.uid, targetUserId], updatedAt: Date.now(), lastMessageSenderId: user.uid
-            });
-            setActiveChat({ id: newChat.id, participants: [user.uid, targetUserId] });
-          } catch (error) {}
+          setChatSearchQuery('');
+          setSecretView('chat');
+          return;
         }
+
+        try {
+          const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? user.email.split('@')[0] : 'Ich'));
+          const otherName = (targetProfile?.displayName || targetProfile?.username || targetProfile?.email || 'Kontakt');
+          const displayNames = { [user.uid]: meName, [targetUserId]: otherName };
+
+          const newChat = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats'), {
+            type: 'dm',
+            participants: [user.uid, targetUserId],
+            displayNames,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            lastMessageSenderId: user.uid,
+            typing: {},
+            typingAt: {},
+            lastRead: { [user.uid]: Date.now() }
+          });
+
+          setActiveChat({ id: newChat.id, type: 'dm', participants: [user.uid, targetUserId], displayNames, updatedAt: Date.now(), lastMessageSenderId: user.uid });
+        } catch (error) {
+          console.error('startChatWithProfile failed', error);
+          showToast('Chat konnte nicht gestartet werden');
+          return;
+        }
+
         setChatSearchQuery('');
         setSecretView('chat');
       };
@@ -1751,32 +1946,83 @@ const handleAuth = async (e) => {
 
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
         if (e) e.preventDefault();
-        
+
+        if (!activeChat || !user) return;
+
+        // Edit existing
         if (editingMessage) {
           try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', editingMessage.id), { text: newMessageText.trim(), edited: true });
-            setEditingMessage(null); setNewMessageText('');
-          } catch(err) { showToast("Fehler beim Bearbeiten"); }
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', editingMessage.id), {
+              text: (newMessageText || '').trim(),
+              edited: true,
+              editedAt: Date.now()
+            });
+            setEditingMessage(null);
+            setNewMessageText('');
+            showToast('Gespeichert');
+          } catch (err) {
+            console.error('edit message failed', err);
+            showToast('Fehler beim Bearbeiten');
+          }
           return;
         }
 
-        if (!newMessageText.trim() && !imageBase64 && !audioBase64 && !eventDetails) return;
-        if (!activeChat || !user) return;
-        
-        try {
-          const payload = {
-            senderId: user.uid, text: newMessageText.trim(), image: imageBase64, audio: audioBase64, event: eventDetails, selfDestruct: selfDestruct, timestamp: Date.now(), read: false
-          };
-          if (replyingTo) {
-            payload.replyTo = { id: replyingTo.id, text: replyingTo.text || 'Medien/Termin', senderName: replyingTo.senderId === user.uid ? 'Du' : getProfile(replyingTo.senderId)?.username || 'Unbekannt' };
-          }
+        const textVal = (newMessageText || '').trim();
+        if (!textVal && !imageBase64 && !audioBase64 && !eventDetails) return;
 
+        const clientMsgId = `${user.uid}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const payload = {
+          clientMsgId,
+          senderId: user.uid,
+          text: textVal,
+          image: imageBase64,
+          audio: audioBase64,
+          event: eventDetails,
+          selfDestruct: !!selfDestruct,
+          timestamp: Date.now(),
+          createdAt: serverTimestamp(),
+          read: false
+        };
+
+        if (replyingTo) {
+          payload.replyTo = {
+            id: replyingTo.id,
+            text: replyingTo.text || 'Medien/Termin',
+            senderName: replyingTo.senderId === user.uid ? 'Du' : (getProfile(replyingTo.senderId)?.displayName || getProfile(replyingTo.senderId)?.username || 'Unbekannt')
+          };
+        }
+
+        // Optimistic UI (erscheint sofort)
+        const optimistic = { id: `local_${clientMsgId}`, ...payload, pending: true };
+        setChatMessages(prev => {
+          const next = [...(prev || []), optimistic];
+          next.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+          return next;
+        });
+
+        // Input sofort leeren
+        setNewMessageText('');
+        setReplyingTo(null);
+        setSelfDestruct(false);
+
+        try {
           await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { updatedAt: Date.now(), lastMessageSenderId: user.uid, [`typing.${user.uid}`]: false, [`typingAt.${user.uid}`]: Date.now() });
-          
-          setNewMessageText(''); setReplyingTo(null); setSelfDestruct(false);
-          const now = Date.now(); setLastChatVisit(now); localStorage.setItem('onyx_last_chat_visit', now.toString());
-        } catch (error) {}
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+            updatedAt: Date.now(),
+            lastMessageSenderId: user.uid,
+            [`typing.${user.uid}`]: false,
+            [`typingAt.${user.uid}`]: Date.now()
+          });
+
+          const now = Date.now();
+          setLastChatVisit(now);
+          localStorage.setItem('onyx_last_chat_visit', now.toString());
+        } catch (error) {
+          console.error('sendMessage failed', error);
+          // Optimistic rollback
+          setChatMessages(prev => (prev || []).filter(m => m.clientMsgId !== clientMsgId));
+          showToast('Senden fehlgeschlagen');
+        }
       };
 
       const acceptSharedEvent = async (eventDetails) => {
@@ -1835,12 +2081,16 @@ const handleAuth = async (e) => {
       const getChatPartnerName = (chat) => {
         if (!chat) return 'Chat';
         if (isGroupChat(chat)) return chat.title || 'Gruppe';
-        return getProfile(chat?.participants.find(id => id !== user?.uid))?.username || 'Unbekannt';
+        const pid = (chat?.participants || []).find(id => id !== user?.uid);
+        const prof = pid ? getProfile(pid) : null;
+        return (prof?.displayName || prof?.username || chat?.displayNames?.[pid] || prof?.email || 'Unbekannt');
       };
       const getChatPartnerAvatar = (chat) => {
         if (!chat) return null;
         if (isGroupChat(chat)) return chat.avatarBase64 || null;
-        return getProfile(chat?.participants.find(id => id !== user?.uid))?.avatarBase64 || null;
+        const pid = (chat?.participants || []).find(id => id !== user?.uid);
+        const prof = pid ? getProfile(pid) : null;
+        return prof?.avatarBase64 || null;
       };
 
       const getChatParticipants = (chat) => Array.isArray(chat?.participants) ? chat.participants : [];
@@ -2418,7 +2668,7 @@ const handleAuth = async (e) => {
                           {userProfile.avatarBase64 ? (
                             <img src={userProfile.avatarBase64} className="w-24 h-24 rounded-full border-2 border-neutral-700 object-cover" />
                           ) : (
-                            <div className="w-24 h-24 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-3xl font-medium text-neutral-500">{initialsFrom(userProfile?.username)}</div>
+                            <div className="w-24 h-24 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-3xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile?.email || '')}</div>
                           )}
                           <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
                             <Camera className="w-4 h-4" />
@@ -2426,7 +2676,7 @@ const handleAuth = async (e) => {
                           </label>
                         </div>
                         <form onSubmit={updateProfileSettings} className="w-full max-w-xs space-y-4">
-                          <input type="text" name="username" defaultValue={userProfile.username} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
+                          <input type="text" name="displayName" defaultValue={userProfile.displayName || userProfile.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
                           <div className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                             <div className="flex flex-col">
                               <span className="text-[10px] uppercase tracking-widest text-neutral-500">Chat‑ID (5‑stellig)</span>
@@ -2460,27 +2710,28 @@ const handleAuth = async (e) => {
 
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
-                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
+                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
                         <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
-                        {(() => {
-                          const raw = (chatSearchQuery || '').trim();
-                          const q = raw.replace(/\D/g,'');
-                          if (!q || q.length !== 5) return null;
-                          const matches = (allProfiles || []).filter(p => (String(p.friendCode || '').padStart(5,'0') === q) && p.id !== user.uid);
-                          if (matches.length === 0) return null;
-                          return (
-                            <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">
-                              {matches.map(profile => (
-                                <div key={profile.id} onClick={() => startChatWith(profile.id)} className="p-4 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
-                                  <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
-                                    {profile.avatarBase64 ? <img src={profile.avatarBase64} className="w-full h-full object-cover"/> : initialsFrom(profile.displayName || profile.username || profile.email || '')}
-                                  </div>
-                                  <span className="font-medium text-white">{profile.displayName || profile.username || profile.email}</span>
-                                </div>
-                              ))}
+                        
+                        {chatFriendLoading && (
+                          <div className="mt-3 px-4 text-xs text-neutral-500">Suche...</div>
+                        )}
+                        {!chatFriendLoading && chatFriendError && (
+                          <div className="mt-3 px-4 text-xs text-red-400">{chatFriendError}</div>
+                        )}
+                        {!chatFriendLoading && chatFriendResult && (
+                          <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">
+                            <div onClick={() => startChatWithProfile(chatFriendResult)} className="p-4 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
+                              <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
+                                {chatFriendResult.avatarBase64 ? <img src={chatFriendResult.avatarBase64} className="w-full h-full object-cover"/> : initialsFrom(chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email || '')}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-medium text-white">{chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email}</span>
+                                <span className="text-[11px] text-neutral-500 font-mono">Chat-ID: {String(chatFriendResult.friendCode || '').padStart(5,'0')}</span>
+                              </div>
                             </div>
-                          );
-                        })()}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center justify-end mb-6 px-2">
                         <button onClick={() => { setShowCreateGroup(true); setGroupDraftName(''); setGroupDraftMembers([]); setGroupMemberSearch(''); }} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">

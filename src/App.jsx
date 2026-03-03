@@ -176,7 +176,23 @@ window.isGroupChat = window.isGroupChat || function(chat) {
     }
 
 function AmoledCalendarApp() {
-  // Stable alias
+  
+
+      // Fix: keep app height in sync (prevents white area at bottom in some browsers)
+      useEffect(() => {
+        const setAppHeight = () => {
+          document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
+        };
+        setAppHeight();
+        window.addEventListener('resize', setAppHeight);
+        window.addEventListener('orientationchange', setAppHeight);
+        return () => {
+          window.removeEventListener('resize', setAppHeight);
+          window.removeEventListener('orientationchange', setAppHeight);
+        };
+      }, []);
+
+// Stable alias
   const isGroupChat = window.isGroupChat;
 
       const [isAppReady, setIsAppReady] = useState(false);
@@ -2708,7 +2724,7 @@ setSelfDestruct(false);
 
       if (!isAppReady) {
         return (
-          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4" style={{ height: 'var(--app-height)' }}>
+          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4" style={{ height: 'var(--app-height, 100vh)' }}>
             <div className="flex flex-col items-center animate-pulse"><div className="w-12 h-12 bg-white rounded-sm mb-6"></div><h1 className="text-xl tracking-widest text-neutral-500">ONYX LÄDT...</h1></div>
           </div>
         );
@@ -2716,7 +2732,7 @@ setSelfDestruct(false);
 
       if (!isLoggedIn) {
         return (
-          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4 relative overflow-hidden" style={{ height: 'var(--app-height)' }}>
+          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4 relative overflow-hidden" style={{ height: 'var(--app-height, 100vh)' }}>
             <div className="fixed top-4 right-4 z-[60] space-y-2">
               {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
             </div>
@@ -2743,7 +2759,7 @@ setSelfDestruct(false);
 
       return (
         <div 
-          className="flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative" style={{ height: 'var(--app-height)' }}
+          className="flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative" style={{ height: 'var(--app-height, 100vh)' }}
           onTouchStart={handleGlobalTouchStart}
           onTouchMove={handleGlobalTouchMove}
           onTouchEnd={handleGlobalTouchEnd}
@@ -3286,7 +3302,7 @@ setSelfDestruct(false);
 
             {currentView === 'secret_chat' && (
               <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>
-              <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up" style={{ height: 'var(--app-height)' }}>
+              <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up" style={{ height: 'var(--app-height, 100vh)' }}>
                 
                 {/* Geheimer Chat Header */}
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">

@@ -99,7 +99,7 @@
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "firebase/auth";
     import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction } from "firebase/firestore";
-    import { getMessaging, getToken, onMessage } from "firebase/messaging";
+    import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
     import heic2any from 'heic2any';
 
     const customFirebaseConfig = {
@@ -142,9 +142,16 @@
       } catch (e) {}
     })();
 
-
-    let messaging = null;
-    try { messaging = getMessaging(app); } catch (error) { console.warn("Messaging nicht unterstützt."); }
+    const getMessagingSafe = async () => {
+      try {
+        const supported = await isSupported();
+        if (!supported) return null;
+        return getMessaging(app);
+      } catch (error) {
+        console.warn("[FCM] Browser unsupported:", error?.message || error);
+        return null;
+      }
+    };
 
     const PASTEL_COLORS = ['#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#E8BAFF', '#D3D3D3', '#FFC8DD'];
 
@@ -1478,7 +1485,9 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       };
 
       const requestNotificationPermission = async (currentUser) => {
-        if (!messaging || !currentUser) return;
+        if (!currentUser) return;
+        const messaging = await getMessagingSafe();
+        if (!messaging) return;
         try {
           const permission = await Notification.requestPermission();
           if (permission === 'granted') {
@@ -1495,8 +1504,12 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       };
 
       useEffect(() => {
-        if (!messaging) return;
-        const unsubscribeMessage = onMessage(messaging, (payload) => {
+        let unsubscribeMessage = null;
+
+        (async () => {
+          const messaging = await getMessagingSafe();
+          if (!messaging) return;
+          unsubscribeMessage = onMessage(messaging, (payload) => {
           const kind = payload?.data?.kind || '';
           const chatId = payload?.data?.chatId || '';
           const title = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
@@ -1512,7 +1525,11 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           // Hinweis: Custom-Sounds sind in einer PWA nicht wählbar (nur System / stumm).
           
         });
-        return () => unsubscribeMessage();
+        })();
+
+        return () => {
+          try { if (unsubscribeMessage) unsubscribeMessage(); } catch (_) {}
+        };
       }, [userProfile]);
 
       const fetchWeather = async () => {

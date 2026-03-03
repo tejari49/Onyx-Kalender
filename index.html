@@ -703,16 +703,6 @@ const closeEventModal = () => {
 
 
 // --- EVENT: Kommentare & Abstimmung (Phase 2) ---
-const addDaysStr = (dateStr, add) => {
-  try {
-    const d = new Date(dateStr + 'T00:00:00');
-    d.setDate(d.getDate() + add);
-    return d.toISOString().split('T')[0];
-  } catch (_) {
-    return dateStr;
-  }
-};
-
 const initPollDraftFromEvent = (ev) => {
   const baseDate = (ev && ev.date) ? ev.date : new Date().toISOString().split('T')[0];
   const baseTime = (ev && ev.time) ? ev.time : '18:00';

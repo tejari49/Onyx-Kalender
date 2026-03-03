@@ -265,7 +265,6 @@ const [pollDraft, setPollDraft] = useState([
   { date: '', time: '' }
 ]);
 const [pollBusy, setPollBusy] = useState(false);
-const [createPollOnSave, setCreatePollOnSave] = useState(false);
       const [selectedDateForEvent, setSelectedDateForEvent] = useState(null);
       const [eventToEdit, setEventToEdit] = useState(null);
       const [calendarViewMode, setCalendarViewMode] = useState('month'); // 'month' | 'agenda'
@@ -457,7 +456,6 @@ setShowEventComments(false);
 setShowEventPoll(false);
 setEventComments([]);
 setNewCommentText('');
-setCreatePollOnSave(false);
 initPollDraftFromEvent({ date: d, time: '', calendarId: targetCalId });
   setIsModalOpen(true);
 };
@@ -632,7 +630,6 @@ const closeEventModal = () => {
   setNewCommentText('');
   setEventToEdit(null);
   setEventEditScope('series');
-  setCreatePollOnSave(false);
 };
 
 
@@ -687,24 +684,13 @@ const sendEventComment = async () => {
 
   try {
     const ref = collection(eventDocRefFor(calId, eventToEdit.id), 'comments');
-    const senderName = (userProfile && (userProfile.displayName || userProfile.username)) ? (userProfile.displayName || userProfile.username) : (user.email ? user.email.split('@')[0] : 'User');
     await addDoc(ref, {
       text: txt,
       senderId: user.uid,
-      senderName,
+      senderName: (userProfile && (userProfile.displayName || userProfile.username)) ? (userProfile.displayName || userProfile.username) : (user.email ? user.email.split('@')[0] : 'User'),
       timestamp: Date.now(),
     });
     setNewCommentText('');
-    // Quick feed fields for calendar bottom panel
-    try {
-      await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
-        lastCommentAt: Date.now(),
-        lastCommentText: txt.slice(0, 240),
-        lastCommentById: user.uid,
-        lastCommentByName: senderName,
-        updatedAt: Date.now()
-      });
-    } catch (_) {}
   } catch (e) {
     showToast("Kommentar konnte nicht gesendet werden");
   }
@@ -844,71 +830,6 @@ const finalizePollForEvent = async () => {
   }
 };
 
-// --- POLL helpers for calendar bottom panel ---
-const voteInPollForSpecificEvent = async (ev, optionId) => {
-  if (!user || !ev || !ev.id) return;
-  const calId = ev.calendarId || 'default';
-  if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
-
-  try {
-    await updateDoc(eventDocRefFor(calId, ev.id), {
-      [`poll.votes.${user.uid}`]: optionId,
-      [`poll.votesUpdatedAt`]: Date.now(),
-      updatedAt: Date.now()
-    });
-  } catch (e) {
-    showToast("Vote fehlgeschlagen");
-  }
-};
-
-const finalizePollForSpecificEvent = async (ev) => {
-  if (!user || !ev || !ev.id) return;
-  const calId = ev.calendarId || 'default';
-  if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
-
-  setPollBusy(true);
-  try {
-    await runTransaction(db, async (tx) => {
-      const ref = eventDocRefFor(calId, ev.id);
-      const snap = await tx.get(ref);
-      if (!snap.exists()) return;
-
-      const data = snap.data() || {};
-      const poll = data.poll || null;
-      if (!poll || poll.status !== 'open') return;
-
-      const voterIds = Array.isArray(poll.voterIds) ? poll.voterIds : computePollVoterIdsForEvent({ ...ev, ...data });
-      const votes = (poll.votes && typeof poll.votes === 'object') ? poll.votes : {};
-      if (!voterIds.every((uid) => !!votes[uid])) return;
-
-      const counts = countVotes(votes);
-      let winnerId = null;
-      let best = -1;
-      for (const opt of (poll.options || [])) {
-        const c = counts[opt.id] || 0;
-        if (c > best) { best = c; winnerId = opt.id; }
-      }
-      const winner = (poll.options || []).find(o => o.id === winnerId);
-      if (!winner) return;
-
-      tx.update(ref, {
-        date: winner.date,
-        time: winner.time,
-        updatedAt: Date.now(),
-        'poll.status': 'closed',
-        'poll.winnerOptionId': winnerId,
-        'poll.closedAt': Date.now(),
-        'poll.autoFinalized': false
-      });
-    });
-    showToast("Gewinner übernommen");
-  } catch (e) {
-    showToast("Finalisieren fehlgeschlagen");
-  } finally {
-    setPollBusy(false);
-  }
-};
-
 const canWriteCalendar = (calId) => {
   if (calId === 'default') return true;
   const cal = customCalendars.find(c => c.id === calId);
@@ -1003,34 +924,6 @@ const saveEvent = async (e) => {
     exDates: isEditing ? (Array.isArray(eventToEdit.exDates) ? eventToEdit.exDates : []) : [],
     overrides: isEditing ? (eventToEdit.overrides && typeof eventToEdit.overrides === 'object' ? eventToEdit.overrides : {}) : {}
   };
-
-  // Optional: Abstimmung direkt beim Erstellen
-  if (!eventToEdit && createPollOnSave) {
-    const opts = (pollDraft || []).map((o, idx) => ({
-      id: `opt_${Date.now()}_${idx}`,
-      date: (o?.date || '').trim(),
-      time: (o?.time || '').trim(),
-    })).filter(o => o.date && o.time);
-
-    if (opts.length < 2) return showToast("Bitte mind. 2 Vorschläge");
-
-    const voterIds = computePollVoterIdsForEvent({ calendarId: targetCalId });
-    payload.poll = {
-      status: 'open',
-      createdAt: Date.now(),
-      createdBy: user.uid,
-      voterIds,
-      options: opts,
-      votes: {},
-      winnerOptionId: null,
-      closedAt: null,
-      autoFinalized: false,
-    };
-
-    // Wenn keine Zeit gesetzt ist, nimm den ersten Vorschlag als Anzeige-Default
-    if (!payload.time && opts[0]?.time) payload.time = opts[0].time;
-    if (!payload.date && opts[0]?.date) payload.date = opts[0].date;
-  }
 
   try {
     if (eventToEdit) {
@@ -2141,7 +2034,7 @@ const modalEvent = eventToEdit
          }
       };
 
-      const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
+      const openEditEventModal = (event, occurrenceDate = null) => {
          const baseEvent = (event && event._baseEvent) ? event._baseEvent : event;
          if (!baseEvent) return;
          const occDate = occurrenceDate || (event && event._occurrenceDate) || baseEvent.date;
@@ -2172,11 +2065,8 @@ const modalEvent = eventToEdit
            recurrenceByWeekdays: (rec && Array.isArray(rec.byWeekdays)) ? rec.byWeekdays : [],
            recurrenceUntil: (rec && rec.until) ? rec.until : ''
          });
-         const openComments = !!(opts && opts.openComments);
-         const openPoll = !!(opts && opts.openPoll);
-         setShowEventComments(openComments);
-         setShowEventPoll(openPoll);
-         setCreatePollOnSave(false);
+         setShowEventComments(false);
+         setShowEventPoll(false);
          setEventComments([]);
          setNewCommentText('');
          initPollDraftFromEvent(baseEvent);
@@ -3125,7 +3015,7 @@ setSelfDestruct(false);
                                  </div>
                               ) : (
                                  <div key={event.id} className="text-[9px] md:text-xs px-1.5 py-0.5 md:px-2 md:py-1 bg-neutral-900 border border-neutral-800 rounded text-neutral-200 truncate">
-                                   <span className="text-neutral-500 mr-1">{event.time}</span>{event.poll && event.poll.status === 'open' && <span className="mr-1">🗳️</span>}{event.title}
+                                   <span className="text-neutral-500 mr-1">{event.time}</span>{event.title}
                                  </div>
                               )
                             ))}
@@ -3225,142 +3115,9 @@ setSelfDestruct(false);
                   })()}
                 </div>
 
-              {/* KALENDER FEED (unter dem Kalender): Abstimmungen & Kommentare */}
-                {(() => {
-                  const activeName = (activeCalForView && activeCalForView.name) ? activeCalForView.name : 'Privat';
-                  const baseEvents = (activeCalendarId === 'default') ? (events || []) : ((sharedEventsMap && sharedEventsMap[activeCalendarId]) ? sharedEventsMap[activeCalendarId] : []);
-                  const normalEvents = (baseEvents || []).filter(e => e && e.type !== 'shift');
-                  const openPollEvents = normalEvents.filter(e => e && e.poll && e.poll.status === 'open');
-                  const commentEvents = normalEvents
-                    .filter(e => e && e.lastCommentAt)
-                    .sort((a,b) => (b.lastCommentAt || 0) - (a.lastCommentAt || 0))
-                    .slice(0, 6);
-
-                  const canWriteActive = canWriteCalendar(activeCalendarId || 'default');
-
-                  return (
-                    <div className="bg-neutral-950 border-t border-neutral-800 px-4 md:px-8 py-4 shrink-0">
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <p className="text-[10px] uppercase tracking-widest text-neutral-500">Kalender-Feed</p>
-                          <h3 className="text-sm font-medium text-white">{activeName}</h3>
-                        </div>
-                        <div className="text-[11px] text-neutral-500">🗳️ {openPollEvents.length} • 💬 {commentEvents.length}</div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-semibold text-white">🗳️ Abstimmungen</div>
-                            {!canWriteActive && activeCalendarId !== 'default' && (
-                              <div className="text-[10px] text-neutral-600">nur Lesen</div>
-                            )}
-                          </div>
-
-                          {openPollEvents.length === 0 ? (
-                            <div className="text-xs text-neutral-500">Keine offenen Abstimmungen.</div>
-                          ) : openPollEvents.map(ev => {
-                            const poll = ev.poll || {};
-                            const votes = (poll.votes && typeof poll.votes === 'object') ? poll.votes : {};
-                            const counts = countVotes(votes);
-                            const voterIds = Array.isArray(poll.voterIds) ? poll.voterIds : [];
-                            const votesCount = Object.keys(votes).length;
-                            const allVoted = voterIds.length > 0 && voterIds.every(uid => !!votes[uid]);
-                            const myVote = votes[user.uid] || '';
-                            const canWrite = canWriteCalendar(ev.calendarId || 'default');
-
-                            return (
-                              <div key={ev.id} className="border border-neutral-800 rounded-xl p-3 mb-2 last:mb-0">
-                                <div className="flex items-start justify-between gap-3">
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditEventModal(ev, null, { openPoll: true })}
-                                    className="text-left min-w-0"
-                                  >
-                                    <div className="text-sm font-medium text-white truncate">{ev.title}</div>
-                                    <div className="text-[11px] text-neutral-500">{votesCount}/{voterIds.length || '–'} Stimmen</div>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditEventModal(ev, null, { openPoll: true })}
-                                    className="px-2 py-1 rounded-lg border border-neutral-800 text-neutral-300 text-[11px] hover:border-neutral-500"
-                                  >
-                                    Öffnen
-                                  </button>
-                                </div>
-
-                                <div className="mt-2 space-y-1">
-                                  {(poll.options || []).map(opt => {
-                                    const voted = myVote === opt.id;
-                                    const c = counts[opt.id] || 0;
-                                    return (
-                                      <button
-                                        key={opt.id}
-                                        type="button"
-                                        disabled={!canWrite || pollBusy}
-                                        onClick={() => voteInPollForSpecificEvent(ev, opt.id)}
-                                        className={"w-full text-left border rounded-xl px-3 py-2 transition-colors " + (voted ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500') + (!canWrite ? ' opacity-60 cursor-not-allowed' : '')}
-                                      >
-                                        <div className="flex items-center justify-between">
-                                          <div className="text-xs text-white">{opt.date} • {opt.time}</div>
-                                          <div className="text-[10px] text-neutral-400">{c}</div>
-                                        </div>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-
-                                <div className="mt-2 flex items-center justify-between">
-                                  <div className="text-[11px] text-neutral-500">{myVote ? 'Du hast abgestimmt ✅' : 'Du: offen'}</div>
-                                  {canWrite && (
-                                    <button
-                                      type="button"
-                                      disabled={!allVoted || pollBusy}
-                                      onClick={() => finalizePollForSpecificEvent(ev)}
-                                      className={"px-2 py-1 rounded-lg font-semibold text-[11px] " + ((!allVoted || pollBusy) ? 'bg-neutral-900 border border-neutral-800 text-neutral-500 cursor-not-allowed' : 'bg-white text-black')}
-                                      title={allVoted ? 'Gewinner übernehmen' : 'Warten bis alle abgestimmt haben'}
-                                    >
-                                      Finalisieren
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-semibold text-white">💬 Kommentare</div>
-                            <div className="text-[10px] text-neutral-600">letzte</div>
-                          </div>
-
-                          {commentEvents.length === 0 ? (
-                            <div className="text-xs text-neutral-500">Noch keine Kommentare in diesem Kalender.</div>
-                          ) : commentEvents.map(ev => (
-                            <button
-                              key={ev.id}
-                              type="button"
-                              onClick={() => openEditEventModal(ev, null, { openComments: true })}
-                              className="w-full text-left border border-neutral-800 rounded-xl p-3 mb-2 last:mb-0 hover:border-neutral-500 transition-colors"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <div className="text-sm font-medium text-white truncate">{ev.title}</div>
-                                  <div className="text-[11px] text-neutral-500 truncate">{(ev.lastCommentByName || 'User') + ': ' + (ev.lastCommentText || '')}</div>
-                                </div>
-                                <div className="text-[10px] text-neutral-600 shrink-0">{ev.lastCommentAt ? new Date(ev.lastCommentAt).toLocaleString('de-CH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</div>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-</div>
+              </div>
             )}
+
             {currentView === 'settings' && (
               <div className="p-6 md:p-10 max-w-3xl mx-auto w-full animate-fade-in">
                 <h2 className="text-3xl md:text-4xl font-light mb-10">Einstellungen</h2>
@@ -4127,74 +3884,6 @@ setSelfDestruct(false);
                       />
                     </div>
                   </div>
-
-                  {!eventToEdit && (
-                    <div className="bg-black border border-neutral-800 rounded-2xl p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">🗳️ Abstimmung</label>
-                          <p className="mt-1 text-[11px] text-neutral-500">Beim Speichern werden Zeitvorschläge an Mitglieder mit Schreibrecht gesendet.</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCreatePollOnSave(v => {
-                              const next = !v;
-                              if (next) initPollDraftFromEvent({ date: eventForm.date, time: eventForm.time, calendarId: eventForm.calendarId || 'default' });
-                              return next;
-                            });
-                          }}
-                          className={"px-3 py-2 rounded-lg text-xs font-semibold border transition-colors " + (createPollOnSave ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500')}
-                        >
-                          {createPollOnSave ? 'Ja, abstimmen' : 'Nein'}
-                        </button>
-                      </div>
-
-                      {createPollOnSave && (
-                        <div className="mt-3 space-y-3">
-                          <div className="text-xs text-neutral-400">Vorschläge (mind. 2):</div>
-                          {[0,1,2].map((i) => (
-                            <div key={i} className="flex gap-2">
-                              <input
-                                type="date"
-                                value={pollDraft[i]?.date || ''}
-                                onChange={(e) => setPollDraft(prev => prev.map((x, idx) => idx === i ? { ...x, date: e.target.value } : x))}
-                                className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
-                              />
-                              <input
-                                type="time"
-                                value={pollDraft[i]?.time || ''}
-                                onChange={(e) => setPollDraft(prev => prev.map((x, idx) => idx === i ? { ...x, time: e.target.value } : x))}
-                                className="w-28 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
-                              />
-                            </div>
-                          ))}
-
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => initPollDraftFromEvent({ date: eventForm.date, time: eventForm.time, calendarId: eventForm.calendarId || 'default' })}
-                              className="flex-1 px-3 py-2 rounded-lg border border-neutral-800 text-neutral-300 text-sm hover:border-neutral-500"
-                            >
-                              Reset
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                // Convenience: setze Hauptdatum/Zeit auf ersten Vorschlag
-                                const first = (pollDraft && pollDraft[0]) ? pollDraft[0] : null;
-                                if (first?.date) setEventForm(prev => ({ ...prev, date: first.date }));
-                                if (first?.time) setEventForm(prev => ({ ...prev, time: first.time }));
-                              }}
-                              className="flex-1 px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 text-sm hover:border-neutral-500"
-                            >
-                              1. Vorschlag übernehmen
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
 
                   <div className="bg-black border border-neutral-800 rounded-2xl p-4">
                     <div className="flex items-center justify-between mb-2">

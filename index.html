@@ -11,13 +11,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
   <!-- PWA -->
-  <link rel="manifest" href="./manifest.json" />
-  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+  <link rel="manifest" href="%BASE_URL%manifest.json" />
+  <link rel="apple-touch-icon" sizes="180x180" href="%BASE_URL%apple-touch-icon.png" />
 
   <!-- Favicons -->
-  <link rel="icon" href="./favicon.ico" sizes="any" />
-  <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
-  <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16.png" />
+  <link rel="icon" href="%BASE_URL%favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="%BASE_URL%favicon-16.png" />
 </head>
 <body class="selection:bg-neutral-800">
   <div id="root"></div>
@@ -26,7 +26,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./firebase-messaging-sw.js')
+        navigator.serviceWorker.register('%BASE_URL%firebase-messaging-sw.js')
           .then(reg => console.log('ServiceWorker registriert:', reg.scope))
           .catch(err => console.log('ServiceWorker Registrierung fehlgeschlagen:', err));
       });

@@ -4672,4 +4672,4 @@ setSelfDestruct(false);
     }
 
 
-export default App;
+export default AmoledCalendarApp;

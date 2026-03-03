@@ -1196,34 +1196,53 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         const chatsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats');
-        const unsubscribeChats = onSnapshot(query(chatsRef), (snapshot) => {
+        const chatsQ = query(chatsRef, where('participants', 'array-contains', user.uid));
+        const unsubscribeChats = onSnapshot(chatsQ, (snapshot) => {
           const loadedChats = [];
-          snapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.participants && data.participants.includes(user.uid)) loadedChats.push({ id: doc.id, ...data });
-          });
+          snapshot.forEach(doc => loadedChats.push({ id: doc.id, ...doc.data() }));
           loadedChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
           setMyChats(loadedChats);
         });
 
         const calRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars');
-        const unsubscribeCals = onSnapshot(query(calRef), (snapshot) => {
-          const loadedCals = [];
-          snapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.ownerId === user.uid || (data.sharedWith && data.sharedWith[user.uid])) {
-               loadedCals.push({ id: doc.id, ...data });
-            }
-          });
-          setCustomCalendars(loadedCals);
+
+        // 🔒 Wichtig für sichere Firestore Rules:
+        // Wir dürfen NICHT die komplette calendars Collection lesen und client-side filtern,
+        // sonst scheitert die Query mit permission-denied.
+        const ownerQ = query(calRef, where('ownerId', '==', user.uid));
+        const sharedQ = query(calRef, where('sharedWith.' + user.uid, 'in', ['read', 'write']));
+
+        let ownerCals = [];
+        let sharedCals = [];
+
+        const recomputeCals = () => {
+          const byId = new Map();
+          ownerCals.forEach(c => byId.set(c.id, c));
+          sharedCals.forEach(c => byId.set(c.id, c));
+          const merged = Array.from(byId.values());
+          setCustomCalendars(merged);
           setVisibleCalendars(prev => {
-             const newVisible = new Set(prev);
-             loadedCals.forEach(c => newVisible.add(c.id));
-             return Array.from(newVisible);
+            const newVisible = new Set(prev);
+            merged.forEach(c => newVisible.add(c.id));
+            return Array.from(newVisible);
           });
+        };
+
+        const unsubscribeOwnerCals = onSnapshot(ownerQ, (snapshot) => {
+          const loaded = [];
+          snapshot.forEach(doc => loaded.push({ id: doc.id, ...doc.data() }));
+          ownerCals = loaded;
+          recomputeCals();
         });
 
-        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeCals(); };
+        const unsubscribeSharedCals = onSnapshot(sharedQ, (snapshot) => {
+          const loaded = [];
+          snapshot.forEach(doc => loaded.push({ id: doc.id, ...doc.data() }));
+          sharedCals = loaded;
+          recomputeCals();
+        });
+
+        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeOwnerCals(); unsubscribeSharedCals(); };
       }, [user]);
 
       // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---

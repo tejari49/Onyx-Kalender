@@ -14,7 +14,7 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-const CACHE_NAME = 'onyx-v29';
+const CACHE_NAME = 'onyx-v30';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -87,6 +87,13 @@ self.addEventListener('fetch', (event) => {
 // Hintergrund Push-Benachrichtigungen empfangen
 // Hintergrund Push-Benachrichtigungen empfangen
 messaging.onBackgroundMessage(function(payload) {
+  // If the backend sends a WebPush "notification" payload, many browsers will already display it.
+  // In that case we avoid showing a duplicate notification from this handler.
+  try {
+    const forceShow = String(payload?.data?.forceShow || '').toLowerCase() === '1';
+    if (payload?.notification && !forceShow) return;
+  } catch (_) {}
+
   const data = (payload && payload.data) ? payload.data : {};
   const notificationTitle = (data && data.title) ? data.title : ((payload && payload.notification && payload.notification.title) ? payload.notification.title : 'Onyx');
   const rawBody = (data && data.body) ? data.body : ((payload && payload.notification && payload.notification.body) ? payload.notification.body : 'Kalender aktuell');
@@ -95,7 +102,7 @@ messaging.onBackgroundMessage(function(payload) {
   const silent = String((data && (data.silent ?? data.sound)) || '').toLowerCase() === '1' || String((data && (data.silent ?? data.sound)) || '').toLowerCase() === 'silent';
 
   const notificationOptions = {
-    body: (rawBody ? (String(rawBody).trim() + '\nKalender aktuell') : 'Kalender aktuell'),
+    body: (rawBody ? String(rawBody).trim() : 'Kalender aktuell'),
     icon: './icon-192.png',
     badge: './icon-192.png',
     tag: (data && data.tag) ? data.tag : 'onyx',

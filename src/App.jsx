@@ -217,6 +217,9 @@ function AmoledCalendarApp() {
       const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
       const [canInstallPwa, setCanInstallPwa] = useState(false);
 
+      // Push diagnostics (helps to debug when users report "Push geht nicht")
+      const [pushDiag, setPushDiag] = useState({ sw: 'unknown', controlling: false, lastError: '', lastTokenAt: 0 });
+
       const isIosUA = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
       
       const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
@@ -1758,11 +1761,8 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
   }
 
   try {
-    const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=29`;
-    const swRegistration =
-      (await navigator.serviceWorker.getRegistration()) ||
-      (await navigator.serviceWorker.register(swUrl));
+    const swRegistration = await registerPushServiceWorker();
+    if (!swRegistration) throw new Error('SERVICE_WORKER_NOT_READY');
 
     const token = await getToken(messaging, {
       vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI',
@@ -1775,9 +1775,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         { fcmTokenWeb: token, lastWebTokenAt: Date.now(), pushTarget: 'web' },
         { merge: true }
       );
+      setPushDiag(prev => ({ ...prev, lastTokenAt: Date.now(), lastError: '' }));
+    } else {
+      setPushDiag(prev => ({ ...prev, lastError: 'NO_TOKEN_RETURNED' }));
     }
   } catch (e) {
     console.warn('[FCM] ensure token failed', e?.message || e);
+    setPushDiag(prev => ({ ...prev, lastError: (e?.message || String(e)) }));
   }
 };
 
@@ -1885,6 +1889,26 @@ const promptInstallPwa = async () => {
   }
 };
 
+const registerPushServiceWorker = async () => {
+  try {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+      setPushDiag(prev => ({ ...prev, sw: 'unsupported', controlling: false }));
+      return null;
+    }
+    const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
+    const swUrl = `${base}firebase-messaging-sw.js?v=30`;
+    const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
+    let readyReg = null;
+    try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
+    const controlling = !!navigator.serviceWorker.controller;
+    setPushDiag(prev => ({ ...prev, sw: 'registered', controlling, lastError: '' }));
+    return readyReg || reg;
+  } catch (e) {
+    setPushDiag(prev => ({ ...prev, sw: 'error', controlling: !!navigator.serviceWorker?.controller, lastError: (e?.message || String(e)) }));
+    return null;
+  }
+};
+
 useEffect(() => {
   const computeStandalone = () => {
     try {
@@ -1900,14 +1924,7 @@ useEffect(() => {
 
   // 2) Register SW for caching + background push (no permission prompt here)
   (async () => {
-    try {
-      if (!('serviceWorker' in navigator)) return;
-      const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-      const swUrl = `${base}firebase-messaging-sw.js?v=29`;
-      await navigator.serviceWorker.register(swUrl);
-    } catch (e) {
-      console.warn('[PWA] service worker register failed', e?.message || e);
-    }
+    try { await registerPushServiceWorker(); } catch (_) {}
   })();
 
   // 3) Install prompt
@@ -1967,7 +1984,7 @@ Kalender aktuell` : 'Kalender aktuell';
           };
 
           if ('serviceWorker' in navigator) {
-            const reg = await navigator.serviceWorker.getRegistration();
+            const reg = (await registerPushServiceWorker()) || (await navigator.serviceWorker.getRegistration());
             if (reg && reg.showNotification) {
               await reg.showNotification(title, options);
               return;
@@ -1978,6 +1995,34 @@ Kalender aktuell` : 'Kalender aktuell';
           // eslint-disable-next-line no-new
           new Notification(title, options);
         } catch (e) {}
+      };
+
+      const sendLocalPushTest = async () => {
+        try {
+          const canNotify = ('Notification' in window) && Notification.permission === 'granted';
+          if (!canNotify) {
+            showToast('Keine Berechtigung für Benachrichtigungen');
+            return;
+          }
+          await showSystemNotification('🔔 Onyx Test', 'Wenn du das siehst: OS-Notification funktioniert ✅', 'onyx_test_local');
+        } catch (e) {
+          showToast('Test fehlgeschlagen');
+        }
+      };
+
+      const sendServerPushTest = async () => {
+        try {
+          if (!user) return;
+          const id = `${user.uid}_${Date.now()}`;
+          await setDoc(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', id),
+            { uid: user.uid, createdAt: Date.now(), platform: 'web' },
+            { merge: true }
+          );
+          showToast('Server-Test ausgelöst (oxynoti)');
+        } catch (e) {
+          showToast('Server-Test fehlgeschlagen');
+        }
       };
 
       const getWeatherIcon = (code, className = "w-8 h-8 text-white") => {
@@ -2166,8 +2211,29 @@ useEffect(() => {
          return customCalendars.find(c => c.id === id);
       };
 
+      const calendarTint = (calId) => {
+        try {
+          if (!calId || calId === 'default') return '#FFFFFF';
+          const idx = stableHash(String(calId)) % PASTEL_COLORS.length;
+          return PASTEL_COLORS[idx] || '#FFFFFF';
+        } catch (e) {
+          return '#FFFFFF';
+        }
+      };
+
       const toggleCalendarVisibility = (id) => {
-         setVisibleCalendars(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]);
+         setVisibleCalendars(prev => {
+           const has = prev.includes(id);
+           if (has) {
+             const next = prev.filter(cId => cId !== id);
+             if (next.length === 0) {
+               try { showToast('Mindestens 1 Kalender sichtbar lassen'); } catch (_) {}
+               return prev;
+             }
+             return next;
+           }
+           return [...prev, id];
+         });
       };
 
       // --- WIEDERHOLUNGEN (Recurrence) ---
@@ -3413,7 +3479,10 @@ setSelfDestruct(false);
                           )}
                           <div className="w-px h-10 bg-neutral-800 group-hover:bg-neutral-600 transition-colors"></div>
                           <div className="flex-1 overflow-hidden">
-                             <p className="font-medium text-white truncate">{event.title}</p>
+                             <p className="font-medium text-white truncate flex items-center gap-2">
+                               <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
+                               <span className="truncate">{event.title}</span>
+                             </p>
                              <p className="text-xs text-neutral-500 mt-0.5 truncate">{event.type === 'shift' ? getCalendarById(event.calendarId)?.name : event.type} {event.desc && `• ${event.desc}`}</p>
                           </div>
                         </div>
@@ -3427,13 +3496,48 @@ setSelfDestruct(false);
             {currentView === 'calendar' && (
               <div className="flex-1 flex flex-col h-full w-full max-w-7xl mx-auto animate-fade-in select-none">
                 
-                {/* Mobile Active Calendar Selector */}
-                <div className="md:hidden flex items-center px-4 py-2 border-b border-neutral-800 bg-neutral-950 overflow-x-auto no-scrollbar gap-2 shrink-0">
-                   <span className="text-xs text-neutral-500 uppercase font-semibold mr-2 shrink-0">Aktiv:</span>
-                   <button onClick={() => setActiveCalendarId('default')} className={`shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${activeCalendarId === 'default' ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'}`}>Privat</button>
-                   {customCalendars.map(cal => (
-                      <button key={cal.id} onClick={() => setActiveCalendarId(cal.id)} className={`shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${activeCalendarId === cal.id ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'}`}>{cal.name}</button>
-                   ))}
+                {/* Mobile Calendar Multi-Select (sichtbar) + Active Calendar */}
+                <div className="md:hidden px-4 py-2 border-b border-neutral-800 bg-neutral-950 shrink-0">
+                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                    <span className="text-[10px] text-neutral-500 uppercase font-semibold mr-1 shrink-0">Sichtbar:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allIds = ['default', ...(customCalendars || []).map(c => c.id)];
+                        setVisibleCalendars(allIds);
+                      }}
+                      className="shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-neutral-900 text-neutral-300 border border-neutral-800 hover:border-neutral-500"
+                    >
+                      Alle
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleCalendarVisibility('default')}
+                      className={`shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold border transition-colors ${visibleCalendars.includes('default') ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
+                    >
+                      <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: calendarTint('default') }} />
+                      Privat
+                    </button>
+                    {customCalendars.map(cal => (
+                      <button
+                        key={cal.id}
+                        type="button"
+                        onClick={() => toggleCalendarVisibility(cal.id)}
+                        className={`shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold border transition-colors ${visibleCalendars.includes(cal.id) ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
+                      >
+                        <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: calendarTint(cal.id) }} />
+                        {cal.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar mt-2">
+                    <span className="text-[10px] text-neutral-500 uppercase font-semibold mr-1 shrink-0">Aktiv:</span>
+                    <button onClick={() => setActiveCalendarId('default')} className={`shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${activeCalendarId === 'default' ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'}`}>Privat</button>
+                    {customCalendars.map(cal => (
+                      <button key={cal.id} onClick={() => setActiveCalendarId(cal.id)} className={`shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${activeCalendarId === cal.id ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'}`}>{cal.name}</button>
+                    ))}
+                  </div>
                 </div>
 
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center justify-between px-4 md:px-8 shrink-0">
@@ -3576,8 +3680,15 @@ setSelfDestruct(false);
                                     {event.title}
                                  </div>
                               ) : (
-                                 <div key={event.id} className="text-[9px] md:text-xs px-1.5 py-0.5 md:px-2 md:py-1 bg-neutral-900 border border-neutral-800 rounded text-neutral-200 truncate">
-                                   <span className="text-neutral-500 mr-1">{event.time}</span>{event.poll && event.poll.status === 'open' && <span className="mr-1">🗳️</span>}{event.title}
+                                 <div
+                                   key={event.id}
+                                   className="text-[9px] md:text-xs px-1.5 py-0.5 md:px-2 md:py-1 bg-neutral-900 border border-neutral-800 rounded text-neutral-200 truncate flex items-center gap-1"
+                                   style={{ borderLeft: `3px solid ${calendarTint(event.calendarId || 'default')}` }}
+                                 >
+                                   <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
+                                   <span className="text-neutral-500 mr-1">{event.time}</span>
+                                   {event.poll && event.poll.status === 'open' && <span className="mr-1">🗳️</span>}
+                                   <span className="truncate">{event.title}</span>
                                  </div>
                               )
                             ))}
@@ -3650,7 +3761,10 @@ setSelfDestruct(false);
                                     {ev.type === 'shift' ? (
                                       <div className="w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: ev.color }} />
                                     ) : (
-                                      <div className="w-10 h-10 rounded-lg shrink-0 bg-neutral-900 border border-neutral-800 flex items-center justify-center">
+                                      <div
+                                        className="w-10 h-10 rounded-lg shrink-0 bg-neutral-900 border border-neutral-800 flex items-center justify-center"
+                                        style={{ borderLeft: `4px solid ${calendarTint(ev.calendarId || 'default')}` }}
+                                      >
                                         <Clock className="w-4 h-4 text-neutral-400" />
                                       </div>
                                     )}
@@ -3663,6 +3777,9 @@ setSelfDestruct(false);
                                       </div>
                                       <div className="text-xs text-neutral-500 mt-1 truncate">
                                         {ev.type === 'shift' ? 'Schicht' : (ev.time ? `${ev.time} · ` : '')}{ev.type || 'Privat'}{ev.desc ? ` · ${ev.desc}` : ''}
+                                        {ev.calendarId && (
+                                          <span className="text-neutral-600"> · {getCalendarById(ev.calendarId)?.name || 'Kalender'}</span>
+                                        )}
                                       </div>
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-neutral-600 shrink-0 mt-1" />
@@ -3679,23 +3796,27 @@ setSelfDestruct(false);
 
               {/* KALENDER FEED (unter dem Kalender): Abstimmungen & Kommentare */}
                 {(() => {
-                  const activeName = (activeCalForView && activeCalForView.name) ? activeCalForView.name : 'Privat';
-                  const baseEvents = (activeCalendarId === 'default') ? (events || []) : ((sharedEventsMap && sharedEventsMap[activeCalendarId]) ? sharedEventsMap[activeCalendarId] : []);
-                  const normalEvents = (baseEvents || []).filter(e => e && e.type !== 'shift');
-                  const openPollEvents = normalEvents.filter(e => e && e.poll && e.poll.status === 'open');
-                  const commentEvents = normalEvents
+                  const feedEvents = (allEvents || []).filter(e => e && e.type !== 'shift');
+                  const openPollEvents = feedEvents.filter(e => e && e.poll && e.poll.status === 'open');
+                  const commentEvents = feedEvents
                     .filter(e => e && e.lastCommentAt)
                     .sort((a,b) => (b.lastCommentAt || 0) - (a.lastCommentAt || 0))
                     .slice(0, 6);
 
-                  const canWriteActive = canWriteCalendar(activeCalendarId || 'default');
+                  const feedTitle = (() => {
+                    try {
+                      if (!Array.isArray(visibleCalendars) || visibleCalendars.length === 0) return 'Privat';
+                      if (visibleCalendars.length === 1) return getCalendarById(visibleCalendars[0])?.name || 'Privat';
+                      return `${visibleCalendars.length} Kalender`;
+                    } catch (_) { return 'Kalender'; }
+                  })();
 
                   return (
                     <div className="bg-neutral-950 border-t border-neutral-800 px-4 md:px-8 py-4 shrink-0">
                       <div className="flex items-center justify-between mb-3">
                         <div>
                           <p className="text-[10px] uppercase tracking-widest text-neutral-500">Kalender-Feed</p>
-                          <h3 className="text-sm font-medium text-white">{activeName}</h3>
+                          <h3 className="text-sm font-medium text-white">{feedTitle}</h3>
                         </div>
                         <div className="text-[11px] text-neutral-500">🗳️ {openPollEvents.length} • 💬 {commentEvents.length}</div>
                       </div>
@@ -3704,8 +3825,8 @@ setSelfDestruct(false);
                         <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
                           <div className="flex items-center justify-between mb-2">
                             <div className="text-xs font-semibold text-white">🗳️ Abstimmungen</div>
-                            {!canWriteActive && activeCalendarId !== 'default' && (
-                              <div className="text-[10px] text-neutral-600">nur Lesen</div>
+                            {openPollEvents.some(x => !canWriteCalendar(x.calendarId || 'default')) && (
+                              <div className="text-[10px] text-neutral-600">teilweise nur Lesen</div>
                             )}
                           </div>
 
@@ -3735,6 +3856,10 @@ setSelfDestruct(false);
                                   >
                                     <div className="text-sm font-medium text-white truncate">{ev.title}</div>
                                     <div className="text-[11px] text-neutral-500">{votesCount}/{totalVoters || '–'} Antworten</div>
+                                    <div className="text-[10px] text-neutral-600 flex items-center gap-2 mt-1">
+                                      <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(ev.calendarId || 'default') }} />
+                                      <span className="truncate">{getCalendarById(ev.calendarId || 'default')?.name || 'Privat'}{canWrite ? '' : ' · nur Lesen'}</span>
+                                    </div>
                                   </button>
                                   <button
                                     type="button"
@@ -3847,7 +3972,7 @@ setSelfDestruct(false);
                           </div>
 
                           {commentEvents.length === 0 ? (
-                            <div className="text-xs text-neutral-500">Noch keine Kommentare in diesem Kalender.</div>
+                            <div className="text-xs text-neutral-500">Noch keine Kommentare in den sichtbaren Kalendern.</div>
                           ) : commentEvents.map(ev => (
                             <button
                               key={ev.id}
@@ -3858,6 +3983,10 @@ setSelfDestruct(false);
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <div className="text-sm font-medium text-white truncate">{ev.title}</div>
+                                  <div className="text-[10px] text-neutral-600 flex items-center gap-2 mt-1">
+                                    <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(ev.calendarId || 'default') }} />
+                                    <span className="truncate">{getCalendarById(ev.calendarId || 'default')?.name || 'Privat'}</span>
+                                  </div>
                                   <div className="text-[11px] text-neutral-500 truncate">{(ev.lastCommentByName || 'User') + ': ' + (ev.lastCommentText || '')}</div>
                                 </div>
                                 <div className="text-[10px] text-neutral-600 shrink-0">{ev.lastCommentAt ? new Date(ev.lastCommentAt).toLocaleString('de-CH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</div>
@@ -4037,6 +4166,32 @@ setSelfDestruct(false);
 
 <div className="text-[11px] text-neutral-500">
                         Status: <span className="text-neutral-300">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</span>
+                      </div>
+
+                      <div className="text-[11px] text-neutral-600">
+                        Service Worker: <span className="text-neutral-300">{pushDiag.sw}</span>{pushDiag.controlling ? <span className="text-neutral-500"> · controlling ✅</span> : <span className="text-neutral-500"> · not controlling</span>}
+                      </div>
+                      {!!(pushDiag && pushDiag.lastError) && (
+                        <div className="text-[11px] text-amber-400 break-words">
+                          Push-Fehler: {String(pushDiag.lastError)}
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => { try { sendLocalPushTest(); } catch(_) {} }}
+                          className="px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-xs hover:border-neutral-500"
+                        >
+                          Test (lokal)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { try { sendServerPushTest(); } catch(_) {} }}
+                          className="px-3 py-2 bg-white text-black rounded-md text-xs font-semibold hover:bg-gray-200"
+                        >
+                          Test (Server)
+                        </button>
                       </div>
                     </div>
                   </section>

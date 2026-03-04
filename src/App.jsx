@@ -437,6 +437,13 @@ const [editingMessage, setEditingMessage] = useState(null);
 
       const typingTimeoutRef = useRef(null);
       const messagesEndRef = useRef(null);
+
+      // --- IN-APP CHAT PING (SOUND / VIBRATION) ---
+      const audioCtxRef = useRef(null);
+      const userProfileRef = useRef(null);
+      const activeChatIdRef = useRef(null);
+      const currentViewRef = useRef(null);
+      const lastChatPingRef = useRef({});
       
       const [chatStats, setChatStats] = useState({ sent: 0, received: 0, total: 0 });
       const [showPartnerStats, setShowPartnerStats] = useState(false);
@@ -2193,6 +2200,15 @@ const requestNotificationPermission = async (currentUser) => {
 	            const body = payload?.data?.body || payload?.notification?.body || '';
 	            const tag = payload?.data?.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
 
+	            // Diagnostics: mark push as received even in foreground (SW only fires in background)
+	            try {
+	              setPushDiag((prev) => ({
+	                ...prev,
+	                lastReceivedAt: Date.now(),
+	                lastReceivedTitle: String(title || '')
+	              }));
+	            } catch (_) {}
+
 	            // Wenn Chat stummgeschaltet ist: keine In-App Benachrichtigung
 	            try {
 	              const muted = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
@@ -2200,15 +2216,34 @@ const requestNotificationPermission = async (currentUser) => {
 	            } catch (_) {}
 
 	            // Foreground: UI aktualisiert sich via Firestore Listener.
-	            // Trotzdem: In-App Toast als Feedback + System-Notification, falls Tab nicht im Fokus.
+	            // Chat: optional In-App Ping (Sound/Vibration) wenn App sichtbar ist.
+	            try {
+	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+	              const isOpenChat = (kind === 'chat' && chatId && (currentViewRef?.current === 'secret_chat') && (activeChatIdRef?.current === chatId));
+	              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !isOpenChat) {
+	                const enableSound = !(prof && prof.inAppChatSound === false);
+	                const enableVibe = !(prof && prof.inAppChatVibrate === false);
+	                if (enableSound || enableVibe) {
+	                  try { lastChatPingRef.current[chatId] = Math.max(lastChatPingRef.current[chatId] || 0, Date.now()); } catch (_) {}
+	                  try { pingInApp({ sound: enableSound, vibrate: enableVibe }); } catch (_) {}
+	                }
+	              }
+	            } catch (_) {}
+
+	            // Toast als Feedback
 	            try {
 	              const msg = body ? `${title}: ${body}` : title;
 	              showToast(msg);
 	            } catch (_) {}
 
+	            // System-Notification im Vordergrund nur bei Test/forceShow oder wenn Tab nicht sichtbar.
+	            // Optional: auch für Chat im Vordergrund, falls aktiviert.
 	            try {
 	              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
-	              if (canNotify && document.visibilityState !== 'visible') {
+	              const forceShow = String(payload?.data?.forceShow || '') === '1' || kind === 'test';
+	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+	              const foregroundChat = !!(prof && prof.foregroundChatNotifications);
+	              if (canNotify && (forceShow || document.visibilityState !== 'visible' || (kind === 'chat' && foregroundChat))) {
 	                showSystemNotification(title, body, tag);
 	              }
 	            } catch (_) {}
@@ -2238,6 +2273,120 @@ const requestNotificationPermission = async (currentUser) => {
         setToasts(prev => [...prev, { id, message }]);
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
       };
+
+
+      // --- IN-APP CHAT PING (SOUND / VIBRATION) ---
+      useEffect(() => { try { userProfileRef.current = userProfile; } catch(_) {} }, [userProfile]);
+      useEffect(() => { try { activeChatIdRef.current = activeChat?.id || null; } catch(_) {} }, [activeChat]);
+      useEffect(() => { try { currentViewRef.current = currentView; } catch(_) {} }, [currentView]);
+
+      const ensureAudioContext = () => {
+        try {
+          if (typeof window === 'undefined') return null;
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return null;
+          if (!audioCtxRef.current) audioCtxRef.current = new AC();
+          return audioCtxRef.current;
+        } catch (_) { return null; }
+      };
+
+      const pingInApp = (opts = {}) => {
+        try {
+          const sound = (opts.sound !== false);
+          const vibrate = (opts.vibrate !== false);
+
+          if (vibrate && typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate([35, 45, 35]); } catch (_) {}
+          }
+
+          if (!sound) return;
+
+          const ctx = ensureAudioContext();
+          if (!ctx) return;
+          // Autoplay policy: context may be suspended until first user interaction
+          if (ctx.state === 'suspended') {
+            // resume best-effort
+            try { ctx.resume(); } catch (_) {}
+          }
+
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'sine';
+          o.frequency.value = 880;
+          g.gain.setValueAtTime(0.0001, ctx.currentTime);
+          g.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.14);
+          o.connect(g);
+          g.connect(ctx.destination);
+          o.start();
+          o.stop(ctx.currentTime + 0.15);
+        } catch (_) {}
+      };
+
+      // Ensure audio context can play after first interaction
+      useEffect(() => {
+        const resume = () => {
+          try {
+            const ctx = ensureAudioContext();
+            if (ctx && ctx.state === 'suspended') ctx.resume();
+          } catch (_) {}
+        };
+        try {
+          window.addEventListener('pointerdown', resume, { passive: true });
+          window.addEventListener('touchstart', resume, { passive: true });
+          window.addEventListener('keydown', resume, { passive: true });
+        } catch (_) {}
+        return () => {
+          try {
+            window.removeEventListener('pointerdown', resume);
+            window.removeEventListener('touchstart', resume);
+            window.removeEventListener('keydown', resume);
+          } catch (_) {}
+        };
+      }, []);
+
+      // Fallback: if Firestore updates chats while visible, ping even if push was blocked
+      useEffect(() => {
+        try {
+          if (!user) return;
+          const prof = userProfileRef.current || userProfile || {};
+          const enableSound = !(prof.inAppChatSound === false);
+          const enableVibe = !(prof.inAppChatVibrate === false);
+          if (!enableSound && !enableVibe) return;
+          if (!Array.isArray(myChats) || myChats.length === 0) return;
+          if (document.visibilityState !== 'visible') return;
+
+          for (const c of myChats) {
+            const updatedAt = (c && typeof c.updatedAt === 'number') ? c.updatedAt : 0;
+            if (!updatedAt) continue;
+            if (c.lastMessageSenderId === user.uid) {
+              // keep watermark up to date
+              const prev = lastChatPingRef.current[c.id] || 0;
+              if (updatedAt > prev) lastChatPingRef.current[c.id] = updatedAt;
+              continue;
+            }
+            const prev = lastChatPingRef.current[c.id] || 0;
+            if (updatedAt <= prev) continue;
+
+            // don't ping if currently inside this chat
+            const isOpen = (currentViewRef.current === 'secret_chat') && (activeChatIdRef.current === c.id);
+            if (isOpen) {
+              lastChatPingRef.current[c.id] = updatedAt;
+              continue;
+            }
+
+            // muted?
+            const muted = Array.isArray(prof.mutedChatIds) ? prof.mutedChatIds : [];
+            if (muted.includes(c.id)) {
+              lastChatPingRef.current[c.id] = updatedAt;
+              continue;
+            }
+
+            lastChatPingRef.current[c.id] = updatedAt;
+            pingInApp({ sound: enableSound, vibrate: enableVibe });
+          }
+        } catch (_) {}
+      }, [myChats, user, userProfile, currentView, activeChat]);
 
 
 // --- PWA-only: Service Worker + Install Prompt ---
@@ -5289,6 +5438,80 @@ setSelfDestruct(false);
                         <option value="silent">Stumm</option>
                       </select>
                       <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – du kannst nur Systemton nutzen oder stumm schalten.</p>
+                    </div>
+                  </div>
+
+                  {/* Chat Sound / Vibration (Foreground) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div className="bg-black border border-neutral-800 rounded-xl p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-white">Chat‑Ton in App</p>
+                          <p className="text-xs text-neutral-500 mt-1">Wenn Onyx geöffnet ist, spielt ein kurzer Ton bei neuen Nachrichten (kein System‑Klingelton).</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const enabled = !(userProfile && userProfile.inAppChatSound === false);
+                              const next = !enabled;
+                              await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { inAppChatSound: next }, { merge: true });
+                              showToast('Gespeichert');
+                              if (next) { try { pingInApp({ sound: true, vibrate: false }); } catch(_) {} }
+                            } catch (_) { showToast('Fehler'); }
+                          }}
+                          className={"px-3 py-2 rounded-md text-xs font-semibold border transition-colors " + ((userProfile && userProfile.inAppChatSound === false) ? 'bg-neutral-950 border-neutral-800 text-neutral-400' : 'bg-white text-black border-white hover:bg-gray-200')}
+                        >
+                          {(userProfile && userProfile.inAppChatSound === false) ? 'Aus' : 'An'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-black border border-neutral-800 rounded-xl p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-white">Vibration (Chat)</p>
+                          <p className="text-xs text-neutral-500 mt-1">Kurze Vibration bei neuen Chat‑Nachrichten, wenn Onyx sichtbar ist.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const enabled = !(userProfile && userProfile.inAppChatVibrate === false);
+                              const next = !enabled;
+                              await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { inAppChatVibrate: next }, { merge: true });
+                              showToast('Gespeichert');
+                              if (next) { try { pingInApp({ sound: false, vibrate: true }); } catch(_) {} }
+                            } catch (_) { showToast('Fehler'); }
+                          }}
+                          className={"px-3 py-2 rounded-md text-xs font-semibold border transition-colors " + ((userProfile && userProfile.inAppChatVibrate === false) ? 'bg-neutral-950 border-neutral-800 text-neutral-400' : 'bg-white text-black border-white hover:bg-gray-200')}
+                        >
+                          {(userProfile && userProfile.inAppChatVibrate === false) ? 'Aus' : 'An'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-black border border-neutral-800 rounded-xl p-4 mt-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-white">Chat‑Push auch im Vordergrund</p>
+                        <p className="text-xs text-neutral-500 mt-1">Wenn aktiviert, zeigt Onyx auch bei geöffneter App eine System‑Notification (kann je nach Android trotzdem stumm sein).</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const enabled = !!(userProfile && userProfile.foregroundChatNotifications);
+                            const next = !enabled;
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { foregroundChatNotifications: next }, { merge: true });
+                            showToast('Gespeichert');
+                          } catch (_) { showToast('Fehler'); }
+                        }}
+                        className={"px-3 py-2 rounded-md text-xs font-semibold border transition-colors " + ((userProfile && userProfile.foregroundChatNotifications) ? 'bg-white text-black border-white hover:bg-gray-200' : 'bg-neutral-950 border-neutral-800 text-neutral-400')}
+                      >
+                        {(userProfile && userProfile.foregroundChatNotifications) ? 'An' : 'Aus'}
+                      </button>
                     </div>
                   </div>
 

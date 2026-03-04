@@ -91,20 +91,17 @@ self.addEventListener('fetch', (event) => {
 // Hintergrund Push-Benachrichtigungen empfangen
 // Hintergrund Push-Benachrichtigungen empfangen
 messaging.onBackgroundMessage(function(payload) {
-  // If the backend sends a WebPush "notification" payload, many browsers will already display it.
-  // In that case we avoid showing a duplicate notification from this handler.
-  try {
-    const forceShow = String(payload?.data?.forceShow || '').toLowerCase() === '1';
-    if (payload?.notification && !forceShow) return;
-  } catch (_) {}
+  // Always render via the Service Worker for reliability across Android PWAs + GitHub Pages subpaths.
 
   const data = (payload && payload.data) ? payload.data : {};
-  const notificationTitle = (data && data.title) ? data.title : ((payload && payload.notification && payload.notification.title) ? payload.notification.title : 'Onyx');
+  const __kind = (data && data.kind) ? String(data.kind) : '';
+  const notificationTitle = (__kind === 'chat')
+    ? 'Kalender Aktuell 🔏'
+    : ((data && data.title) ? data.title : ((payload && payload.notification && payload.notification.title) ? payload.notification.title : 'Onyx'));
   const rawBody = (data && data.body) ? data.body : ((payload && payload.notification && payload.notification.body) ? payload.notification.body : 'Kalender aktuell');
 
   // Tag: group notifications (chat per chatId), but still allow renotify
   let __tag = (data && data.tag) ? String(data.tag) : '';
-  const __kind = (data && data.kind) ? String(data.kind) : '';
   const __chatId = (data && data.chatId) ? String(data.chatId) : '';
   if (!__tag) {
     if (__kind === 'chat' && __chatId) __tag = `chat_${__chatId}`;

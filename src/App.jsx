@@ -603,12 +603,22 @@ const persistDisplayName = async (rawName, opts = {}) => {
     const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
     const dataToSave = {
       displayName: uname,
-      username: uname.slice(0, 20), // legacy compatibility
       uid: user.uid,
       email: user.email,
       emailLower: (user.email || '').toLowerCase(),
       updatedAt: Date.now(),
     };
+
+    // IMPORTANT:
+    // username is a stable alias/handle and should NOT be overwritten on every name change.
+    // Only set it once if missing/empty (legacy compatibility).
+    try {
+      const existingAlias = (userProfile && typeof userProfile.username === 'string') ? userProfile.username.trim() : '';
+      if (!existingAlias || existingAlias.length < 2) {
+        dataToSave.username = uname.slice(0, 20);
+        dataToSave.usernameLower = String(dataToSave.username).toLowerCase();
+      }
+    } catch (_) {}
     if (opts && opts.avatarThumbBase64) {
       dataToSave.avatarThumbBase64 = opts.avatarThumbBase64;
       dataToSave.avatarBase64 = opts.avatarThumbBase64; // legacy
@@ -623,7 +633,7 @@ const persistDisplayName = async (rawName, opts = {}) => {
     try { setUserProfile(prev => ({ ...(prev || {}), ...dataToSave })); } catch (_) {}
     try {
       localStorage.setItem(`onyx_displayName_${user.uid}`, uname);
-      localStorage.setItem(`onyx_username_${user.uid}`, dataToSave.username);
+      if (dataToSave.username) localStorage.setItem(`onyx_username_${user.uid}`, dataToSave.username);
     } catch (_) {}
 
     // Best-effort: displayName in bestehenden Chats aktualisieren (damit es überall konsistent ist)
@@ -2103,14 +2113,16 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             if (lastMsg && lastMsg.senderId !== user.uid) {
               const mutedChatIds = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
               const isMuted = mutedChatIds.includes(activeChat.id);
-              const pushEnabled = (userProfile && (userProfile.fcmTokenWeb || userProfile.fcmToken) && ('Notification' in window) && Notification.permission === 'granted');
+              const canNotify = (('Notification' in window) && Notification.permission === 'granted');
               const key = `onyx_last_notify_${activeChat.id}`;
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
-              if (!isMuted && !pushEnabled && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
-                const title = getChatPartnerName(activeChat);
+              if (!isMuted && canNotify && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
                 const preview = lastMsg.deleted ? 'Nachricht gelöscht' : (lastMsg.image ? '📷 Bild' : (lastMsg.audio ? '🎙️ Audio' : (lastMsg.event ? '📅 Termin' : (String(lastMsg.text || '').slice(0, 120) || 'Neue Nachricht'))));
-                showSystemNotification(title, preview, `onyx_chat_${activeChat.id}`);
+                const sp = getProfile(lastMsg.senderId);
+                const senderName = (sp && (sp.displayName || sp.username)) ? (sp.displayName || sp.username) : 'Jemand';
+                // Privacy: Chat OS notification should not show preview/body
+                showSystemNotification('Kalender Aktuell 🔏', null, `onyx_chat_${activeChat.id}`);
                 localStorage.setItem(key, String(lastMsg.timestamp || Date.now()));
               }
             }
@@ -2261,16 +2273,17 @@ const requestNotificationPermission = async (currentUser) => {
 	          unsubscribeMessage = onMessage(messaging, (payload) => {
 	            const kind = payload?.data?.kind || '';
 	            const chatId = payload?.data?.chatId || '';
-	            const title = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
-	            const body = payload?.data?.body || payload?.notification?.body || '';
+	            const incomingTitle = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
+	            const incomingBody = payload?.data?.body || payload?.notification?.body || '';
 	            const tag = payload?.data?.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
+	            const notifTitle = (kind === 'chat') ? 'Kalender Aktuell 🔏' : incomingTitle;
 
 	            // Diagnostics: mark push as received even in foreground (SW only fires in background)
 	            try {
 	              setPushDiag((prev) => ({
 	                ...prev,
 	                lastReceivedAt: Date.now(),
-	                lastReceivedTitle: String(title || '')
+	                lastReceivedTitle: String(notifTitle || '')
 	              }));
 	            } catch (_) {}
 
@@ -2282,10 +2295,11 @@ const requestNotificationPermission = async (currentUser) => {
 
 	            // Foreground: UI aktualisiert sich via Firestore Listener.
 	            // Chat: optional In-App Ping (Sound/Vibration) wenn App sichtbar ist.
+	            let __isOpenChat = false;
 	            try {
 	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
-	              const isOpenChat = (kind === 'chat' && chatId && (currentViewRef?.current === 'secret_chat') && (activeChatIdRef?.current === chatId));
-	              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !isOpenChat) {
+	              __isOpenChat = (kind === 'chat' && chatId && (currentViewRef?.current === 'secret_chat') && (activeChatIdRef?.current === chatId));
+	              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !__isOpenChat) {
 	                const enableSound = !(prof && prof.inAppChatSound === false);
 	                const enableVibe = !(prof && prof.inAppChatVibrate === false);
 	                if (enableSound || enableVibe) {
@@ -2297,7 +2311,7 @@ const requestNotificationPermission = async (currentUser) => {
 
 	            // Toast als Feedback
 	            try {
-	              const msg = body ? `${title}: ${body}` : title;
+	              const msg = incomingBody ? `${notifTitle}: ${incomingBody}` : notifTitle;
 	              showToast(msg);
 	            } catch (_) {}
 
@@ -2306,10 +2320,18 @@ const requestNotificationPermission = async (currentUser) => {
 	            try {
 	              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
 	              const forceShow = String(payload?.data?.forceShow || '') === '1' || kind === 'test';
-	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
-	              const foregroundChat = !!(prof && prof.foregroundChatNotifications);
-	              if (canNotify && (forceShow || document.visibilityState !== 'visible' || (kind === 'chat' && foregroundChat))) {
-	                showSystemNotification(title, body, tag);
+	              if (!canNotify) return;
+
+	              // Always show a real OS notification for incoming messages (unless the user is currently inside that conversation).
+	              if (kind === 'chat' && chatId && !__isOpenChat) {
+	                // Privacy: Chat OS notification should not show preview/body
+	                showSystemNotification('Kalender Aktuell 🔏', null, tag);
+	                return;
+	              }
+
+	              // Non-chat pushes (tests, reminders, etc.)
+	              if (forceShow || document.visibilityState !== 'visible') {
+	                showSystemNotification(notifTitle, incomingBody, tag);
 	              }
 	            } catch (_) {}
 	          });
@@ -2410,14 +2432,16 @@ const requestNotificationPermission = async (currentUser) => {
         };
       }, []);
 
-      // Fallback: if Firestore updates chats while visible, ping even if push was blocked
+      // Reliable live notifications for new messages while the app is running.
+      // This prevents the "toast only" situation when server push is unavailable.
       useEffect(() => {
         try {
           if (!user) return;
           const prof = userProfileRef.current || userProfile || {};
           const enableSound = !(prof.inAppChatSound === false);
           const enableVibe = !(prof.inAppChatVibrate === false);
-          if (!enableSound && !enableVibe) return;
+          const canNotify = (('Notification' in window) && Notification.permission === 'granted');
+          if (!enableSound && !enableVibe && !canNotify) return;
           if (!Array.isArray(myChats) || myChats.length === 0) return;
           if (document.visibilityState !== 'visible') return;
 
@@ -2448,7 +2472,31 @@ const requestNotificationPermission = async (currentUser) => {
             }
 
             lastChatPingRef.current[c.id] = updatedAt;
-            pingInApp({ sound: enableSound, vibrate: enableVibe });
+
+            // 1) Optional in-app ping (sound/vibration)
+            if (enableSound || enableVibe) pingInApp({ sound: enableSound, vibrate: enableVibe });
+
+            // 2) System notification (real OS notification)
+            try {
+              if (canNotify) {
+                const key = `onyx_last_notify_chat_${c.id}`;
+                const lastNotified = parseInt(localStorage.getItem(key) || '0', 10) || 0;
+                if (updatedAt > lastNotified) {
+                  const isGroup = c.type === 'group';
+                  let senderName = 'Jemand';
+                  try {
+                    const sid = String(c.lastMessageSenderId || '');
+                    if (sid && sid !== user.uid) {
+                      const sp = getProfile(sid);
+                      senderName = (sp && (sp.displayName || sp.username)) ? (sp.displayName || sp.username) : (c.displayNames && c.displayNames[sid] ? String(c.displayNames[sid]) : 'Jemand');
+                    }
+                  } catch (_) {}
+                  // Privacy: Chat OS notification should not show preview/body
+                  showSystemNotification('Kalender Aktuell 🔏', null, `onyx_chat_${c.id}`);
+                  localStorage.setItem(key, String(updatedAt));
+                }
+              }
+            } catch (_) {}
           }
         } catch (_) {}
       }, [myChats, user, userProfile, currentView, activeChat]);
@@ -2479,7 +2527,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=33`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=34`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -2574,12 +2622,9 @@ useEffect(() => {
           if (!('Notification' in window)) return;
           if (Notification.permission !== 'granted') return;
 
-          const finalBody = (body && String(body).trim().length > 0) ? `${body}
-Kalender aktuell` : 'Kalender aktuell';
           const silentMode = (userProfile && String(userProfile.notificationSoundMode||'system') === 'silent');
 
           const options = {
-            body: finalBody,
             icon: './icon-192.png',
             badge: './icon-192.png',
             tag,
@@ -2587,6 +2632,13 @@ Kalender aktuell` : 'Kalender aktuell';
             silent: silentMode,
             ...(silentMode ? {} : { vibrate: [200, 100, 200] })
           };
+
+          // body === null means: do not show any body text (privacy mode)
+          if (body !== null && body !== undefined) {
+            const finalBody = (body && String(body).trim().length > 0) ? `${body}
+Kalender aktuell` : 'Kalender aktuell';
+            options.body = finalBody;
+          }
 
           if ('serviceWorker' in navigator) {
             const reg = (await registerPushServiceWorker()) || (await navigator.serviceWorker.getRegistration());

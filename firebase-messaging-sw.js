@@ -14,7 +14,7 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-const CACHE_NAME = 'onyx-v32';
+const CACHE_NAME = 'onyx-v34';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -96,12 +96,14 @@ messaging.onBackgroundMessage(function(payload) {
   // We therefore ALWAYS show a notification here and dedupe via `tag`.
 
   const data = (payload && payload.data) ? payload.data : {};
-  const notificationTitle = (data && data.title) ? data.title : ((payload && payload.notification && payload.notification.title) ? payload.notification.title : 'Onyx');
-  const rawBody = (data && data.body) ? data.body : ((payload && payload.notification && payload.notification.body) ? payload.notification.body : 'Kalender aktuell');
+  const __kind = (data && data.kind) ? String(data.kind) : '';
+  const notificationTitle = (__kind === 'chat')
+    ? 'Kalender Aktuell 🔏'
+    : ((data && data.title) ? data.title : ((payload && payload.notification && payload.notification.title) ? payload.notification.title : 'Onyx'));
+  const rawBody = (data && data.body) ? data.body : ((payload && payload.notification && payload.notification.body) ? payload.notification.body : '');
 
   // Tag: group notifications (chat per chatId), but still allow renotify
   let __tag = (data && data.tag) ? String(data.tag) : '';
-  const __kind = (data && data.kind) ? String(data.kind) : '';
   const __chatId = (data && data.chatId) ? String(data.chatId) : '';
   if (!__tag) {
     if (__kind === 'chat' && __chatId) __tag = `chat_${__chatId}`;
@@ -112,8 +114,9 @@ messaging.onBackgroundMessage(function(payload) {
   // In einer PWA ist kein Custom-Sound möglich. Wir unterstützen nur: Systemton oder stumm.
   const silent = String((data && (data.silent ?? data.sound)) || '').toLowerCase() === '1' || String((data && (data.silent ?? data.sound)) || '').toLowerCase() === 'silent';
 
+  const isChat = (__kind === 'chat');
+
   const notificationOptions = {
-    body: (rawBody ? String(rawBody).trim() : 'Kalender aktuell'),
     icon: './icon-192.png',
     badge: './icon-192.png',
     tag: __tag,
@@ -128,6 +131,11 @@ messaging.onBackgroundMessage(function(payload) {
       occurrenceDate: (data && data.occurrenceDate) ? data.occurrenceDate : ''
     }
   };
+
+  // Privacy: Chat notifications show ONLY the title (no preview/body)
+  if (!isChat) {
+    notificationOptions.body = (rawBody ? String(rawBody).trim() : 'Kalender aktuell');
+  }
   // Best-effort: notify open clients (for diagnostics UI)
   try {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cl) => {
@@ -137,7 +145,7 @@ messaging.onBackgroundMessage(function(payload) {
             type: 'PUSH_RECEIVED',
             at: Date.now(),
             title: notificationTitle,
-            body: notificationOptions.body,
+            body: notificationOptions.body || '',
             data: notificationOptions.data || {}
           });
         } catch (_) {}
@@ -153,6 +161,15 @@ messaging.onBackgroundMessage(function(payload) {
 self.addEventListener('notificationclick', (event) => {
   try {
     event.notification.close();
+
+    // Privacy: Chat notifications should NOT navigate/open anything.
+    const tag = String(event?.notification?.tag || '');
+    const kind = String(event?.notification?.data?.kind || '');
+    const isChatNotif = (kind === 'chat') || tag.startsWith('onyx_chat_') || tag.startsWith('chat_');
+    if (isChatNotif) {
+      event.waitUntil(Promise.resolve());
+      return;
+    }
     event.waitUntil((async () => {
       const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const client of allClients) {

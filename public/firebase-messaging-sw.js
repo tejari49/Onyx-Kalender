@@ -14,7 +14,7 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-const CACHE_NAME = 'onyx-v30';
+const CACHE_NAME = 'onyx-v32';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -31,9 +31,13 @@ const STATIC_ASSETS = [
 // Install: cache only static assets (NOT index.html to avoid stale UI)
 self.addEventListener('install', (event) => {
   self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
+  event.waitUntil((async () => {
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      const results = await Promise.allSettled(STATIC_ASSETS.map((u) => cache.add(u)));
+      results.forEach(() => {});
+    } catch (_) {}
+  })());
 });
 
 // Activate: clean old caches and take control immediately
@@ -98,6 +102,16 @@ messaging.onBackgroundMessage(function(payload) {
   const notificationTitle = (data && data.title) ? data.title : ((payload && payload.notification && payload.notification.title) ? payload.notification.title : 'Onyx');
   const rawBody = (data && data.body) ? data.body : ((payload && payload.notification && payload.notification.body) ? payload.notification.body : 'Kalender aktuell');
 
+  // Tag: group notifications (chat per chatId), but still allow renotify
+  let __tag = (data && data.tag) ? String(data.tag) : '';
+  const __kind = (data && data.kind) ? String(data.kind) : '';
+  const __chatId = (data && data.chatId) ? String(data.chatId) : '';
+  if (!__tag) {
+    if (__kind === 'chat' && __chatId) __tag = `chat_${__chatId}`;
+    else if (__kind === 'test') __tag = `onyx_test_${Date.now()}`;
+    else __tag = 'onyx';
+  }
+
   // In einer PWA ist kein Custom-Sound möglich. Wir unterstützen nur: Systemton oder stumm.
   const silent = String((data && (data.silent ?? data.sound)) || '').toLowerCase() === '1' || String((data && (data.silent ?? data.sound)) || '').toLowerCase() === 'silent';
 
@@ -105,7 +119,7 @@ messaging.onBackgroundMessage(function(payload) {
     body: (rawBody ? String(rawBody).trim() : 'Kalender aktuell'),
     icon: './icon-192.png',
     badge: './icon-192.png',
-    tag: (data && data.tag) ? data.tag : 'onyx',
+    tag: __tag,
     renotify: true,
     silent: silent,
     ...(silent ? {} : { vibrate: [200, 100, 200] }),

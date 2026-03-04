@@ -247,6 +247,10 @@ function AmoledCalendarApp() {
       const [authError, setAuthError] = useState('');
       
       const [currentView, setCurrentView] = useState('dashboard');
+      const [settingsTab, setSettingsTab] = useState('calendars');
+      const [settingsQuery, setSettingsQuery] = useState('');
+      const [settingsShareCalId, setSettingsShareCalId] = useState('default');
+
       const [currentDate, setCurrentDate] = useState(new Date());
       
       const [weather, setWeather] = useState(null);
@@ -259,7 +263,8 @@ function AmoledCalendarApp() {
       const [canInstallPwa, setCanInstallPwa] = useState(false);
 
       // Push diagnostics (helps to debug when users report "Push geht nicht")
-      const [pushDiag, setPushDiag] = useState({ sw: 'unknown', controlling: false, lastError: '', lastTokenAt: 0 });
+      const [pushDiag, setPushDiag] = useState({ sw: 'unknown', controlling: false, lastError: '', lastTokenAt: 0, lastReceivedAt: 0, lastReceivedTitle: '' });
+      const [pushTest, setPushTest] = useState({ id: '', status: '', lastError: '', updatedAt: 0 });
 
       const isIosUA = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
       
@@ -2194,7 +2199,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=31`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=32`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -2260,6 +2265,28 @@ useEffect(() => {
   };
 }, []);
 
+// Diagnostics: receive a ping from the Service Worker when a push arrives
+useEffect(() => {
+  try {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const onMsg = (evt) => {
+      try {
+        const d = evt?.data || {};
+        if (d.type !== 'PUSH_RECEIVED') return;
+        setPushDiag((prev) => ({
+          ...prev,
+          lastReceivedAt: typeof d.at === 'number' ? d.at : Date.now(),
+          lastReceivedTitle: String(d.title || '')
+        }));
+      } catch (_) {}
+    };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    return () => {
+      try { navigator.serviceWorker.removeEventListener('message', onMsg); } catch (_) {}
+    };
+  } catch (_) {}
+}, []);
+
 
       const showSystemNotification = async (title, body, tag = 'onyx') => {
         try {
@@ -2312,9 +2339,17 @@ Kalender aktuell` : 'Kalender aktuell';
         try {
           if (!user) return;
           const id = `${user.uid}_${Date.now()}`;
+          setPushTest({ id, status: 'pending', lastError: '', updatedAt: Date.now() });
           await setDoc(
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', id),
-            { uid: user.uid, createdAt: Date.now(), platform: 'web' },
+            {
+              uid: user.uid,
+              createdAt: serverTimestamp(),
+              createdAtMs: Date.now(),
+              status: 'pending',
+              platform: 'web',
+              ua: String((typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '').slice(0, 220)
+            },
             { merge: true }
           );
           showToast('Server-Test ausgelöst (oxynoti)');
@@ -2322,6 +2357,33 @@ Kalender aktuell` : 'Kalender aktuell';
           showToast('Server-Test fehlgeschlagen');
         }
       };
+
+      // Live status for last server test (sent/error)
+      useEffect(() => {
+        try {
+          if (!user) return;
+          if (!pushTest?.id) return;
+          const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', pushTest.id);
+          const unsub = onSnapshot(ref, (snap) => {
+            try {
+              if (!snap.exists()) return;
+              const d = snap.data() || {};
+              const status = String(d.status || '').toLowerCase();
+              const lastError = d.lastError ? String(d.lastError) : '';
+              const updatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : Date.now();
+              setPushTest((prev) => ({ ...prev, status, lastError, updatedAt }));
+              if (status === 'error' && lastError) {
+                setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
+              }
+              if (status === 'sent') {
+                // Let SW handle the visible notification; this toast is just feedback.
+                showToast('Server-Test gesendet ✅');
+              }
+            } catch (_) {}
+          });
+          return () => { try { unsub(); } catch (_) {} };
+        } catch (_) {}
+      }, [pushTest?.id, user]);
 
       const getWeatherIcon = (code, className = "w-8 h-8 text-white") => {
         if (code === undefined || code === null) return <Cloud className={className} />;
@@ -4893,209 +4955,319 @@ setSelfDestruct(false);
 
 </div>
             )}
-            {currentView === 'settings' && (
-              <div className="p-6 md:p-10 max-w-3xl mx-auto w-full animate-fade-in">
-                <h2 className="text-3xl md:text-4xl font-light mb-10">Einstellungen</h2>
-                <div className="space-y-10">
-                  
-                  {/* KALENDER VERWALTUNG */}
-                  <section>
-                    <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-4">
-                       <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider">Meine Kalender & Schichten</h3>
-                       <button onClick={() => { setCalForm({ id: null, name: '', type: 'normal', color: PASTEL_COLORS[(Date.now() % PASTEL_COLORS.length)], shifts: [] }); setIsCalManageModalOpen(true); }} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">+ Neu</button>
-                    </div>
-                    
-                    <div className="space-y-3">
-                       <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                          <div>
-                             <p className="font-medium text-white flex items-center gap-2">Privat <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Standard</span></p>
-                             <p className="text-xs text-neutral-500 mt-1">Dein persönlicher Standard-Kalender.</p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Farbe</span>
-                            <input
-                              type="color"
-                              value={((userProfile && typeof userProfile.defaultCalendarColor === 'string' && userProfile.defaultCalendarColor) ? userProfile.defaultCalendarColor : '#ffffff')}
-                              onChange={async (e) => {
-                                try {
-                                  const v = e.target.value;
-                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultCalendarColor: v }, { merge: true });
-                                  showToast('Gespeichert');
-                                } catch(_) { showToast('Fehler'); }
-                              }}
-                              className="w-10 h-10 rounded-lg bg-transparent border border-neutral-800"
-                              title="Farbe Privat"
-                            />
+            {currentView === 'settings' && (() => {
+    const q = (settingsQuery || '').trim().toLowerCase();
+    const match = (...keys) => {
+      if (!q) return true;
+      const all = keys.flat().filter(Boolean).map(x => String(x).toLowerCase());
+      return all.some(k => k.includes(q));
+    };
+    const show = (tabId, keys) => {
+      if (q) return match(keys);
+      return settingsTab === tabId;
+    };
+    const TABS = [
+      { id: 'calendars', label: 'Kalender', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
+      { id: 'notifications', label: 'Benachr.', icon: Bell, keys: ['push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
+      { id: 'friends', label: 'Freunde', icon: Users, keys: ['freunde', 'chat', 'kontakt', 'entfernen', 'block'] },
+      { id: 'links', label: 'Public Links', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
+      { id: 'audit', label: 'Audit', icon: History, keys: ['audit', 'verlauf', 'log', 'änderung', 'wer'] },
+      { id: 'account', label: 'Account', icon: User, keys: ['account', 'datenschutz', 'abmelden', 'email'] },
+      { id: 'ics', label: 'Import/Export', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
+    ];
 
-                            <button
-                              type="button"
-                              onClick={() => openShareLinkModalForCalendar({ id: 'default', name: 'Privat' })}
-                              className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-                              title="Public Busy‑Only Link"
-                            >
-                              <Lock className="w-4 h-4" />
-                            </button>
-                          </div>
-                       </div>
-                       
-                       {customCalendars.filter(c => c.ownerId === user.uid).map(cal => (
-                          <div key={cal.id} className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                             <div>
-                                <p className="font-medium text-white flex items-center gap-2">{cal.name} {cal.type==='shift' && <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-900/50 px-2 py-0.5 rounded-full uppercase">Schichtplan</span>}</p>
-                                <p className="text-xs text-neutral-500 mt-1">Freigegeben für: {Object.keys(cal.sharedWith || {}).length} Nutzer</p>
-                             </div>
-                             <div className="flex gap-2">
-                                <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busy‑Only Link"><Lock className="w-4 h-4"/></button>
-                                <button onClick={() => { setShareCalData(cal); setIsShareCalModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Share2 className="w-4 h-4"/></button>
-                                <button onClick={() => { setCalForm({ ...cal, color: (cal.color || calendarTint(cal.id)) }); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
-                                <button onClick={() => deleteCalendar(cal.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 className="w-4 h-4"/></button>
-                             </div>
-                          </div>
-                       ))}
-                       {customCalendars.filter(c => c.ownerId !== user.uid).map(cal => (
-                          <div key={cal.id} className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between opacity-80">
-                             <div>
-                                <p className="font-medium text-white flex items-center gap-2">{cal.name} <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Geteilt mit dir</span></p>
-                                <p className="text-xs text-neutral-500 mt-1">Rechte: {cal.sharedWith[user.uid] === 'write' ? 'Lesen & Schreiben' : 'Nur Lesen'}</p>
-                             </div>
-                          </div>
-                       ))}
-                    </div>
-                  </section>
+    const filteredTabs = q ? TABS.filter(t => match(t.keys)) : TABS;
 
+    return (
+      <div className="p-6 md:p-10 max-w-6xl mx-auto w-full animate-fade-in">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+          <div className="min-w-0">
+            <h2 className="text-3xl md:text-4xl font-light">Einstellungen</h2>
+            <p className="mt-2 text-sm text-neutral-500">
+              Suche nach „Push“, „Link“, „Farbe“, „Freunde“… oder nutze die Kategorien.
+            </p>
+          </div>
 
+          <div className="w-full md:w-[360px]">
+            <div className="relative">
+              <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                value={settingsQuery}
+                onChange={(e) => setSettingsQuery(e.target.value)}
+                placeholder="Einstellungen durchsuchen…"
+                className="w-full bg-black border border-neutral-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
+              />
+              {!!settingsQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSettingsQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-neutral-500 hover:text-white"
+                  title="Zurücksetzen"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
 
-                  <section>
-                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Benachrichtigungen</h3>
-                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-medium text-white">Kalender-Erinnerungen</p>
-                          <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit „Standard“). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
-                        </div>
-                        <div className="flex gap-2">
-  {!isStandalone && canInstallPwa && (
-    <button
-      type="button"
-      onClick={() => { try { promptInstallPwa(); } catch(e) {} }}
-      className="px-4 py-2 bg-white text-black rounded-md text-sm font-semibold hover:bg-gray-200 transition-colors"
-    >
-      Installieren
-    </button>
-  )}
-  <button
-    type="button"
-    disabled={!isStandalone}
-    onClick={() => { try { requestNotificationPermission(user); } catch(e) {} }}
-    className={"px-4 py-2 rounded-md text-sm transition-colors " + (isStandalone ? "bg-neutral-900 border border-neutral-800 hover:text-white" : "bg-neutral-950 border border-neutral-900 text-neutral-600 cursor-not-allowed")}
-    title={isStandalone ? "Benachrichtigungen aktivieren" : (isIosUA ? "iPhone/iPad: Teilen → Zum Home-Bildschirm" : "Bitte zuerst installieren")}
-  >
-    Erlauben
-  </button>
-</div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Standard-Erinnerung</label>
-                          <select
-                            value={(() => {
-                              const v = (userProfile && typeof userProfile.defaultReminderMinutes === 'number') ? String(userProfile.defaultReminderMinutes) : 'none';
-                              return v;
-                            })()}
-                            onChange={async (e) => {
-                              try {
-                                const v = e.target.value;
-                                const next = (v === 'none') ? null : (parseInt(v, 10) || 0);
-                                await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultReminderMinutes: next }, { merge: true });
-                                showToast('Gespeichert');
-                              } catch (err) {
-                                showToast('Fehler');
-                              }
-                            }}
-                            className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                          >
-                            <option value="none">Keine</option>
-                            <option value="0">Bei Beginn</option>
-                            <option value="5">5 Minuten vorher</option>
-                            <option value="10">10 Minuten vorher</option>
-                            <option value="15">15 Minuten vorher</option>
-                            <option value="30">30 Minuten vorher</option>
-                            <option value="60">1 Stunde vorher</option>
-                            <option value="120">2 Stunden vorher</option>
-                            <option value="1440">1 Tag vorher</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      
-
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benachrichtigungston</label>
-                          <select
-                            value={(() => {
-                              const v = (userProfile && userProfile.notificationSoundMode) ? String(userProfile.notificationSoundMode) : 'system';
-                              return (v === 'silent') ? 'silent' : 'system';
-                            })()}
-                            onChange={async (e) => {
-                              try {
-                                const v = e.target.value;
-                                await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { notificationSoundMode: v }, { merge: true });
-                                showToast('Gespeichert');
-                              } catch (err) {
-                                showToast('Fehler');
-                              }
-                            }}
-                            className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                          >
-                            <option value="system">System (Standard)</option>
-                            <option value="silent">Stumm</option>
-                          </select>
-                          <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – du kannst nur Systemton nutzen oder stumm schalten.</p>
-                        </div>
-                      </div>
-
-                      <div className="bg-black border border-neutral-800 rounded-xl p-4">
-  <div className="flex items-start justify-between gap-3">
-    <div className="min-w-0">
-      <div className="text-xs font-semibold text-white">PWA (nur Web Push)</div>
-      <div className="mt-1 text-[11px] text-neutral-500">
-        Diese Installation nutzt nur Push über die installierte PWA (Web). Android/APK Tokens werden nicht mehr verwendet.
-      </div>
-      {!isStandalone && (
-        <div className="mt-2 text-[11px] text-amber-400">
-          {isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren.' : 'Bitte installieren, dann „Erlauben“.'}
+            {/* Mobile tab row */}
+            <div className="mt-3 md:hidden flex gap-2 overflow-x-auto no-scrollbar">
+              {(q ? filteredTabs : TABS).map(t => {
+                const Icon = t.icon;
+                const active = (!q && settingsTab === t.id);
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
+                    className={"shrink-0 px-3 py-2 rounded-xl border text-xs flex items-center gap-2 " + (active ? "bg-white text-black border-white" : "bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-600")}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
-      )}
-      <div className="mt-2 text-[11px] text-neutral-600">
-        Web Token: <span className="text-neutral-300">{(userProfile && userProfile.fcmTokenWeb) ? 'vorhanden ✅' : 'nicht gesetzt'}</span>
-      </div>
-    </div>
-    <div className="flex flex-col gap-2 shrink-0">
-      {!isStandalone && canInstallPwa && (
-        <button type="button" onClick={() => { try { promptInstallPwa(); } catch(e) {} }} className="px-3 py-2 bg-white text-black rounded-md text-sm font-semibold hover:bg-gray-200">
-          Installieren
-        </button>
-      )}
-    </div>
-  </div>
-</div>
 
-<div className="text-[11px] text-neutral-500">
+        <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6">
+          {/* Desktop sidebar */}
+          <aside className="hidden md:block self-start sticky top-6">
+            <div className="bg-neutral-950/50 border border-neutral-800 rounded-2xl p-2">
+              {TABS.map(t => {
+                const Icon = t.icon;
+                const active = settingsTab === t.id && !q;
+                const disabledBySearch = q && !match(t.keys);
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
+                    className={
+                      "w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors " +
+                      (active ? "bg-white text-black" : "text-neutral-300 hover:bg-neutral-900") +
+                      (disabledBySearch ? " opacity-50" : "")
+                    }
+                    title={disabledBySearch ? "Nicht im Suchresultat" : ""}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span className="truncate">{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 text-[11px] text-neutral-600 leading-relaxed">
+              <div className="flex items-center gap-2">
+                <Info className="w-3.5 h-3.5" />
+                <span>„Test (Server)“ braucht Firestore‑Zugriff (kein Adblock/Shield).</span>
+              </div>
+            </div>
+          </aside>
+
+          <main className="space-y-8 min-w-0">
+            {/* KALENDER VERWALTUNG */}
+            {(show('calendars', ['kalender', 'schicht', 'farbe', 'privat', 'freigabe', 'teilen', 'share', 'busy']) ) && (
+              <section id="settings-calendars">
+                <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-4">
+                  <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-2">
+                    <CalendarIcon className="w-4 h-4" /> Meine Kalender & Schichten
+                  </h3>
+                  <button onClick={() => { setCalForm({ id: null, name: '', type: 'normal', color: PASTEL_COLORS[(Date.now() % PASTEL_COLORS.length)], shifts: [] }); setIsCalManageModalOpen(true); }} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">+ Neu</button>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <p className="font-medium text-white flex items-center gap-2">Privat <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Standard</span></p>
+                      <p className="text-xs text-neutral-500 mt-1">Dein persönlicher Standard-Kalender.</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Farbe</span>
+                      <input
+                        type="color"
+                        value={((userProfile && typeof userProfile.defaultCalendarColor === 'string' && userProfile.defaultCalendarColor) ? userProfile.defaultCalendarColor : '#ffffff')}
+                        onChange={async (e) => {
+                          try {
+                            const v = e.target.value;
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultCalendarColor: v }, { merge: true });
+                            showToast('Gespeichert');
+                          } catch(_) { showToast('Fehler'); }
+                        }}
+                        className="w-10 h-10 rounded-lg bg-transparent border border-neutral-800"
+                        title="Farbe Privat"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => openShareLinkModalForCalendar({ id: 'default', name: 'Privat' })}
+                        className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+                        title="Public Busy‑Only Link"
+                      >
+                        <Lock className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {customCalendars.filter(c => c.ownerId === user.uid).map(cal => (
+                    <div key={cal.id} className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-white flex items-center gap-2">{cal.name} {cal.type==='shift' && <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-900/50 px-2 py-0.5 rounded-full uppercase">Schichtplan</span>}</p>
+                        <p className="text-xs text-neutral-500 mt-1">Freigegeben für: {Object.keys(cal.sharedWith || {}).length} Nutzer</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busy‑Only Link"><Lock className="w-4 h-4"/></button>
+                        <button onClick={() => { setShareCalData(cal); setIsShareCalModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Share2 className="w-4 h-4"/></button>
+                        <button onClick={() => { setCalForm({ ...cal, color: (cal.color || calendarTint(cal.id)) }); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
+                        <button onClick={() => deleteCalendar(cal.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 className="w-4 h-4"/></button>
+                      </div>
+                    </div>
+                  ))}
+                  {customCalendars.filter(c => c.ownerId !== user.uid).map(cal => (
+                    <div key={cal.id} className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between opacity-80">
+                      <div>
+                        <p className="font-medium text-white flex items-center gap-2">{cal.name} <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Geteilt mit dir</span></p>
+                        <p className="text-xs text-neutral-500 mt-1">Rechte: {cal.sharedWith[user.uid] === 'write' ? 'Lesen & Schreiben' : 'Nur Lesen'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* BENACHRICHTIGUNGEN */}
+            {(show('notifications', ['benachr', 'push', 'erinnerung', 'reminder', 'pwa', 'token', 'test']) ) && (
+              <section id="settings-notifications">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <Bell className="w-4 h-4" /> Benachrichtigungen
+                </h3>
+
+                {/* Core settings */}
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-medium text-white">Kalender-Erinnerungen</p>
+                      <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit „Standard“). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      {!isStandalone && canInstallPwa && (
+                        <button
+                          type="button"
+                          onClick={() => { try { promptInstallPwa(); } catch(e) {} }}
+                          className="px-4 py-2 bg-white text-black rounded-md text-sm font-semibold hover:bg-gray-200 transition-colors"
+                        >
+                          Installieren
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={!isStandalone}
+                        onClick={() => { try { requestNotificationPermission(user); } catch(e) {} }}
+                        className={"px-4 py-2 rounded-md text-sm transition-colors " + (isStandalone ? "bg-neutral-900 border border-neutral-800 hover:text-white" : "bg-neutral-950 border border-neutral-900 text-neutral-600 cursor-not-allowed")}
+                        title={isStandalone ? "Benachrichtigungen aktivieren" : (isIosUA ? "iPhone/iPad: Teilen → Zum Home-Bildschirm" : "Bitte zuerst installieren")}
+                      >
+                        Erlauben
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Standard-Erinnerung</label>
+                      <select
+                        value={(() => {
+                          const v = (userProfile && typeof userProfile.defaultReminderMinutes === 'number') ? String(userProfile.defaultReminderMinutes) : 'none';
+                          return v;
+                        })()}
+                        onChange={async (e) => {
+                          try {
+                            const v = e.target.value;
+                            const next = (v === 'none') ? null : (parseInt(v, 10) || 0);
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultReminderMinutes: next }, { merge: true });
+                            showToast('Gespeichert');
+                          } catch (err) {
+                            showToast('Fehler');
+                          }
+                        }}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="none">Keine</option>
+                        <option value="0">Bei Beginn</option>
+                        <option value="5">5 Minuten vorher</option>
+                        <option value="10">10 Minuten vorher</option>
+                        <option value="15">15 Minuten vorher</option>
+                        <option value="30">30 Minuten vorher</option>
+                        <option value="60">1 Stunde vorher</option>
+                        <option value="120">2 Stunden vorher</option>
+                        <option value="1440">1 Tag vorher</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benachrichtigungston</label>
+                      <select
+                        value={(() => {
+                          const v = (userProfile && userProfile.notificationSoundMode) ? String(userProfile.notificationSoundMode) : 'system';
+                          return (v === 'silent') ? 'silent' : 'system';
+                        })()}
+                        onChange={async (e) => {
+                          try {
+                            const v = e.target.value;
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { notificationSoundMode: v }, { merge: true });
+                            showToast('Gespeichert');
+                          } catch (err) {
+                            showToast('Fehler');
+                          }
+                        }}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="system">System (Standard)</option>
+                        <option value="silent">Stumm</option>
+                      </select>
+                      <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – du kannst nur Systemton nutzen oder stumm schalten.</p>
+                    </div>
+                  </div>
+
+                  <details className="border border-neutral-800 rounded-xl bg-black p-4">
+                    <summary className="cursor-pointer text-xs text-neutral-300 font-semibold select-none flex items-center gap-2">
+                      <Activity className="w-4 h-4" /> Diagnostik & Tests
+                    </summary>
+
+                    <div className="mt-3 space-y-3">
+                      <div className="text-[11px] text-neutral-600">
                         Status: <span className="text-neutral-300">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</span>
                       </div>
 
                       <div className="text-[11px] text-neutral-600">
                         Service Worker: <span className="text-neutral-300">{pushDiag.sw}</span>{pushDiag.controlling ? <span className="text-neutral-500"> · controlling ✅</span> : <span className="text-neutral-500"> · not controlling</span>}
                       </div>
+
+                      <div className="text-[11px] text-neutral-600">
+                        Web Token: <span className="text-neutral-300">{(userProfile && userProfile.fcmTokenWeb) ? 'vorhanden ✅' : 'nicht gesetzt'}</span>
+                      </div>
+
+                      <div className="text-[11px] text-neutral-600">
+                        Letzter Push-Empfang: <span className="text-neutral-300">{pushDiag.lastReceivedAt ? `${new Date(pushDiag.lastReceivedAt).toLocaleString()}${pushDiag.lastReceivedTitle ? ` · ${pushDiag.lastReceivedTitle}` : ''}` : '—'}</span>
+                      </div>
+
+                      {!!pushTest?.id && (
+                        <div className="text-[11px] text-neutral-600 break-words">
+                          Server-Test Status: <span className="text-neutral-300">{pushTest.status || 'pending'}</span>
+                          {pushTest.lastError ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
+                        </div>
+                      )}
+
+                      {!isStandalone && (
+                        <div className="text-[11px] text-amber-400">
+                          {isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren.' : 'Bitte installieren, dann „Erlauben“. '}
+                        </div>
+                      )}
+
                       {!!(pushDiag && pushDiag.lastError) && (
                         <div className="text-[11px] text-amber-400 break-words">
                           Push-Fehler: {String(pushDiag.lastError)}
                         </div>
                       )}
 
-                      <div className="flex flex-wrap gap-2 pt-2">
+                      <div className="flex flex-wrap gap-2 pt-1">
                         <button
                           type="button"
                           onClick={() => { try { sendLocalPushTest(); } catch(_) {} }}
@@ -5111,99 +5283,212 @@ setSelfDestruct(false);
                           Test (Server)
                         </button>
                       </div>
-                    </div>
-                  </section>
 
-                  {/* FREUNDE (Chat) */}
-                  <section>
-                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Freunde (Chat)</h3>
-                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
-                      {(() => {
-                        const ids = (userProfile && Array.isArray(userProfile.friends)) ? userProfile.friends.filter(Boolean) : [];
-                        if (ids.length === 0) {
-                          return <div className="text-sm text-neutral-500">Noch keine Freunde gespeichert. Starte einen 1:1 Chat über die Chat‑ID, dann erscheint der Kontakt hier.</div>;
-                        }
-                        return (
-                          <div className="space-y-2">
-                            {ids.slice(0, 50).map(uid => {
-                              const p = getProfile(uid);
-                              return (
-                                <div key={uid} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <div className="w-9 h-9 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase overflow-hidden shrink-0">
-                                      {p?.avatarThumbBase64 || p?.avatarBase64 ? (
-                                        <img src={p.avatarThumbBase64 || p.avatarBase64} className="w-full h-full object-cover" />
-                                      ) : initialsFrom(p?.displayName || p?.username || p?.email || '')}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <div className="text-sm text-white font-medium truncate">{p?.displayName || p?.username || p?.email || shortId(uid, 6)}</div>
-                                      <div className="text-[11px] text-neutral-500 font-mono">Chat‑ID: {String(p?.friendCode || '').padStart(5, '0') || '-----'}</div>
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeFriend(uid)}
-                                    className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"
-                                    title="Freund entfernen"
-                                  >
-                                    <UserMinus className="w-4 h-4" />
-                                  </button>
+                      <div className="text-[11px] text-neutral-600 leading-relaxed">
+                        Hinweis: Wenn „Test (Server)“ sofort fehlschlägt, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create</span>.
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </section>
+            )}
+
+            {/* FREUNDE (Chat) */}
+            {(show('friends', ['freunde', 'chat', 'kontakt', 'entfernen']) ) && (
+              <section id="settings-friends">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <Users className="w-4 h-4" /> Freunde (Chat)
+                </h3>
+
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                  {(() => {
+                    const ids = (userProfile && Array.isArray(userProfile.friends)) ? userProfile.friends.filter(Boolean) : [];
+                    if (ids.length === 0) {
+                      return <div className="text-sm text-neutral-500">Noch keine Freunde gespeichert. Starte einen 1:1 Chat über die Chat‑ID, dann erscheint der Kontakt hier.</div>;
+                    }
+                    return (
+                      <div className="space-y-2">
+                        {ids.slice(0, 50).map(uid => {
+                          const p = getProfile(uid);
+                          return (
+                            <div key={uid} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-9 h-9 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase overflow-hidden shrink-0">
+                                  {p?.avatarThumbBase64 || p?.avatarBase64 ? (
+                                    <img src={p.avatarThumbBase64 || p.avatarBase64} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span>{initialsFrom(p?.username || p?.displayName || 'U')}</span>
+                                  )}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </section>
-
-                  {/* PRIVACY-FIRST SHARING: Link Verwaltung */}
-                  <section>
-                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Public Links</h3>
-                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
-                      <div className="text-xs text-neutral-500 mb-4">Busy‑Only Links erstellst du über das <span className="text-neutral-300">🔒</span> beim Kalender. Event‑Links über das <span className="text-neutral-300">🔗</span> im Termin.</div>
-                      {(() => {
-                        const list = (shareLinks || []).slice().sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
-                        if (list.length === 0) {
-                          return <div className="text-sm text-neutral-500">Noch keine Public Links.</div>;
-                        }
-                        return (
-                          <div className="space-y-2 max-h-[38vh] overflow-y-auto no-scrollbar pr-1">
-                            {list.slice(0, 40).map(l => {
-                              const expired = !!(l.expiresAtMs && Date.now() > l.expiresAtMs);
-                              const revoked = !!l.revokedAtMs;
-                              const url = makeShareUrl(l.id);
-                              const label = l.kind === 'calendar' ? `Busy‑Only • ${l.calName || 'Kalender'}` : `Event • ${(l.eventSnapshot?.title || 'Termin')}`;
-                              return (
-                                <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
-                                  <div className="min-w-0">
-                                    <div className="text-sm text-white font-medium truncate">{label}</div>
-                                    <div className="text-[11px] text-neutral-500">{revoked ? 'widerrufen' : expired ? 'abgelaufen' : (l.expiresAtMs ? `bis ${new Date(l.expiresAtMs).toLocaleDateString('de-CH')}` : 'ohne Ablauf')}</div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <button type="button" onClick={() => { try { navigator.clipboard?.writeText(url); showToast('Kopiert'); } catch (_) {} }} className="p-2 border border-neutral-800 rounded-lg text-neutral-300 hover:bg-neutral-900" title="Kopieren"><Copy className="w-4 h-4"/></button>
-                                    {!revoked && (
-                                      <button type="button" onClick={() => revokeShareLink(l.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30" title="Widerrufen"><Trash2 className="w-4 h-4"/></button>
-                                    )}
-                                  </div>
+                                <div className="min-w-0">
+                                  <div className="text-sm text-white truncate">{p?.username || p?.displayName || shortId(uid, 6)}</div>
+                                  <div className="text-[11px] text-neutral-500 truncate">{p?.email || ''}</div>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </section>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    try {
+                                      setCurrentView('secret_chat');
+                                      setSecretView('list');
+                                      // open 1:1 if exists
+                                      setTimeout(() => { try { startChatWithProfile(uid); } catch(e) {} }, 0);
+                                    } catch (e) {}
+                                  }}
+                                  className="px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs hover:bg-neutral-800"
+                                >
+                                  Chat
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeFriend(uid)}
+                                  className="p-2 rounded-lg bg-red-900/10 border border-red-900/30 text-red-400 hover:bg-red-900/20"
+                                  title="Freund entfernen"
+                                >
+                                  <UserMinus className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </section>
+            )}
 
-                  {/* AUDIT LOG */}
-                  <section>
-                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Audit Log</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
-                        <div className="flex items-center gap-2 mb-3">
-                          <History className="w-4 h-4 text-neutral-400" />
-                          <div className="text-sm font-medium text-white">Meine Aktionen</div>
-                        </div>
+            {/* PUBLIC LINKS */}
+            {(show('links', ['public', 'link', 'busy', 'passcode', 'magic', 'ablauf']) ) && (
+              <section id="settings-links">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <Link2 className="w-4 h-4" /> Public Links
+                </h3>
+
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                  
+<div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+  <div className="flex-1 min-w-0">
+    <div className="text-sm text-white font-medium">Busy‑Only Links</div>
+    <div className="text-[11px] text-neutral-500 mt-1">Externe sehen nur belegte Zeitblöcke (keine Titel/Orte). Optional mit Ablauf & Passcode.</div>
+  </div>
+  <div className="flex flex-col sm:flex-row gap-2">
+    <select
+      value={settingsShareCalId}
+      onChange={(e) => setSettingsShareCalId(e.target.value)}
+      className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
+      title="Kalender auswählen"
+    >
+      <option value="default">Privat</option>
+      {(customCalendars || []).filter(c => c.ownerId === user.uid).map(c => (
+        <option key={c.id} value={c.id}>{c.name}</option>
+      ))}
+    </select>
+    <button
+      type="button"
+      onClick={() => {
+        const cal = (settingsShareCalId === 'default')
+          ? { id: 'default', name: 'Privat' }
+          : (customCalendars || []).find(c => c.id === settingsShareCalId) || { id: 'default', name: 'Privat' };
+        openShareLinkModalForCalendar(cal);
+      }}
+      className="px-3 py-2 bg-white text-black rounded-lg text-xs font-semibold hover:bg-gray-200"
+    >
+      Link erstellen
+    </button>
+  </div>
+</div>
+
+{(() => {
+  const now = Date.now();
+  const all = Array.isArray(shareLinks) ? shareLinks.slice() : [];
+  const notRevoked = all.filter(l => l && !l.revokedAtMs);
+  notRevoked.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+  const active = notRevoked.filter(l => !l.expiresAtMs || now <= l.expiresAtMs);
+  const expired = notRevoked.filter(l => l.expiresAtMs && now > l.expiresAtMs);
+
+  const renderItem = (l) => {
+    const url = makeShareUrl(l.id);
+    const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '—';
+    const calName = (l.calName || (l.calId === 'default' ? 'Privat' : (customCalendars || []).find(c => c.id === l.calId)?.name) || 'Kalender');
+    const prot = (l.protection || 'magic');
+    const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magic‑Link');
+    return (
+      <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
+        <div className="min-w-0">
+          <div className="text-sm text-white font-medium truncate">
+            {l.kind === 'event' ? 'Event' : 'Kalender'} • {calName}
+          </div>
+          <div className="mt-0.5 text-[11px] text-neutral-500">
+            Ablauf: {exp} · Schutz: {protLabel}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => { try { navigator.clipboard?.writeText(url); showToast('Kopiert'); } catch (_) {} }}
+            className="p-2 border border-neutral-800 rounded-lg text-neutral-300 hover:bg-neutral-900"
+            title="Kopieren"
+          >
+            <Copy className="w-4 h-4"/>
+          </button>
+          <button
+            type="button"
+            onClick={() => revokeShareLink(l.id)}
+            className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"
+            title="Widerrufen"
+          >
+            <Trash2 className="w-4 h-4"/>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  if (active.length === 0 && expired.length === 0) {
+    return (
+      <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
+        Noch keine Links. Erstelle einen Link über <span className="text-neutral-300">Link erstellen</span> oder das <span className="text-neutral-300">🔒</span> Icon am Kalender.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {active.length > 0 && (
+        <div>
+          <div className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold mb-2">Aktiv</div>
+          <div className="space-y-2">{active.slice(0, 40).map(renderItem)}</div>
+        </div>
+      )}
+
+      {expired.length > 0 && (
+        <details className="border border-neutral-800 rounded-xl bg-black p-4">
+          <summary className="cursor-pointer text-xs text-neutral-400 font-semibold select-none">Abgelaufen ({expired.length})</summary>
+          <div className="mt-3 space-y-2">{expired.slice(0, 40).map(renderItem)}</div>
+        </details>
+      )}
+    </div>
+  );
+})()}</div>
+              </section>
+            )}
+
+            {/* AUDIT LOG */}
+            {(show('audit', ['audit', 'log', 'verlauf', 'änderung', 'wer']) ) && (
+              <section id="settings-audit">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <History className="w-4 h-4" /> Audit Log
+                </h3>
+
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                  {/* Reuse existing audit UI by rendering the original section content via IIFE */}
+                  {(() => (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-xs text-neutral-400 mb-2 font-semibold">Meine Aktionen</div>
                         {(auditEntries || []).length === 0 ? (
                           <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
                         ) : (
@@ -5217,57 +5502,101 @@ setSelfDestruct(false);
                           </div>
                         )}
                       </div>
-                      <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
-                        <div className="flex items-center justify-between gap-3 mb-3">
-                          <div className="text-sm font-medium text-white">Kalender</div>
-                          <select value={auditCalId} onChange={(e) => setAuditCalId(e.target.value)} className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white">
-                            <option value="default">(Privat)</option>
-                            {customCalendars.map(c => (
+
+                      <div className="border-t border-neutral-800 pt-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-xs text-neutral-400 font-semibold">Kalender‑Audit</div>
+                          <select
+                            value={auditCalId || 'default'}
+                            onChange={(e) => setAuditCalId(e.target.value)}
+                            className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
+                          >
+                            <option value="default">Privat (nur „Meine Aktionen“)</option>
+                            {(customCalendars || []).map(c => (
                               <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                           </select>
                         </div>
-                        {auditCalId === 'default' ? (
-                          <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalender‑Audit (siehe „Meine Aktionen“).</div>
-                        ) : (auditCalEntries || []).length === 0 ? (
-                          <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
-                        ) : (
-                          <div className="space-y-2 max-h-[34vh] overflow-y-auto no-scrollbar pr-1">
-                            {(auditCalEntries || []).slice(0, 50).map(a => (
-                              <div key={a.id} className="border border-neutral-800 rounded-xl p-3 bg-black">
-                                <div className="text-xs text-neutral-300">{a.summary || a.action}</div>
-                                <div className="mt-1 text-[10px] text-neutral-600 tabular-nums">{a.tsMs ? new Date(a.tsMs).toLocaleString('de-CH') : ''} · {a.uid ? (getProfile(a.uid)?.username || shortId(a.uid, 6)) : ''}</div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </section>
 
-                  <section>
-                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Datenschutz & Account</h3>
-                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                      <div><p className="font-medium text-white">Angemeldet als: {user?.email}</p>{userProfile && <p className="text-sm text-neutral-400">Alias: {userProfile.username}</p>}</div>
-                      <button onClick={handleLogout} className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors">Abmelden</button>
-                    </div>
-                  </section>
-                  <section>
-                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Import / Export (.ics)</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
-                        <Download className="w-6 h-6 text-white mb-4" /><h4 className="font-medium text-white mb-1">Kalender exportieren</h4><p className="text-xs text-neutral-500 mb-4 h-8">Lade deine Termine als Standard .ics Datei herunter.</p>
-                        <div className="flex gap-2"><button onClick={() => exportICS(true)} className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-md text-sm hover:bg-neutral-800 transition-colors">Alle</button><button onClick={() => exportICS(false)} className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-md text-sm hover:bg-neutral-800 transition-colors">Nur Heute</button></div>
+                        <div className="mt-3">
+                          {auditCalId === 'default' ? (
+                            <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalender‑Audit (siehe „Meine Aktionen“).</div>
+                          ) : (auditCalEntries || []).length === 0 ? (
+                            <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
+                          ) : (
+                            <div className="space-y-2 max-h-[34vh] overflow-y-auto no-scrollbar pr-1">
+                              {(auditCalEntries || []).slice(0, 50).map(a => (
+                                <div key={a.id} className="border border-neutral-800 rounded-xl p-3 bg-black">
+                                  <div className="text-xs text-neutral-300">{a.summary || a.action}</div>
+                                  <div className="mt-1 text-[10px] text-neutral-600 tabular-nums">{a.tsMs ? new Date(a.tsMs).toLocaleString('de-CH') : ''} · {a.uid ? (getProfile(a.uid)?.username || shortId(a.uid, 6)) : ''}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 relative overflow-hidden group">
-                        <Upload className="w-6 h-6 text-white mb-4" /><h4 className="font-medium text-white mb-1">Datei importieren</h4><p className="text-xs text-neutral-500 mb-4 h-8">Füge Termine aus einer externen .ics Datei hinzu.</p>
-                        <div className="relative"><button className="w-full px-3 py-2 bg-white text-black rounded-md text-sm font-medium group-hover:bg-gray-200 transition-colors text-center">Datei auswählen</button><input type="file" accept=".ics" onChange={handleImportICS} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" /></div>
-                      </div>
                     </div>
-                  </section>
+                  ))()}
                 </div>
+              </section>
+            )}
+
+            {/* ACCOUNT */}
+            {(show('account', ['account', 'datenschutz', 'abmelden', 'email']) ) && (
+              <section id="settings-account">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <User className="w-4 h-4" /> Datenschutz & Account
+                </h3>
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <p className="font-medium text-white">Angemeldet als: {user?.email}</p>
+                    {userProfile && <p className="text-sm text-neutral-400">Alias: {userProfile.username}</p>}
+                  </div>
+                  <button onClick={handleLogout} className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors">Abmelden</button>
+                </div>
+              </section>
+            )}
+
+            {/* ICS */}
+            {(show('ics', ['ics', 'import', 'export', 'download', 'upload']) ) && (
+              <section id="settings-ics">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <Download className="w-4 h-4" /> Import / Export (.ics)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                    <Download className="w-6 h-6 text-white mb-4" />
+                    <h4 className="font-medium text-white mb-1">Kalender exportieren</h4>
+                    <p className="text-xs text-neutral-500 mb-4 h-8">Lade deine Termine als Standard .ics Datei herunter.</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => exportICS(true)} className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-md text-sm hover:bg-neutral-800 transition-colors">Alle</button>
+                      <button onClick={() => exportICS(false)} className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-md text-sm hover:bg-neutral-800 transition-colors">Nur Heute</button>
+                    </div>
+                  </div>
+                  <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 relative overflow-hidden group">
+                    <Upload className="w-6 h-6 text-white mb-4" />
+                    <h4 className="font-medium text-white mb-1">Datei importieren</h4>
+                    <p className="text-xs text-neutral-500 mb-4 h-8">Füge Termine aus einer externen .ics Datei hinzu.</p>
+                    <div className="relative">
+                      <button className="w-full px-3 py-2 bg-white text-black rounded-md text-sm font-medium group-hover:bg-gray-200 transition-colors text-center">Datei auswählen</button>
+                      <input type="file" accept=".ics" onChange={handleImportICS} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* If search yields nothing */}
+            {q && filteredTabs.length === 0 && (
+              <div className="border border-neutral-800 rounded-2xl p-6 bg-neutral-950/50 text-sm text-neutral-500">
+                Keine Treffer für „{settingsQuery}“.
               </div>
             )}
+          </main>
+        </div>
+      </div>
+    );
+  })()}
 
             {currentView === 'secret_chat' && (
               <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>

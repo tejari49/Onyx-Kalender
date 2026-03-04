@@ -292,6 +292,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
         title: '',
         date: '',
         time: '',
+        location: '',
+        durationMinutes: '',
         type: 'Privat',
         desc: '',
         // Reminder per Termin: 'default' | 'none' | 'custom'
@@ -304,8 +306,13 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
         recurrenceUntil: ''
       });
 
+
+      // --- NATÜRLICHE SPRACHE / SCHNELLEINGABE (Event) ---
+      const [quickEventText, setQuickEventText] = useState('');
+      const [quickEventPreview, setQuickEventPreview] = useState(null);
+
       const [isCalManageModalOpen, setIsCalManageModalOpen] = useState(false);
-      const [calForm, setCalForm] = useState({ id: null, name: '', type: 'normal', shifts: [] });
+      const [calForm, setCalForm] = useState({ id: null, name: '', type: 'normal', color: '', shifts: [] });
       
       const [isShareCalModalOpen, setIsShareCalModalOpen] = useState(false);
       const [shareCalData, setShareCalData] = useState(null);
@@ -457,6 +464,8 @@ const openNewEventModal = (dateStr = null) => {
     title: '',
     date: d,
     time: '',
+    location: '',
+    durationMinutes: '',
     type: 'Privat',
     desc: '',
     reminderMode: 'default',
@@ -467,6 +476,7 @@ const openNewEventModal = (dateStr = null) => {
     recurrenceByWeekdays: [],
     recurrenceUntil: ''
   });
+  try { setQuickEventText(''); setQuickEventPreview(null); } catch(_) {}
 setShowEventComments(false);
 setShowEventPoll(false);
 setEventComments([]);
@@ -1138,6 +1148,16 @@ const saveEvent = async (e) => {
   const typeVal = (eventForm.type || 'Privat').trim();
   const descVal = (eventForm.desc || '').trim();
 
+  const locationVal = (eventForm.location || '').trim();
+  let durationMinutesVal = null;
+  try {
+    const raw = eventForm.durationMinutes;
+    if (raw !== '' && raw !== null && typeof raw !== 'undefined') {
+      const n = parseInt(String(raw), 10);
+      if (!isNaN(n) && n >= 0) durationMinutesVal = n;
+    }
+  } catch (_) { durationMinutesVal = null; }
+
   const reminderModeVal = (eventForm.reminderMode || 'default');
   const reminderMinutesVal = (reminderModeVal === 'custom') ? Math.max(0, parseInt(eventForm.reminderMinutes || 0, 10) || 0) : null;
 
@@ -1165,6 +1185,8 @@ const saveEvent = async (e) => {
         [selectedDateForEvent]: {
           title,
           time: timeVal,
+          location: locationVal,
+          durationMinutes: durationMinutesVal,
           type: typeVal,
           desc: descVal,
           reminderMode: reminderModeVal,
@@ -1188,6 +1210,8 @@ const saveEvent = async (e) => {
     title,
     date: eventForm.date,
     time: timeVal,
+    location: locationVal,
+    durationMinutes: durationMinutesVal,
     type: typeVal,
     desc: descVal,
     reminderMode: reminderModeVal,
@@ -2213,7 +2237,11 @@ useEffect(() => {
 
       const calendarTint = (calId) => {
         try {
-          if (!calId || calId === 'default') return '#FFFFFF';
+          if (!calId || calId === 'default') {
+            return (userProfile && typeof userProfile.defaultCalendarColor === 'string' && userProfile.defaultCalendarColor) ? userProfile.defaultCalendarColor : '#FFFFFF';
+          }
+          const cal = (customCalendars || []).find(c => c && c.id === calId);
+          if (cal && typeof cal.color === 'string' && cal.color) return cal.color;
           const idx = stableHash(String(calId)) % PASTEL_COLORS.length;
           return PASTEL_COLORS[idx] || '#FFFFFF';
         } catch (e) {
@@ -2246,6 +2274,202 @@ useEffect(() => {
         const dd = parseInt(parts[2] || '1', 10);
         return new Date(y, (m || 1) - 1, dd || 1);
       };
+
+      // --- NATÜRLICHE SPRACHE: Parse Text -> Event Felder ---
+      const toIsoDate = (d) => {
+        try {
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${dd}`;
+        } catch (_) {
+          return new Date().toISOString().split('T')[0];
+        }
+      };
+
+      const nextDowFrom = (base, targetDowMon0) => {
+        const b = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+        const baseDowMon0 = (b.getDay() + 6) % 7;
+        let diff = (targetDowMon0 - baseDowMon0 + 7) % 7;
+        // gleiche Woche zulassen (diff=0)
+        b.setDate(b.getDate() + diff);
+        return b;
+      };
+
+      const parseNaturalEventText = (raw, referenceDateStr) => {
+        const input = String(raw || '').trim();
+        if (!input) return null;
+
+        let s = input.replace(/\s+/g, ' ').trim();
+        const base = (() => {
+          try {
+            if (referenceDateStr) {
+              const d = parseDateStr(referenceDateStr);
+              if (!isNaN(d.getTime())) return d;
+            }
+          } catch (_) {}
+          return new Date();
+        })();
+
+        let dateStr = '';
+        let timeStr = '';
+        let location = '';
+        let durationMinutes = null;
+
+        // 1) Dauer
+        const durMatch = s.match(/(\d+(?:[.,]\d+)?\s*(?:h|std|stunden|m|min|mins|minute|minutes))/i);
+        if (durMatch) {
+          const token = durMatch[1];
+          const num = (token.match(/\d+(?:[.,]\d+)?/) || [null])[0];
+          const unit = token.toLowerCase();
+          if (num) {
+            const n = parseFloat(num.replace(',', '.'));
+            if (!isNaN(n)) {
+              const isHours = unit.includes('h') || unit.includes('std') || unit.includes('stund');
+              durationMinutes = Math.round(isHours ? n * 60 : n);
+            }
+          }
+          s = s.replace(token, ' ').replace(/\s+/g, ' ').trim();
+        }
+
+        // 2) Zeit
+        const t1 = s.match(/(\d{1,2})[:.](\d{2})/);
+        const t2 = !t1 ? s.match(/(\d{1,2})(\d{2})/) : null;
+        if (t1) {
+          const hh = parseInt(t1[1], 10);
+          const mm = parseInt(t1[2], 10);
+          if (!isNaN(hh) && !isNaN(mm) && hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+            timeStr = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+            s = s.replace(t1[0], ' ').replace(/\s+/g, ' ').trim();
+          }
+        } else if (t2) {
+          const hh = parseInt(t2[1], 10);
+          const mm = parseInt(t2[2], 10);
+          if (!isNaN(hh) && !isNaN(mm) && hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+            timeStr = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+            s = s.replace(t2[0], ' ').replace(/\s+/g, ' ').trim();
+          }
+        }
+
+        // 3) Datum
+        const lower = s.toLowerCase();
+        if (lower.includes('übermorgen')) {
+          const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+          d.setDate(d.getDate() + 2);
+          dateStr = toIsoDate(d);
+          s = s.replace(/übermorgen/i, ' ').replace(/\s+/g, ' ').trim();
+        } else if (lower.includes('morgen')) {
+          const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+          d.setDate(d.getDate() + 1);
+          dateStr = toIsoDate(d);
+          s = s.replace(/morgen/i, ' ').replace(/\s+/g, ' ').trim();
+        } else if (lower.includes('heute')) {
+          dateStr = toIsoDate(base);
+          s = s.replace(/heute/i, ' ').replace(/\s+/g, ' ').trim();
+        }
+
+        // Explizites Datum: YYYY-MM-DD
+        const isoM = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+        if (!dateStr && isoM) {
+          const y = parseInt(isoM[1], 10);
+          const m = parseInt(isoM[2], 10);
+          const d = parseInt(isoM[3], 10);
+          if (y && m && d) {
+            dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            s = s.replace(isoM[0], ' ').replace(/\s+/g, ' ').trim();
+          }
+        }
+
+        // Explizites Datum: DD.MM(.YYYY)
+        const dmM = !dateStr ? s.match(/(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?/) : null;
+        if (!dateStr && dmM) {
+          const dd = parseInt(dmM[1], 10);
+          const mm = parseInt(dmM[2], 10);
+          let yy = dmM[3] ? parseInt(dmM[3], 10) : base.getFullYear();
+          if (yy < 100) yy = 2000 + yy;
+          if (dd && mm && yy) {
+            const candidate = new Date(yy, mm - 1, dd);
+            // falls ohne Jahr und in der Vergangenheit: nächstes Jahr
+            if (!dmM[3]) {
+              const base0 = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+              if (candidate.getTime() < base0.getTime() - 3600000) {
+                candidate.setFullYear(candidate.getFullYear() + 1);
+              }
+            }
+            dateStr = toIsoDate(candidate);
+            s = s.replace(dmM[0], ' ').replace(/\s+/g, ' ').trim();
+          }
+        }
+
+        // Wochentag
+        if (!dateStr) {
+          const dowMap = {
+            mo: 0, montag: 0,
+            di: 1, dienstag: 1,
+            mi: 2, mittwoch: 2,
+            do: 3, donnerstag: 3,
+            fr: 4, freitag: 4,
+            sa: 5, samstag: 5,
+            so: 6, sonntag: 6
+          };
+          const dowM = s.toLowerCase().match(/(mo|montag|di|dienstag|mi|mittwoch|do|donnerstag|fr|freitag|sa|samstag|so|sonntag)/);
+          if (dowM) {
+            const key = dowM[1];
+            const target = dowMap[key];
+            const d = nextDowFrom(base, target);
+            dateStr = toIsoDate(d);
+            s = s.replace(new RegExp('\\b' + key + '\\b', 'i'), ' ').replace(/\s+/g, ' ').trim();
+          }
+        }
+
+        // 4) Ort (bei / im / in)
+        const locM = s.match(/(bei|im|in)\s+([^,]+)$/i);
+        if (locM) {
+          location = String(locM[2] || '').trim();
+          s = s.replace(locM[0], ' ').replace(/\s+/g, ' ').trim();
+        }
+
+        // Rest -> Titel
+        let title = s.replace(/[
+]+/g, ' ').trim();
+        title = title.replace(/^[-,.:]+\s*/, '').trim();
+        title = title.replace(/\s*[-,.:]+\s*$/, '').trim();
+        if (!title) title = 'Termin';
+
+        return {
+          title,
+          date: dateStr || '',
+          time: timeStr || '',
+          location: location || '',
+          durationMinutes: (durationMinutes === null || typeof durationMinutes === 'undefined') ? null : durationMinutes
+        };
+      };
+
+      const updateQuickEventText = (val) => {
+        try {
+          setQuickEventText(val);
+          const parsed = parseNaturalEventText(val, selectedDateForEvent || eventForm.date);
+          setQuickEventPreview(parsed);
+        } catch (_) {
+          setQuickEventText(val);
+          setQuickEventPreview(null);
+        }
+      };
+
+      const applyQuickEventToForm = () => {
+        const parsed = quickEventPreview || parseNaturalEventText(quickEventText, selectedDateForEvent || eventForm.date);
+        if (!parsed) return showToast('Nicht erkannt');
+        setEventForm(prev => ({
+          ...prev,
+          title: parsed.title || prev.title,
+          date: parsed.date || prev.date,
+          time: (typeof parsed.time === 'string' && parsed.time) ? parsed.time : prev.time,
+          location: (typeof parsed.location === 'string' && parsed.location) ? parsed.location : prev.location,
+          durationMinutes: (parsed.durationMinutes !== null && typeof parsed.durationMinutes !== 'undefined') ? parsed.durationMinutes : prev.durationMinutes,
+        }));
+        showToast('Übernommen');
+      };
+
       const addDaysStr = (s, days) => {
         const d = parseDateStr(s);
         d.setDate(d.getDate() + days);
@@ -2648,6 +2872,8 @@ useEffect(() => {
            title: effective.title || '',
            date: isInstance ? occDate : (baseEvent.date || new Date().toISOString().split('T')[0]),
            time: effective.time || '',
+           location: (typeof effective.location === 'string') ? effective.location : ((typeof baseEvent.location === 'string') ? baseEvent.location : ''),
+           durationMinutes: (typeof effective.durationMinutes === 'number' || typeof effective.durationMinutes === 'string') ? effective.durationMinutes : ((typeof baseEvent.durationMinutes === 'number' || typeof baseEvent.durationMinutes === 'string') ? baseEvent.durationMinutes : ''),
            type: effective.type || 'Privat',
            desc: effective.desc || '',
            reminderMode: (typeof effective.reminderMode === 'string') ? effective.reminderMode : ((typeof baseEvent.reminderMode === 'string') ? baseEvent.reminderMode : 'default'),
@@ -2676,6 +2902,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
          setEventModalMode('view');
 
          hydrateEventFormFromBaseEvent(baseEvent, occDate);
+         try { setQuickEventText(''); setQuickEventPreview(null); } catch(_) {}
 
          const openComments = !!(opts && opts.openComments);
          const openPoll = !!(opts && opts.openPoll);
@@ -2707,12 +2934,12 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
          try {
              if (calForm.id) {
                  await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calForm.id), {
-                     name: calForm.name, type: calForm.type, shifts: calForm.shifts
+                     name: calForm.name, type: calForm.type, color: (calForm.color || ''), shifts: calForm.shifts
                  });
                  showToast("Kalender aktualisiert");
              } else {
                  await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars'), {
-                     name: calForm.name, type: calForm.type, shifts: calForm.shifts, ownerId: user.uid, sharedWith: {}
+                     name: calForm.name, type: calForm.type, color: (calForm.color || ''), shifts: calForm.shifts, ownerId: user.uid, sharedWith: {}
                  });
                  showToast("Kalender erstellt");
              }
@@ -4010,14 +4237,30 @@ setSelfDestruct(false);
                   <section>
                     <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-4">
                        <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider">Meine Kalender & Schichten</h3>
-                       <button onClick={() => { setCalForm({ id: null, name: '', type: 'normal', shifts: [] }); setIsCalManageModalOpen(true); }} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">+ Neu</button>
+                       <button onClick={() => { setCalForm({ id: null, name: '', type: 'normal', color: PASTEL_COLORS[(Date.now() % PASTEL_COLORS.length)], shifts: [] }); setIsCalManageModalOpen(true); }} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">+ Neu</button>
                     </div>
                     
                     <div className="space-y-3">
-                       <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex items-center justify-between">
+                       <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                           <div>
                              <p className="font-medium text-white flex items-center gap-2">Privat <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Standard</span></p>
                              <p className="text-xs text-neutral-500 mt-1">Dein persönlicher Standard-Kalender.</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Farbe</span>
+                            <input
+                              type="color"
+                              value={((userProfile && typeof userProfile.defaultCalendarColor === 'string' && userProfile.defaultCalendarColor) ? userProfile.defaultCalendarColor : '#ffffff')}
+                              onChange={async (e) => {
+                                try {
+                                  const v = e.target.value;
+                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultCalendarColor: v }, { merge: true });
+                                  showToast('Gespeichert');
+                                } catch(_) { showToast('Fehler'); }
+                              }}
+                              className="w-10 h-10 rounded-lg bg-transparent border border-neutral-800"
+                              title="Farbe Privat"
+                            />
                           </div>
                        </div>
                        
@@ -4029,7 +4272,7 @@ setSelfDestruct(false);
                              </div>
                              <div className="flex gap-2">
                                 <button onClick={() => { setShareCalData(cal); setIsShareCalModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Share2 className="w-4 h-4"/></button>
-                                <button onClick={() => { setCalForm(cal); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
+                                <button onClick={() => { setCalForm({ ...cal, color: (cal.color || calendarTint(cal.id)) }); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
                                 <button onClick={() => deleteCalendar(cal.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 className="w-4 h-4"/></button>
                              </div>
                           </div>
@@ -4813,7 +5056,15 @@ setSelfDestruct(false);
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kalender</div>
                           <div className="mt-1 text-neutral-200">{getCalendarById(eventForm.calendarId || 'default')?.name || 'Privat'}</div>
                         </div>
-                      </div>
+                                              <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Ort</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.location ? eventForm.location : '—'}</div>
+                        </div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Dauer</div>
+                          <div className="mt-1 text-neutral-200">{(eventForm.durationMinutes !== null && typeof eventForm.durationMinutes !== 'undefined' && String(eventForm.durationMinutes).trim() !== '') ? `${eventForm.durationMinutes} min` : '—'}</div>
+                        </div>
+</div>
 
                       {(eventForm.recurrenceFreq && eventForm.recurrenceFreq !== 'NONE') && (
                         <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
@@ -4858,6 +5109,39 @@ setSelfDestruct(false);
 
                 {!(eventToEdit && eventModalMode === 'view') && (
                   <form onSubmit={saveEvent} className="space-y-3">
+                  <div className="bg-black border border-neutral-800 rounded-2xl p-4">
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">⚡ Schnelleingabe</label>
+                    <textarea
+                      value={quickEventText}
+                      onChange={(e) => updateQuickEventText(e.target.value)}
+                      placeholder="z.B. Fr 14:30 Arzt bei Dr. X, 45min"
+                      rows="2"
+                      className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none"
+                    />
+                    {quickEventPreview && (
+                      <div className="mt-2 text-[11px] text-neutral-500">
+                        Erkannt: <span className="text-neutral-300">{quickEventPreview.date || (selectedDateForEvent || eventForm.date)}{quickEventPreview.time ? ` • ${quickEventPreview.time}` : ''}{(quickEventPreview.durationMinutes !== null && typeof quickEventPreview.durationMinutes !== 'undefined') ? ` • ${quickEventPreview.durationMinutes}min` : ''}{quickEventPreview.location ? ` • Ort: ${quickEventPreview.location}` : ''}</span>
+                        <span className="text-neutral-600"> — </span><span className="text-white">{quickEventPreview.title}</span>
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={applyQuickEventToForm}
+                        className="flex-1 py-2 rounded-lg text-sm font-semibold bg-white text-black hover:bg-gray-200 transition-colors"
+                      >
+                        Übernehmen
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setQuickEventText(''); setQuickEventPreview(null); }}
+                        className="px-3 py-2 rounded-lg text-sm border border-neutral-800 text-neutral-300 hover:border-neutral-500"
+                      >
+                        Leeren
+                      </button>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Titel</label>
                     <input
@@ -4888,6 +5172,29 @@ setSelfDestruct(false);
                         value={eventForm.time}
                         onChange={(e) => setEventForm(prev => ({ ...prev, time: e.target.value }))}
                         className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Ort</label>
+                      <input
+                        value={eventForm.location || ''}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, location: e.target.value }))}
+                        placeholder="z.B. Büro / Dr. X"
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                      />
+                    </div>
+                    <div className="w-32">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Dauer</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={eventForm.durationMinutes === null || typeof eventForm.durationMinutes === 'undefined' ? '' : eventForm.durationMinutes}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, durationMinutes: e.target.value }))}
+                        placeholder="min"
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
                       />
                     </div>
                   </div>
@@ -5467,6 +5774,20 @@ setSelfDestruct(false);
                       placeholder="z.B. Arbeit / Schule / Team"
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
                       required
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between bg-black border border-neutral-800 rounded-2xl p-4">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Farbe</div>
+                      <div className="mt-1 text-xs text-neutral-500">Wird für Marker/Rand im Kalender genutzt.</div>
+                    </div>
+                    <input
+                      type="color"
+                      value={calForm?.color || '#ffffff'}
+                      onChange={(e) => setCalForm(prev => ({ ...prev, color: e.target.value }))}
+                      className="w-10 h-10 rounded-lg bg-transparent border border-neutral-800"
+                      title="Kalenderfarbe"
                     />
                   </div>
 

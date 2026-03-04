@@ -6,7 +6,7 @@ import React, { useState, useEffect, useRef } from 'react';
     } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
-    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "firebase/auth";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
     import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction } from "firebase/firestore";
     import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
     import heic2any from 'heic2any';
@@ -271,6 +271,16 @@ function AmoledCalendarApp() {
       const [aliasDraft, setAliasDraft] = useState('');
       const [aliasEditError, setAliasEditError] = useState('');
       const [aliasSaving, setAliasSaving] = useState(false);
+
+      // Password editor
+      const [pwEditOpen, setPwEditOpen] = useState(false);
+      const [pwCurrent, setPwCurrent] = useState('');
+      const [pwNew, setPwNew] = useState('');
+      const [pwNew2, setPwNew2] = useState('');
+      const [pwError, setPwError] = useState('');
+      const [pwSaving, setPwSaving] = useState(false);
+      const [pwResetSent, setPwResetSent] = useState(false);
+
 
 
       const isIosUA = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
@@ -687,6 +697,61 @@ const persistAliasUsername = async (rawAlias) => {
     setAliasEditError('Speichern fehlgeschlagen');
   } finally {
     try { setAliasSaving(false); } catch (_) {}
+  }
+
+};
+
+const hasPasswordProvider = () => {
+  try {
+    const u = auth.currentUser;
+    if (!u) return false;
+    const pd = Array.isArray(u.providerData) ? u.providerData : [];
+    return pd.some(p => p && p.providerId === 'password');
+  } catch (_) { return false; }
+};
+
+const doSendPasswordReset = async () => {
+  try {
+    const u = auth.currentUser;
+    if (!u || !u.email) return showToast('Keine E‑Mail');
+    await sendPasswordResetEmail(auth, u.email);
+    setPwResetSent(true);
+    showToast('Reset‑Mail gesendet');
+  } catch (e) {
+    console.warn('sendPasswordResetEmail failed', e);
+    showToast('Reset fehlgeschlagen');
+  }
+};
+
+const doChangePassword = async () => {
+  try {
+    setPwSaving(true);
+    setPwError('');
+    const u = auth.currentUser;
+    if (!u || !u.email) { setPwError('Nicht angemeldet'); return; }
+    const cur = String(pwCurrent || '');
+    const n1 = String(pwNew || '');
+    const n2 = String(pwNew2 || '');
+    if (n1.length < 6) { setPwError('Neues Passwort zu kurz (min. 6 Zeichen)'); return; }
+    if (n1 !== n2) { setPwError('Passwörter stimmen nicht überein'); return; }
+    if (!cur) { setPwError('Aktuelles Passwort fehlt'); return; }
+
+    const cred = EmailAuthProvider.credential(u.email, cur);
+    await reauthenticateWithCredential(u, cred);
+    await updatePassword(u, n1);
+
+    setPwCurrent(''); setPwNew(''); setPwNew2('');
+    setPwEditOpen(false);
+    showToast('Passwort aktualisiert');
+  } catch (e) {
+    console.warn('doChangePassword failed', e);
+    const msg = String(e?.code || e?.message || e);
+    if (msg.includes('auth/wrong-password')) setPwError('Aktuelles Passwort ist falsch');
+    else if (msg.includes('auth/too-many-requests')) setPwError('Zu viele Versuche – später erneut');
+    else if (msg.includes('auth/requires-recent-login')) setPwError('Bitte neu anmelden und erneut versuchen');
+    else setPwError('Änderung fehlgeschlagen');
+  } finally {
+    try { setPwSaving(false); } catch (_) {}
   }
 };
 
@@ -5184,7 +5249,6 @@ setSelfDestruct(false);
     const TABS = [
       { id: 'calendars', label: 'Kalender', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
       { id: 'notifications', label: 'Benachr.', icon: Bell, keys: ['push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
-      { id: 'friends', label: 'Freunde', icon: Users, keys: ['freunde', 'chat', 'kontakt', 'entfernen', 'block'] },
       { id: 'links', label: 'Public Links', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
       { id: 'audit', label: 'Audit', icon: History, keys: ['audit', 'verlauf', 'log', 'änderung', 'wer'] },
       { id: 'account', label: 'Account', icon: User, keys: ['account', 'datenschutz', 'abmelden', 'email'] },
@@ -5199,7 +5263,7 @@ setSelfDestruct(false);
           <div className="min-w-0">
             <h2 className="text-3xl md:text-4xl font-light">Einstellungen</h2>
             <p className="mt-2 text-sm text-neutral-500">
-              Suche nach „Push“, „Link“, „Farbe“, „Freunde“… oder nutze die Kategorien.
+              Suche nach „Push“, „Link“, „Farbe“… oder nutze die Kategorien.
             </p>
           </div>
 
@@ -5441,80 +5505,6 @@ setSelfDestruct(false);
                     </div>
                   </div>
 
-                  {/* Chat Sound / Vibration (Foreground) */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <div className="bg-black border border-neutral-800 rounded-xl p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-medium text-white">Chat‑Ton in App</p>
-                          <p className="text-xs text-neutral-500 mt-1">Wenn Onyx geöffnet ist, spielt ein kurzer Ton bei neuen Nachrichten (kein System‑Klingelton).</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              const enabled = !(userProfile && userProfile.inAppChatSound === false);
-                              const next = !enabled;
-                              await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { inAppChatSound: next }, { merge: true });
-                              showToast('Gespeichert');
-                              if (next) { try { pingInApp({ sound: true, vibrate: false }); } catch(_) {} }
-                            } catch (_) { showToast('Fehler'); }
-                          }}
-                          className={"px-3 py-2 rounded-md text-xs font-semibold border transition-colors " + ((userProfile && userProfile.inAppChatSound === false) ? 'bg-neutral-950 border-neutral-800 text-neutral-400' : 'bg-white text-black border-white hover:bg-gray-200')}
-                        >
-                          {(userProfile && userProfile.inAppChatSound === false) ? 'Aus' : 'An'}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="bg-black border border-neutral-800 rounded-xl p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-medium text-white">Vibration (Chat)</p>
-                          <p className="text-xs text-neutral-500 mt-1">Kurze Vibration bei neuen Chat‑Nachrichten, wenn Onyx sichtbar ist.</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              const enabled = !(userProfile && userProfile.inAppChatVibrate === false);
-                              const next = !enabled;
-                              await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { inAppChatVibrate: next }, { merge: true });
-                              showToast('Gespeichert');
-                              if (next) { try { pingInApp({ sound: false, vibrate: true }); } catch(_) {} }
-                            } catch (_) { showToast('Fehler'); }
-                          }}
-                          className={"px-3 py-2 rounded-md text-xs font-semibold border transition-colors " + ((userProfile && userProfile.inAppChatVibrate === false) ? 'bg-neutral-950 border-neutral-800 text-neutral-400' : 'bg-white text-black border-white hover:bg-gray-200')}
-                        >
-                          {(userProfile && userProfile.inAppChatVibrate === false) ? 'Aus' : 'An'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-black border border-neutral-800 rounded-xl p-4 mt-3">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-medium text-white">Chat‑Push auch im Vordergrund</p>
-                        <p className="text-xs text-neutral-500 mt-1">Wenn aktiviert, zeigt Onyx auch bei geöffneter App eine System‑Notification (kann je nach Android trotzdem stumm sein).</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            const enabled = !!(userProfile && userProfile.foregroundChatNotifications);
-                            const next = !enabled;
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { foregroundChatNotifications: next }, { merge: true });
-                            showToast('Gespeichert');
-                          } catch (_) { showToast('Fehler'); }
-                        }}
-                        className={"px-3 py-2 rounded-md text-xs font-semibold border transition-colors " + ((userProfile && userProfile.foregroundChatNotifications) ? 'bg-white text-black border-white hover:bg-gray-200' : 'bg-neutral-950 border-neutral-800 text-neutral-400')}
-                      >
-                        {(userProfile && userProfile.foregroundChatNotifications) ? 'An' : 'Aus'}
-                      </button>
-                    </div>
-                  </div>
-
                   <details className="border border-neutral-800 rounded-xl bg-black p-4">
                     <summary className="cursor-pointer text-xs text-neutral-300 font-semibold select-none flex items-center gap-2">
                       <Activity className="w-4 h-4" /> Diagnostik & Tests
@@ -5578,72 +5568,6 @@ setSelfDestruct(false);
                       </div>
                     </div>
                   </details>
-                </div>
-              </section>
-            )}
-
-            {/* FREUNDE (Chat) */}
-            {(show('friends', ['freunde', 'chat', 'kontakt', 'entfernen']) ) && (
-              <section id="settings-friends">
-                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Users className="w-4 h-4" /> Freunde (Chat)
-                </h3>
-
-                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
-                  {(() => {
-                    const ids = (userProfile && Array.isArray(userProfile.friends)) ? userProfile.friends.filter(Boolean) : [];
-                    if (ids.length === 0) {
-                      return <div className="text-sm text-neutral-500">Noch keine Freunde gespeichert. Starte einen 1:1 Chat über die Chat‑ID, dann erscheint der Kontakt hier.</div>;
-                    }
-                    return (
-                      <div className="space-y-2">
-                        {ids.slice(0, 50).map(uid => {
-                          const p = getProfile(uid);
-                          return (
-                            <div key={uid} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-9 h-9 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase overflow-hidden shrink-0">
-                                  {p?.avatarThumbBase64 || p?.avatarBase64 ? (
-                                    <img src={p.avatarThumbBase64 || p.avatarBase64} className="w-full h-full object-cover" />
-                                  ) : (
-                                    <span>{initialsFrom(p?.username || p?.displayName || 'U')}</span>
-                                  )}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-sm text-white truncate">{p?.username || p?.displayName || shortId(uid, 6)}</div>
-                                  <div className="text-[11px] text-neutral-500 truncate">{p?.email || ''}</div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    try {
-                                      setCurrentView('secret_chat');
-                                      setSecretView('list');
-                                      // open 1:1 if exists
-                                      setTimeout(() => { try { startChatWithProfile(uid); } catch(e) {} }, 0);
-                                    } catch (e) {}
-                                  }}
-                                  className="px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs hover:bg-neutral-800"
-                                >
-                                  Chat
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeFriend(uid)}
-                                  className="p-2 rounded-lg bg-red-900/10 border border-red-900/30 text-red-400 hover:bg-red-900/20"
-                                  title="Freund entfernen"
-                                >
-                                  <UserMinus className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
                 </div>
               </section>
             )}
@@ -5892,7 +5816,102 @@ setSelfDestruct(false);
                   </div>
                   <button onClick={handleLogout} className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors">Abmelden</button>
                 </div>
-              </section>
+              
+                <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-medium text-white">Passwort</p>
+                      <p className="text-xs text-neutral-500 mt-1">
+                        {hasPasswordProvider()
+                          ? 'Passwort ändern (mit aktuellem Passwort bestätigen).'
+                          : 'Dieses Konto nutzt keinen Passwort‑Login. Du kannst dir eine Reset‑Mail senden, um ein Passwort zu setzen/ändern.'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {hasPasswordProvider() && (
+                        <button
+                          type="button"
+                          onClick={() => { setPwEditOpen(v => !v); setPwError(''); setPwResetSent(false); }}
+                          className={"px-3 py-2 rounded-md text-xs font-semibold border transition-colors " + (pwEditOpen ? "bg-white text-black border-white hover:bg-gray-200" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
+                        >
+                          {pwEditOpen ? 'Schließen' : 'Ändern'}
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => doSendPasswordReset()}
+                        className="px-3 py-2 rounded-md text-xs font-semibold bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-800"
+                        title="Reset‑Mail senden"
+                      >
+                        Reset‑Mail
+                      </button>
+                    </div>
+                  </div>
+
+                  {pwResetSent && (
+                    <div className="mt-3 text-xs text-neutral-300">Reset‑Mail gesendet ✅</div>
+                  )}
+
+                  {hasPasswordProvider() && pwEditOpen && (
+                    <div className="mt-4 space-y-3">
+                      <input
+                        type="password"
+                        value={pwCurrent}
+                        onChange={(e) => { setPwCurrent(e.target.value); setPwError(''); }}
+                        placeholder="Aktuelles Passwort"
+                        className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                        autoComplete="current-password"
+                      />
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input
+                          type="password"
+                          value={pwNew}
+                          onChange={(e) => { setPwNew(e.target.value); setPwError(''); }}
+                          placeholder="Neues Passwort (min. 6)"
+                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                          autoComplete="new-password"
+                        />
+                        <input
+                          type="password"
+                          value={pwNew2}
+                          onChange={(e) => { setPwNew2(e.target.value); setPwError(''); }}
+                          placeholder="Wiederholen"
+                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                          autoComplete="new-password"
+                        />
+                      </div>
+
+                      {pwError ? <div className="text-xs text-red-400">{pwError}</div> : null}
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => doChangePassword()}
+                          disabled={pwSaving}
+                          className="px-4 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
+                        >
+                          {pwSaving ? 'Speichern…' : 'Speichern'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setPwEditOpen(false); setPwCurrent(''); setPwNew(''); setPwNew2(''); setPwError(''); }}
+                          className="px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:bg-neutral-800"
+                        >
+                          Abbrechen
+                        </button>
+                      </div>
+
+                      <div className="text-[11px] text-neutral-600">
+                        Tipp: Wenn du dein aktuelles Passwort nicht mehr weißt, nutze „Reset‑Mail“.
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+</section>
             )}
 
             {/* ICS */}

@@ -14,7 +14,7 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-const CACHE_NAME = 'onyx-v30';
+const CACHE_NAME = 'onyx-v31';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -31,9 +31,19 @@ const STATIC_ASSETS = [
 // Install: cache only static assets (NOT index.html to avoid stale UI)
 self.addEventListener('install', (event) => {
   self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    // cache.addAll() fails the whole install if ONE asset 404s/blocks; cache individually and ignore failures
+    await Promise.allSettled(
+      STATIC_ASSETS.map(async (asset) => {
+        try {
+          await cache.add(asset);
+        } catch (_) {
+          // ignore
+        }
+      })
+    );
+  })());
 });
 
 // Activate: clean old caches and take control immediately

@@ -1920,7 +1920,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=30`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=31`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -2316,10 +2316,10 @@ useEffect(() => {
         let location = '';
         let durationMinutes = null;
 
-        // 1) Dauer
-        const durMatch = s.match(/(\d+(?:[.,]\d+)?\s*(?:h|std|stunden|m|min|mins|minute|minutes))/i);
+        // 1) Dauer (z.B. 45min, 1h, 1.5h, 2std)
+        const durMatch = s.match(/\b\d+(?:[.,]\d+)?\s*(?:h|std|stunden|m|min|mins|minute|minutes)\b/i);
         if (durMatch) {
-          const token = durMatch[1];
+          const token = durMatch[0];
           const num = (token.match(/\d+(?:[.,]\d+)?/) || [null])[0];
           const unit = token.toLowerCase();
           if (num) {
@@ -2332,9 +2332,9 @@ useEffect(() => {
           s = s.replace(token, ' ').replace(/\s+/g, ' ').trim();
         }
 
-        // 2) Zeit
-        const t1 = s.match(/(\d{1,2})[:.](\d{2})/);
-        const t2 = !t1 ? s.match(/(\d{1,2})(\d{2})/) : null;
+        // 2) Zeit (z.B. 14:30 oder 1430)
+        const t1 = s.match(/\b(\d{1,2})[:.](\d{2})\b/);
+        const t2 = !t1 ? s.match(/\b(\d{1,2})(\d{2})\b/) : null;
         if (t1) {
           const hh = parseInt(t1[1], 10);
           const mm = parseInt(t1[2], 10);
@@ -2351,7 +2351,7 @@ useEffect(() => {
           }
         }
 
-        // 3) Datum
+        // 3) Datum (heute/morgen/übermorgen, ISO, DD.MM)
         const lower = s.toLowerCase();
         if (lower.includes('übermorgen')) {
           const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
@@ -2369,7 +2369,7 @@ useEffect(() => {
         }
 
         // Explizites Datum: YYYY-MM-DD
-        const isoM = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+        const isoM = s.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
         if (!dateStr && isoM) {
           const y = parseInt(isoM[1], 10);
           const m = parseInt(isoM[2], 10);
@@ -2381,7 +2381,7 @@ useEffect(() => {
         }
 
         // Explizites Datum: DD.MM(.YYYY)
-        const dmM = !dateStr ? s.match(/(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?/) : null;
+        const dmM = !dateStr ? s.match(/\b(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\b/) : null;
         if (!dateStr && dmM) {
           const dd = parseInt(dmM[1], 10);
           const mm = parseInt(dmM[2], 10);
@@ -2401,7 +2401,7 @@ useEffect(() => {
           }
         }
 
-        // Wochentag
+        // Wochentag (mo..so)
         if (!dateStr) {
           const dowMap = {
             mo: 0, montag: 0,
@@ -2412,26 +2412,25 @@ useEffect(() => {
             sa: 5, samstag: 5,
             so: 6, sonntag: 6
           };
-          const dowM = s.toLowerCase().match(/(mo|montag|di|dienstag|mi|mittwoch|do|donnerstag|fr|freitag|sa|samstag|so|sonntag)/);
+          const dowM = s.toLowerCase().match(/\b(mo|montag|di|dienstag|mi|mittwoch|do|donnerstag|fr|freitag|sa|samstag|so|sonntag)\b/);
           if (dowM) {
             const key = dowM[1];
             const target = dowMap[key];
             const d = nextDowFrom(base, target);
             dateStr = toIsoDate(d);
-            s = s.replace(new RegExp('\\b' + key + '\\b', 'i'), ' ').replace(/\s+/g, ' ').trim();
+            s = s.replace(new RegExp('\b' + key + '\b', 'i'), ' ').replace(/\s+/g, ' ').trim();
           }
         }
 
         // 4) Ort (bei / im / in)
-        const locM = s.match(/(bei|im|in)\s+([^,]+)$/i);
+        const locM = s.match(/\b(bei|im|in)\s+([^,]+)$/i);
         if (locM) {
           location = String(locM[2] || '').trim();
           s = s.replace(locM[0], ' ').replace(/\s+/g, ' ').trim();
         }
 
         // Rest -> Titel
-        let title = s.replace(/[
-]+/g, ' ').trim();
+        let title = s.replace(/[\r\n]+/g, ' ').trim();
         title = title.replace(/^[-,.:]+\s*/, '').trim();
         title = title.replace(/\s*[-,.:]+\s*$/, '').trim();
         if (!title) title = 'Termin';

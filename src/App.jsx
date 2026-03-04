@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin,
+      Copy, Link2, History, UserMinus
     } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
@@ -21,6 +22,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : customFirebaseConfig;
     const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'onyx-pwa-live';
+    const BASE_PATH = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/Onyx-Kalender/';
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -82,6 +84,39 @@ import React, { useState, useEffect, useRef } from 'react';
         h = Math.imul(h, 16777619);
       }
       return (h >>> 0);
+    };
+
+    const _bufToHex = (buffer) => {
+      const bytes = new Uint8Array(buffer);
+      let out = '';
+      for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
+      return out;
+    };
+
+    const sha256Hex = async (input) => {
+      const s = String(input ?? '');
+      try {
+        if (crypto?.subtle?.digest) {
+          const enc = new TextEncoder();
+          const buf = await crypto.subtle.digest('SHA-256', enc.encode(s));
+          return _bufToHex(buf);
+        }
+      } catch (_) {}
+      // Fallback: not cryptographically strong, but avoids hard crash in rare environments.
+      return String(stableHash(s));
+    };
+
+    const randomToken = (byteLen = 16) => {
+      try {
+        const arr = new Uint8Array(byteLen);
+        crypto.getRandomValues(arr);
+        let str = '';
+        for (let i = 0; i < arr.length; i++) str += String.fromCharCode(arr[i]);
+        // base64url
+        return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      } catch (_) {
+        return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      }
     };
 
     const pickQuoteForDay = (quotes, dayKey) => {
@@ -173,6 +208,12 @@ window.isGroupChat = window.isGroupChat || function(chat) {
       const b = (second.charAt(0) || first.charAt(1));
       const out = (a + b).toUpperCase();
       return out || "??";
+    }
+
+    function shortId(id, n = 6) {
+      const s = String(id || '');
+      if (s.length <= n) return s;
+      return s.slice(0, n);
     }
 
 function AmoledCalendarApp() {
@@ -318,6 +359,37 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [shareCalData, setShareCalData] = useState(null);
       const [shareUsername, setShareUsername] = useState('');
       const [sharePerm, setSharePerm] = useState('read');
+
+      // --- PRIVACY-FIRST SHARING (Public Links) ---
+      const [isShareLinkModalOpen, setIsShareLinkModalOpen] = useState(false);
+      const [shareLinkDraft, setShareLinkDraft] = useState({
+        kind: 'calendar', // 'calendar' | 'event'
+        calId: 'default',
+        calName: 'Privat',
+        eventId: null,
+        eventSnapshot: null, // {title,date,time,location,durationMinutes,desc}
+        mode: 'busy', // calendar: 'busy' | 'full' (busy-only is the privacy default)
+        protection: 'magic', // 'none' | 'passcode' | 'magic'
+        passcode: '',
+        expiresInDays: 7,
+        noExpiry: false,
+      });
+      const [shareLinkCreated, setShareLinkCreated] = useState(null); // { url, token }
+      const [shareLinks, setShareLinks] = useState([]);
+
+      // Public share route (works without login)
+      const [publicShareToken, setPublicShareToken] = useState(null);
+      const [publicShareKey, setPublicShareKey] = useState('');
+      const [publicShareDoc, setPublicShareDoc] = useState(null);
+      const [publicShareLoading, setPublicShareLoading] = useState(false);
+      const [publicShareError, setPublicShareError] = useState('');
+      const [publicShareAuthed, setPublicShareAuthed] = useState(false);
+      const [publicSharePasscode, setPublicSharePasscode] = useState('');
+
+      // Audit log
+      const [auditEntries, setAuditEntries] = useState([]);
+      const [auditCalId, setAuditCalId] = useState('default');
+      const [auditCalEntries, setAuditCalEntries] = useState([]);
 
       // NEU: Pinsel Tool & Langes Drücken
       const [isPaintbrushActive, setIsPaintbrushActive] = useState(false);
@@ -1136,6 +1208,45 @@ const eventDocRefFor = (calId, eventId) => {
   return doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events', eventId);
 };
 
+// --- AUDIT LOG ---
+const writeUserAudit = async (entry) => {
+  try {
+    if (!user) return;
+    await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'auditLogs'), {
+      ts: serverTimestamp(),
+      tsMs: Date.now(),
+      uid: user.uid,
+      ...entry,
+    });
+  } catch (_) {}
+};
+
+const writeCalendarAudit = async (calId, entry) => {
+  try {
+    if (!user) return;
+    if (!calId || calId === 'default') return;
+    await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'auditLogs'), {
+      ts: serverTimestamp(),
+      tsMs: Date.now(),
+      uid: user.uid,
+      calId,
+      ...entry,
+    });
+  } catch (_) {}
+};
+
+const writeAudit = async ({ calId, action, targetType, targetId, summary, details }) => {
+  const payload = {
+    action: String(action || ''),
+    targetType: String(targetType || ''),
+    targetId: String(targetId || ''),
+    summary: String(summary || ''),
+    details: details && typeof details === 'object' ? details : null,
+  };
+  await writeUserAudit(payload);
+  await writeCalendarAudit(calId, payload);
+};
+
 const saveEvent = async (e) => {
   e.preventDefault();
   if (!user) return;
@@ -1196,6 +1307,7 @@ const saveEvent = async (e) => {
       const ex = Array.isArray(eventToEdit.exDates) ? eventToEdit.exDates : [];
       const nextEx = ex.filter(d => d !== selectedDateForEvent);
       await updateDoc(eventDocRefFor(fromCalId, eventToEdit.id), { overrides: nextOverrides, exDates: nextEx, updatedAt: Date.now() });
+      await writeAudit({ calId: fromCalId, action: 'event.update.instance', targetType: 'event', targetId: eventToEdit.id, summary: `Termin geändert (nur ${selectedDateForEvent}): ${title}` });
       showToast("Vorkommen gespeichert");
       closeEventModal();
     } catch (err) {
@@ -1264,22 +1376,25 @@ const saveEvent = async (e) => {
 
       if (fromCalId === toCalId) {
         await updateDoc(eventDocRefFor(fromCalId, eventToEdit.id), payload);
+        await writeAudit({ calId: fromCalId, action: 'event.update', targetType: 'event', targetId: eventToEdit.id, summary: `Termin gespeichert: ${title}` });
         showToast("Termin gespeichert");
       } else {
         // Move between calendars: create new + delete old
         const colRef = eventCollectionRefFor(toCalId);
-        await addDoc(colRef, {
+        const newRef = await addDoc(colRef, {
           ...payload,
           createdAt: eventToEdit.createdAt || Date.now(),
           movedAt: Date.now()
         });
         await deleteDoc(eventDocRefFor(fromCalId, eventToEdit.id));
+        await writeAudit({ calId: fromCalId, action: 'event.move', targetType: 'event', targetId: eventToEdit.id, summary: `Termin verschoben: ${title} → ${getCalendarById(toCalId)?.name || toCalId}`, details: { toCalId, newEventId: newRef?.id || null } });
         showToast("Termin verschoben");
         setActiveCalendarId(toCalId);
       }
     } else {
       const colRef = eventCollectionRefFor(targetCalId);
-      await addDoc(colRef, { ...payload, createdAt: Date.now() });
+      const newRef = await addDoc(colRef, { ...payload, createdAt: Date.now() });
+      await writeAudit({ calId: targetCalId, action: 'event.create', targetType: 'event', targetId: newRef?.id || '', summary: `Termin erstellt: ${title}` });
       showToast("Termin erstellt");
     }
 
@@ -1309,6 +1424,7 @@ const deleteEvent = async (mode = null) => {
       const existingOverrides = (eventToEdit.overrides && typeof eventToEdit.overrides === 'object') ? eventToEdit.overrides : {};
       const { [selectedDateForEvent]: _removed, ...rest } = existingOverrides || {};
       await updateDoc(eventDocRefFor(calId, eventToEdit.id), { exDates: nextEx, overrides: rest, updatedAt: Date.now() });
+      await writeAudit({ calId, action: 'event.delete.instance', targetType: 'event', targetId: eventToEdit.id, summary: `Vorkommen gelöscht (${selectedDateForEvent}): ${eventToEdit.title || ''}` });
       showToast("Vorkommen gelöscht");
       closeEventModal();
     } catch (err) {
@@ -1320,6 +1436,7 @@ const deleteEvent = async (mode = null) => {
   if (!confirm("Termin löschen?")) return;
   try {
     await deleteDoc(eventDocRefFor(calId, eventToEdit.id));
+    await writeAudit({ calId, action: 'event.delete', targetType: 'event', targetId: eventToEdit.id, summary: `Termin gelöscht: ${eventToEdit.title || ''}` });
     showToast("Termin gelöscht");
     closeEventModal();
   } catch (err) {
@@ -1396,7 +1513,10 @@ const handleTouchEnd = () => {
 
 
       const pinnedChatIds = (userProfile && Array.isArray(userProfile.pinnedChats)) ? userProfile.pinnedChats : [];
-      const sortedMyChats = [...myChats].sort((a, b) => {
+      const hiddenChatIds = (userProfile && Array.isArray(userProfile.hiddenChats)) ? userProfile.hiddenChats : [];
+      const sortedMyChats = [...myChats]
+        .filter(c => c && c.id && !hiddenChatIds.includes(c.id))
+        .sort((a, b) => {
         const ap = pinnedChatIds.includes(a.id) ? 1 : 0;
         const bp = pinnedChatIds.includes(b.id) ? 1 : 0;
         if (bp !== ap) return bp - ap;
@@ -1518,6 +1638,107 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setIsPaintbrushActive(false);
       }, [activeCalendarId]);
 
+      // --- Hash routing for public shares (#/share/<token>?k=<magicKey>) ---
+      useEffect(() => {
+        const parseHash = () => {
+          try {
+            const h = String(window.location.hash || '');
+            // Example: #/share/AbCdEf123?k=xyz
+            const m = h.match(/^#\/share\/([A-Za-z0-9_-]{8,})/);
+            const token = m ? m[1] : null;
+            let key = '';
+            try {
+              const qs = h.includes('?') ? h.split('?').slice(1).join('?') : '';
+              if (qs) {
+                const params = new URLSearchParams(qs);
+                key = params.get('k') || '';
+              }
+            } catch (_) {}
+            setPublicShareToken(token);
+            setPublicShareKey(key);
+          } catch (_) {
+            setPublicShareToken(null);
+            setPublicShareKey('');
+          }
+        };
+        parseHash();
+        window.addEventListener('hashchange', parseHash);
+        return () => window.removeEventListener('hashchange', parseHash);
+      }, []);
+
+      // Load public share doc (works without login)
+      useEffect(() => {
+        (async () => {
+          if (!publicShareToken) {
+            setPublicShareDoc(null);
+            setPublicShareError('');
+            setPublicShareAuthed(false);
+            setPublicSharePasscode('');
+            return;
+          }
+          setPublicShareLoading(true);
+          setPublicShareError('');
+          setPublicShareDoc(null);
+          setPublicShareAuthed(false);
+
+          try {
+            const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'shares', publicShareToken);
+            const snap = await getDoc(ref);
+            if (!snap.exists()) {
+              setPublicShareError('Link nicht gefunden');
+              setPublicShareLoading(false);
+              return;
+            }
+            const data = snap.data() || {};
+
+            // Expiry / revoke
+            if (data.revokedAtMs) {
+              setPublicShareError('Dieser Link wurde widerrufen');
+              setPublicShareLoading(false);
+              return;
+            }
+            if (data.expiresAtMs && Date.now() > data.expiresAtMs) {
+              setPublicShareError('Dieser Link ist abgelaufen');
+              setPublicShareLoading(false);
+              return;
+            }
+
+            setPublicShareDoc({ id: snap.id, ...data });
+
+            // Restore auth if previously verified (passcode)
+            try {
+              const ok = sessionStorage.getItem(`onyx_share_ok_${publicShareToken}`);
+              if (ok === '1') setPublicShareAuthed(true);
+            } catch (_) {}
+          } catch (e) {
+            console.warn('[Share] load failed', e);
+            setPublicShareError('Fehler beim Laden');
+          } finally {
+            setPublicShareLoading(false);
+          }
+        })();
+      }, [publicShareToken, publicShareKey]);
+
+      const verifyPublicSharePasscode = async () => {
+        try {
+          const d = publicShareDoc || {};
+          const pc = String(publicSharePasscode || '').trim();
+          if (!pc) return;
+          const salt = String(d.passcodeSalt || '');
+          const expected = String(d.passcodeHash || '');
+          if (!salt || !expected) return;
+          const got = await sha256Hex(`${salt}|${pc}`);
+          if (got === expected) {
+            setPublicShareAuthed(true);
+            try { sessionStorage.setItem(`onyx_share_ok_${publicShareToken}`, '1'); } catch (_) {}
+          } else {
+            showToast('Passcode falsch');
+          }
+        } catch (_) {
+          showToast('Fehler');
+        }
+      };
+
       // --- ALLGEMEINE DATEN SYNC ---
       useEffect(() => {
         if (!user) return;
@@ -1548,6 +1769,33 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           snapshot.forEach(doc => loadedChats.push({ id: doc.id, ...doc.data() }));
           loadedChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
           setMyChats(loadedChats);
+        });
+
+        // Public share links created by this user
+        const sharesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'shares');
+        const sharesQ = query(sharesRef, where('createdByUid', '==', user.uid), limit(100));
+        const unsubscribeShares = onSnapshot(sharesQ, (snap) => {
+          const list = [];
+          snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+          list.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+          setShareLinks(list);
+        }, (err) => {
+          // permission-denied is ok if rules are strict; feature still works for logged-in users if allowed
+          console.warn('[Sharing] shares subscribe failed', err?.code || err);
+          setShareLinks([]);
+        });
+
+        // Personal audit log (your actions)
+        const auditRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'auditLogs');
+        const auditQ = query(auditRef, orderBy('tsMs', 'desc'), limit(80));
+        const unsubscribeAudit = onSnapshot(auditQ, (snap) => {
+          const list = [];
+          snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+          list.sort((a, b) => (b.tsMs || 0) - (a.tsMs || 0));
+          setAuditEntries(list);
+        }, (err) => {
+          console.warn('[Audit] subscribe failed', err?.code || err);
+          setAuditEntries([]);
         });
 
         const calRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars');
@@ -1588,7 +1836,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           recomputeCals();
         });
 
-        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeOwnerCals(); unsubscribeSharedCals(); };
+        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeShares(); unsubscribeAudit(); unsubscribeOwnerCals(); unsubscribeSharedCals(); };
       }, [user]);
 
       // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---
@@ -1650,6 +1898,32 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
         return () => unsubscribes.forEach(fn => fn());
       }, [customCalendars, user]);
+
+      // Calendar audit log (shared/owned calendars)
+      useEffect(() => {
+        if (!user) return;
+        if (!auditCalId || auditCalId === 'default') {
+          setAuditCalEntries([]);
+          return;
+        }
+        const cal = customCalendars.find(c => c.id === auditCalId);
+        if (!cal) {
+          setAuditCalEntries([]);
+          return;
+        }
+        const ref = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', auditCalId, 'auditLogs');
+        const qy = query(ref, orderBy('tsMs', 'desc'), limit(80));
+        const unsub = onSnapshot(qy, (snap) => {
+          const list = [];
+          snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+          list.sort((a, b) => (b.tsMs || 0) - (a.tsMs || 0));
+          setAuditCalEntries(list);
+        }, (err) => {
+          console.warn('[Audit] calendar audit subscribe failed', err?.code || err);
+          setAuditCalEntries([]);
+        });
+        return () => { try { unsub(); } catch (_) {} };
+      }, [auditCalId, user, customCalendars]);
 
 
       // --- CHAT MESSAGES SYNC ---
@@ -2935,11 +3209,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                  await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calForm.id), {
                      name: calForm.name, type: calForm.type, color: (calForm.color || ''), shifts: calForm.shifts
                  });
+                 await writeAudit({ calId: calForm.id, action: 'calendar.update', targetType: 'calendar', targetId: calForm.id, summary: `Kalender aktualisiert: ${calForm.name}` });
                  showToast("Kalender aktualisiert");
              } else {
-                 await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars'), {
+                 const newRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars'), {
                      name: calForm.name, type: calForm.type, color: (calForm.color || ''), shifts: calForm.shifts, ownerId: user.uid, sharedWith: {}
                  });
+                 await writeAudit({ calId: newRef?.id || 'default', action: 'calendar.create', targetType: 'calendar', targetId: newRef?.id || '', summary: `Kalender erstellt: ${calForm.name}` });
                  showToast("Kalender erstellt");
              }
              setIsCalManageModalOpen(false);
@@ -2950,6 +3226,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
          if(!confirm("Kalender wirklich löschen? Alle Termine gehen verloren.")) return;
          try {
              await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId));
+             await writeAudit({ calId, action: 'calendar.delete', targetType: 'calendar', targetId: calId, summary: `Kalender gelöscht: ${getCalendarById(calId)?.name || calId}` });
              if (activeCalendarId === calId) setActiveCalendarId('default');
              showToast("Kalender gelöscht");
          } catch(e) { showToast("Fehler beim Löschen"); }
@@ -2987,6 +3264,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', shareCalData.id), {
                  [`sharedWith.${targetProfile.id}`]: sharePerm
              });
+             await writeAudit({ calId: shareCalData.id, action: 'calendar.share', targetType: 'calendar', targetId: shareCalData.id, summary: `Kalender geteilt (${sharePerm}): ${shareCalData.name} → ${targetProfile.email || targetProfile.username || shortId(targetProfile.id,6)}`, details: { targetUid: targetProfile.id, perm: sharePerm } });
              showToast(`Geteilt mit ${targetProfile.email || targetProfile.username || "Nutzer"} (${sharePerm})`);
              setShareCalData(prev => prev && prev.id === shareCalData.id ? { ...prev, sharedWith: { ...(prev.sharedWith || {}), [targetProfile.id]: sharePerm } } : prev);
              setShareUsername('');
@@ -3001,9 +3279,226 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
              const newShared = { ...(cal.sharedWith || {}) };
              delete newShared[targetUid];
              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId), { sharedWith: newShared });
+             await writeAudit({ calId, action: 'calendar.unshare', targetType: 'calendar', targetId: calId, summary: `Freigabe entfernt: ${cal?.name || calId} → ${getProfile(targetUid)?.username || shortId(targetUid,6)}`, details: { targetUid } });
              setShareCalData(prev => prev && prev.id === calId ? { ...prev, sharedWith: newShared } : prev);
              showToast("Freigabe entfernt");
           } catch(err) {}
+      };
+
+      // --- PUBLIC SHARE LINKS (busy-only / expiry / passcode / magic-link) ---
+      const makeShareUrl = (token, key = '') => {
+        const base = `${window.location.origin}${BASE_PATH}#/share/${token}`;
+        if (key) return `${base}?k=${encodeURIComponent(key)}`;
+        return base;
+      };
+
+      const getEventsListForCalendar = (calId) => {
+        if (calId === 'default') return Array.isArray(events) ? events : [];
+        return Array.isArray(sharedEventsMap?.[calId]) ? sharedEventsMap[calId] : [];
+      };
+
+      const getOccurrencesInRangeForList = (eventsList, startStr, endStr) => {
+        const list = Array.isArray(eventsList) ? eventsList : [];
+        const out = [];
+        let d = startStr;
+        let guard = 0;
+        while (d <= endStr && guard < 400) {
+          for (const ev of list) {
+            if (!ev) continue;
+            if (eventOccursOn(ev, d)) out.push(getEffectiveOccurrence(ev, d));
+          }
+          d = addDaysStr(d, 1);
+          guard++;
+        }
+        out.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
+        return out;
+      };
+
+      const parseTimeRange = (timeStr) => {
+        const t = String(timeStr || '').trim();
+        if (!t) return { start: '', end: '' };
+        if (t.includes('-')) {
+          const [a, b] = t.split('-').map(x => x.trim());
+          return { start: a, end: b || '' };
+        }
+        return { start: t, end: '' };
+      };
+
+      const computeBusyBlocksForCalendar = (calId, days = 30) => {
+        const startStr = new Date().toISOString().split('T')[0];
+        const endStr = addDaysStr(startStr, Math.max(1, parseInt(days || 30, 10) || 30));
+        const list = getEventsListForCalendar(calId);
+        const occs = getOccurrencesInRangeForList(list, startStr, endStr);
+        const blocks = [];
+        for (const occ of occs) {
+          const dateStr = occ?.date;
+          if (!dateStr) continue;
+          const tr = parseTimeRange(occ?.time);
+          const startMs = parseDateTimeLocalMs(dateStr, tr.start || '00:00');
+          if (!startMs) continue;
+          let endMs = null;
+          if (tr.end) {
+            endMs = parseDateTimeLocalMs(dateStr, tr.end);
+          }
+          if (!endMs) {
+            const dur = (typeof occ?.durationMinutes === 'number') ? occ.durationMinutes : parseInt(occ?.durationMinutes || 0, 10);
+            const dm = (Number.isFinite(dur) && dur > 0) ? dur : 60;
+            endMs = startMs + dm * 60 * 1000;
+          }
+          if (endMs <= startMs) endMs = startMs + 60 * 60 * 1000;
+          blocks.push({ startMs, endMs });
+        }
+        // Merge overlapping blocks
+        blocks.sort((a, b) => a.startMs - b.startMs);
+        const merged = [];
+        for (const b of blocks) {
+          const last = merged.length ? merged[merged.length - 1] : null;
+          if (!last || b.startMs > last.endMs) merged.push({ ...b });
+          else last.endMs = Math.max(last.endMs, b.endMs);
+        }
+        return { startStr, endStr, busyBlocks: merged };
+      };
+
+      const openShareLinkModalForCalendar = (cal) => {
+        const calId = cal?.id || 'default';
+        const calName = calId === 'default' ? 'Privat' : (cal?.name || 'Kalender');
+        setShareLinkCreated(null);
+        setShareLinkDraft(prev => ({
+          ...prev,
+          kind: 'calendar',
+          calId,
+          calName,
+          eventId: null,
+          eventSnapshot: null,
+          mode: 'busy',
+          protection: 'magic',
+          passcode: '',
+          expiresInDays: 7,
+          noExpiry: false,
+        }));
+        setIsShareLinkModalOpen(true);
+      };
+
+      const openShareLinkModalForEvent = (evSnapshot, calId) => {
+        const cid = calId || evSnapshot?.calendarId || 'default';
+        setShareLinkCreated(null);
+        setShareLinkDraft(prev => ({
+          ...prev,
+          kind: 'event',
+          calId: cid,
+          calName: getCalendarById(cid)?.name || (cid === 'default' ? 'Privat' : cid),
+          eventId: evSnapshot?.eventId || evSnapshot?.id || null,
+          eventSnapshot: {
+            title: String(evSnapshot?.title || ''),
+            date: String(evSnapshot?.date || ''),
+            time: String(evSnapshot?.time || ''),
+            location: String(evSnapshot?.location || ''),
+            durationMinutes: (evSnapshot?.durationMinutes ?? null),
+            desc: String(evSnapshot?.desc || ''),
+          },
+          mode: 'full',
+          protection: 'magic',
+          passcode: '',
+          expiresInDays: 7,
+          noExpiry: false,
+        }));
+        setIsShareLinkModalOpen(true);
+      };
+
+      const revokeShareLink = async (token) => {
+        if (!token) return;
+        try {
+          const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'shares', token);
+          await updateDoc(ref, { revokedAtMs: Date.now() });
+          await writeAudit({ calId: shareLinkDraft?.calId || 'default', action: 'share.revoke', targetType: 'share', targetId: token, summary: `Link widerrufen: ${token}` });
+          showToast('Link widerrufen');
+        } catch (e) {
+          console.warn('revokeShareLink failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const createShareLink = async () => {
+        if (!user) return;
+        const d = shareLinkDraft || {};
+        const token = randomToken(18);
+
+        // Expiry
+        let expiresAtMs = null;
+        if (!d.noExpiry) {
+          const days = Math.max(1, parseInt(d.expiresInDays || 7, 10) || 7);
+          expiresAtMs = Date.now() + days * 24 * 60 * 60 * 1000;
+        }
+
+        // Protection
+        let passcodeSalt = null;
+        let passcodeHash = null;
+        let magicKey = '';
+        let magicHash = null;
+        if (d.protection === 'passcode') {
+          const pc = String(d.passcode || '').trim();
+          if (pc.length < 4) return showToast('Passcode min. 4 Zeichen');
+          passcodeSalt = randomToken(8);
+          passcodeHash = await sha256Hex(`${passcodeSalt}|${pc}`);
+        } else if (d.protection === 'magic') {
+          // Magic-Link = nur der zufällige Token (keine zusätzliche Eingabe)
+          magicKey = '';
+          magicHash = null;
+        }
+
+        const base = {
+          kind: d.kind,
+          mode: d.mode,
+          calId: d.calId,
+          calName: d.calName,
+          createdByUid: user.uid,
+          createdAt: serverTimestamp(),
+          createdAtMs: Date.now(),
+          expiresAtMs: expiresAtMs || null,
+          revokedAtMs: null,
+          passcodeSalt: passcodeSalt || null,
+          passcodeHash: passcodeHash || null,
+          magicHash: magicHash || null,
+          isMagicLink: d.protection === 'magic',
+        };
+
+        let payload = { ...base };
+        if (d.kind === 'calendar') {
+          const { startStr, endStr, busyBlocks } = computeBusyBlocksForCalendar(d.calId, 30);
+          payload = {
+            ...payload,
+            rangeStart: startStr,
+            rangeEnd: endStr,
+            busyBlocks,
+          };
+        } else {
+          payload = {
+            ...payload,
+            eventId: d.eventId || null,
+            eventSnapshot: d.eventSnapshot || null,
+          };
+        }
+
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'shares', token), payload);
+          const url = makeShareUrl(token, magicKey);
+          setShareLinkCreated({ url, token });
+          try { await navigator.clipboard?.writeText(url); } catch (_) {}
+
+          await writeAudit({
+            calId: d.calId || 'default',
+            action: 'share.create',
+            targetType: 'share',
+            targetId: token,
+            summary: d.kind === 'calendar' ? `Public Link erstellt (Busy-only): ${d.calName}` : `Public Link erstellt (Event): ${(d.eventSnapshot?.title || '')}`,
+            details: { kind: d.kind, mode: d.mode, protection: d.protection, expiresAtMs: expiresAtMs || null },
+          });
+
+          showToast('Link erstellt (kopiert)');
+        } catch (e) {
+          console.warn('createShareLink failed', e);
+          showToast('Fehler beim Erstellen');
+        }
       };
 
       const updateProfileSettings = async (e) => {
@@ -3200,6 +3695,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
         const existingChat = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(targetUserId));
         if (existingChat) {
+          // Track as friend (so user can manage/remove later)
+          try {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
+            await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${targetProfile?.displayName || targetProfile?.username || targetProfile?.email || shortId(targetUserId,6)}` });
+          } catch (_) {}
           setActiveChat(existingChat);
           setChatSearchQuery('');
           setSecretView('chat');
@@ -3222,6 +3722,12 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             typingAt: {},
             lastRead: { [user.uid]: Date.now() }
           });
+
+          // Save to friends
+          try {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
+            await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${otherName}` });
+          } catch (_) {}
 
           setActiveChat({ id: newChat.id, type: 'dm', participants: [user.uid, targetUserId], displayNames, updatedAt: Date.now(), lastMessageSenderId: user.uid });
         } catch (error) {
@@ -3253,6 +3759,22 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           setGroupMemberSearch('');
         } catch (e) {
           showToast('Fehler beim Erstellen');
+        }
+      };
+
+      const removeFriend = async (friendUid) => {
+        if (!user || !friendUid) return;
+        try {
+          // hide existing DM chat (optional UX)
+          const dm = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(friendUid));
+          const updates = { friends: arrayRemove(friendUid) };
+          if (dm && dm.id) updates.hiddenChats = arrayUnion(dm.id);
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), updates, { merge: true });
+          await writeAudit({ calId: 'default', action: 'friend.remove', targetType: 'friend', targetId: friendUid, summary: `Freund entfernt: ${getProfile(friendUid)?.displayName || getProfile(friendUid)?.username || shortId(friendUid,6)}` });
+          showToast('Freund entfernt');
+        } catch (e) {
+          console.warn('removeFriend failed', e);
+          showToast('Fehler');
         }
       };
 
@@ -3580,6 +4102,150 @@ setSelfDestruct(false);
         return (
           <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4" style={{ height: 'var(--app-height, 100vh)' }}>
             <div className="flex flex-col items-center animate-pulse"><div className="w-12 h-12 bg-white rounded-sm mb-6"></div><h1 className="text-xl tracking-widest text-neutral-500">ONYX LÄDT...</h1></div>
+          </div>
+        );
+      }
+
+      // Public share page (no login required)
+      if (publicShareToken) {
+        const d = publicShareDoc || {};
+        const needsPasscode = !!(d.passcodeHash && d.passcodeSalt);
+        const canView = !!publicShareAuthed || !needsPasscode;
+
+        const groupBusyByDay = (blocks) => {
+          const out = new Map();
+          for (const b of (Array.isArray(blocks) ? blocks : [])) {
+            const s = new Date(b.startMs);
+            const key = s.toISOString().split('T')[0];
+            const arr = out.get(key) || [];
+            arr.push(b);
+            out.set(key, arr);
+          }
+          const keys = Array.from(out.keys()).sort();
+          return keys.map(k => ({ day: k, blocks: (out.get(k) || []).sort((a, b) => a.startMs - b.startMs) }));
+        };
+
+        const downloadIcsForSharedEvent = () => {
+          try {
+            const ev = d.eventSnapshot || {};
+            const dateStr = String(ev.date || '').replace(/-/g, '');
+            const timeStr = (String(ev.time || '12:00').split('-')[0].trim() || '12:00').replace(':', '') + '00';
+            const ics = [
+              'BEGIN:VCALENDAR',
+              'VERSION:2.0',
+              'PRODID:-//Onyx Calendar//DE',
+              'BEGIN:VEVENT',
+              `SUMMARY:${String(ev.title || 'Termin').replace(/\n/g,' ')}`,
+              `DTSTART;TZID=Europe/Zurich:${dateStr}T${timeStr}`,
+              ev.location ? `LOCATION:${String(ev.location).replace(/\n/g,' ')}` : '',
+              ev.desc ? `DESCRIPTION:${String(ev.desc).replace(/\n/g,' ')}` : '',
+              'END:VEVENT',
+              'END:VCALENDAR'
+            ].filter(Boolean).join('\n');
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+            a.download = 'onyx_share.ics';
+            a.click();
+          } catch (_) {}
+        };
+
+        return (
+          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4 relative overflow-hidden" style={{ height: 'var(--app-height, 100vh)' }}>
+            <div className="fixed top-4 right-4 z-[60] space-y-2">
+              {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
+            </div>
+
+            <div className="max-w-2xl w-full p-6 md:p-8 bg-black border border-neutral-800 rounded-2xl shadow-2xl">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-white rounded-sm"></div>
+                  <div>
+                    <div className="text-xs text-neutral-500 uppercase tracking-widest">ONYX • Public Share</div>
+                    <div className="text-lg font-medium text-white">{d.kind === 'calendar' ? (d.calName || 'Kalender') : (d.eventSnapshot?.title || 'Termin')}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { window.location.hash = '#/'; }}
+                  className="px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-200 hover:border-neutral-500"
+                >
+                  Zur App
+                </button>
+              </div>
+
+              <div className="mt-6">
+                {publicShareLoading ? (
+                  <div className="text-sm text-neutral-500">Lade…</div>
+                ) : publicShareError ? (
+                  <div className="text-sm text-red-400">{publicShareError}</div>
+                ) : !publicShareDoc ? (
+                  <div className="text-sm text-neutral-500">—</div>
+                ) : !canView ? (
+                  <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
+                    <div className="flex items-center gap-2 text-sm text-white font-medium"><Lock className="w-4 h-4" /> Geschützt</div>
+                    {needsPasscode ? (
+                      <>
+                        <p className="mt-2 text-xs text-neutral-500">Bitte Passcode eingeben.</p>
+                        <div className="mt-3 flex gap-2">
+                          <input value={publicSharePasscode} onChange={(e) => setPublicSharePasscode(e.target.value)} placeholder="Passcode" className="flex-1 bg-black border border-neutral-800 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                          <button type="button" onClick={verifyPublicSharePasscode} className="px-4 py-2 rounded-lg bg-white text-black font-semibold hover:bg-gray-200">Öffnen</button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-xs text-neutral-500">Dieser Link ist geschützt.</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {d.expiresAtMs ? (
+                      <div className="text-[11px] text-neutral-500">Läuft ab: {new Date(d.expiresAtMs).toLocaleString('de-CH')}</div>
+                    ) : (
+                      <div className="text-[11px] text-neutral-500">Ohne Ablaufdatum</div>
+                    )}
+
+                    {d.kind === 'calendar' ? (
+                      <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
+                        <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Busy‑Only</div>
+                        <div className="text-[11px] text-neutral-500 mb-4">Zeigt nur belegte Zeiten (ohne Titel/Ort). Range: {d.rangeStart} → {d.rangeEnd}</div>
+
+                        {Array.isArray(d.busyBlocks) && d.busyBlocks.length ? (
+                          <div className="space-y-3 max-h-[52vh] overflow-y-auto no-scrollbar pr-1">
+                            {groupBusyByDay(d.busyBlocks).map(day => (
+                              <div key={day.day} className="border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-sm text-white font-medium tabular-nums">{day.day}</div>
+                                <div className="mt-2 space-y-1">
+                                  {day.blocks.map((b, idx) => (
+                                    <div key={idx} className="text-xs text-neutral-300 tabular-nums">
+                                      {new Date(b.startMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })} – {new Date(b.endMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-neutral-500">Keine belegten Zeiten in der Range.</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
+                        <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Event</div>
+                        <div className="text-lg text-white font-medium">{d.eventSnapshot?.title || 'Termin'}</div>
+                        <div className="mt-1 text-sm text-neutral-300 tabular-nums">{d.eventSnapshot?.date}{d.eventSnapshot?.time ? ` • ${d.eventSnapshot?.time}` : ''}</div>
+                        {d.eventSnapshot?.location ? <div className="mt-2 text-sm text-neutral-400">📍 {d.eventSnapshot.location}</div> : null}
+                        {d.eventSnapshot?.desc ? <div className="mt-3 text-sm text-neutral-300 whitespace-pre-wrap">{d.eventSnapshot.desc}</div> : null}
+                        <div className="mt-4 flex gap-2">
+                          <button type="button" onClick={downloadIcsForSharedEvent} className="flex-1 py-2.5 rounded-xl bg-white text-black font-semibold hover:bg-gray-200">ICS Download</button>
+                          <button type="button" onClick={() => { try { navigator.clipboard?.writeText(window.location.href); showToast('Link kopiert'); } catch (_) {} }} className="px-3 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 hover:border-neutral-500" title="Link kopieren">
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         );
       }
@@ -4260,6 +4926,15 @@ setSelfDestruct(false);
                               className="w-10 h-10 rounded-lg bg-transparent border border-neutral-800"
                               title="Farbe Privat"
                             />
+
+                            <button
+                              type="button"
+                              onClick={() => openShareLinkModalForCalendar({ id: 'default', name: 'Privat' })}
+                              className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+                              title="Public Busy‑Only Link"
+                            >
+                              <Lock className="w-4 h-4" />
+                            </button>
                           </div>
                        </div>
                        
@@ -4270,6 +4945,7 @@ setSelfDestruct(false);
                                 <p className="text-xs text-neutral-500 mt-1">Freigegeben für: {Object.keys(cal.sharedWith || {}).length} Nutzer</p>
                              </div>
                              <div className="flex gap-2">
+                                <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busy‑Only Link"><Lock className="w-4 h-4"/></button>
                                 <button onClick={() => { setShareCalData(cal); setIsShareCalModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Share2 className="w-4 h-4"/></button>
                                 <button onClick={() => { setCalForm({ ...cal, color: (cal.color || calendarTint(cal.id)) }); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
                                 <button onClick={() => deleteCalendar(cal.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 className="w-4 h-4"/></button>
@@ -4437,6 +5113,138 @@ setSelfDestruct(false);
                       </div>
                     </div>
                   </section>
+
+                  {/* FREUNDE (Chat) */}
+                  <section>
+                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Freunde (Chat)</h3>
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                      {(() => {
+                        const ids = (userProfile && Array.isArray(userProfile.friends)) ? userProfile.friends.filter(Boolean) : [];
+                        if (ids.length === 0) {
+                          return <div className="text-sm text-neutral-500">Noch keine Freunde gespeichert. Starte einen 1:1 Chat über die Chat‑ID, dann erscheint der Kontakt hier.</div>;
+                        }
+                        return (
+                          <div className="space-y-2">
+                            {ids.slice(0, 50).map(uid => {
+                              const p = getProfile(uid);
+                              return (
+                                <div key={uid} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-9 h-9 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase overflow-hidden shrink-0">
+                                      {p?.avatarThumbBase64 || p?.avatarBase64 ? (
+                                        <img src={p.avatarThumbBase64 || p.avatarBase64} className="w-full h-full object-cover" />
+                                      ) : initialsFrom(p?.displayName || p?.username || p?.email || '')}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="text-sm text-white font-medium truncate">{p?.displayName || p?.username || p?.email || shortId(uid, 6)}</div>
+                                      <div className="text-[11px] text-neutral-500 font-mono">Chat‑ID: {String(p?.friendCode || '').padStart(5, '0') || '-----'}</div>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeFriend(uid)}
+                                    className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"
+                                    title="Freund entfernen"
+                                  >
+                                    <UserMinus className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </section>
+
+                  {/* PRIVACY-FIRST SHARING: Link Verwaltung */}
+                  <section>
+                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Public Links</h3>
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                      <div className="text-xs text-neutral-500 mb-4">Busy‑Only Links erstellst du über das <span className="text-neutral-300">🔒</span> beim Kalender. Event‑Links über das <span className="text-neutral-300">🔗</span> im Termin.</div>
+                      {(() => {
+                        const list = (shareLinks || []).slice().sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+                        if (list.length === 0) {
+                          return <div className="text-sm text-neutral-500">Noch keine Public Links.</div>;
+                        }
+                        return (
+                          <div className="space-y-2 max-h-[38vh] overflow-y-auto no-scrollbar pr-1">
+                            {list.slice(0, 40).map(l => {
+                              const expired = !!(l.expiresAtMs && Date.now() > l.expiresAtMs);
+                              const revoked = !!l.revokedAtMs;
+                              const url = makeShareUrl(l.id);
+                              const label = l.kind === 'calendar' ? `Busy‑Only • ${l.calName || 'Kalender'}` : `Event • ${(l.eventSnapshot?.title || 'Termin')}`;
+                              return (
+                                <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
+                                  <div className="min-w-0">
+                                    <div className="text-sm text-white font-medium truncate">{label}</div>
+                                    <div className="text-[11px] text-neutral-500">{revoked ? 'widerrufen' : expired ? 'abgelaufen' : (l.expiresAtMs ? `bis ${new Date(l.expiresAtMs).toLocaleDateString('de-CH')}` : 'ohne Ablauf')}</div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button type="button" onClick={() => { try { navigator.clipboard?.writeText(url); showToast('Kopiert'); } catch (_) {} }} className="p-2 border border-neutral-800 rounded-lg text-neutral-300 hover:bg-neutral-900" title="Kopieren"><Copy className="w-4 h-4"/></button>
+                                    {!revoked && (
+                                      <button type="button" onClick={() => revokeShareLink(l.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30" title="Widerrufen"><Trash2 className="w-4 h-4"/></button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </section>
+
+                  {/* AUDIT LOG */}
+                  <section>
+                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Audit Log</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                        <div className="flex items-center gap-2 mb-3">
+                          <History className="w-4 h-4 text-neutral-400" />
+                          <div className="text-sm font-medium text-white">Meine Aktionen</div>
+                        </div>
+                        {(auditEntries || []).length === 0 ? (
+                          <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
+                        ) : (
+                          <div className="space-y-2 max-h-[34vh] overflow-y-auto no-scrollbar pr-1">
+                            {(auditEntries || []).slice(0, 50).map(a => (
+                              <div key={a.id} className="border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-xs text-neutral-300">{a.summary || a.action}</div>
+                                <div className="mt-1 text-[10px] text-neutral-600 tabular-nums">{a.tsMs ? new Date(a.tsMs).toLocaleString('de-CH') : ''}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <div className="text-sm font-medium text-white">Kalender</div>
+                          <select value={auditCalId} onChange={(e) => setAuditCalId(e.target.value)} className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white">
+                            <option value="default">(Privat)</option>
+                            {customCalendars.map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {auditCalId === 'default' ? (
+                          <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalender‑Audit (siehe „Meine Aktionen“).</div>
+                        ) : (auditCalEntries || []).length === 0 ? (
+                          <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
+                        ) : (
+                          <div className="space-y-2 max-h-[34vh] overflow-y-auto no-scrollbar pr-1">
+                            {(auditCalEntries || []).slice(0, 50).map(a => (
+                              <div key={a.id} className="border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-xs text-neutral-300">{a.summary || a.action}</div>
+                                <div className="mt-1 text-[10px] text-neutral-600 tabular-nums">{a.tsMs ? new Date(a.tsMs).toLocaleString('de-CH') : ''} · {a.uid ? (getProfile(a.uid)?.username || shortId(a.uid, 6)) : ''}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+
                   <section>
                     <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2">Datenschutz & Account</h3>
                     <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -4644,6 +5452,8 @@ setSelfDestruct(false);
                               const isPinned = pinnedChatIds.includes(chat.id);
                               const mutedChatIds = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
                               const isMuted = mutedChatIds.includes(chat.id);
+                              const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
+                              const otherUid = isDm ? chat.participants.find(id => id !== user.uid) : null;
                               return (
                                 <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
                                   <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
@@ -4667,6 +5477,11 @@ setSelfDestruct(false);
                                   <button onClick={(e) => { e.stopPropagation(); toggleMuteChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isMuted ? 'bg-neutral-950 text-white border-neutral-500' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isMuted ? 'Stumm aus' : 'Stumm schalten'}>
                                     {isMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
                                   </button>
+                                  {isDm && otherUid && (
+                                    <button onClick={(e) => { e.stopPropagation(); if (confirm('Freund entfernen und Chat ausblenden?')) removeFriend(otherUid); }} className="p-2 rounded-lg border border-red-900/30 bg-red-900/10 text-red-400 hover:bg-red-900/30" title="Freund entfernen">
+                                      <UserMinus className="w-4 h-4" />
+                                    </button>
+                                  )}
                                   <button onClick={(e) => { e.stopPropagation(); togglePinChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isPinned ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isPinned ? 'Unpin' : 'Pin'}>
                                     <Pin className="w-4 h-4" />
                                   </button>
@@ -5006,6 +5821,28 @@ setSelfDestruct(false);
                         title="Bearbeiten"
                       >
                         <Edit2 className="w-5 h-5" />
+                      </button>
+                    )}
+                    {eventToEdit && eventModalMode === 'view' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const snap = {
+                            eventId: (eventToEdit?._baseId || eventToEdit?.id || null),
+                            title: eventForm.title,
+                            date: eventForm.date,
+                            time: eventForm.time,
+                            location: eventForm.location,
+                            durationMinutes: eventForm.durationMinutes,
+                            desc: eventForm.desc,
+                            calendarId: (eventForm.calendarId || eventToEdit?.calendarId || 'default'),
+                          };
+                          openShareLinkModalForEvent(snap, snap.calendarId);
+                        }}
+                        className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                        title="Public Link (Event)"
+                      >
+                        <Link2 className="w-5 h-5" />
                       </button>
                     )}
                     {eventToEdit && eventModalMode !== 'view' && (
@@ -5942,6 +6779,140 @@ setSelfDestruct(false);
                   >
                     Schließen
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PUBLIC SHARE LINK MODAL (Busy-only / Passcode / Magic-Link / Expiry) */}
+          {isShareLinkModalOpen && (
+            <div className="fixed inset-0 z-[83] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }}>
+              <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">Privacy-first Sharing</p>
+                    <h3 className="text-lg font-medium text-white">Public Link</h3>
+                    <p className="text-[11px] text-neutral-500 mt-1">
+                      {shareLinkDraft.kind === 'calendar' ? `Busy‑Only: ${shareLinkDraft.calName || 'Kalender'}` : `Event: ${(shareLinkDraft.eventSnapshot?.title || 'Termin')}`}
+                    </p>
+                  </div>
+                  <button onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {shareLinkDraft.kind === 'calendar' && (
+                  <div className="bg-black border border-neutral-800 rounded-xl p-4 mb-4">
+                    <div className="text-xs font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Busy‑Only</div>
+                    <div className="mt-1 text-[11px] text-neutral-500">Extern sieht nur Zeitblöcke (keine Titel/Orte).</div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Schutz</label>
+                    <select
+                      value={shareLinkDraft.protection}
+                      onChange={(e) => setShareLinkDraft(prev => ({ ...prev, protection: e.target.value, passcode: '' }))}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="magic">Magic‑Link (ohne Eingabe)</option>
+                      <option value="passcode">Passcode</option>
+                      <option value="none">Offen (nicht empfohlen)</option>
+                    </select>
+                    {shareLinkDraft.protection === 'passcode' && (
+                      <input
+                        value={shareLinkDraft.passcode}
+                        onChange={(e) => setShareLinkDraft(prev => ({ ...prev, passcode: e.target.value }))}
+                        placeholder="Passcode (min. 4)"
+                        className="mt-2 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Ablauf</label>
+                    <div className="mt-1 bg-black border border-neutral-800 rounded-lg px-3 py-3">
+                      <label className="flex items-center gap-2 text-xs text-neutral-300">
+                        <input type="checkbox" checked={!!shareLinkDraft.noExpiry} onChange={(e) => setShareLinkDraft(prev => ({ ...prev, noExpiry: e.target.checked }))} />
+                        Kein Ablauf
+                      </label>
+                      {!shareLinkDraft.noExpiry && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="365"
+                            value={shareLinkDraft.expiresInDays}
+                            onChange={(e) => setShareLinkDraft(prev => ({ ...prev, expiresInDays: e.target.value }))}
+                            className="w-20 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                          />
+                          <span className="text-xs text-neutral-500">Tage</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex gap-2">
+                  <button type="button" onClick={createShareLink} className="flex-1 py-3 rounded-lg text-sm font-semibold bg-white text-black hover:bg-gray-200 transition-colors">
+                    Link erstellen
+                  </button>
+                  <button type="button" onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }} className="px-4 py-3 rounded-lg text-sm bg-neutral-900 border border-neutral-800 text-neutral-300 hover:border-neutral-500">
+                    Schließen
+                  </button>
+                </div>
+
+                {shareLinkCreated && (
+                  <div className="mt-4 bg-black border border-neutral-800 rounded-xl p-4">
+                    <div className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Link</div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <input readOnly value={shareLinkCreated.url} className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white" />
+                      <button type="button" onClick={() => { try { navigator.clipboard?.writeText(shareLinkCreated.url); showToast('Kopiert'); } catch (_) {} }} className="p-2 rounded-lg bg-white text-black hover:bg-gray-200" title="Kopieren">
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="mt-2 text-[11px] text-neutral-500">Hinweis: Externe Links benötigen passende Firestore‑Rules für <span className="font-mono text-neutral-300">shares</span>.</div>
+                  </div>
+                )}
+
+                <div className="mt-5">
+                  <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Aktive Links</h4>
+                  {(() => {
+                    const relevant = (shareLinks || []).filter(l => {
+                      if (!l || l.revokedAtMs) return false;
+                      if (String(l.kind) !== String(shareLinkDraft.kind)) return false;
+                      if (String(l.calId || 'default') !== String(shareLinkDraft.calId || 'default')) return false;
+                      if (shareLinkDraft.kind === 'event') {
+                        const want = String(shareLinkDraft.eventId || '');
+                        const got = String(l.eventId || '');
+                        if (want && got && want !== got) return false;
+                      }
+                      return true;
+                    });
+                    if (relevant.length === 0) {
+                      return <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">Keine aktiven Links.</div>;
+                    }
+                    return (
+                      <div className="space-y-2 max-h-[32vh] overflow-y-auto no-scrollbar pr-1">
+                        {relevant.slice(0, 20).map(l => {
+                          const url = makeShareUrl(l.id || l.token || l.shareId || l._id || l.docId || l.id, '');
+                          const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '—';
+                          return (
+                            <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
+                              <div className="min-w-0">
+                                <div className="text-sm text-white font-medium truncate">{l.kind === 'calendar' ? 'Busy‑Only' : 'Event'} • {shareLinkDraft.calName}</div>
+                                <div className="text-[11px] text-neutral-500">Ablauf: {exp}</div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button type="button" onClick={() => { try { navigator.clipboard?.writeText(makeShareUrl(l.id)); showToast('Kopiert'); } catch (_) {} }} className="p-2 border border-neutral-800 rounded-lg text-neutral-300 hover:bg-neutral-900" title="Kopieren"><Copy className="w-4 h-4"/></button>
+                                <button type="button" onClick={() => revokeShareLink(l.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors" title="Widerrufen"><Trash2 className="w-4 h-4"/></button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

@@ -213,6 +213,11 @@ function AmoledCalendarApp() {
       const [location, setLocation] = useState({ name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 });
       const [dailyFact, setDailyFact] = useState('');
       const [quotes, setQuotes] = useState([]);
+      const [isStandalone, setIsStandalone] = useState(false);
+      const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
+      const [canInstallPwa, setCanInstallPwa] = useState(false);
+
+      const isIosUA = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
       
       const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
       const [searchQuery, setSearchQuery] = useState('');
@@ -258,6 +263,7 @@ const [showEventPoll, setShowEventPoll] = useState(false);
 const [eventComments, setEventComments] = useState([]);
 const [newCommentText, setNewCommentText] = useState('');
 const eventCommentsUnsubRef = useRef(null);
+const autoFinalizedPollsRef = useRef({});
 
 const [pollDraft, setPollDraft] = useState([
   { date: '', time: '' },
@@ -266,8 +272,13 @@ const [pollDraft, setPollDraft] = useState([
 ]);
 const [pollBusy, setPollBusy] = useState(false);
 const [createPollOnSave, setCreatePollOnSave] = useState(false);
+const [pollDeadlineDate, setPollDeadlineDate] = useState('');
+const [pollDeadlineTime, setPollDeadlineTime] = useState('');
+const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [selectedDateForEvent, setSelectedDateForEvent] = useState(null);
       const [eventToEdit, setEventToEdit] = useState(null);
+      const [eventModalMode, setEventModalMode] = useState('create'); // 'create' | 'view' | 'edit'
+      const [eventCanEdit, setEventCanEdit] = useState(true);
       const [calendarViewMode, setCalendarViewMode] = useState('month'); // 'month' | 'agenda'
       const [calendarSearchQuery, setCalendarSearchQuery] = useState('');
       const [agendaRange, setAgendaRange] = useState('7'); // '7' | '30' | 'month'
@@ -458,7 +469,12 @@ setShowEventPoll(false);
 setEventComments([]);
 setNewCommentText('');
 setCreatePollOnSave(false);
+  setPollDeadlineDate('');
+  setPollDeadlineTime('');
+  setPollAutoFinalize(true);
 initPollDraftFromEvent({ date: d, time: '', calendarId: targetCalId });
+  setEventModalMode('create');
+  setEventCanEdit(true);
   setIsModalOpen(true);
 };
 
@@ -541,6 +557,7 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
       email: emailVal,
       emailLower: (emailVal || '').toLowerCase(),
       updatedAt: Date.now(),
+      pushTarget: 'web',
     };
     // displayName setzen (für Begrüßung). Nur überschreiben, wenn leer/kurz.
     const desiredName = (opts && opts.fullName) ? String(opts.fullName).trim() : '';
@@ -633,6 +650,8 @@ const closeEventModal = () => {
   setEventToEdit(null);
   setEventEditScope('series');
   setCreatePollOnSave(false);
+  setEventModalMode('create');
+  setEventCanEdit(true);
 };
 
 
@@ -645,6 +664,10 @@ const initPollDraftFromEvent = (ev) => {
     { date: addDaysStr(baseDate, 1), time: baseTime },
     { date: addDaysStr(baseDate, 2), time: baseTime },
   ]);
+  // Abstimmung 2.0: optionale Deadline
+  setPollDeadlineDate(addDaysStr(baseDate, 2));
+  setPollDeadlineTime(baseTime || '18:00');
+  setPollAutoFinalize(true);
 };
 
 const countVotes = (votesObj) => {
@@ -656,6 +679,126 @@ const countVotes = (votesObj) => {
   }
   return out;
 };
+
+// --- Abstimmung 2.0 (Matrix: Fix/Kann/Nein) ---
+const POLL_STATE = { YES: 'yes', MAYBE: 'maybe', NO: 'no' };
+const isPollState = (v) => v === POLL_STATE.YES || v === POLL_STATE.MAYBE || v === POLL_STATE.NO;
+
+const makeDeadlineAt = (dateStr, timeStr) => {
+  const d = (dateStr || '').trim();
+  if (!d) return null;
+  const t = (timeStr || '').trim() || '23:59';
+  const ms = new Date(`${d}T${t}`).getTime();
+  return Number.isFinite(ms) ? ms : null;
+};
+
+const computePollTally = (poll, fallbackVoterIds = []) => {
+  const p = poll || {};
+  const version = Number(p.version || 1);
+  const options = Array.isArray(p.options) ? p.options : [];
+  const voterIds = Array.isArray(p.voterIds) ? p.voterIds : (Array.isArray(fallbackVoterIds) ? fallbackVoterIds : []);
+  const votes = (p.votes && typeof p.votes === 'object') ? p.votes : {};
+  const deadlineAt = (typeof p.deadlineAt === 'number') ? p.deadlineAt : null;
+  const now = Date.now();
+  const deadlinePassed = !!(deadlineAt && now >= deadlineAt);
+
+  if (version < 2) {
+    const counts = countVotes(votes);
+    const byOptionId = {};
+    for (const opt of options) {
+      const yes = counts[opt.id] || 0;
+      byOptionId[opt.id] = { yes, maybe: 0, no: 0, score: yes * 2 };
+    }
+    const allVoted = voterIds.length > 0 && voterIds.every((uid) => !!votes[uid]);
+    let winnerOptionId = null;
+    let best = -1;
+    for (const opt of options) {
+      const c = counts[opt.id] || 0;
+      if (c > best) { best = c; winnerOptionId = opt.id; }
+    }
+    return {
+      version,
+      byOptionId,
+      voterIds,
+      votes,
+      deadlineAt,
+      deadlinePassed,
+      allResponded: allVoted,
+      respondedCount: Object.keys(votes || {}).length,
+      totalVoters: voterIds.length,
+      canFinalizeNow: allVoted || deadlinePassed,
+      winnerOptionId,
+    };
+  }
+
+  const byOptionId = {};
+  const safeVoterIds = voterIds.filter(Boolean);
+  for (const opt of options) {
+    let yes = 0, maybe = 0, no = 0;
+    for (const uid of safeVoterIds) {
+      const row = votes[uid];
+      const s = (row && typeof row === 'object') ? row[opt.id] : null;
+      if (s === POLL_STATE.YES) yes++;
+      else if (s === POLL_STATE.MAYBE) maybe++;
+      else if (s === POLL_STATE.NO) no++;
+    }
+    // Scoring: ein einziges "Nein" macht den Slot praktisch unattraktiv
+    const score = (no > 0 ? -1000 : 0) + (yes * 2) + maybe;
+    byOptionId[opt.id] = { yes, maybe, no, score };
+  }
+
+  const allResponded = safeVoterIds.length > 0 && safeVoterIds.every((uid) => {
+    const row = votes[uid];
+    if (!row || typeof row !== 'object') return false;
+    for (const opt of options) {
+      if (!isPollState(row[opt.id])) return false;
+    }
+    return true;
+  });
+
+  let winnerOptionId = null;
+  let bestScore = -1e15;
+  let bestYes = -1;
+  let bestMaybe = -1;
+  let bestNo = 1e15;
+  for (const opt of options) {
+    const t = byOptionId[opt.id] || { yes: 0, maybe: 0, no: 0, score: 0 };
+    if (
+      (t.score > bestScore) ||
+      (t.score === bestScore && t.yes > bestYes) ||
+      (t.score === bestScore && t.yes === bestYes && t.maybe > bestMaybe) ||
+      (t.score === bestScore && t.yes === bestYes && t.maybe === bestMaybe && t.no < bestNo)
+    ) {
+      bestScore = t.score;
+      bestYes = t.yes;
+      bestMaybe = t.maybe;
+      bestNo = t.no;
+      winnerOptionId = opt.id;
+    }
+  }
+
+  return {
+    version,
+    byOptionId,
+    voterIds: safeVoterIds,
+    votes,
+    deadlineAt,
+    deadlinePassed,
+    allResponded,
+    respondedCount: safeVoterIds.filter((uid) => votes[uid] && typeof votes[uid] === 'object').length,
+    totalVoters: safeVoterIds.length,
+    canFinalizeNow: allResponded || deadlinePassed,
+    winnerOptionId,
+  };
+};
+
+const formatDeadlineShort = (deadlineAt) => {
+  if (!deadlineAt) return '';
+  try {
+    return new Date(deadlineAt).toLocaleString('de-CH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch (e) { return ''; }
+};
+
 
 const computePollVoterIdsForEvent = (ev) => {
   if (!user) return [];
@@ -755,11 +898,14 @@ const createPollForEvent = async () => {
   if (opts.length < 2) return showToast("Bitte mind. 2 Vorschläge");
 
   const voterIds = computePollVoterIdsForEvent(eventToEdit);
+  const deadlineAt = makeDeadlineAt(pollDeadlineDate, pollDeadlineTime);
 
   setPollBusy(true);
   try {
     await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
       poll: {
+        version: 2,
+        voteMode: 'matrix',
         status: 'open',
         createdAt: Date.now(),
         createdBy: user.uid,
@@ -768,6 +914,8 @@ const createPollForEvent = async () => {
         votes: {},
         winnerOptionId: null,
         closedAt: null,
+        deadlineAt: deadlineAt || null,
+        autoFinalizeAtDeadline: !!pollAutoFinalize,
         autoFinalized: false,
       },
       updatedAt: Date.now()
@@ -780,17 +928,60 @@ const createPollForEvent = async () => {
   }
 };
 
-const voteInPoll = async (optionId) => {
+const upgradePollToV2 = async (ev) => {
+  if (!user || !ev || !ev.id) return;
+  const calId = ev.calendarId || 'default';
+  if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
+
+  setPollBusy(true);
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref = eventDocRefFor(calId, ev.id);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+      const data = snap.data() || {};
+      const poll = data.poll || null;
+      if (!poll || poll.status !== 'open') return;
+      if (Number(poll.version || 1) >= 2) return;
+      // Preserve legacy votes for debugging, but restart voting clean
+      tx.update(ref, {
+        'poll.version': 2,
+        'poll.voteMode': 'matrix',
+        'poll.legacyVotes': poll.votes || {},
+        'poll.votes': {},
+        'poll.votesUpdatedAt': Date.now(),
+        updatedAt: Date.now()
+      });
+    });
+    showToast('Abstimmung auf 2.0 umgestellt');
+  } catch (e) {
+    showToast('Upgrade fehlgeschlagen');
+  } finally {
+    setPollBusy(false);
+  }
+};
+
+const voteInPoll = async (optionId, state = POLL_STATE.YES) => {
   if (!user || !eventToEdit) return;
   const calId = eventToEdit.calendarId || 'default';
   if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
 
+  const pollVer = Number((typeof modalEvent !== 'undefined' && modalEvent && modalEvent.poll && modalEvent.poll.version) ? modalEvent.poll.version : (eventToEdit.poll ? (eventToEdit.poll.version || 1) : 1));
+
   try {
-    await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
-      [`poll.votes.${user.uid}`]: optionId,
-      [`poll.votesUpdatedAt`]: Date.now(),
-      updatedAt: Date.now()
-    });
+    if (pollVer >= 2) {
+      await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
+        [`poll.votes.${user.uid}.${optionId}`]: state,
+        [`poll.votesUpdatedAt`]: Date.now(),
+        updatedAt: Date.now()
+      });
+    } else {
+      await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
+        [`poll.votes.${user.uid}`]: optionId,
+        [`poll.votesUpdatedAt`]: Date.now(),
+        updatedAt: Date.now()
+      });
+    }
   } catch (e) {
     showToast("Vote fehlgeschlagen");
   }
@@ -813,17 +1004,11 @@ const finalizePollForEvent = async () => {
       if (!poll || poll.status !== 'open') return;
 
       const voterIds = Array.isArray(poll.voterIds) ? poll.voterIds : computePollVoterIdsForEvent({ ...eventToEdit, ...ev });
-      const votes = (poll.votes && typeof poll.votes === 'object') ? poll.votes : {};
-      if (!voterIds.every((uid) => !!votes[uid])) return;
+      const tally = computePollTally(poll, voterIds);
+      if (!tally.canFinalizeNow) return;
 
-      const counts = countVotes(votes);
-      let winnerId = null;
-      let best = -1;
-      for (const opt of (poll.options || [])) {
-        const c = counts[opt.id] || 0;
-        if (c > best) { best = c; winnerId = opt.id; }
-      }
-      const winner = (poll.options || []).find(o => o.id === winnerId);
+      const winnerId = tally.winnerOptionId;
+      const winner = (Array.isArray(poll.options) ? poll.options : []).find(o => o.id === winnerId);
       if (!winner) return;
 
       tx.update(ref, {
@@ -833,6 +1018,7 @@ const finalizePollForEvent = async () => {
         'poll.status': 'closed',
         'poll.winnerOptionId': winnerId,
         'poll.closedAt': Date.now(),
+        'poll.closedBy': user.uid,
         'poll.autoFinalized': false
       });
     });
@@ -845,17 +1031,27 @@ const finalizePollForEvent = async () => {
 };
 
 // --- POLL helpers for calendar bottom panel ---
-const voteInPollForSpecificEvent = async (ev, optionId) => {
+const voteInPollForSpecificEvent = async (ev, optionId, state = POLL_STATE.YES) => {
   if (!user || !ev || !ev.id) return;
   const calId = ev.calendarId || 'default';
   if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
 
+  const pollVer = Number(ev?.poll?.version || 1);
+
   try {
-    await updateDoc(eventDocRefFor(calId, ev.id), {
-      [`poll.votes.${user.uid}`]: optionId,
-      [`poll.votesUpdatedAt`]: Date.now(),
-      updatedAt: Date.now()
-    });
+    if (pollVer >= 2) {
+      await updateDoc(eventDocRefFor(calId, ev.id), {
+        [`poll.votes.${user.uid}.${optionId}`]: state,
+        [`poll.votesUpdatedAt`]: Date.now(),
+        updatedAt: Date.now()
+      });
+    } else {
+      await updateDoc(eventDocRefFor(calId, ev.id), {
+        [`poll.votes.${user.uid}`]: optionId,
+        [`poll.votesUpdatedAt`]: Date.now(),
+        updatedAt: Date.now()
+      });
+    }
   } catch (e) {
     showToast("Vote fehlgeschlagen");
   }
@@ -878,17 +1074,11 @@ const finalizePollForSpecificEvent = async (ev) => {
       if (!poll || poll.status !== 'open') return;
 
       const voterIds = Array.isArray(poll.voterIds) ? poll.voterIds : computePollVoterIdsForEvent({ ...ev, ...data });
-      const votes = (poll.votes && typeof poll.votes === 'object') ? poll.votes : {};
-      if (!voterIds.every((uid) => !!votes[uid])) return;
+      const tally = computePollTally(poll, voterIds);
+      if (!tally.canFinalizeNow) return;
 
-      const counts = countVotes(votes);
-      let winnerId = null;
-      let best = -1;
-      for (const opt of (poll.options || [])) {
-        const c = counts[opt.id] || 0;
-        if (c > best) { best = c; winnerId = opt.id; }
-      }
-      const winner = (poll.options || []).find(o => o.id === winnerId);
+      const winnerId = tally.winnerOptionId;
+      const winner = (Array.isArray(poll.options) ? poll.options : []).find(o => o.id === winnerId);
       if (!winner) return;
 
       tx.update(ref, {
@@ -898,6 +1088,7 @@ const finalizePollForSpecificEvent = async (ev) => {
         'poll.status': 'closed',
         'poll.winnerOptionId': winnerId,
         'poll.closedAt': Date.now(),
+        'poll.closedBy': user.uid,
         'poll.autoFinalized': false
       });
     });
@@ -1015,7 +1206,10 @@ const saveEvent = async (e) => {
     if (opts.length < 2) return showToast("Bitte mind. 2 Vorschläge");
 
     const voterIds = computePollVoterIdsForEvent({ calendarId: targetCalId });
+    const deadlineAt = makeDeadlineAt(pollDeadlineDate, pollDeadlineTime);
     payload.poll = {
+      version: 2,
+      voteMode: 'matrix',
       status: 'open',
       createdAt: Date.now(),
       createdBy: user.uid,
@@ -1024,6 +1218,8 @@ const saveEvent = async (e) => {
       votes: {},
       winnerOptionId: null,
       closedAt: null,
+      deadlineAt: deadlineAt || null,
+      autoFinalizeAtDeadline: !!pollAutoFinalize,
       autoFinalized: false,
     };
 
@@ -1219,7 +1415,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
     // Profil immer sicherstellen (nach Reset/neu)
     (async () => {
       await ensureProfileAfterAuth(currentUser);
-      try { requestNotificationPermission(currentUser); } catch(_) {}
+      try { ensureWebPushToken(currentUser, { forcePrompt: false }); } catch(_) {}
     })();
   } else {
     setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]);
@@ -1534,24 +1730,82 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setChatStats({ sent, received, total: sent + received });
       };
 
-      const requestNotificationPermission = async (currentUser) => {
-        if (!currentUser) return;
-        const messaging = await getMessagingSafe();
-        if (!messaging) return;
-        try {
-          const permission = await Notification.requestPermission();
-          if (permission === 'granted') {
-            const swRegistration = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register('./firebase-messaging-sw.js?v=27'));
-            const token = await getToken(messaging, { 
-              vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI',
-              serviceWorkerRegistration: swRegistration
-            });
-            if (token) {
-              await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid), { fcmTokenWeb: token, lastWebTokenAt: Date.now() }, { merge: true });
-            }
-          }
-        } catch (err) { console.log('FCM Error', err); }
-      };
+      const ensureWebPushToken = async (currentUser, opts = {}) => {
+  if (!currentUser) return;
+  const forcePrompt = !!opts.forcePrompt;
+
+  const isStandaloneNow = () => {
+    try {
+      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
+      const dm = !!(m && m.matches);
+      const ios = !!(window.navigator && window.navigator.standalone);
+      return dm || ios;
+    } catch (_) { return false; }
+  };
+
+  // PWA-only
+  if (!isStandaloneNow()) return;
+
+  const messaging = await getMessagingSafe();
+  if (!messaging) return;
+
+  if (!('Notification' in window)) return;
+
+  if (Notification.permission !== 'granted') {
+    if (!forcePrompt) return;
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+  }
+
+  try {
+    const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
+    const swUrl = `${base}firebase-messaging-sw.js?v=29`;
+    const swRegistration =
+      (await navigator.serviceWorker.getRegistration()) ||
+      (await navigator.serviceWorker.register(swUrl));
+
+    const token = await getToken(messaging, {
+      vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI',
+      serviceWorkerRegistration: swRegistration
+    });
+
+    if (token) {
+      await setDoc(
+        doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid),
+        { fcmTokenWeb: token, lastWebTokenAt: Date.now(), pushTarget: 'web' },
+        { merge: true }
+      );
+    }
+  } catch (e) {
+    console.warn('[FCM] ensure token failed', e?.message || e);
+  }
+};
+
+const requestNotificationPermission = async (currentUser) => {
+  if (!currentUser) return;
+
+  const isStandaloneNow = () => {
+    try {
+      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
+      const dm = !!(m && m.matches);
+      const ios = !!(window.navigator && window.navigator.standalone);
+      return dm || ios;
+    } catch (_) { return false; }
+  };
+
+  if (!isStandaloneNow()) {
+    showToast(isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren, dann Benachrichtigungen aktivieren.' : 'Bitte als PWA installieren, dann Benachrichtigungen aktivieren.');
+    return;
+  }
+
+  try {
+    await ensureWebPushToken(currentUser, { forcePrompt: true });
+    showToast('Benachrichtigungen aktiviert ✅');
+  } catch (err) {
+    console.log('FCM Error', err);
+    showToast('Benachrichtigungen konnten nicht aktiviert werden');
+  }
+};
 
       useEffect(() => {
         let unsubscribeMessage = null;
@@ -1559,22 +1813,33 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         (async () => {
           const messaging = await getMessagingSafe();
           if (!messaging) return;
-          unsubscribeMessage = onMessage(messaging, (payload) => {
-          const kind = payload?.data?.kind || '';
-          const chatId = payload?.data?.chatId || '';
-          const title = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
-          const body = payload?.data?.body || payload?.notification?.body || '';
+	          unsubscribeMessage = onMessage(messaging, (payload) => {
+	            const kind = payload?.data?.kind || '';
+	            const chatId = payload?.data?.chatId || '';
+	            const title = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
+	            const body = payload?.data?.body || payload?.notification?.body || '';
+	            const tag = payload?.data?.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
 
-          // Wenn Chat stummgeschaltet ist: keine In-App Benachrichtigung
-          try {
-            const muted = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
-            if (kind === 'chat' && chatId && muted.includes(chatId)) return;
-          } catch (_) {}
+	            // Wenn Chat stummgeschaltet ist: keine In-App Benachrichtigung
+	            try {
+	              const muted = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+	              if (kind === 'chat' && chatId && muted.includes(chatId)) return;
+	            } catch (_) {}
 
-          // Foreground: keine In-App Toasts/Banner (UI aktualisiert sich via Firestore Listener).
-          // Hinweis: Custom-Sounds sind in einer PWA nicht wählbar (nur System / stumm).
-          
-        });
+	            // Foreground: UI aktualisiert sich via Firestore Listener.
+	            // Trotzdem: In-App Toast als Feedback + System-Notification, falls Tab nicht im Fokus.
+	            try {
+	              const msg = body ? `${title}: ${body}` : title;
+	              showToast(msg);
+	            } catch (_) {}
+
+	            try {
+	              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
+	              if (canNotify && document.visibilityState !== 'visible') {
+	                showSystemNotification(title, body, tag);
+	              }
+	            } catch (_) {}
+	          });
         })();
 
         return () => {
@@ -1600,6 +1865,85 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setToasts(prev => [...prev, { id, message }]);
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
       };
+
+
+// --- PWA-only: Service Worker + Install Prompt ---
+const promptInstallPwa = async () => {
+  try {
+    if (!deferredInstallPrompt) {
+      showToast(isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren.' : 'Installation ist gerade nicht verfügbar.');
+      return;
+    }
+    deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+    setDeferredInstallPrompt(null);
+    setCanInstallPwa(false);
+    if (choice && choice.outcome === 'accepted') showToast('Installiert ✅');
+    else showToast('Installation abgebrochen');
+  } catch (e) {
+    showToast('Installation nicht möglich');
+  }
+};
+
+useEffect(() => {
+  const computeStandalone = () => {
+    try {
+      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
+      const dm = !!(m && m.matches);
+      const ios = !!(window.navigator && window.navigator.standalone);
+      return dm || ios;
+    } catch (_) { return false; }
+  };
+
+  // 1) Track standalone state (PWA)
+  setIsStandalone(computeStandalone());
+
+  // 2) Register SW for caching + background push (no permission prompt here)
+  (async () => {
+    try {
+      if (!('serviceWorker' in navigator)) return;
+      const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
+      const swUrl = `${base}firebase-messaging-sw.js?v=29`;
+      await navigator.serviceWorker.register(swUrl);
+    } catch (e) {
+      console.warn('[PWA] service worker register failed', e?.message || e);
+    }
+  })();
+
+  // 3) Install prompt
+  const onBip = (e) => {
+    try {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+      setCanInstallPwa(true);
+    } catch (_) {}
+  };
+  window.addEventListener('beforeinstallprompt', onBip);
+
+  const onInstalled = () => {
+    setDeferredInstallPrompt(null);
+    setCanInstallPwa(false);
+    setIsStandalone(true);
+  };
+  window.addEventListener('appinstalled', onInstalled);
+
+  // 4) Display-mode changes
+  const mql = (window.matchMedia) ? window.matchMedia('(display-mode: standalone)') : null;
+  const onMql = () => setIsStandalone(computeStandalone());
+  if (mql) {
+    if (mql.addEventListener) mql.addEventListener('change', onMql);
+    else if (mql.addListener) mql.addListener(onMql);
+  }
+
+  return () => {
+    window.removeEventListener('beforeinstallprompt', onBip);
+    window.removeEventListener('appinstalled', onInstalled);
+    if (mql) {
+      if (mql.removeEventListener) mql.removeEventListener('change', onMql);
+      else if (mql.removeListener) mql.removeListener(onMql);
+    }
+  };
+}, []);
 
 
       const showSystemNotification = async (title, body, tag = 'onyx') => {
@@ -1754,6 +2098,69 @@ const modalEvent = eventToEdit
   : null;
 
 
+// Auto-finalize abgelaufene Abstimmungen (clientseitig, sobald jemand mit Schreibrecht die App öffnet)
+useEffect(() => {
+  if (!user) return;
+
+  const now = Date.now();
+  const list = (allEvents || []).filter(ev => ev && ev.poll && ev.poll.status === 'open');
+  let did = 0;
+
+  (async () => {
+    for (const ev of list) {
+      if (did >= 3) break; // safety cap
+      const poll = ev.poll || {};
+      const ver = Number(poll.version || 1);
+      const calId = ev.calendarId || 'default';
+      if (ver < 2) continue;
+      if (!poll.autoFinalizeAtDeadline) continue;
+      if (!poll.deadlineAt || now < poll.deadlineAt) continue;
+      if (poll.autoFinalized) continue;
+      if (!canWriteCalendar(calId)) continue;
+
+      const key = `${calId}::${ev.id}`;
+      if (autoFinalizedPollsRef.current[key]) continue;
+      autoFinalizedPollsRef.current[key] = true;
+
+      try {
+        await runTransaction(db, async (tx) => {
+          const ref = eventDocRefFor(calId, ev.id);
+          const snap = await tx.get(ref);
+          if (!snap.exists()) return;
+          const data = snap.data() || {};
+          const p = data.poll || null;
+          if (!p || p.status !== 'open') return;
+          if (Number(p.version || 1) < 2) return;
+          if (!p.autoFinalizeAtDeadline) return;
+          if (!p.deadlineAt || Date.now() < p.deadlineAt) return;
+          if (p.autoFinalized) return;
+
+          const voterIds = Array.isArray(p.voterIds) ? p.voterIds : computePollVoterIdsForEvent({ ...ev, ...data });
+          const tally = computePollTally(p, voterIds);
+          const winnerId = tally.winnerOptionId;
+          const winner = (Array.isArray(p.options) ? p.options : []).find(o => o.id === winnerId);
+          if (!winner) return;
+
+          tx.update(ref, {
+            date: winner.date,
+            time: winner.time,
+            updatedAt: Date.now(),
+            'poll.status': 'closed',
+            'poll.winnerOptionId': winnerId,
+            'poll.closedAt': Date.now(),
+            'poll.closedBy': user.uid,
+            'poll.autoFinalized': true
+          });
+        });
+        did += 1;
+      } catch (_) {
+        // ignore
+      }
+    }
+  })();
+}, [user?.uid, events, sharedEventsMap, customCalendars]);
+
+
       const getCalendarById = (id) => {
          if (id === 'default') return { id: 'default', name: 'Privat', type: 'normal', ownerId: user?.uid };
          return customCalendars.find(c => c.id === id);
@@ -1887,6 +2294,17 @@ const modalEvent = eventToEdit
       // --- REMINDER ENGINE (Kalender) ---
       const remindersIndexRef = useRef([]);
 
+      // Same hashing as oxynoti server (FNV-1a 32-bit) => enables notification tag dedupe
+      const fnv1a32 = (str) => {
+        let h = 0x811c9dc5;
+        const s = String(str || '');
+        for (let i = 0; i < s.length; i++) {
+          h ^= s.charCodeAt(i);
+          h = Math.imul(h, 0x01000193);
+        }
+        return (h >>> 0);
+      };
+
       const parseDateTimeLocalMs = (dateStr, timeStr) => {
         try {
           if (!dateStr || !timeStr) return null;
@@ -1935,16 +2353,20 @@ const modalEvent = eventToEdit
             const dueMs = startMs - (mins * 60000);
             if (dueMs < (now - 60000)) continue; // zu alt
             const baseId = occ._baseId || occ.id || 'event';
+            const occId = occ.id || `${baseId}__${occ.date || ''}`;
             const occDate = occ._occurrenceDate || occ.date || '';
             const rid = `${baseId}__${occDate}__${startMs}__${mins}`;
             idx.push({
               rid,
               dueMs,
               startMs,
+              mins,
               title: occ.title || 'Termin',
               time: occ.time || '',
               calendarId: occ.calendarId || 'default',
-              occDate
+              occDate,
+              baseId,
+              occId
             });
           }
           idx.sort((a, b) => a.dueMs - b.dueMs);
@@ -1968,9 +2390,15 @@ const modalEvent = eventToEdit
 
           // System Notification falls erlaubt
           try {
-            const pushEnabled = (userProfile && (userProfile.fcmTokenWeb || userProfile.fcmToken) && ('Notification' in window) && Notification.permission === 'granted');
-            // Wenn Push aktiv ist, kommt die System-Notification vom Server (oxynoti). Lokal nur als Fallback.
-            if (!pushEnabled) await showSystemNotification('Erinnerung', body, `onyx_rem_${item.rid}`);
+            // Wichtig: oft existiert zwar ein Web-Token, aber der Server-Worker (oxynoti)
+            // ist nicht aktiv oder sendet nicht an Web. Daher IMMER lokal als Fallback.
+            // Tag ist kompatibel mit oxynoti (dedupe über `tag`).
+            const canNotify = ('Notification' in window) && Notification.permission === 'granted';
+            if (canNotify) {
+              const dedupeKey = `${user?.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;
+              const tag = `onyx_event_${fnv1a32(dedupeKey)}`;
+              await showSystemNotification('Erinnerung', body, tag);
+            }
           } catch (_) {}
 
           try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch (_) {}
@@ -2141,17 +2569,9 @@ const modalEvent = eventToEdit
          }
       };
 
-      const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
-         const baseEvent = (event && event._baseEvent) ? event._baseEvent : event;
+      
+      const hydrateEventFormFromBaseEvent = (baseEvent, occDate) => {
          if (!baseEvent) return;
-         const occDate = occurrenceDate || (event && event._occurrenceDate) || baseEvent.date;
-         const activeCal = getCalendarById(baseEvent.calendarId);
-         if (activeCal && activeCal.id !== 'default' && activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
-             return showToast("Nur Lesezugriff.");
-         }
-         if (baseEvent.type === 'shift') return;
-         setEventToEdit(baseEvent);
-         setSelectedDateForEvent(occDate);
          const rec = baseEvent.recurrence || null;
          const hasRec = rec && rec.freq && rec.freq !== 'NONE';
          const isInstance = !!(hasRec && occDate && baseEvent.date && occDate !== baseEvent.date);
@@ -2172,6 +2592,25 @@ const modalEvent = eventToEdit
            recurrenceByWeekdays: (rec && Array.isArray(rec.byWeekdays)) ? rec.byWeekdays : [],
            recurrenceUntil: (rec && rec.until) ? rec.until : ''
          });
+      };
+
+const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
+         const baseEvent = (event && event._baseEvent) ? event._baseEvent : event;
+         if (!baseEvent) return;
+         const occDate = occurrenceDate || (event && event._occurrenceDate) || baseEvent.date;
+
+         if (baseEvent.type === 'shift') return;
+
+         setEventToEdit(baseEvent);
+         setSelectedDateForEvent(occDate);
+
+         const calId = baseEvent.calendarId || 'default';
+         const canEdit = canWriteCalendar(calId);
+         setEventCanEdit(!!canEdit);
+         setEventModalMode('view');
+
+         hydrateEventFormFromBaseEvent(baseEvent, occDate);
+
          const openComments = !!(opts && opts.openComments);
          const openPoll = !!(opts && opts.openPoll);
          setShowEventComments(openComments);
@@ -2181,6 +2620,19 @@ const modalEvent = eventToEdit
          setNewCommentText('');
          initPollDraftFromEvent(baseEvent);
          setIsModalOpen(true);
+      };
+
+      const enterEventEditMode = () => {
+         if (!eventToEdit) return;
+         if (!eventCanEdit) return showToast("Nur Lesezugriff.");
+         setEventModalMode('edit');
+      };
+
+      const backToEventViewMode = () => {
+         if (!eventToEdit) return;
+         const occDate = selectedDateForEvent || eventToEdit.date;
+         hydrateEventFormFromBaseEvent(eventToEdit, occDate);
+         setEventModalMode('view');
       };
 
       // --- KALENDER EINSTELLUNGEN LOGIK ---
@@ -3261,12 +3713,16 @@ setSelfDestruct(false);
                             <div className="text-xs text-neutral-500">Keine offenen Abstimmungen.</div>
                           ) : openPollEvents.map(ev => {
                             const poll = ev.poll || {};
-                            const votes = (poll.votes && typeof poll.votes === 'object') ? poll.votes : {};
-                            const counts = countVotes(votes);
                             const voterIds = Array.isArray(poll.voterIds) ? poll.voterIds : [];
-                            const votesCount = Object.keys(votes).length;
-                            const allVoted = voterIds.length > 0 && voterIds.every(uid => !!votes[uid]);
-                            const myVote = votes[user.uid] || '';
+                            const tally = computePollTally(poll, voterIds);
+                            const votesCount = tally.respondedCount;
+                            const totalVoters = tally.totalVoters || voterIds.length;
+                            const canFinalizeNow = !!tally.canFinalizeNow;
+                            const winnerId = tally.winnerOptionId;
+                            const deadlineLabel = tally.deadlineAt ? formatDeadlineShort(tally.deadlineAt) : '';
+                            const myLegacyVote = (tally.version < 2) ? ((tally.votes || {})[user.uid] || '') : '';
+                            const myRow = (tally.version >= 2 && tally.votes && typeof tally.votes[user.uid] === 'object') ? tally.votes[user.uid] : {};
+                            const myComplete = (tally.version < 2) ? !!myLegacyVote : ((poll.options || []).every(o => isPollState((myRow || {})[o.id])));
                             const canWrite = canWriteCalendar(ev.calendarId || 'default');
 
                             return (
@@ -3278,7 +3734,7 @@ setSelfDestruct(false);
                                     className="text-left min-w-0"
                                   >
                                     <div className="text-sm font-medium text-white truncate">{ev.title}</div>
-                                    <div className="text-[11px] text-neutral-500">{votesCount}/{voterIds.length || '–'} Stimmen</div>
+                                    <div className="text-[11px] text-neutral-500">{votesCount}/{totalVoters || '–'} Antworten</div>
                                   </button>
                                   <button
                                     type="button"
@@ -3289,10 +3745,62 @@ setSelfDestruct(false);
                                   </button>
                                 </div>
 
-                                <div className="mt-2 space-y-1">
+                                <div className="mt-2 space-y-2">
                                   {(poll.options || []).map(opt => {
-                                    const voted = myVote === opt.id;
-                                    const c = counts[opt.id] || 0;
+                                    const t = (tally.byOptionId && tally.byOptionId[opt.id]) ? tally.byOptionId[opt.id] : { yes: 0, maybe: 0, no: 0, score: 0 };
+                                    const isWinner = winnerId === opt.id;
+
+                                    if (tally.version >= 2) {
+                                      const myState = (myRow || {})[opt.id] || '';
+                                      const baseBtn = 'px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors';
+                                      const onCls = 'bg-white text-black border-white';
+                                      const offCls = 'bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-500';
+
+                                      return (
+                                        <div
+                                          key={opt.id}
+                                          className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800') + (!canWrite ? ' opacity-60' : '')}
+                                        >
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div className="text-xs text-white">{opt.date} • {opt.time}{isWinner ? ' ⭐' : ''}</div>
+                                            <div className="flex items-center gap-1">
+                                              <button
+                                                type="button"
+                                                disabled={!canWrite || pollBusy}
+                                                onClick={() => voteInPollForSpecificEvent(ev, opt.id, POLL_STATE.YES)}
+                                                className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)}
+                                                title="Fix"
+                                              >
+                                                ✅
+                                              </button>
+                                              <button
+                                                type="button"
+                                                disabled={!canWrite || pollBusy}
+                                                onClick={() => voteInPollForSpecificEvent(ev, opt.id, POLL_STATE.MAYBE)}
+                                                className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)}
+                                                title="Kann"
+                                              >
+                                                🤷
+                                              </button>
+                                              <button
+                                                type="button"
+                                                disabled={!canWrite || pollBusy}
+                                                onClick={() => voteInPollForSpecificEvent(ev, opt.id, POLL_STATE.NO)}
+                                                className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)}
+                                                title="Nein"
+                                              >
+                                                ❌
+                                              </button>
+                                            </div>
+                                          </div>
+                                          <div className="mt-1 text-[10px] text-neutral-500 tabular-nums">✅{t.yes} &nbsp; 🤷{t.maybe} &nbsp; ❌{t.no}</div>
+                                        </div>
+                                      );
+                                    }
+
+                                    // Legacy (1.0)
+                                    const voted = myLegacyVote === opt.id;
+                                    const c = t.yes || 0;
                                     return (
                                       <button
                                         key={opt.id}
@@ -3311,19 +3819,22 @@ setSelfDestruct(false);
                                 </div>
 
                                 <div className="mt-2 flex items-center justify-between">
-                                  <div className="text-[11px] text-neutral-500">{myVote ? 'Du hast abgestimmt ✅' : 'Du: offen'}</div>
+                                  <div className="text-[11px] text-neutral-500">
+                                    {myComplete ? 'Du: fertig ✅' : 'Du: offen'}{deadlineLabel ? ` · Deadline: ${deadlineLabel}` : ''}
+                                  </div>
                                   {canWrite && (
                                     <button
                                       type="button"
-                                      disabled={!allVoted || pollBusy}
+                                      disabled={!canFinalizeNow || pollBusy}
                                       onClick={() => finalizePollForSpecificEvent(ev)}
-                                      className={"px-2 py-1 rounded-lg font-semibold text-[11px] " + ((!allVoted || pollBusy) ? 'bg-neutral-900 border border-neutral-800 text-neutral-500 cursor-not-allowed' : 'bg-white text-black')}
-                                      title={allVoted ? 'Gewinner übernehmen' : 'Warten bis alle abgestimmt haben'}
+                                      className={"px-2 py-1 rounded-lg font-semibold text-[11px] " + ((!canFinalizeNow || pollBusy) ? 'bg-neutral-900 border border-neutral-800 text-neutral-500 cursor-not-allowed' : 'bg-white text-black')}
+                                      title={canFinalizeNow ? 'Gewinner übernehmen' : 'Warten bis alle fertig sind oder Deadline'}
                                     >
                                       Finalisieren
                                     </button>
                                   )}
                                 </div>
+
                               </div>
                             );
                           })}
@@ -3415,13 +3926,26 @@ setSelfDestruct(false);
                           <p className="font-medium text-white">Kalender-Erinnerungen</p>
                           <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit „Standard“). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => { try { requestNotificationPermission(user); } catch(e) {} }}
-                          className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors"
-                        >
-                          Erlauben
-                        </button>
+                        <div className="flex gap-2">
+  {!isStandalone && canInstallPwa && (
+    <button
+      type="button"
+      onClick={() => { try { promptInstallPwa(); } catch(e) {} }}
+      className="px-4 py-2 bg-white text-black rounded-md text-sm font-semibold hover:bg-gray-200 transition-colors"
+    >
+      Installieren
+    </button>
+  )}
+  <button
+    type="button"
+    disabled={!isStandalone}
+    onClick={() => { try { requestNotificationPermission(user); } catch(e) {} }}
+    className={"px-4 py-2 rounded-md text-sm transition-colors " + (isStandalone ? "bg-neutral-900 border border-neutral-800 hover:text-white" : "bg-neutral-950 border border-neutral-900 text-neutral-600 cursor-not-allowed")}
+    title={isStandalone ? "Benachrichtigungen aktivieren" : (isIosUA ? "iPhone/iPad: Teilen → Zum Home-Bildschirm" : "Bitte zuerst installieren")}
+  >
+    Erlauben
+  </button>
+</div>
                       </div>
 
                       <div className="flex items-center gap-3">
@@ -3485,34 +4009,31 @@ setSelfDestruct(false);
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Push-Ziel</label>
-                          <select
-                            value={(() => {
-                              const v = (userProfile && userProfile.pushTarget) ? String(userProfile.pushTarget) : 'auto';
-                              return (v === 'android' || v === 'web' || v === 'both') ? v : 'auto';
-                            })()}
-                            onChange={async (e) => {
-                              try {
-                                const v = e.target.value;
-                                const next = (v === 'auto') ? null : v;
-                                await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { pushTarget: next }, { merge: true });
-                                showToast('Gespeichert');
-                              } catch (err) {
-                                showToast('Fehler');
-                              }
-                            }}
-                            className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                          >
-                            <option value="auto">Automatisch</option>
-                            <option value="web">Nur Web/PWA</option>
-                            <option value="android">Nur Android (APK)</option>
-                            <option value="both">Beide</option>
-                          </select>
-                          <p className="mt-2 text-[11px] text-neutral-500">Automatisch = oxynoti sendet an die vorhandenen Tokens (Android/Web).</p>
-                        </div>
-                      </div>
+                      <div className="bg-black border border-neutral-800 rounded-xl p-4">
+  <div className="flex items-start justify-between gap-3">
+    <div className="min-w-0">
+      <div className="text-xs font-semibold text-white">PWA (nur Web Push)</div>
+      <div className="mt-1 text-[11px] text-neutral-500">
+        Diese Installation nutzt nur Push über die installierte PWA (Web). Android/APK Tokens werden nicht mehr verwendet.
+      </div>
+      {!isStandalone && (
+        <div className="mt-2 text-[11px] text-amber-400">
+          {isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren.' : 'Bitte installieren, dann „Erlauben“.'}
+        </div>
+      )}
+      <div className="mt-2 text-[11px] text-neutral-600">
+        Web Token: <span className="text-neutral-300">{(userProfile && userProfile.fcmTokenWeb) ? 'vorhanden ✅' : 'nicht gesetzt'}</span>
+      </div>
+    </div>
+    <div className="flex flex-col gap-2 shrink-0">
+      {!isStandalone && canInstallPwa && (
+        <button type="button" onClick={() => { try { promptInstallPwa(); } catch(e) {} }} className="px-3 py-2 bg-white text-black rounded-md text-sm font-semibold hover:bg-gray-200">
+          Installieren
+        </button>
+      )}
+    </div>
+  </div>
+</div>
 
 <div className="text-[11px] text-neutral-500">
                         Status: <span className="text-neutral-300">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</span>
@@ -4073,16 +4594,41 @@ setSelfDestruct(false);
               <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">{eventToEdit ? 'Bearbeiten' : 'Neu'}</p>
-                    <h3 className="text-lg font-medium text-white">{eventToEdit ? 'Termin bearbeiten' : 'Neuer Termin'}</h3>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">{eventToEdit ? (eventModalMode === 'view' ? 'Ansicht' : 'Bearbeiten') : 'Neu'}</p>
+                    <h3 className="text-lg font-medium text-white">{eventToEdit ? (eventModalMode === 'view' ? 'Termin' : 'Termin bearbeiten') : 'Neuer Termin'}</h3>
+                    {eventToEdit && !eventCanEdit && (
+                      <p className="mt-1 text-[11px] text-neutral-500">Nur Lesezugriff</p>
+                    )}
                   </div>
-                  <button onClick={closeEventModal} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
-                    <X className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {eventToEdit && eventModalMode === 'view' && eventCanEdit && (
+                      <button
+                        type="button"
+                        onClick={enterEventEditMode}
+                        className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                        title="Bearbeiten"
+                      >
+                        <Edit2 className="w-5 h-5" />
+                      </button>
+                    )}
+                    {eventToEdit && eventModalMode !== 'view' && (
+                      <button
+                        type="button"
+                        onClick={backToEventViewMode}
+                        className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                        title="Zurück"
+                      >
+                        <CornerUpLeft className="w-5 h-5" />
+                      </button>
+                    )}
+                    <button onClick={closeEventModal} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
 
 
-                {eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && (
+                {eventToEdit && eventModalMode !== 'view' && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && (
                   <div className="mb-4 p-4 bg-black border border-neutral-800 rounded-2xl">
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold mb-2">Änderung gilt für</p>
                     <div className="flex gap-2">
@@ -4093,7 +4639,70 @@ setSelfDestruct(false);
                   </div>
                 )}
 
-                <form onSubmit={saveEvent} className="space-y-3">
+                {eventToEdit && eventModalMode === 'view' && (
+                  <div className="space-y-3">
+                    <div className="bg-black border border-neutral-800 rounded-2xl p-4">
+                      <div className="text-white text-lg font-medium">{eventForm.title || 'Termin'}</div>
+                      <div className="mt-1 text-sm text-neutral-300">
+                        <span className="tabular-nums">{eventForm.date}</span>
+                        {eventForm.time ? <span className="text-neutral-600 mx-2">•</span> : null}
+                        {eventForm.time ? <span className="tabular-nums">{eventForm.time}</span> : null}
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kategorie</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.type || '—'}</div>
+                        </div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kalender</div>
+                          <div className="mt-1 text-neutral-200">{getCalendarById(eventForm.calendarId || 'default')?.name || 'Privat'}</div>
+                        </div>
+                      </div>
+
+                      {(eventForm.recurrenceFreq && eventForm.recurrenceFreq !== 'NONE') && (
+                        <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wiederholung</div>
+                          <div className="mt-1 text-neutral-200">
+                            {eventForm.recurrenceFreq === 'DAILY' ? 'Täglich' : eventForm.recurrenceFreq === 'WEEKLY' ? 'Wöchentlich' : eventForm.recurrenceFreq === 'MONTHLY' ? 'Monatlich' : eventForm.recurrenceFreq}
+                            {eventForm.recurrenceInterval && eventForm.recurrenceInterval > 1 ? ` • alle ${eventForm.recurrenceInterval}` : ''}
+                            {eventForm.recurrenceUntil ? ` • bis ${eventForm.recurrenceUntil}` : ''}
+                          </div>
+                        </div>
+                      )}
+
+                      {eventForm.desc ? (
+                        <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Beschreibung</div>
+                          <div className="mt-1 text-neutral-200 whitespace-pre-wrap">{eventForm.desc}</div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 text-[11px] text-neutral-500">Keine Beschreibung.</div>
+                      )}
+                    </div>
+
+                    {eventCanEdit && (
+                      <button
+                        type="button"
+                        onClick={enterEventEditMode}
+                        className="w-full py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Edit2 className="w-4 h-4" /> Bearbeiten
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={closeEventModal}
+                      className="w-full py-3 rounded-lg text-sm text-neutral-400 bg-neutral-900 border border-neutral-800 hover:text-white transition-colors"
+                    >
+                      Schließen
+                    </button>
+                  </div>
+                )}
+
+                {!(eventToEdit && eventModalMode === 'view') && (
+                  <form onSubmit={saveEvent} className="space-y-3">
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Titel</label>
                     <input
@@ -4170,7 +4779,37 @@ setSelfDestruct(false);
                             </div>
                           ))}
 
-                          <div className="flex gap-2">
+                          
+
+                          <div className="mt-2 bg-neutral-950/40 border border-neutral-800 rounded-xl p-3">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold mb-2">Deadline (optional)</div>
+                            <div className="flex gap-2">
+                              <input
+                                type="date"
+                                value={pollDeadlineDate}
+                                onChange={(e) => setPollDeadlineDate(e.target.value)}
+                                className="flex-1 bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                              />
+                              <input
+                                type="time"
+                                value={pollDeadlineTime}
+                                onChange={(e) => setPollDeadlineTime(e.target.value)}
+                                className="w-28 bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                              />
+                            </div>
+                            <div className="mt-2 flex items-center justify-between">
+                              <div className="text-[11px] text-neutral-500">Auto-Finalisieren nach Deadline</div>
+                              <button
+                                type="button"
+                                onClick={() => setPollAutoFinalize(v => !v)}
+                                className={"px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors " + (pollAutoFinalize ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500')}
+                              >
+                                {pollAutoFinalize ? 'An' : 'Aus'}
+                              </button>
+                            </div>
+                            <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: ✅ Fix · 🤷 Kann · ❌ Nein (pro Vorschlag)</div>
+                          </div>
+<div className="flex gap-2">
                             <button
                               type="button"
                               onClick={() => initPollDraftFromEvent({ date: eventForm.date, time: eventForm.time, calendarId: eventForm.calendarId || 'default' })}
@@ -4402,6 +5041,7 @@ setSelfDestruct(false);
                     </button>
                   )}
                 </form>
+                )}
 
 
 {eventToEdit && (
@@ -4488,6 +5128,36 @@ setSelfDestruct(false);
               </div>
             ))}
 
+            <div className="mt-2 bg-neutral-950/40 border border-neutral-800 rounded-xl p-3">
+              <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold mb-2">Deadline (optional)</div>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={pollDeadlineDate}
+                  onChange={(e) => setPollDeadlineDate(e.target.value)}
+                  className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                />
+                <input
+                  type="time"
+                  value={pollDeadlineTime}
+                  onChange={(e) => setPollDeadlineTime(e.target.value)}
+                  className="w-28 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <div className="text-[11px] text-neutral-500">Auto-Finalisieren nach Deadline</div>
+                <button
+                  type="button"
+                  onClick={() => setPollAutoFinalize(v => !v)}
+                  className={"px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors " + (pollAutoFinalize ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500')}
+                >
+                  {pollAutoFinalize ? 'An' : 'Aus'}
+                </button>
+              </div>
+              <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: ✅ Fix · 🤷 Kann · ❌ Nein (pro Vorschlag)</div>
+            </div>
+
+
             <div className="flex gap-2">
               <button
                 type="button"
@@ -4507,46 +5177,108 @@ setSelfDestruct(false);
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-neutral-400">
-                Abstimmung läuft • {Object.keys(modalEvent.poll.votes || {}).length}/{(modalEvent.poll.voterIds || []).length} Stimmen
-              </div>
-              <button
-                type="button"
-                disabled={pollBusy}
-                onClick={finalizePollForEvent}
-                className={`px-3 py-2 rounded-lg font-semibold text-xs ${pollBusy ? 'bg-neutral-700 text-neutral-300' : 'bg-white text-black'}`}
-              >
-                Gewinner übernehmen
-              </button>
-            </div>
+                    <div className="space-y-3">
+            {(() => {
+              const poll = modalEvent.poll || {};
+              const voterIds = Array.isArray(poll.voterIds) ? poll.voterIds : [];
+              const tally = computePollTally(poll, voterIds);
+              const deadlineLabel = tally.deadlineAt ? formatDeadlineShort(tally.deadlineAt) : '';
+              const canFinalizeNow = !!tally.canFinalizeNow;
+              const winnerId = tally.winnerOptionId;
+              const myLegacyVote = (tally.version < 2) ? ((tally.votes || {})[user.uid] || '') : '';
+              const myRow = (tally.version >= 2 && tally.votes && typeof tally.votes[user.uid] === 'object') ? tally.votes[user.uid] : {};
+              const myComplete = (tally.version < 2) ? !!myLegacyVote : ((poll.options || []).every(o => isPollState((myRow || {})[o.id])));
 
-            <div className="space-y-2">
-              {(modalEvent.poll.options || []).map((opt) => {
-                const myVote = (modalEvent.poll.votes || {})[user.uid] || '';
-                const counts = countVotes(modalEvent.poll.votes || {});
-                const c = counts[opt.id] || 0;
-                const voted = myVote === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => voteInPoll(opt.id)}
-                    className={`w-full text-left border rounded-xl px-3 py-2 ${voted ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500'}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm text-white">{opt.date} • {opt.time}</div>
-                      <div className="text-xs text-neutral-400">{c} Vote{c === 1 ? '' : 's'}</div>
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-neutral-400">
+                      Abstimmung läuft • {tally.respondedCount}/{tally.totalVoters || (poll.voterIds || []).length} Antworten{deadlineLabel ? ` · Deadline: ${deadlineLabel}` : ''}
                     </div>
-                  </button>
-                );
-              })}
-            </div>
+                    <button
+                      type="button"
+                      disabled={!canFinalizeNow || pollBusy}
+                      onClick={finalizePollForEvent}
+                      className={"px-3 py-2 rounded-lg font-semibold text-xs " + ((!canFinalizeNow || pollBusy) ? 'bg-neutral-900 border border-neutral-800 text-neutral-500 cursor-not-allowed' : 'bg-white text-black')}
+                      title={canFinalizeNow ? 'Gewinner übernehmen' : 'Warten bis alle fertig sind oder Deadline'}
+                    >
+                      Gewinner übernehmen
+                    </button>
+                  </div>
 
-            <div className="text-[11px] text-neutral-500">
-              Du hast {((modalEvent.poll.votes || {})[user.uid]) ? 'abgestimmt ✅' : 'noch nicht abgestimmt'}.
-            </div>
+                  {tally.version < 2 && (
+                    <div className="text-[11px] text-yellow-300 border border-yellow-900/30 bg-yellow-900/10 rounded-xl p-3">
+                      Diese Abstimmung ist 1.0 (eine Stimme pro Person). Neue Abstimmungen nutzen 2.0 (✅/🤷/❌ pro Vorschlag).
+                      {(poll.createdBy === user.uid) && (
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            disabled={pollBusy}
+                            onClick={() => upgradePollToV2(modalEvent)}
+                            className={"px-3 py-2 rounded-lg text-[11px] font-semibold border " + (pollBusy ? 'bg-neutral-900 border-neutral-800 text-neutral-500' : 'bg-white text-black border-white')}
+                          >
+                            Auf 2.0 upgraden (Votes reset)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    {(poll.options || []).map((opt) => {
+                      const t = (tally.byOptionId && tally.byOptionId[opt.id]) ? tally.byOptionId[opt.id] : { yes: 0, maybe: 0, no: 0, score: 0 };
+                      const isWinner = winnerId === opt.id;
+
+                      if (tally.version >= 2) {
+                        const myState = (myRow || {})[opt.id] || '';
+                        const baseBtn = 'px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors';
+                        const onCls = 'bg-white text-black border-white';
+                        const offCls = 'bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-500';
+
+                        return (
+                          <div
+                            key={opt.id}
+                            className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800')}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-sm text-white">{opt.date} • {opt.time}{isWinner ? ' ⭐' : ''}</div>
+                              <div className="flex items-center gap-1">
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.YES)} className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)} title="Fix">✅</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.MAYBE)} className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)} title="Kann">🤷</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.NO)} className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)} title="Nein">❌</button>
+                              </div>
+                            </div>
+                            <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">✅{t.yes} &nbsp; 🤷{t.maybe} &nbsp; ❌{t.no}</div>
+                          </div>
+                        );
+                      }
+
+                      // Legacy (1.0)
+                      const myVote = myLegacyVote;
+                      const voted = myVote === opt.id;
+                      const c = t.yes || 0;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => voteInPoll(opt.id)}
+                          className={"w-full text-left border rounded-xl px-3 py-2 " + (voted ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500')}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm text-white">{opt.date} • {opt.time}</div>
+                            <div className="text-xs text-neutral-400">{c} Vote{c === 1 ? '' : 's'}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="text-[11px] text-neutral-500">
+                    {myComplete ? 'Du: fertig ✅' : 'Du: offen'}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
       </div>

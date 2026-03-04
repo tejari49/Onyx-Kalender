@@ -14,7 +14,7 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-const CACHE_NAME = 'onyx-v32';
+const CACHE_NAME = 'onyx-v33';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',

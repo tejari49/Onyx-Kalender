@@ -182,7 +182,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v24 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v25 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -265,6 +265,13 @@ function AmoledCalendarApp() {
       // Push diagnostics (helps to debug when users report "Push geht nicht")
       const [pushDiag, setPushDiag] = useState({ sw: 'unknown', controlling: false, lastError: '', lastTokenAt: 0, lastReceivedAt: 0, lastReceivedTitle: '' });
       const [pushTest, setPushTest] = useState({ id: '', status: '', lastError: '', updatedAt: 0 });
+
+      // Account alias editor
+      const [aliasEditOpen, setAliasEditOpen] = useState(false);
+      const [aliasDraft, setAliasDraft] = useState('');
+      const [aliasEditError, setAliasEditError] = useState('');
+      const [aliasSaving, setAliasSaving] = useState(false);
+
 
       const isIosUA = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
       
@@ -618,7 +625,66 @@ const persistDisplayName = async (rawName, opts = {}) => {
   }
 };
 
+const sanitizeAlias = (raw) => {
+  const s = String(raw ?? '').trim();
+  // Allow: letters, numbers, dot, underscore, dash. Spaces become underscore.
+  const underscored = s.replace(/\s+/g, '_');
+  const cleaned = underscored.replace(/[^a-zA-Z0-9._-]/g, '');
+  return cleaned.slice(0, 20);
+};
+
+const persistAliasUsername = async (rawAlias) => {
+  if (!user) return;
+  const nextAlias = sanitizeAlias(rawAlias);
+  if (!nextAlias) { setAliasEditError('Bitte Alias eingeben'); return; }
+  if (nextAlias.length < 2) { setAliasEditError('Alias zu kurz'); return; }
+  try {
+    setAliasSaving(true);
+    setAliasEditError('');
+    const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+
+    const patch = {
+      username: nextAlias,
+      usernameLower: nextAlias.toLowerCase(),
+      updatedAt: Date.now(),
+    };
+
+    // If displayName is empty, keep UI consistent by setting it once.
+    if (!userProfile?.displayName || String(userProfile.displayName).trim().length < 2) {
+      patch.displayName = nextAlias;
+    }
+
+    await setDoc(profileRef, patch, { merge: true });
+
+    // Update local state + fallback storage
+    try { setUserProfile(prev => ({ ...(prev || {}), ...patch })); } catch (_) {}
+    try {
+      localStorage.setItem(`onyx_username_${user.uid}`, nextAlias);
+      if (patch.displayName) localStorage.setItem(`onyx_displayName_${user.uid}`, patch.displayName);
+    } catch (_) {}
+
+    // Best-effort: update chat displayNames if we don't have a dedicated displayName
+    try {
+      const nameForChats = (patch.displayName || userProfile?.displayName || nextAlias);
+      const updates = (myChats || []).slice(0, 75).map(c => {
+        if (!c?.id) return null;
+        return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user.uid}`]: nameForChats }).catch(()=>{});
+      }).filter(Boolean);
+      await Promise.all(updates);
+    } catch (_) {}
+
+    showToast('Alias aktualisiert');
+    setAliasEditOpen(false);
+  } catch (e) {
+    console.warn('persistAliasUsername failed', e);
+    setAliasEditError('Speichern fehlgeschlagen');
+  } finally {
+    try { setAliasSaving(false); } catch (_) {}
+  }
+};
+
 const saveUsername = async (e) => {
+
   e.preventDefault();
   if (!user) return;
   const unameRaw = new FormData(e.target).get('username') || '';
@@ -2199,7 +2265,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=32`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=33`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -5550,7 +5616,56 @@ setSelfDestruct(false);
                 <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
                     <p className="font-medium text-white">Angemeldet als: {user?.email}</p>
-                    {userProfile && <p className="text-sm text-neutral-400">Alias: {userProfile.username}</p>}
+
+                    {userProfile && (
+                      <div className="mt-1 space-y-1">
+                        <p className="text-sm text-neutral-400">Name: {userProfile.displayName || userProfile.username}</p>
+
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm text-neutral-400">Alias: <span className="font-mono text-neutral-200">{userProfile.username}</span></p>
+                          <button
+                            type="button"
+                            onClick={() => { setAliasDraft(userProfile.username || ''); setAliasEditError(''); setAliasEditOpen(true); }}
+                            className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                            title="Alias ändern"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {aliasEditOpen && (
+                          <div className="mt-3 border border-neutral-800 rounded-xl p-3 bg-black space-y-2">
+                            <div className="text-xs text-neutral-500">Alias ändern (2–20 Zeichen). Erlaubt: a–z, 0–9, <span className="font-mono">._-</span>. Leerzeichen → <span className="font-mono">_</span>.</div>
+                            <input
+                              value={aliasDraft}
+                              onChange={(e) => { setAliasDraft(e.target.value); setAliasEditError(''); }}
+                              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-neutral-500"
+                              placeholder="dein_alias"
+                              maxLength={40}
+                              autoFocus
+                            />
+                            {aliasEditError ? <div className="text-xs text-red-400">{aliasEditError}</div> : null}
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => persistAliasUsername(aliasDraft)}
+                                disabled={aliasSaving}
+                                className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
+                              >
+                                {aliasSaving ? 'Speichern…' : 'Speichern'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setAliasEditOpen(false); setAliasEditError(''); }}
+                                className="px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:bg-neutral-800"
+                              >
+                                Abbrechen
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <button onClick={handleLogout} className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors">Abmelden</button>
                 </div>

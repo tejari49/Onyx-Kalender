@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ensure AMOLED background everywhere (prevents white "bottom" on short pages / overscroll) */
+html, body {
+  background: #000;
+  height: 100%;
+}
+#root {
+  min-height: 100vh;
+  background: #000;
+}

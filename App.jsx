@@ -1,0 +1,8387 @@
+import React, { useState, useEffect, useRef } from 'react';
+
+    import { 
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin,
+      Copy, Link2, History, UserMinus
+    } from 'lucide-react';
+
+    import { initializeApp } from "firebase/app";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter } from "firebase/firestore";
+    import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
+    import heic2any from 'heic2any';
+
+    const customFirebaseConfig = {
+      apiKey: "AIzaSyDkdRI4tNh5fe-dyBBGDlGgIiT7vHmoFvg",
+      authDomain: "kalender-rai.firebaseapp.com",
+      projectId: "kalender-rai",
+      storageBucket: "kalender-rai.firebasestorage.app",
+      messagingSenderId: "407396898664",
+      appId: "1:407396898664:web:3fafd51433481e7bb668dd"
+    };
+
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : customFirebaseConfig;
+    const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'onyx-pwa-live';
+    const BASE_PATH = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/Onyx-Kalender/';
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+
+    // --- Auth hardening: if the browser keeps a stale Firebase auth cache after project reset,
+    // identitytoolkit accounts:lookup can return 400 and break flows. We auto-signout + clear caches.
+    (function hardenAuthFetch() {
+      try {
+        const _fetch = window.fetch ? window.fetch.bind(window) : null;
+        if (!_fetch) return;
+        window.fetch = async (...args) => {
+          const res = await _fetch(...args);
+          try {
+            const url = (typeof args[0] === "string") ? args[0] : (args[0] && args[0].url) ? args[0].url : "";
+            if (url.includes("identitytoolkit.googleapis.com") && url.includes("accounts:lookup") && res && res.status === 400) {
+              console.warn("[Auth] accounts:lookup 400 -> signing out and clearing local auth caches");
+              try { await signOut(auth); } catch (e) {}
+              try { indexedDB.deleteDatabase("firebaseLocalStorageDb"); } catch (e) {}
+              try { indexedDB.deleteDatabase("firebase-installations-database"); } catch (e) {}
+              try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+            }
+          } catch (e) {}
+          return res;
+        };
+      } catch (e) {}
+    })();
+
+    const getMessagingSafe = async () => {
+      try {
+        const supported = await isSupported();
+        if (!supported) return null;
+        return getMessaging(app);
+      } catch (error) {
+        console.warn("[FCM] Browser unsupported:", error?.message || error);
+        return null;
+      }
+    };
+
+    const PASTEL_COLORS = ['#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#E8BAFF', '#D3D3D3', '#FFC8DD'];
+
+    
+    const QUOTES_URL = 'quotes.json';
+
+    // Fallback quotes (wird genutzt, falls quotes.json nicht geladen werden kann)
+    const DEFAULT_QUOTES = [
+      "Struktur bringt Ruhe.",
+      "Fokus ist eine Entscheidung.",
+      "Kleine Schritte, große Wirkung.",
+      "Wenn&apos;s brennt: Wasser. Wenn&apos;s chaotisch ist: Kalender.",
+      "Planung ist die halbe Miete – die andere Hälfte ist Kaffee."
+    ];
+
+    const stableHash = (str) => {
+      let h = 2166136261;
+      for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0);
+    };
+
+    const _bufToHex = (buffer) => {
+      const bytes = new Uint8Array(buffer);
+      let out = '';
+      for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
+      return out;
+    };
+
+    const sha256Hex = async (input) => {
+      const s = String(input ?? '');
+      try {
+        if (crypto?.subtle?.digest) {
+          const enc = new TextEncoder();
+          const buf = await crypto.subtle.digest('SHA-256', enc.encode(s));
+          return _bufToHex(buf);
+        }
+      } catch (_) {}
+      // Fallback: not cryptographically strong, but avoids hard crash in rare environments.
+      return String(stableHash(s));
+    };
+
+    const randomToken = (byteLen = 16) => {
+      try {
+        const arr = new Uint8Array(byteLen);
+        crypto.getRandomValues(arr);
+        let str = '';
+        for (let i = 0; i < arr.length; i++) str += String.fromCharCode(arr[i]);
+        // base64url
+        return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      } catch (_) {
+        return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      }
+    };
+
+    const pickQuoteForDay = (quotes, dayKey) => {
+      const list = (Array.isArray(quotes) && quotes.length) ? quotes : DEFAULT_QUOTES;
+      const idx = stableHash(String(dayKey)) % list.length;
+      return list[idx];
+    };
+
+
+    const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+    const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+
+    
+    // --- ERROR BOUNDARY (verhindert "schwarzer Screen" bei Runtime-Fehlern) ---
+    class ErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+      }
+      static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+      }
+      componentDidCatch(error, info) {
+        console.error('[Onyx] UI ErrorBoundary:', error, info);
+      }
+      render() {
+        if (this.state.hasError) {
+          return (
+            <div className="absolute inset-0 bg-black text-white flex items-center justify-center p-6">
+              <div className="max-w-md w-full border border-neutral-800 rounded-2xl p-6 bg-neutral-950/60">
+                <h3 className="text-lg font-semibold mb-2">Ups – ein Fehler ist passiert</h3>
+                <p className="text-sm text-neutral-400 mb-4">
+                  Die Ansicht konnte nicht gerendert werden. Du kannst zurückgehen oder neu laden.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    className="flex-1 bg-white text-black font-semibold py-2 rounded-xl hover:bg-gray-200 transition-colors"
+                    onClick={() => {
+                      this.setState({ hasError: false, error: null });
+                      try { this.props.onReset && this.props.onReset(); } catch (e) {}
+                    }}
+                  >
+                    Zurück
+                  </button>
+                  <button
+                    className="flex-1 bg-neutral-800 text-white font-semibold py-2 rounded-xl hover:bg-neutral-700 transition-colors"
+                    onClick={() => window.location.reload()}
+                  >
+                    Neu laden
+                  </button>
+                </div>
+                <details className="mt-4">
+                  <summary className="text-xs text-neutral-500 cursor-pointer">Details</summary>
+                  <pre className="mt-2 text-[10px] text-neutral-400 whitespace-pre-wrap break-words">{String(this.state.error || '')}</pre>
+                </details>
+              </div>
+            </div>
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+
+// ===== Build marker (v9) =====
+console.log('[Onyx-Kalender] build v27 loaded @', new Date().toISOString());
+
+// Ensure isGroupChat is always available (avoids hoisting/scope issues)
+window.isGroupChat = window.isGroupChat || function(chat) {
+  try {
+    if (!chat) return false;
+    if (chat.type === 'group') return true;
+    return Array.isArray(chat.participants) && chat.participants.length > 2;
+  } catch (e) { return false; }
+};
+
+
+    // --- Robust helper functions (v20) ---
+    function safeTrim(v) {
+      return (v ?? "").toString().trim();
+    }
+    function initialsFrom(nameOrEmail) {
+      const s = safeTrim(nameOrEmail);
+      if (!s) return "??";
+      const parts = s.split(/\s+/).filter(Boolean);
+      const first = (parts[0] || "");
+      const second = (parts[1] || "");
+      const a = first.charAt(0);
+      const b = (second.charAt(0) || first.charAt(1));
+      const out = (a + b).toUpperCase();
+      return out || "??";
+    }
+
+    function shortId(id, n = 6) {
+      const s = String(id || '');
+      if (s.length <= n) return s;
+      return s.slice(0, n);
+    }
+
+function AmoledCalendarApp() {
+  
+
+      // Fix: keep app height in sync (prevents white area at bottom in some browsers)
+      useEffect(() => {
+        const setAppHeight = () => {
+          document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
+        };
+        setAppHeight();
+        window.addEventListener('resize', setAppHeight);
+        window.addEventListener('orientationchange', setAppHeight);
+        return () => {
+          window.removeEventListener('resize', setAppHeight);
+          window.removeEventListener('orientationchange', setAppHeight);
+        };
+      }, []);
+
+// Stable alias
+  const isGroupChat = window.isGroupChat;
+
+      const [isAppReady, setIsAppReady] = useState(false);
+      const [user, setUser] = useState(null);
+      const [isLoggedIn, setIsLoggedIn] = useState(false);
+      
+      const [isRegistering, setIsRegistering] = useState(false);
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [fullName, setFullName] = useState('');
+      const [authError, setAuthError] = useState('');
+      
+      const [currentView, setCurrentView] = useState('dashboard');
+      const [settingsTab, setSettingsTab] = useState('calendars');
+      const [settingsQuery, setSettingsQuery] = useState('');
+      const [settingsShareCalId, setSettingsShareCalId] = useState('default');
+
+      const [currentDate, setCurrentDate] = useState(new Date());
+      
+      const [weather, setWeather] = useState(null);
+      const [dailyForecast, setDailyForecast] = useState(null);
+      const [hourlyForecast, setHourlyForecast] = useState(null);
+      const [selectedForecastDay, setSelectedForecastDay] = useState(null);
+      const [location, setLocation] = useState({ name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 });
+      const [dailyFact, setDailyFact] = useState('');
+      const [quotes, setQuotes] = useState([]);
+      const [isStandalone, setIsStandalone] = useState(false);
+      const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
+      const [canInstallPwa, setCanInstallPwa] = useState(false);
+
+      // Push diagnostics (helps to debug when users report "Push geht nicht")
+      const [pushDiag, setPushDiag] = useState({ sw: 'unknown', controlling: false, lastError: '', lastTokenAt: 0, lastReceivedAt: 0, lastReceivedTitle: '' });
+      const [pushTest, setPushTest] = useState({ id: '', status: '', lastError: '', updatedAt: 0 });
+
+      // Account alias editor
+      const [aliasEditOpen, setAliasEditOpen] = useState(false);
+      const [aliasDraft, setAliasDraft] = useState('');
+      const [aliasEditError, setAliasEditError] = useState('');
+      const [aliasSaving, setAliasSaving] = useState(false);
+
+      // Password editor
+      const [pwEditOpen, setPwEditOpen] = useState(false);
+      const [pwCurrent, setPwCurrent] = useState('');
+      const [pwNew, setPwNew] = useState('');
+      const [pwNew2, setPwNew2] = useState('');
+      const [pwError, setPwError] = useState('');
+      const [pwSaving, setPwSaving] = useState(false);
+      const [pwResetSent, setPwResetSent] = useState(false);
+
+
+
+      const isIosUA = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+      
+      const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
+      const [searchQuery, setSearchQuery] = useState('');
+      const [searchResults, setSearchResults] = useState([]);
+
+      // --- BILD-VOLLBILD VIEWER ---
+      const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
+      const [imageViewerSrc, setImageViewerSrc] = useState(null);
+
+      const openImageViewer = (src) => {
+        if (!src) return;
+        setImageViewerSrc(src);
+        setIsImageViewerOpen(true);
+      };
+
+      const closeImageViewer = () => {
+        setIsImageViewerOpen(false);
+        setImageViewerSrc(null);
+      };
+
+      useEffect(() => {
+        if (!isImageViewerOpen) return;
+        const onKey = (e) => {
+          if (e.key === 'Escape') closeImageViewer();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [isImageViewerOpen]);
+
+      // --- KALENDER & SCHICHTEN STATES ---
+      const [events, setEvents] = useState([]); // Default private events
+      const [customCalendars, setCustomCalendars] = useState([]);
+      const [sharedEventsMap, setSharedEventsMap] = useState({}); // { calId: [events] }
+      
+      const [activeCalendarId, setActiveCalendarId] = useState('default');
+      const [visibleCalendars, setVisibleCalendars] = useState(['default']);
+      
+      const [isModalOpen, setIsModalOpen] = useState(false);
+
+const [showEventComments, setShowEventComments] = useState(false);
+const [showEventPoll, setShowEventPoll] = useState(false);
+
+const [eventComments, setEventComments] = useState([]);
+const [newCommentText, setNewCommentText] = useState('');
+const eventCommentsUnsubRef = useRef(null);
+const autoFinalizedPollsRef = useRef({});
+
+const eventModalScrollRef = useRef(null);
+
+const [pollDraft, setPollDraft] = useState([
+  { date: '', time: '' },
+  { date: '', time: '' },
+  { date: '', time: '' }
+]);
+const [pollBusy, setPollBusy] = useState(false);
+const [createPollOnSave, setCreatePollOnSave] = useState(false);
+const [pollDeadlineDate, setPollDeadlineDate] = useState('');
+const [pollDeadlineTime, setPollDeadlineTime] = useState('');
+const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
+      const [selectedDateForEvent, setSelectedDateForEvent] = useState(null);
+      const [eventToEdit, setEventToEdit] = useState(null);
+      const [eventModalMode, setEventModalMode] = useState('create'); // 'create' | 'view' | 'edit'
+      const [eventCanEdit, setEventCanEdit] = useState(true);
+      const [calendarViewMode, setCalendarViewMode] = useState('month'); // 'month' | 'agenda'
+      const [calendarSearchQuery, setCalendarSearchQuery] = useState('');
+      const [agendaRange, setAgendaRange] = useState('7'); // '7' | '30' | 'month'
+      const [eventEditScope, setEventEditScope] = useState('series'); // 'series' | 'single'
+
+      // Ensure event modal starts at top on open (mobile: content can exceed viewport)
+      useEffect(() => {
+        if (!isModalOpen) return;
+        const t = setTimeout(() => {
+          try {
+            if (eventModalScrollRef.current) {
+              eventModalScrollRef.current.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+            }
+          } catch (e) {}
+        }, 0);
+        return () => clearTimeout(t);
+      }, [isModalOpen, eventModalMode, eventToEdit]);
+
+
+      const [eventForm, setEventForm] = useState({
+        title: '',
+        date: '',
+        time: '',
+        location: '',
+        durationMinutes: '',
+        type: 'Privat',
+        desc: '',
+        // Reminder per Termin: 'default' | 'none' | 'custom'
+        reminderMode: 'default',
+        reminderMinutes: 15,
+        calendarId: 'default',
+        recurrenceFreq: 'NONE',
+        recurrenceInterval: 1,
+        recurrenceByWeekdays: [],
+        recurrenceUntil: ''
+      });
+
+
+      // --- NATÜRLICHE SPRACHE / SCHNELLEINGABE (Event) ---
+      const [quickEventText, setQuickEventText] = useState('');
+      const [quickEventPreview, setQuickEventPreview] = useState(null);
+
+      const [isCalManageModalOpen, setIsCalManageModalOpen] = useState(false);
+      const [calForm, setCalForm] = useState({ id: null, name: '', type: 'normal', color: '', shifts: [] });
+      
+      const [isShareCalModalOpen, setIsShareCalModalOpen] = useState(false);
+      const [shareCalData, setShareCalData] = useState(null);
+      const [shareUsername, setShareUsername] = useState('');
+      const [sharePerm, setSharePerm] = useState('read');
+
+      // --- PRIVACY-FIRST SHARING (Public Links) ---
+      const [isShareLinkModalOpen, setIsShareLinkModalOpen] = useState(false);
+      const [shareLinkDraft, setShareLinkDraft] = useState({
+        kind: 'calendar', // 'calendar' | 'event'
+        calId: 'default',
+        calName: 'Privat',
+        eventId: null,
+        eventSnapshot: null, // {title,date,time,location,durationMinutes,desc}
+        mode: 'busy', // calendar: 'busy' | 'full' (busy-only is the privacy default)
+        protection: 'magic', // 'none' | 'passcode' | 'magic'
+        passcode: '',
+        expiresInDays: 7,
+        noExpiry: false,
+      });
+      const [shareLinkCreated, setShareLinkCreated] = useState(null); // { url, token }
+      const [shareLinks, setShareLinks] = useState([]);
+
+      // Public share route (works without login)
+      const [publicShareToken, setPublicShareToken] = useState(null);
+      const [publicShareKey, setPublicShareKey] = useState('');
+      const [publicShareDoc, setPublicShareDoc] = useState(null);
+      const [publicShareLoading, setPublicShareLoading] = useState(false);
+      const [publicShareError, setPublicShareError] = useState('');
+      const [publicShareAuthed, setPublicShareAuthed] = useState(false);
+      const [publicSharePasscode, setPublicSharePasscode] = useState('');
+
+      // Audit log
+      const [auditEntries, setAuditEntries] = useState([]);
+      const [auditCalId, setAuditCalId] = useState('default');
+      const [auditCalEntries, setAuditCalEntries] = useState([]);
+
+      // NEU: Pinsel Tool & Langes Drücken
+      const [isPaintbrushActive, setIsPaintbrushActive] = useState(false);
+      const [selectedPaintShift, setSelectedPaintShift] = useState(null);
+      const [shiftModalData, setShiftModalData] = useState(null); // { dateStr, calId, shifts }
+      const isPaintingRef = useRef(false);
+      const paintedDaysRef = useRef(new Set());
+
+      // --- GEHEIMER CHAT STATES ---
+      const [secretView, setSecretView] = useState('list');
+      const [userProfile, setUserProfile] = useState(null);
+      const dashboardName = (userProfile && (userProfile.displayName || userProfile.username)) ? (userProfile.displayName || userProfile.username) : (user?.email ? user.email.split('@')[0] : '');
+      const todayKey = new Date().toISOString().split('T')[0];
+      const [allProfiles, setAllProfiles] = useState([]);
+      const [chatSearchQuery, setChatSearchQuery] = useState('');
+      const [chatFriendResult, setChatFriendResult] = useState(null);
+      const [chatFriendLoading, setChatFriendLoading] = useState(false);
+      const [chatFriendError, setChatFriendError] = useState('');
+      const chatFriendLookupTimer = useRef(null);
+
+      const [myChats, setMyChats] = useState([]);
+      const [activeChat, setActiveChat] = useState(null);
+      const [chatMessages, setChatMessages] = useState([]);
+      const [newMessageText, setNewMessageText] = useState('');
+      const [editingMessage, setEditingMessage] = useState(null);
+      const [replyToMessage, setReplyToMessage] = useState(null); // { id, senderId, text, image, audio, event }
+      const [playingAudioId, setPlayingAudioId] = useState(null);
+      const [selectedMessageId, setSelectedMessageId] = useState(null); 
+      const [selfDestruct, setSelfDestruct] = useState(false);
+      const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
+      
+      const [isRecording, setIsRecording] = useState(false);
+      const mediaRecorderRef = useRef(null);
+      const audioChunksRef = useRef([]);
+
+      const typingTimeoutRef = useRef(null);
+      const messagesEndRef = useRef(null);
+      const chatScrollRef = useRef(null);
+
+      // --- Chat scroll UX ---
+      // Keep the viewport stable when prepending older messages and avoid auto-jumping to bottom
+      const chatIsPrependingRef = useRef(false);
+      const chatStickToBottomRef = useRef(true);
+      const chatScrollRestoreRef = useRef({ prevHeight: 0, prevTop: 0 });
+      const chatOldestCursorRef = useRef(null);
+      const chatLoadedMoreRef = useRef(false);
+      const chatAutoLoadLockRef = useRef(false);
+      const CHAT_PAGE_SIZE = 25;
+      const [chatHasMore, setChatHasMore] = useState(false);
+      const [chatLoadingMore, setChatLoadingMore] = useState(false);
+
+
+      // --- IN-APP CHAT PING (SOUND / VIBRATION) ---
+      const audioCtxRef = useRef(null);
+      const userProfileRef = useRef(null);
+      const activeChatIdRef = useRef(null);
+      const currentViewRef = useRef(null);
+      const lastChatPingRef = useRef({});
+      
+      const [chatStats, setChatStats] = useState({ sent: 0, received: 0, total: 0 });
+      const [showPartnerStats, setShowPartnerStats] = useState(false);
+
+      const [showCreateGroup, setShowCreateGroup] = useState(false);
+      const [groupDraftName, setGroupDraftName] = useState('');
+      const [groupDraftMembers, setGroupDraftMembers] = useState([]); // array of userIds
+      const [groupMemberSearch, setGroupMemberSearch] = useState('');
+      const [groupEditSearch, setGroupEditSearch] = useState('');
+      const lastReadWriteRef = useRef(0);
+      const presenceHeartbeatRef = useRef(null);
+
+      const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
+      const [messageSearchQuery, setMessageSearchQuery] = useState('');
+      const [messageMatchIndex, setMessageMatchIndex] = useState(0);
+      const [messageSearchFilter, setMessageSearchFilter] = useState('all');
+
+      const [chatMetaPrefs, setChatMetaPrefs] = useState(() => {
+        try {
+          const raw = localStorage.getItem('onyx_msg_meta');
+          if (raw) {
+            const j = JSON.parse(raw);
+            if (j && typeof j === 'object') {
+              return {
+                showTime: j.showTime !== false,
+                receipts: ['off','compact','full'].includes(j.receipts) ? j.receipts : 'compact'
+              };
+            }
+          }
+        } catch (_) {}
+        return { showTime: true, receipts: 'compact' };
+      });
+      const [isChatMetaMenuOpen, setIsChatMetaMenuOpen] = useState(false);
+      const chatMetaMenuRef = useRef(null);
+
+
+
+      const [lastChatVisit, setLastChatVisit] = useState(() => {
+        const stored = localStorage.getItem('onyx_last_chat_visit');
+        return stored ? parseInt(stored, 10) : 0;
+      });
+
+      const [toasts, setToasts] = useState([]);
+      const pressTimer = useRef(null);
+      const isLongPressAction = useRef(false);
+      const secretPressTimer = useRef(null);
+      const secretGateTriggered = useRef(false);
+
+      const [isRefreshing, setIsRefreshing] = useState(false);
+      const [pullDistance, setPullDistance] = useState(0);
+      const touchStartY = useRef(0);
+      const touchCurrentY = useRef(0);
+
+
+// --- PULL TO REFRESH (GLOBAL TOUCH) ---
+const mainRef = useRef(null);
+const canPullRef = useRef(false);
+
+const handleGlobalTouchStart = (e) => {
+  if (!e.touches || e.touches.length === 0) return;
+  touchStartY.current = e.touches[0].clientY;
+  touchCurrentY.current = touchStartY.current;
+  setPullDistance(0);
+
+  // Nur ziehen, wenn der Scroll-Container oben ist
+  const atTop = (mainRef.current?.scrollTop ?? 0) <= 0;
+  canPullRef.current = atTop && !isRefreshing;
+};
+
+const handleGlobalTouchMove = (e) => {
+  if (!canPullRef.current || isRefreshing) return;
+  if (!e.touches || e.touches.length === 0) return;
+
+  touchCurrentY.current = e.touches[0].clientY;
+  const delta = touchCurrentY.current - touchStartY.current;
+
+  if (delta > 0) {
+    // iOS / mobile: verhindern, dass der Browser selbst "bounce" scrollt
+    // React registriert Touch-Events oft als passive -> preventDefault würde warnen
+    const cancelable = (e?.cancelable ?? e?.nativeEvent?.cancelable);
+    if (cancelable !== false && typeof e.preventDefault === 'function') e.preventDefault();
+    setPullDistance(Math.min(delta, 120));
+  } else {
+    setPullDistance(0);
+  }
+};
+
+const handleGlobalTouchEnd = async () => {
+  if (!canPullRef.current) { setPullDistance(0); return; }
+  canPullRef.current = false;
+
+  const shouldRefresh = pullDistance >= 80;
+  setPullDistance(0);
+
+  if (!shouldRefresh || isRefreshing) return;
+
+  try {
+    setIsRefreshing(true);
+    await fetchWeather();
+    showToast("Aktualisiert");
+  } catch (_) {
+    // ignore
+  } finally {
+    setIsRefreshing(false);
+  }
+};
+
+// --- MODALS / ACTIONS (fehlende Handler) ---
+const openNewEventModal = (dateStr = null) => {
+  const d = dateStr || new Date().toISOString().split('T')[0];
+
+  // Default: aktiven Kalender nutzen, wenn er ein normaler Kalender mit Schreibrechten ist
+  let targetCalId = 'default';
+  try {
+    const activeCal = getCalendarById(activeCalendarId);
+    const canWriteActive =
+      activeCal &&
+      activeCal.id !== 'default' &&
+      activeCal.type !== 'shift' &&
+      (activeCal.ownerId === user?.uid || activeCal.sharedWith?.[user?.uid] === 'write');
+
+    if (canWriteActive) targetCalId = activeCal.id;
+  } catch (_) {}
+
+  setEventToEdit(null);
+  setEventEditScope('series');
+  setSelectedDateForEvent(d);
+  setEventForm({
+    title: '',
+    date: d,
+    time: '',
+    location: '',
+    durationMinutes: '',
+    type: 'Privat',
+    desc: '',
+    reminderMode: 'default',
+    reminderMinutes: 15,
+    calendarId: targetCalId,
+    recurrenceFreq: 'NONE',
+    recurrenceInterval: 1,
+    recurrenceByWeekdays: [],
+    recurrenceUntil: ''
+  });
+  try { setQuickEventText(''); setQuickEventPreview(null); } catch(_) {}
+setShowEventComments(false);
+setShowEventPoll(false);
+setEventComments([]);
+setNewCommentText('');
+setCreatePollOnSave(false);
+  setPollDeadlineDate('');
+  setPollDeadlineTime('');
+  setPollAutoFinalize(true);
+initPollDraftFromEvent({ date: d, time: '', calendarId: targetCalId });
+  setEventModalMode('create');
+  setEventCanEdit(true);
+  setIsModalOpen(true);
+};
+
+const persistDisplayName = async (rawName, opts = {}) => {
+  if (!user) return;
+  const uname = String(rawName || '').trim();
+  if (!uname) return showToast('Bitte Namen eingeben');
+  if (uname.length < 2) return showToast('Name zu kurz');
+  if (uname.length > 40) return showToast('Max. 40 Zeichen');
+
+  try {
+    const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+    const dataToSave = {
+      displayName: uname,
+      uid: user.uid,
+      email: user.email,
+      emailLower: (user.email || '').toLowerCase(),
+      updatedAt: Date.now(),
+    };
+
+    // IMPORTANT:
+    // username is a stable alias/handle and should NOT be overwritten on every name change.
+    // Only set it once if missing/empty (legacy compatibility).
+    try {
+      const existingAlias = (userProfile && typeof userProfile.username === 'string') ? userProfile.username.trim() : '';
+      if (!existingAlias || existingAlias.length < 2) {
+        dataToSave.username = uname.slice(0, 20);
+        dataToSave.usernameLower = String(dataToSave.username).toLowerCase();
+      }
+    } catch (_) {}
+    if (opts && opts.avatarThumbBase64) {
+      dataToSave.avatarThumbBase64 = opts.avatarThumbBase64;
+      dataToSave.avatarBase64 = opts.avatarThumbBase64; // legacy
+    }
+    if (opts && opts.avatarFullBase64) dataToSave.avatarFullBase64 = opts.avatarFullBase64;
+    if (opts && opts.avatarBase64 && !dataToSave.avatarBase64) dataToSave.avatarBase64 = opts.avatarBase64;
+
+    await setDoc(profileRef, dataToSave, { merge: true });
+    try { await updateProfile(auth.currentUser, { displayName: uname }); } catch (_) {}
+
+    // UI sofort aktualisieren + lokale Fallbacks
+    try { setUserProfile(prev => ({ ...(prev || {}), ...dataToSave })); } catch (_) {}
+    try {
+      localStorage.setItem(`onyx_displayName_${user.uid}`, uname);
+      if (dataToSave.username) localStorage.setItem(`onyx_username_${user.uid}`, dataToSave.username);
+    } catch (_) {}
+
+    // Best-effort: displayName in bestehenden Chats aktualisieren (damit es überall konsistent ist)
+    try {
+      const updates = myChats.slice(0, 75).map(c => {
+        if (!c?.id) return null;
+        return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user.uid}`]: uname }).catch(()=>{});
+      }).filter(Boolean);
+      await Promise.all(updates);
+    } catch (_) {}
+
+    showToast((opts && opts.toast) ? opts.toast : 'Profil gespeichert');
+  } catch (err) {
+    console.error('persistDisplayName failed', err);
+    showToast('Fehler beim Speichern');
+  }
+};
+
+const sanitizeAlias = (raw) => {
+  const s = String(raw ?? '').trim();
+  // Allow: letters, numbers, dot, underscore, dash. Spaces become underscore.
+  const underscored = s.replace(/\s+/g, '_');
+  const cleaned = underscored.replace(/[^a-zA-Z0-9._-]/g, '');
+  return cleaned.slice(0, 20);
+};
+
+const persistAliasUsername = async (rawAlias) => {
+  if (!user) return;
+  const nextAlias = sanitizeAlias(rawAlias);
+  if (!nextAlias) { setAliasEditError('Bitte Alias eingeben'); return; }
+  if (nextAlias.length < 2) { setAliasEditError('Alias zu kurz'); return; }
+  try {
+    setAliasSaving(true);
+    setAliasEditError('');
+    const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+
+    const patch = {
+      username: nextAlias,
+      usernameLower: nextAlias.toLowerCase(),
+      updatedAt: Date.now(),
+    };
+
+    // If displayName is empty, keep UI consistent by setting it once.
+    if (!userProfile?.displayName || String(userProfile.displayName).trim().length < 2) {
+      patch.displayName = nextAlias;
+    }
+
+    await setDoc(profileRef, patch, { merge: true });
+    // Also persist in private user doc (more permissive rules). This makes alias sync across devices.
+    try {
+      const privateUserRef = doc(db, 'artifacts', APP_ID, 'users', user.uid);
+      await setDoc(privateUserRef, { username: nextAlias, usernameLower: nextAlias.toLowerCase(), aliasUpdatedAt: Date.now() }, { merge: true });
+    } catch (e) {
+      // ignore (rules might block)
+    }
+
+    // Best-effort: also reflect in Firebase Auth profile (optional, improves offline continuity)
+    try { await updateProfile(auth.currentUser, { displayName: patch.displayName || auth.currentUser?.displayName || '' }); } catch (_) {}
+
+
+    // Update local state + fallback storage
+    try { setUserProfile(prev => ({ ...(prev || {}), ...patch })); } catch (_) {}
+    try {
+      localStorage.setItem(`onyx_username_${user.uid}`, nextAlias);
+      if (patch.displayName) localStorage.setItem(`onyx_displayName_${user.uid}`, patch.displayName);
+    } catch (_) {}
+
+    // Best-effort: update chat displayNames if we don't have a dedicated displayName
+    try {
+      const nameForChats = (patch.displayName || userProfile?.displayName || nextAlias);
+      const updates = (myChats || []).slice(0, 75).map(c => {
+        if (!c?.id) return null;
+        return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user.uid}`]: nameForChats }).catch(()=>{});
+      }).filter(Boolean);
+      await Promise.all(updates);
+    } catch (_) {}
+
+    showToast('Alias aktualisiert');
+    setAliasEditOpen(false);
+  } catch (e) {
+    console.warn('persistAliasUsername failed', e);
+    setAliasEditError('Speichern fehlgeschlagen');
+  } finally {
+    try { setAliasSaving(false); } catch (_) {}
+  }
+
+};
+
+const hasPasswordProvider = () => {
+  try {
+    const u = auth.currentUser;
+    if (!u) return false;
+    const pd = Array.isArray(u.providerData) ? u.providerData : [];
+    return pd.some(p => p && p.providerId === 'password');
+  } catch (_) { return false; }
+};
+
+const doSendPasswordReset = async () => {
+  try {
+    const u = auth.currentUser;
+    if (!u || !u.email) return showToast('Keine E‑Mail');
+    await sendPasswordResetEmail(auth, u.email);
+    setPwResetSent(true);
+    showToast('Reset‑Mail gesendet');
+  } catch (e) {
+    console.warn('sendPasswordResetEmail failed', e);
+    showToast('Reset fehlgeschlagen');
+  }
+};
+
+const doChangePassword = async () => {
+  try {
+    setPwSaving(true);
+    setPwError('');
+    const u = auth.currentUser;
+    if (!u || !u.email) { setPwError('Nicht angemeldet'); return; }
+    const cur = String(pwCurrent || '');
+    const n1 = String(pwNew || '');
+    const n2 = String(pwNew2 || '');
+    if (n1.length < 6) { setPwError('Neues Passwort zu kurz (min. 6 Zeichen)'); return; }
+    if (n1 !== n2) { setPwError('Passwörter stimmen nicht überein'); return; }
+    if (!cur) { setPwError('Aktuelles Passwort fehlt'); return; }
+
+    const cred = EmailAuthProvider.credential(u.email, cur);
+    await reauthenticateWithCredential(u, cred);
+    await updatePassword(u, n1);
+
+    setPwCurrent(''); setPwNew(''); setPwNew2('');
+    setPwEditOpen(false);
+    showToast('Passwort aktualisiert');
+  } catch (e) {
+    console.warn('doChangePassword failed', e);
+    const msg = String(e?.code || e?.message || e);
+    if (msg.includes('auth/wrong-password')) setPwError('Aktuelles Passwort ist falsch');
+    else if (msg.includes('auth/too-many-requests')) setPwError('Zu viele Versuche – später erneut');
+    else if (msg.includes('auth/requires-recent-login')) setPwError('Bitte neu anmelden und erneut versuchen');
+    else setPwError('Änderung fehlgeschlagen');
+  } finally {
+    try { setPwSaving(false); } catch (_) {}
+  }
+};
+
+const saveUsername = async (e) => {
+
+  e.preventDefault();
+  if (!user) return;
+  const unameRaw = new FormData(e.target).get('username') || '';
+  const uname = String(unameRaw).trim();
+  await persistDisplayName(uname, { toast: 'Profil gespeichert' });
+};
+
+
+// --- PROFILE BOOTSTRAP (bombensicher) ---
+const ensureProfileAfterAuth = async (authUser, opts = {}) => {
+  try {
+    if (!authUser || !authUser.uid) return;
+    const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', authUser.uid);
+    const snap = await getDoc(profileRef);
+    const existing = snap.exists() ? snap.data() : null;
+
+    const emailVal = authUser.email || (existing && existing.email) || '';
+    const base = (emailVal ? emailVal.split('@')[0] : 'user')
+      .replace(/[^a-zA-Z0-9._-]/g, '')
+      .slice(0, 12) || 'user';
+    const suffix = String(authUser.uid).slice(0, 4);
+    const autoUsername = `${base}_${suffix}`.slice(0, 20);
+
+    const next = {
+      uid: authUser.uid,
+      email: emailVal,
+      emailLower: (emailVal || '').toLowerCase(),
+      updatedAt: Date.now(),
+      pushTarget: 'web',
+    };
+    // displayName setzen (für Begrüßung). Nur überschreiben, wenn leer/kurz.
+    const desiredName = (opts && opts.fullName) ? String(opts.fullName).trim() : '';
+    if (desiredName && desiredName.length >= 2 && (!existing || !existing.displayName || String(existing.displayName).trim().length < 2)) {
+      next.displayName = desiredName.slice(0, 40);
+      // legacy: auch username setzen, falls nicht vorhanden (UI nutzt teils noch username)
+      if ((!existing || !existing.username || String(existing.username).trim().length < 2) && !next.username) {
+        next.username = next.displayName.slice(0, 20);
+      }
+    }
+
+    // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt (bombensicher, ohne Full-Scan)
+    const normalizeFriendCode = (v) => {
+      const s = String(v ?? '').trim();
+      if (/^\d{5}$/.test(s)) return s;
+      if (/^\d+$/.test(s)) {
+        try { return String(parseInt(s, 10)).padStart(5, '0'); } catch(e) { return ''; }
+      }
+      return '';
+    };
+
+    if (!existing || !normalizeFriendCode(existing.friendCode)) {
+      let claimed = '';
+      for (let i = 0; i < 25 && !claimed; i++) {
+        const candidate = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+        const codeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendCodes', candidate);
+        try {
+          await runTransaction(db, async (tx) => {
+            const ds = await tx.get(codeRef);
+            if (ds.exists()) throw new Error('CODE_TAKEN');
+            tx.set(codeRef, { uid: authUser.uid, createdAt: Date.now() });
+          });
+          claimed = candidate;
+        } catch (e) {
+          const code = String(e?.code || '');
+          const msg = String(e?.message || '');
+          // Wenn friendCodes wegen Rules nicht erlaubt ist, fallback auf random ohne Reservierung
+          if (code === 'permission-denied' || msg.toLowerCase().includes('permission')) {
+            // friendCodes-Registry nicht erlaubt -> uniqueness best-effort über profiles Query
+            try {
+              const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+              const q2 = query(profilesCol, where('friendCode', '==', candidate), limit(1));
+              const s2 = await getDocs(q2);
+              if (s2.empty) {
+                claimed = candidate;
+                break;
+              }
+              // sonst weiter versuchen
+            } catch (_) {
+              // im Zweifel trotzdem setzen
+              claimed = candidate;
+              break;
+            }
+          }
+          // sonst: erneut versuchen
+        }
+      }
+      if (!claimed) claimed = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+      next.friendCode = claimed;
+      next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
+    } else {
+      next.friendCode = normalizeFriendCode(existing.friendCode);
+    }
+
+
+    // username nur setzen, wenn fehlt/leer
+    if (!existing || !existing.username || String(existing.username).trim().length < 2) {
+      next.username = autoUsername;
+      next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
+    }
+
+    await setDoc(profileRef, next, { merge: true });
+    // local fallback (falls Firestore offline/hakt)
+    try { localStorage.setItem(`onyx_username_${authUser.uid}`, (next.username || existing?.username || ''));
+      localStorage.setItem(`onyx_displayName_${authUser.uid}`, (next.displayName || existing?.displayName || next.username || existing?.username || ''));
+      localStorage.setItem(`onyx_friendCode_${authUser.uid}`, (next.friendCode || existing?.friendCode || ''));
+    } catch(_) {}
+  } catch (e) {
+    console.warn("ensureProfileAfterAuth failed", e);
+  }
+};
+
+// --- EVENT CRUD (Modal) ---
+const closeEventModal = () => {
+  setIsModalOpen(false);
+  setShowEventComments(false);
+  setShowEventPoll(false);
+  setEventComments([]);
+  setNewCommentText('');
+  setEventToEdit(null);
+  setEventEditScope('series');
+  setCreatePollOnSave(false);
+  setEventModalMode('create');
+  setEventCanEdit(true);
+};
+
+
+// --- EVENT: Kommentare & Abstimmung (Phase 2) ---
+const initPollDraftFromEvent = (ev) => {
+  const baseDate = (ev && ev.date) ? ev.date : new Date().toISOString().split('T')[0];
+  const baseTime = (ev && ev.time) ? ev.time : '18:00';
+  setPollDraft([
+    { date: baseDate, time: baseTime },
+    { date: addDaysStr(baseDate, 1), time: baseTime },
+    { date: addDaysStr(baseDate, 2), time: baseTime },
+  ]);
+  // Abstimmung 2.0: optionale Deadline
+  setPollDeadlineDate(addDaysStr(baseDate, 2));
+  setPollDeadlineTime(baseTime || '18:00');
+  setPollAutoFinalize(true);
+};
+
+const countVotes = (votesObj) => {
+  const votes = (votesObj && typeof votesObj === 'object') ? votesObj : {};
+  const out = {};
+  for (const v of Object.values(votes)) {
+    if (!v) continue;
+    out[v] = (out[v] || 0) + 1;
+  }
+  return out;
+};
+
+// --- Abstimmung 2.0 (Matrix: Fix/Kann/Nein) ---
+const POLL_STATE = { YES: 'yes', MAYBE: 'maybe', NO: 'no' };
+const isPollState = (v) => v === POLL_STATE.YES || v === POLL_STATE.MAYBE || v === POLL_STATE.NO;
+
+const makeDeadlineAt = (dateStr, timeStr) => {
+  const d = (dateStr || '').trim();
+  if (!d) return null;
+  const t = (timeStr || '').trim() || '23:59';
+  const ms = new Date(`${d}T${t}`).getTime();
+  return Number.isFinite(ms) ? ms : null;
+};
+
+const computePollTally = (poll, fallbackVoterIds = []) => {
+  const p = poll || {};
+  const version = Number(p.version || 1);
+  const options = Array.isArray(p.options) ? p.options : [];
+  const voterIds = Array.isArray(p.voterIds) ? p.voterIds : (Array.isArray(fallbackVoterIds) ? fallbackVoterIds : []);
+  const votes = (p.votes && typeof p.votes === 'object') ? p.votes : {};
+  const deadlineAt = (typeof p.deadlineAt === 'number') ? p.deadlineAt : null;
+  const now = Date.now();
+  const deadlinePassed = !!(deadlineAt && now >= deadlineAt);
+
+  if (version < 2) {
+    const counts = countVotes(votes);
+    const byOptionId = {};
+    for (const opt of options) {
+      const yes = counts[opt.id] || 0;
+      byOptionId[opt.id] = { yes, maybe: 0, no: 0, score: yes * 2 };
+    }
+    const allVoted = voterIds.length > 0 && voterIds.every((uid) => !!votes[uid]);
+    let winnerOptionId = null;
+    let best = -1;
+    for (const opt of options) {
+      const c = counts[opt.id] || 0;
+      if (c > best) { best = c; winnerOptionId = opt.id; }
+    }
+    return {
+      version,
+      byOptionId,
+      voterIds,
+      votes,
+      deadlineAt,
+      deadlinePassed,
+      allResponded: allVoted,
+      respondedCount: Object.keys(votes || {}).length,
+      totalVoters: voterIds.length,
+      canFinalizeNow: allVoted || deadlinePassed,
+      winnerOptionId,
+    };
+  }
+
+  const byOptionId = {};
+  const safeVoterIds = voterIds.filter(Boolean);
+  for (const opt of options) {
+    let yes = 0, maybe = 0, no = 0;
+    for (const uid of safeVoterIds) {
+      const row = votes[uid];
+      const s = (row && typeof row === 'object') ? row[opt.id] : null;
+      if (s === POLL_STATE.YES) yes++;
+      else if (s === POLL_STATE.MAYBE) maybe++;
+      else if (s === POLL_STATE.NO) no++;
+    }
+    // Scoring: ein einziges "Nein" macht den Slot praktisch unattraktiv
+    const score = (no > 0 ? -1000 : 0) + (yes * 2) + maybe;
+    byOptionId[opt.id] = { yes, maybe, no, score };
+  }
+
+  const allResponded = safeVoterIds.length > 0 && safeVoterIds.every((uid) => {
+    const row = votes[uid];
+    if (!row || typeof row !== 'object') return false;
+    for (const opt of options) {
+      if (!isPollState(row[opt.id])) return false;
+    }
+    return true;
+  });
+
+  let winnerOptionId = null;
+  let bestScore = -1e15;
+  let bestYes = -1;
+  let bestMaybe = -1;
+  let bestNo = 1e15;
+  for (const opt of options) {
+    const t = byOptionId[opt.id] || { yes: 0, maybe: 0, no: 0, score: 0 };
+    if (
+      (t.score > bestScore) ||
+      (t.score === bestScore && t.yes > bestYes) ||
+      (t.score === bestScore && t.yes === bestYes && t.maybe > bestMaybe) ||
+      (t.score === bestScore && t.yes === bestYes && t.maybe === bestMaybe && t.no < bestNo)
+    ) {
+      bestScore = t.score;
+      bestYes = t.yes;
+      bestMaybe = t.maybe;
+      bestNo = t.no;
+      winnerOptionId = opt.id;
+    }
+  }
+
+  return {
+    version,
+    byOptionId,
+    voterIds: safeVoterIds,
+    votes,
+    deadlineAt,
+    deadlinePassed,
+    allResponded,
+    respondedCount: safeVoterIds.filter((uid) => votes[uid] && typeof votes[uid] === 'object').length,
+    totalVoters: safeVoterIds.length,
+    canFinalizeNow: allResponded || deadlinePassed,
+    winnerOptionId,
+  };
+};
+
+const formatDeadlineShort = (deadlineAt) => {
+  if (!deadlineAt) return '';
+  try {
+    return new Date(deadlineAt).toLocaleString('de-CH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch (e) { return ''; }
+};
+
+
+const computePollVoterIdsForEvent = (ev) => {
+  if (!user) return [];
+  const calId = (ev && ev.calendarId) ? ev.calendarId : 'default';
+  if (calId === 'default') return [user.uid];
+
+  const cal = getCalendarById(calId);
+  const voters = new Set();
+  if (cal && cal.ownerId) voters.add(cal.ownerId);
+
+  // Nur "write" Mitglieder voten lassen, damit Firestore Rules nicht geöffnet werden müssen
+  if (cal && cal.sharedWith && typeof cal.sharedWith === 'object') {
+    for (const [uid, perm] of Object.entries(cal.sharedWith)) {
+      if (perm === 'write') voters.add(uid);
+    }
+  }
+
+  voters.add(user.uid);
+  return Array.from(voters).filter(Boolean);
+};
+
+const sendEventComment = async () => {
+  if (!user || !eventToEdit) return;
+  const txt = (newCommentText || '').trim();
+  if (!txt) return;
+
+  const calId = eventToEdit.calendarId || 'default';
+  if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
+
+  try {
+    const ref = collection(eventDocRefFor(calId, eventToEdit.id), 'comments');
+    const senderName = (userProfile && (userProfile.displayName || userProfile.username)) ? (userProfile.displayName || userProfile.username) : (user.email ? user.email.split('@')[0] : 'User');
+    await addDoc(ref, {
+      text: txt,
+      senderId: user.uid,
+      senderName,
+      timestamp: Date.now(),
+    });
+    setNewCommentText('');
+    // Quick feed fields for calendar bottom panel
+    try {
+      await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
+        lastCommentAt: Date.now(),
+        lastCommentText: txt.slice(0, 240),
+        lastCommentById: user.uid,
+        lastCommentByName: senderName,
+        updatedAt: Date.now()
+      });
+    } catch (_) {}
+  } catch (e) {
+    showToast("Kommentar konnte nicht gesendet werden");
+  }
+};
+
+useEffect(() => {
+  // Live comments only while modal open and panel visible
+  if (!user || !isModalOpen || !showEventComments || !eventToEdit) {
+    if (eventCommentsUnsubRef.current) {
+      try { eventCommentsUnsubRef.current(); } catch(_) {}
+      eventCommentsUnsubRef.current = null;
+    }
+    return;
+  }
+
+  const calId = eventToEdit.calendarId || 'default';
+  // Comments schreiben nur wenn write; lesen ist i.d.R. erlaubt
+  const qref = query(
+    collection(eventDocRefFor(calId, eventToEdit.id), 'comments'),
+    orderBy('timestamp', 'asc'),
+    limit(200)
+  );
+
+  const unsub = onSnapshot(qref, (snap) => {
+    const arr = [];
+    snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
+    setEventComments(arr);
+  }, () => {});
+  eventCommentsUnsubRef.current = unsub;
+
+  return () => {
+    try { unsub(); } catch(_) {}
+    if (eventCommentsUnsubRef.current === unsub) eventCommentsUnsubRef.current = null;
+  };
+}, [user?.uid, isModalOpen, showEventComments, eventToEdit?.id, eventToEdit?.calendarId]);
+
+const createPollForEvent = async () => {
+  if (!user || !eventToEdit) return;
+  const calId = eventToEdit.calendarId || 'default';
+  if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
+
+  const opts = (pollDraft || []).map((o, idx) => ({
+    id: `opt_${Date.now()}_${idx}`,
+    date: (o?.date || '').trim(),
+    time: (o?.time || '').trim(),
+  })).filter(o => o.date && o.time);
+
+  if (opts.length < 2) return showToast("Bitte mind. 2 Vorschläge");
+
+  const voterIds = computePollVoterIdsForEvent(eventToEdit);
+  const deadlineAt = makeDeadlineAt(pollDeadlineDate, pollDeadlineTime);
+
+  setPollBusy(true);
+  try {
+    await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
+      poll: {
+        version: 2,
+        voteMode: 'matrix',
+        status: 'open',
+        createdAt: Date.now(),
+        createdBy: user.uid,
+        voterIds,
+        options: opts,
+        votes: {},
+        winnerOptionId: null,
+        closedAt: null,
+        deadlineAt: deadlineAt || null,
+        autoFinalizeAtDeadline: !!pollAutoFinalize,
+        autoFinalized: false,
+      },
+      updatedAt: Date.now()
+    });
+    showToast("Abstimmung gestartet");
+  } catch (e) {
+    showToast("Abstimmung konnte nicht erstellt werden");
+  } finally {
+    setPollBusy(false);
+  }
+};
+
+const upgradePollToV2 = async (ev) => {
+  if (!user || !ev || !ev.id) return;
+  const calId = ev.calendarId || 'default';
+  if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
+
+  setPollBusy(true);
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref = eventDocRefFor(calId, ev.id);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+      const data = snap.data() || {};
+      const poll = data.poll || null;
+      if (!poll || poll.status !== 'open') return;
+      if (Number(poll.version || 1) >= 2) return;
+      // Preserve legacy votes for debugging, but restart voting clean
+      tx.update(ref, {
+        'poll.version': 2,
+        'poll.voteMode': 'matrix',
+        'poll.legacyVotes': poll.votes || {},
+        'poll.votes': {},
+        'poll.votesUpdatedAt': Date.now(),
+        updatedAt: Date.now()
+      });
+    });
+    showToast('Abstimmung auf 2.0 umgestellt');
+  } catch (e) {
+    showToast('Upgrade fehlgeschlagen');
+  } finally {
+    setPollBusy(false);
+  }
+};
+
+const voteInPoll = async (optionId, state = POLL_STATE.YES) => {
+  if (!user || !eventToEdit) return;
+  const calId = eventToEdit.calendarId || 'default';
+  if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
+
+  const pollVer = Number((typeof modalEvent !== 'undefined' && modalEvent && modalEvent.poll && modalEvent.poll.version) ? modalEvent.poll.version : (eventToEdit.poll ? (eventToEdit.poll.version || 1) : 1));
+
+  try {
+    if (pollVer >= 2) {
+      await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
+        [`poll.votes.${user.uid}.${optionId}`]: state,
+        [`poll.votesUpdatedAt`]: Date.now(),
+        updatedAt: Date.now()
+      });
+    } else {
+      await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
+        [`poll.votes.${user.uid}`]: optionId,
+        [`poll.votesUpdatedAt`]: Date.now(),
+        updatedAt: Date.now()
+      });
+    }
+  } catch (e) {
+    showToast("Vote fehlgeschlagen");
+  }
+};
+
+const finalizePollForEvent = async () => {
+  if (!user || !eventToEdit) return;
+  const calId = eventToEdit.calendarId || 'default';
+  if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
+
+  setPollBusy(true);
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref = eventDocRefFor(calId, eventToEdit.id);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+
+      const ev = snap.data() || {};
+      const poll = ev.poll || null;
+      if (!poll || poll.status !== 'open') return;
+
+      const voterIds = Array.isArray(poll.voterIds) ? poll.voterIds : computePollVoterIdsForEvent({ ...eventToEdit, ...ev });
+      const tally = computePollTally(poll, voterIds);
+      if (!tally.canFinalizeNow) return;
+
+      const winnerId = tally.winnerOptionId;
+      const winner = (Array.isArray(poll.options) ? poll.options : []).find(o => o.id === winnerId);
+      if (!winner) return;
+
+      tx.update(ref, {
+        date: winner.date,
+        time: winner.time,
+        updatedAt: Date.now(),
+        'poll.status': 'closed',
+        'poll.winnerOptionId': winnerId,
+        'poll.closedAt': Date.now(),
+        'poll.closedBy': user.uid,
+        'poll.autoFinalized': false
+      });
+    });
+    showToast("Gewinner übernommen");
+  } catch (e) {
+    showToast("Finalisieren fehlgeschlagen");
+  } finally {
+    setPollBusy(false);
+  }
+};
+
+// --- POLL helpers for calendar bottom panel ---
+const voteInPollForSpecificEvent = async (ev, optionId, state = POLL_STATE.YES) => {
+  if (!user || !ev || !ev.id) return;
+  const calId = ev.calendarId || 'default';
+  if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
+
+  const pollVer = Number(ev?.poll?.version || 1);
+
+  try {
+    if (pollVer >= 2) {
+      await updateDoc(eventDocRefFor(calId, ev.id), {
+        [`poll.votes.${user.uid}.${optionId}`]: state,
+        [`poll.votesUpdatedAt`]: Date.now(),
+        updatedAt: Date.now()
+      });
+    } else {
+      await updateDoc(eventDocRefFor(calId, ev.id), {
+        [`poll.votes.${user.uid}`]: optionId,
+        [`poll.votesUpdatedAt`]: Date.now(),
+        updatedAt: Date.now()
+      });
+    }
+  } catch (e) {
+    showToast("Vote fehlgeschlagen");
+  }
+};
+
+const finalizePollForSpecificEvent = async (ev) => {
+  if (!user || !ev || !ev.id) return;
+  const calId = ev.calendarId || 'default';
+  if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
+
+  setPollBusy(true);
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref = eventDocRefFor(calId, ev.id);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return;
+
+      const data = snap.data() || {};
+      const poll = data.poll || null;
+      if (!poll || poll.status !== 'open') return;
+
+      const voterIds = Array.isArray(poll.voterIds) ? poll.voterIds : computePollVoterIdsForEvent({ ...ev, ...data });
+      const tally = computePollTally(poll, voterIds);
+      if (!tally.canFinalizeNow) return;
+
+      const winnerId = tally.winnerOptionId;
+      const winner = (Array.isArray(poll.options) ? poll.options : []).find(o => o.id === winnerId);
+      if (!winner) return;
+
+      tx.update(ref, {
+        date: winner.date,
+        time: winner.time,
+        updatedAt: Date.now(),
+        'poll.status': 'closed',
+        'poll.winnerOptionId': winnerId,
+        'poll.closedAt': Date.now(),
+        'poll.closedBy': user.uid,
+        'poll.autoFinalized': false
+      });
+    });
+    showToast("Gewinner übernommen");
+  } catch (e) {
+    showToast("Finalisieren fehlgeschlagen");
+  } finally {
+    setPollBusy(false);
+  }
+};
+
+const canWriteCalendar = (calId) => {
+  if (calId === 'default') return true;
+  const cal = customCalendars.find(c => c.id === calId);
+  if (!cal) return false;
+  return cal.ownerId === user?.uid || cal.sharedWith?.[user?.uid] === 'write';
+};
+
+const eventCollectionRefFor = (calId) => {
+  if (!user) return null;
+  if (calId === 'default') {
+    return collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events');
+  }
+  return collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events');
+};
+
+const eventDocRefFor = (calId, eventId) => {
+  if (!user) return null;
+  if (calId === 'default') {
+    return doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventId);
+  }
+  return doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events', eventId);
+};
+
+// --- AUDIT LOG ---
+const writeUserAudit = async (entry) => {
+  try {
+    if (!user) return;
+    await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'auditLogs'), {
+      ts: serverTimestamp(),
+      tsMs: Date.now(),
+      uid: user.uid,
+      ...entry,
+    });
+  } catch (_) {}
+};
+
+const writeCalendarAudit = async (calId, entry) => {
+  try {
+    if (!user) return;
+    if (!calId || calId === 'default') return;
+    await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'auditLogs'), {
+      ts: serverTimestamp(),
+      tsMs: Date.now(),
+      uid: user.uid,
+      calId,
+      ...entry,
+    });
+  } catch (_) {}
+};
+
+const writeAudit = async ({ calId, action, targetType, targetId, summary, details }) => {
+  const payload = {
+    action: String(action || ''),
+    targetType: String(targetType || ''),
+    targetId: String(targetId || ''),
+    summary: String(summary || ''),
+    details: details && typeof details === 'object' ? details : null,
+  };
+  await writeUserAudit(payload);
+  await writeCalendarAudit(calId, payload);
+};
+
+const saveEvent = async (e) => {
+  e.preventDefault();
+  if (!user) return;
+
+  const title = (eventForm.title || '').trim();
+  if (!title) return showToast("Titel fehlt");
+  if (!eventForm.date) return showToast("Datum fehlt");
+
+  const timeVal = (eventForm.time || '').trim();
+  const typeVal = (eventForm.type || 'Privat').trim();
+  const descVal = (eventForm.desc || '').trim();
+
+  const locationVal = (eventForm.location || '').trim();
+  let durationMinutesVal = null;
+  try {
+    const raw = eventForm.durationMinutes;
+    if (raw !== '' && raw !== null && typeof raw !== 'undefined') {
+      const n = parseInt(String(raw), 10);
+      if (!isNaN(n) && n >= 0) durationMinutesVal = n;
+    }
+  } catch (_) { durationMinutesVal = null; }
+
+  const reminderModeVal = (eventForm.reminderMode || 'default');
+  const reminderMinutesVal = (reminderModeVal === 'custom') ? Math.max(0, parseInt(eventForm.reminderMinutes || 0, 10) || 0) : null;
+
+  const targetCalId = eventForm.calendarId || 'default';
+  if (targetCalId !== 'default') {
+    const cal = getCalendarById(targetCalId);
+    if (!cal) return showToast("Kalender nicht gefunden");
+    if (cal.type === 'shift') return showToast("Schichtplan: keine normalen Termine");
+    if (!canWriteCalendar(targetCalId)) return showToast("Keine Schreibrechte");
+  }
+
+  const isEditing = !!eventToEdit;
+  const baseRec = eventToEdit ? (eventToEdit.recurrence || null) : null;
+  const isRecurring = !!(baseRec && baseRec.freq && baseRec.freq !== 'NONE');
+  const isInstance = !!(isEditing && isRecurring && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date);
+
+  // Nur dieses Vorkommen ändern (Override)
+  if (isInstance && eventEditScope === 'single') {
+    const fromCalId = eventToEdit.calendarId || 'default';
+    if (!canWriteCalendar(fromCalId)) return showToast("Keine Schreibrechte");
+    try {
+      const existingOverrides = (eventToEdit.overrides && typeof eventToEdit.overrides === 'object') ? eventToEdit.overrides : {};
+      const nextOverrides = {
+        ...existingOverrides,
+        [selectedDateForEvent]: {
+          title,
+          time: timeVal,
+          location: locationVal,
+          durationMinutes: durationMinutesVal,
+          type: typeVal,
+          desc: descVal,
+          reminderMode: reminderModeVal,
+          reminderMinutes: reminderMinutesVal
+        }
+      };
+      const ex = Array.isArray(eventToEdit.exDates) ? eventToEdit.exDates : [];
+      const nextEx = ex.filter(d => d !== selectedDateForEvent);
+      await updateDoc(eventDocRefFor(fromCalId, eventToEdit.id), { overrides: nextOverrides, exDates: nextEx, updatedAt: Date.now() });
+      await writeAudit({ calId: fromCalId, action: 'event.update.instance', targetType: 'event', targetId: eventToEdit.id, summary: `Termin geändert (nur ${selectedDateForEvent}): ${title}` });
+      showToast("Vorkommen gespeichert");
+      closeEventModal();
+    } catch (err) {
+      showToast("Fehler beim Speichern");
+    }
+    return;
+  }
+
+  const recurrence = buildRecurrenceFromForm(eventForm);
+
+  const payload = {
+    title,
+    date: eventForm.date,
+    time: timeVal,
+    location: locationVal,
+    durationMinutes: durationMinutesVal,
+    type: typeVal,
+    desc: descVal,
+    reminderMode: reminderModeVal,
+    reminderMinutes: reminderMinutesVal,
+    updatedAt: Date.now(),
+    recurrence: recurrence || null,
+    exDates: isEditing ? (Array.isArray(eventToEdit.exDates) ? eventToEdit.exDates : []) : [],
+    overrides: isEditing ? (eventToEdit.overrides && typeof eventToEdit.overrides === 'object' ? eventToEdit.overrides : {}) : {}
+  };
+
+  // Optional: Abstimmung direkt beim Erstellen
+  if (!eventToEdit && createPollOnSave) {
+    const opts = (pollDraft || []).map((o, idx) => ({
+      id: `opt_${Date.now()}_${idx}`,
+      date: (o?.date || '').trim(),
+      time: (o?.time || '').trim(),
+    })).filter(o => o.date && o.time);
+
+    if (opts.length < 2) return showToast("Bitte mind. 2 Vorschläge");
+
+    const voterIds = computePollVoterIdsForEvent({ calendarId: targetCalId });
+    const deadlineAt = makeDeadlineAt(pollDeadlineDate, pollDeadlineTime);
+    payload.poll = {
+      version: 2,
+      voteMode: 'matrix',
+      status: 'open',
+      createdAt: Date.now(),
+      createdBy: user.uid,
+      voterIds,
+      options: opts,
+      votes: {},
+      winnerOptionId: null,
+      closedAt: null,
+      deadlineAt: deadlineAt || null,
+      autoFinalizeAtDeadline: !!pollAutoFinalize,
+      autoFinalized: false,
+    };
+
+    // Wenn keine Zeit gesetzt ist, nimm den ersten Vorschlag als Anzeige-Default
+    if (!payload.time && opts[0]?.time) payload.time = opts[0].time;
+    if (!payload.date && opts[0]?.date) payload.date = opts[0].date;
+  }
+
+  try {
+    if (eventToEdit) {
+      const fromCalId = eventToEdit.calendarId || 'default';
+      const toCalId = targetCalId;
+
+      if (!canWriteCalendar(fromCalId)) return showToast("Keine Schreibrechte");
+
+      if (fromCalId === toCalId) {
+        await updateDoc(eventDocRefFor(fromCalId, eventToEdit.id), payload);
+        await writeAudit({ calId: fromCalId, action: 'event.update', targetType: 'event', targetId: eventToEdit.id, summary: `Termin gespeichert: ${title}` });
+        showToast("Termin gespeichert");
+      } else {
+        // Move between calendars: create new + delete old
+        const colRef = eventCollectionRefFor(toCalId);
+        const newRef = await addDoc(colRef, {
+          ...payload,
+          createdAt: eventToEdit.createdAt || Date.now(),
+          movedAt: Date.now()
+        });
+        await deleteDoc(eventDocRefFor(fromCalId, eventToEdit.id));
+        await writeAudit({ calId: fromCalId, action: 'event.move', targetType: 'event', targetId: eventToEdit.id, summary: `Termin verschoben: ${title} → ${getCalendarById(toCalId)?.name || toCalId}`, details: { toCalId, newEventId: newRef?.id || null } });
+        showToast("Termin verschoben");
+        setActiveCalendarId(toCalId);
+      }
+    } else {
+      const colRef = eventCollectionRefFor(targetCalId);
+      const newRef = await addDoc(colRef, { ...payload, createdAt: Date.now() });
+      await writeAudit({ calId: targetCalId, action: 'event.create', targetType: 'event', targetId: newRef?.id || '', summary: `Termin erstellt: ${title}` });
+      showToast("Termin erstellt");
+    }
+
+    closeEventModal();
+  } catch (err) {
+    showToast("Fehler beim Speichern");
+  }
+};
+
+const deleteEvent = async (mode = null) => {
+  if (!eventToEdit || !user) return;
+  const calId = eventToEdit.calendarId || 'default';
+  if (!canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
+
+  const baseRec = eventToEdit.recurrence || null;
+  const isRecurring = !!(baseRec && baseRec.freq && baseRec.freq !== 'NONE');
+  const isInstance = !!(isRecurring && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date);
+
+  // mode kann 'single' oder 'series' sein (UI setzt das explizit)
+  const effectiveMode = mode || (isInstance ? eventEditScope : 'series');
+
+  if (isInstance && effectiveMode === 'single') {
+    if (!confirm("Dieses Vorkommen löschen?")) return;
+    try {
+      const ex = Array.isArray(eventToEdit.exDates) ? eventToEdit.exDates : [];
+      const nextEx = ex.includes(selectedDateForEvent) ? ex : [...ex, selectedDateForEvent];
+      const existingOverrides = (eventToEdit.overrides && typeof eventToEdit.overrides === 'object') ? eventToEdit.overrides : {};
+      const { [selectedDateForEvent]: _removed, ...rest } = existingOverrides || {};
+      await updateDoc(eventDocRefFor(calId, eventToEdit.id), { exDates: nextEx, overrides: rest, updatedAt: Date.now() });
+      await writeAudit({ calId, action: 'event.delete.instance', targetType: 'event', targetId: eventToEdit.id, summary: `Vorkommen gelöscht (${selectedDateForEvent}): ${eventToEdit.title || ''}` });
+      showToast("Vorkommen gelöscht");
+      closeEventModal();
+    } catch (err) {
+      showToast("Fehler beim Löschen");
+    }
+    return;
+  }
+
+  if (!confirm("Termin löschen?")) return;
+  try {
+    await deleteDoc(eventDocRefFor(calId, eventToEdit.id));
+    await writeAudit({ calId, action: 'event.delete', targetType: 'event', targetId: eventToEdit.id, summary: `Termin gelöscht: ${eventToEdit.title || ''}` });
+    showToast("Termin gelöscht");
+    closeEventModal();
+  } catch (err) {
+    showToast("Fehler beim Löschen");
+  }
+};
+
+
+const openShiftPicker = (dateStr) => {
+  const activeCal = getCalendarById(activeCalendarId);
+  if (!activeCal || activeCal.type !== 'shift') return;
+  if (activeCal.id !== 'default' && activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
+    return showToast("Nur Lesezugriff auf diesen Kalender.");
+  }
+  if (!activeCal.shifts || activeCal.shifts.length === 0) return showToast("Keine Schichten konfiguriert.");
+  setShiftModalData({ dateStr, calId: activeCal.id, shifts: activeCal.shifts });
+};
+
+// --- GEHEIMER CHAT (Long Press auf Tag-Zahl 5 für 3s) ---
+const startSecretGate = () => {
+  secretGateTriggered.current = false;
+  if (secretPressTimer.current) clearTimeout(secretPressTimer.current);
+  secretPressTimer.current = setTimeout(() => {
+    secretGateTriggered.current = true;
+    setActiveChat(null);
+    setSecretView('list');
+    setCurrentView('secret_chat');
+  }, 3000);
+};
+
+const endSecretGate = () => {
+  if (secretPressTimer.current) {
+    clearTimeout(secretPressTimer.current);
+    secretPressTimer.current = null;
+  }
+};
+
+// Long-Press auf Tag (mobile) -> Shift-Auswahl (ersetzt ContextMenu)
+const handleTouchStart = (dateStr) => {
+  isLongPressAction.current = false;
+  if (pressTimer.current) clearTimeout(pressTimer.current);
+  pressTimer.current = setTimeout(() => {
+    isLongPressAction.current = true;
+    openShiftPicker(dateStr);
+  }, 550);
+};
+
+const handleTouchEnd = () => {
+  if (pressTimer.current) {
+    clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+  }
+};
+
+      const activeChatData = activeChat ? myChats.find(c => c.id === activeChat.id) : null;
+
+      const getTypingUsers = (chat) => {
+        if (!chat || !chat.typing) return [];
+        const now = Date.now();
+        const typingMap = chat.typing || {};
+        const typingAt = chat.typingAt || {};
+        return Object.keys(typingMap).filter(uid => uid !== user?.uid && typingMap[uid] === true && (now - (typingAt[uid] || 0) < 6500));
+      };
+
+      const partnerId = activeChatData && !isGroupChat(activeChatData) ? activeChatData.participants.find(id => id !== user?.uid) : null;
+      const isPartnerTyping = activeChatData ? (getTypingUsers(activeChatData).length > 0) : false;
+
+      const refreshDailyFact = () => {
+        const list = (quotes && quotes.length) ? quotes : DEFAULT_QUOTES;
+        const q = list[Math.floor(Math.random() * list.length)];
+        setDailyFact(q);
+        try { localStorage.setItem('onyx_quote_override', q); localStorage.setItem('onyx_quote_override_day', todayKey); } catch(e) {}
+      };
+
+
+      const pinnedChatIds = (userProfile && Array.isArray(userProfile.pinnedChats)) ? userProfile.pinnedChats : [];
+      const hiddenChatIds = (userProfile && Array.isArray(userProfile.hiddenChats)) ? userProfile.hiddenChats : [];
+      const sortedMyChats = [...myChats]
+        .filter(c => c && c.id && !hiddenChatIds.includes(c.id))
+        .sort((a, b) => {
+        const ap = pinnedChatIds.includes(a.id) ? 1 : 0;
+        const bp = pinnedChatIds.includes(b.id) ? 1 : 0;
+        if (bp !== ap) return bp - ap;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
+
+      const messageHasLink = (m) => {
+        const t = String(m?.text || '');
+        return /(https?:\/\/|www\.)\S+/i.test(t);
+      };
+
+      const messageTypeMatchesFilter = (m, filter) => {
+        if (!m) return false;
+        const f = String(filter || 'all');
+        if (f === 'all') return true;
+        if (f === 'media') return !!(m.image);
+        if (f === 'audio') return !!m.audio;
+        if (f === 'links') return messageHasLink(m);
+        return true;
+      };
+
+      const escapeRegExp = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      const renderHighlightedText = (text, query, opts = {}) => {
+        const q = String(query || '').trim();
+        if (!q) return text;
+        const src = String(text || '');
+        if (!src) return src;
+        const re = new RegExp(escapeRegExp(q), 'ig');
+        const out = [];
+        let last = 0;
+        let m;
+        let k = 0;
+        while ((m = re.exec(src)) !== null) {
+          const start = m.index ?? 0;
+          const end = start + (m[0] || '').length;
+          if (start > last) out.push(src.slice(last, start));
+          const matchText = src.slice(start, end);
+          const isMe = !!opts.isMe;
+          const isActive = !!opts.active;
+          const cls = isActive
+            ? (isMe ? 'bg-black text-white' : 'bg-white text-black') + ' rounded px-0.5'
+            : (isMe ? 'bg-black/20 text-black' : 'bg-white/25 text-white') + ' rounded px-0.5';
+          out.push(<span key={`hl_${k++}`} className={cls}>{matchText}</span>);
+          last = end;
+          if (re.lastIndex === start) re.lastIndex++; // safety
+        }
+        if (last < src.length) out.push(src.slice(last));
+        return out;
+      };
+
+      const _qMsg = String(messageSearchQuery || '').trim().toLowerCase();
+      const baseByType = (isMessageSearchOpen && messageSearchFilter !== 'all')
+        ? chatMessages.filter(m => messageTypeMatchesFilter(m, messageSearchFilter))
+        : chatMessages;
+
+      const messageMatches = (isMessageSearchOpen && (_qMsg || messageSearchFilter !== 'all'))
+        ? baseByType.filter(m => {
+            if (!_qMsg) return true;
+            return String(m?.text || '').toLowerCase().includes(_qMsg);
+          })
+        : [];
+
+      const currentMatchId = (isMessageSearchOpen && messageMatches.length > 0)
+        ? messageMatches[Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1))].id
+        : null;
+
+      const visibleChatMessages = (isMessageSearchOpen && messageSearchFilter !== 'all') ? baseByType : chatMessages;
+
+
+      useEffect(() => {
+        const dayKey = new Date().toISOString().split('T')[0];
+        // Optionaler Override (User klickt "Neuer Spruch")
+        try {
+          const od = localStorage.getItem('onyx_quote_override_day');
+          const oq = localStorage.getItem('onyx_quote_override');
+          if (od === dayKey && oq) setDailyFact(oq);
+        } catch (e) {}
+
+        const loadQuotes = async () => {
+          try {
+            const res = await fetch(QUOTES_URL, { cache: 'no-store' });
+            const data = await res.json();
+            const list = Array.isArray(data) ? data : (Array.isArray(data.quotes) ? data.quotes : []);
+            setQuotes(list);
+            const q = pickQuoteForDay(list, dayKey);
+            setDailyFact(q);
+          } catch (e) {
+            const q = pickQuoteForDay(DEFAULT_QUOTES, dayKey);
+            setDailyFact(q);
+          }
+        };
+        loadQuotes();
+
+        
+const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+  setUser(currentUser);
+  setIsLoggedIn(!!currentUser);
+  setIsAppReady(true);
+
+  if (currentUser) {
+    // Profil immer sicherstellen (nach Reset/neu)
+    (async () => {
+      await ensureProfileAfterAuth(currentUser);
+      try { ensureWebPushToken(currentUser, { forcePrompt: false }); } catch(_) {}
+    })();
+  } else {
+    setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]);
+    setCurrentView('dashboard');
+  }
+});
+
+        return () => unsubscribeAuth();
+      }, []);
+
+      // --- PRESENCE (online/offline + last seen) ---
+      useEffect(() => {
+        if (!user) return;
+        const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+        const setPresence = (status) => {
+          setDoc(profileRef, { presenceStatus: status, presenceLastSeen: Date.now() }, { merge: true }).catch(()=>{});
+        };
+        setPresence('online');
+        const onVisibility = () => {
+          if (document.visibilityState === 'visible') setPresence('online');
+          else setPresence('offline');
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        window.addEventListener('beforeunload', () => { try { setPresence('offline'); } catch(e) {} });
+        if (presenceHeartbeatRef.current) clearInterval(presenceHeartbeatRef.current);
+        presenceHeartbeatRef.current = setInterval(() => {
+          if (document.visibilityState === 'visible') setPresence('online');
+        }, 25000);
+        return () => {
+          document.removeEventListener('visibilitychange', onVisibility);
+          if (presenceHeartbeatRef.current) { clearInterval(presenceHeartbeatRef.current); presenceHeartbeatRef.current = null; }
+        };
+      }, [user]);
+
+      useEffect(() => {
+        if (currentView === 'secret_chat') {
+          const now = Date.now();
+          setLastChatVisit(now);
+          localStorage.setItem('onyx_last_chat_visit', now.toString());
+        } else {
+          setSecretView('list');
+          setActiveChat(null);
+        }
+      }, [currentView]);
+
+      // Message Search Reset
+      useEffect(() => {
+        setIsMessageSearchOpen(false);
+        setMessageSearchQuery('');
+        setMessageMatchIndex(0);
+        setMessageSearchFilter('all');
+        setIsChatMetaMenuOpen(false);
+      }, [activeChat?.id, secretView]);
+
+      // Chat meta prefs: load/save (per user)
+      useEffect(() => {
+        if (!user?.uid) return;
+        try {
+          const key = `onyx_msg_meta_${user.uid}`;
+          const raw = localStorage.getItem(key) || localStorage.getItem('onyx_msg_meta');
+          if (raw) {
+            const j = JSON.parse(raw);
+            if (j && typeof j === 'object') {
+              setChatMetaPrefs({
+                showTime: j.showTime !== false,
+                receipts: ['off','compact','full'].includes(j.receipts) ? j.receipts : 'compact'
+              });
+            }
+          }
+        } catch (_) {}
+      }, [user?.uid]);
+
+      useEffect(() => {
+        if (!user?.uid) return;
+        try {
+          const key = `onyx_msg_meta_${user.uid}`;
+          localStorage.setItem(key, JSON.stringify(chatMetaPrefs));
+          localStorage.setItem('onyx_msg_meta', JSON.stringify(chatMetaPrefs));
+        } catch (_) {}
+      }, [chatMetaPrefs, user?.uid]);
+
+      useEffect(() => {
+        if (!isChatMetaMenuOpen) return;
+        const onDown = (e) => {
+          try {
+            if (chatMetaMenuRef.current && !chatMetaMenuRef.current.contains(e.target)) {
+              setIsChatMetaMenuOpen(false);
+            }
+          } catch (_) {}
+        };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('touchstart', onDown, { passive: true });
+        return () => {
+          document.removeEventListener('mousedown', onDown);
+          document.removeEventListener('touchstart', onDown);
+        };
+      }, [isChatMetaMenuOpen]);
+
+      useEffect(() => {
+        setMessageMatchIndex(0);
+      }, [messageSearchQuery, messageSearchFilter]);
+
+      useEffect(() => {
+        if (!isMessageSearchOpen) return;
+        if (!messageMatches || messageMatches.length === 0) return;
+        const idx = Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1));
+        const id = messageMatches[idx].id;
+        setTimeout(() => {
+          const el = document.getElementById(`msg-${id}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 0);
+      }, [messageMatchIndex, messageSearchQuery, messageSearchFilter, isMessageSearchOpen, messageMatches]);
+
+
+      useEffect(() => {
+        setIsPaintbrushActive(false);
+      }, [activeCalendarId]);
+
+      // --- Hash routing for public shares (#/share/<token>?k=<magicKey>) ---
+      useEffect(() => {
+        const parseHash = () => {
+          try {
+            const h = String(window.location.hash || '');
+            // Example: #/share/AbCdEf123?k=xyz
+            const m = h.match(/^#\/share\/([A-Za-z0-9_-]{8,})/);
+            const token = m ? m[1] : null;
+            let key = '';
+            try {
+              const qs = h.includes('?') ? h.split('?').slice(1).join('?') : '';
+              if (qs) {
+                const params = new URLSearchParams(qs);
+                key = params.get('k') || '';
+              }
+            } catch (_) {}
+            setPublicShareToken(token);
+            setPublicShareKey(key);
+          } catch (_) {
+            setPublicShareToken(null);
+            setPublicShareKey('');
+          }
+        };
+        parseHash();
+        window.addEventListener('hashchange', parseHash);
+        return () => window.removeEventListener('hashchange', parseHash);
+      }, []);
+
+      // Load public share doc (works without login)
+      useEffect(() => {
+        (async () => {
+          if (!publicShareToken) {
+            setPublicShareDoc(null);
+            setPublicShareError('');
+            setPublicShareAuthed(false);
+            setPublicSharePasscode('');
+            return;
+          }
+          setPublicShareLoading(true);
+          setPublicShareError('');
+          setPublicShareDoc(null);
+          setPublicShareAuthed(false);
+
+          try {
+            const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'shares', publicShareToken);
+            const snap = await getDoc(ref);
+            if (!snap.exists()) {
+              setPublicShareError('Link nicht gefunden');
+              setPublicShareLoading(false);
+              return;
+            }
+            const data = snap.data() || {};
+
+            // Expiry / revoke
+            if (data.revokedAtMs) {
+              setPublicShareError('Dieser Link wurde widerrufen');
+              setPublicShareLoading(false);
+              return;
+            }
+            if (data.expiresAtMs && Date.now() > data.expiresAtMs) {
+              setPublicShareError('Dieser Link ist abgelaufen');
+              setPublicShareLoading(false);
+              return;
+            }
+
+            setPublicShareDoc({ id: snap.id, ...data });
+
+            // Restore auth if previously verified (passcode)
+            try {
+              const ok = sessionStorage.getItem(`onyx_share_ok_${publicShareToken}`);
+              if (ok === '1') setPublicShareAuthed(true);
+            } catch (_) {}
+          } catch (e) {
+            console.warn('[Share] load failed', e);
+            setPublicShareError('Fehler beim Laden');
+          } finally {
+            setPublicShareLoading(false);
+          }
+        })();
+      }, [publicShareToken, publicShareKey]);
+
+      const verifyPublicSharePasscode = async () => {
+        try {
+          const d = publicShareDoc || {};
+          const pc = String(publicSharePasscode || '').trim();
+          if (!pc) return;
+          const salt = String(d.passcodeSalt || '');
+          const expected = String(d.passcodeHash || '');
+          if (!salt || !expected) return;
+          const got = await sha256Hex(`${salt}|${pc}`);
+          if (got === expected) {
+            setPublicShareAuthed(true);
+            try { sessionStorage.setItem(`onyx_share_ok_${publicShareToken}`, '1'); } catch (_) {}
+          } else {
+            showToast('Passcode falsch');
+          }
+        } catch (_) {
+          showToast('Fehler');
+        }
+      };
+
+      // --- ALLGEMEINE DATEN SYNC ---
+      useEffect(() => {
+        if (!user) return;
+
+        const eventsRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events');
+        const unsubscribeEvents = onSnapshot(query(eventsRef), (snapshot) => {
+          const loadedEvents = [];
+          snapshot.forEach((doc) => loadedEvents.push({ id: doc.id, calendarId: 'default', ...doc.data() }));
+          setEvents(loadedEvents);
+        });
+
+        const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+        const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
+          if (docSnap.exists()) setUserProfile({ id: docSnap.id, ...docSnap.data() });
+        });
+
+        // Private user doc (fallback for fields that may be blocked in public profiles by rules)
+        const privateUserRef = doc(db, 'artifacts', APP_ID, 'users', user.uid);
+        const unsubscribePrivateUser = onSnapshot(privateUserRef, (snap) => {
+          if (!snap.exists()) return;
+          const data = snap.data() || {};
+          // Merge into userProfile without nuking existing profile fields
+          setUserProfile((prev) => ({ ...(prev || {}), ...data }));
+        });
+
+
+        const allProfilesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+        const unsubscribeAllProfiles = onSnapshot(query(allProfilesRef), (snapshot) => {
+          const loaded = [];
+          snapshot.forEach(doc => loaded.push({ id: doc.id, ...doc.data() }));
+          setAllProfiles(loaded);
+        });
+
+        const chatsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats');
+        const chatsQ = query(chatsRef, where('participants', 'array-contains', user.uid));
+        const unsubscribeChats = onSnapshot(chatsQ, (snapshot) => {
+          const loadedChats = [];
+          snapshot.forEach(doc => loadedChats.push({ id: doc.id, ...doc.data() }));
+          loadedChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          setMyChats(loadedChats);
+        });
+
+        // Public share links created by this user
+        const sharesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'shares');
+        const sharesQ = query(sharesRef, where('createdByUid', '==', user.uid), limit(100));
+        const unsubscribeShares = onSnapshot(sharesQ, (snap) => {
+          const list = [];
+          snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+          list.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+          setShareLinks(list);
+        }, (err) => {
+          // permission-denied is ok if rules are strict; feature still works for logged-in users if allowed
+          console.warn('[Sharing] shares subscribe failed', err?.code || err);
+          setShareLinks([]);
+        });
+
+        // Personal audit log (your actions)
+        const auditRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'auditLogs');
+        const auditQ = query(auditRef, orderBy('tsMs', 'desc'), limit(80));
+        const unsubscribeAudit = onSnapshot(auditQ, (snap) => {
+          const list = [];
+          snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+          list.sort((a, b) => (b.tsMs || 0) - (a.tsMs || 0));
+          setAuditEntries(list);
+        }, (err) => {
+          console.warn('[Audit] subscribe failed', err?.code || err);
+          setAuditEntries([]);
+        });
+
+        const calRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars');
+
+        // 🔒 Wichtig für sichere Firestore Rules:
+        // Wir dürfen NICHT die komplette calendars Collection lesen und client-side filtern,
+        // sonst scheitert die Query mit permission-denied.
+        const ownerQ = query(calRef, where('ownerId', '==', user.uid));
+        const sharedQ = query(calRef, where('sharedWith.' + user.uid, 'in', ['read', 'write']));
+
+        let ownerCals = [];
+        let sharedCals = [];
+
+        const recomputeCals = () => {
+          const byId = new Map();
+          ownerCals.forEach(c => byId.set(c.id, c));
+          sharedCals.forEach(c => byId.set(c.id, c));
+          const merged = Array.from(byId.values());
+          setCustomCalendars(merged);
+          setVisibleCalendars(prev => {
+            const newVisible = new Set(prev);
+            merged.forEach(c => newVisible.add(c.id));
+            return Array.from(newVisible);
+          });
+        };
+
+        const unsubscribeOwnerCals = onSnapshot(ownerQ, (snapshot) => {
+          const loaded = [];
+          snapshot.forEach(doc => loaded.push({ id: doc.id, ...doc.data() }));
+          ownerCals = loaded;
+          recomputeCals();
+        });
+
+        const unsubscribeSharedCals = onSnapshot(sharedQ, (snapshot) => {
+          const loaded = [];
+          snapshot.forEach(doc => loaded.push({ id: doc.id, ...doc.data() }));
+          sharedCals = loaded;
+          recomputeCals();
+        });
+
+        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribePrivateUser(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeShares(); unsubscribeAudit(); unsubscribeOwnerCals(); unsubscribeSharedCals(); };
+      }, [user]);
+
+      // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---
+      // Input darf "frei" sein (User sieht beim Tippen Zeichen). Wir extrahieren nur Ziffern für die Suche,
+      // ohne den Input-Text automatisch zu überschreiben (sonst wirkt es wie "ich kann nichts schreiben").
+      useEffect(() => {
+        if (!user) return;
+        const raw = String(chatSearchQuery || '');
+        const code = normalizeChatId(raw);
+        if (!/^\d{5}$/.test(code)) {
+          setChatFriendResult(null);
+          setChatFriendError(code.length > 0 && code.length < 5 ? 'Bitte 5 Ziffern eingeben' : '');
+          setChatFriendLoading(false);
+          return;
+        }
+        setChatFriendLoading(true);
+        setChatFriendError('');
+        if (chatFriendLookupTimer.current) clearTimeout(chatFriendLookupTimer.current);
+        chatFriendLookupTimer.current = setTimeout(async () => {
+          try {
+            const prof = await findProfileByFriendCode(code);
+            if (!prof) {
+              setChatFriendResult(null);
+              setChatFriendError('Kein Nutzer gefunden');
+            } else if (prof.id === user.uid) {
+              setChatFriendResult(null);
+              setChatFriendError('Das bist du selbst');
+            } else {
+              setChatFriendResult(prof);
+              setChatFriendError('');
+            }
+          } catch (e) {
+            console.warn('friend lookup failed', e);
+            setChatFriendResult(null);
+            setChatFriendError('Suche fehlgeschlagen');
+          } finally {
+            setChatFriendLoading(false);
+          }
+        }, 250);
+        return () => {
+          if (chatFriendLookupTimer.current) clearTimeout(chatFriendLookupTimer.current);
+        };
+      }, [chatSearchQuery, user]);
+
+      // --- CUSTOM CALENDAR EVENTS SYNC ---
+      useEffect(() => {
+        if (!user || customCalendars.length === 0) return;
+        
+        const unsubscribes = customCalendars.map(cal => {
+           const calEventsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', cal.id, 'events');
+           return onSnapshot(query(calEventsRef), (snapshot) => {
+              const evts = [];
+              snapshot.forEach(doc => evts.push({ id: doc.id, calendarId: cal.id, ...doc.data() }));
+              setSharedEventsMap(prev => ({ ...prev, [cal.id]: evts }));
+           });
+        });
+
+        return () => unsubscribes.forEach(fn => fn());
+      }, [customCalendars, user]);
+
+      // Calendar audit log (shared/owned calendars)
+      useEffect(() => {
+        if (!user) return;
+        if (!auditCalId || auditCalId === 'default') {
+          setAuditCalEntries([]);
+          return;
+        }
+        const cal = customCalendars.find(c => c.id === auditCalId);
+        if (!cal) {
+          setAuditCalEntries([]);
+          return;
+        }
+        const ref = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', auditCalId, 'auditLogs');
+        const qy = query(ref, orderBy('tsMs', 'desc'), limit(80));
+        const unsub = onSnapshot(qy, (snap) => {
+          const list = [];
+          snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+          list.sort((a, b) => (b.tsMs || 0) - (a.tsMs || 0));
+          setAuditCalEntries(list);
+        }, (err) => {
+          console.warn('[Audit] calendar audit subscribe failed', err?.code || err);
+          setAuditCalEntries([]);
+        });
+        return () => { try { unsub(); } catch (_) {} };
+      }, [auditCalId, user, customCalendars]);
+
+      // --- CHAT MESSAGES SYNC (Pagination: letzte 25 + Infinite Scroll nach oben) ---
+      useEffect(() => {
+        if (!activeChat || !user) return;
+
+        // Reset pagination state when switching chats
+        chatOldestCursorRef.current = null;
+        chatLoadedMoreRef.current = false;
+        chatAutoLoadLockRef.current = false;
+        setChatHasMore(false);
+        setChatLoadingMore(false);
+
+        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+        const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
+
+        const unsubscribeMessages = onSnapshot(latestQ, (snapshot) => {
+          const loadedDesc = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          const loaded = [...loadedDesc].reverse(); // ascending
+
+          // Cursor (oldest doc among currently listened page)
+          const lastDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
+          if (!chatLoadedMoreRef.current) {
+            chatOldestCursorRef.current = lastDoc;
+          }
+
+          // HasMore: only meaningful when we have a full page
+          const couldHaveMore = snapshot.docs.length >= CHAT_PAGE_SIZE;
+          // If user already loaded more, we keep hasMore as-is unless we know it is false
+          if (!chatLoadedMoreRef.current) setChatHasMore(couldHaveMore);
+
+          const unreadToUpdate = [];
+          const deliveredToUpdate = [];
+
+          // Read/delivered marking only for messages in latest window
+          for (const docSnap of snapshot.docs) {
+            const data = docSnap.data() || {};
+            if (data.senderId !== user.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
+              unreadToUpdate.push(docSnap.id);
+            }
+            if (data.senderId !== user.uid && !data.deliveredAt && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
+              deliveredToUpdate.push(docSnap.id);
+            }
+          }
+
+          // Merge with older-loaded + pending
+          setChatMessages(prev => {
+            const prevList = Array.isArray(prev) ? prev : [];
+            const pending = prevList.filter(m => m && m.pending && m.clientMsgId);
+
+            // Keep older messages that are not in the latest page
+            const latestIds = new Set(loaded.map(m => m.id));
+            const older = prevList.filter(m => m && !m.pending && !latestIds.has(m.id));
+
+            // Remove pending that already got server version
+            const serverClientIds = new Set(loaded.map(m => m.clientMsgId).filter(Boolean));
+            const pendingFiltered = pending.filter(m => m.clientMsgId && !serverClientIds.has(m.clientMsgId));
+
+            const merged = [...older, ...loaded, ...pendingFiltered];
+            merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            return merged;
+          });
+
+          // System-Notification für neue eingehende Nachrichten (wenn App nicht im Vordergrund ist)
+          try {
+            const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
+            if (lastMsg && lastMsg.senderId !== user.uid) {
+              const mutedChatIds = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+              const isMuted = mutedChatIds.includes(activeChat.id);
+              const canNotify = (('Notification' in window) && Notification.permission === 'granted');
+              const key = `onyx_last_notify_${activeChat.id}`;
+              const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
+              const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
+              if (!isMuted && canNotify && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
+                showSystemNotification('Kalender Aktuell 🔏', null, `onyx_chat_${activeChat.id}`);
+                localStorage.setItem(key, String(lastMsg.timestamp || Date.now()));
+              }
+            }
+          } catch (e) {}
+
+          // lastRead (für Gruppen-Read-Receipts)
+          if (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible') {
+            const nowMs = Date.now();
+            if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
+              lastReadWriteRef.current = nowMs;
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`lastRead.${user.uid}`]: nowMs }).catch(()=>{});
+            }
+          }
+
+          if (unreadToUpdate.length > 0) {
+            unreadToUpdate.forEach(msgId => {
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
+            });
+          }
+
+          if (deliveredToUpdate.length > 0) {
+            const deliveredAt = Date.now();
+            deliveredToUpdate.forEach(msgId => {
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
+            });
+          }
+
+          if (currentView === 'secret_chat') {
+            const now = Date.now();
+            setLastChatVisit(now);
+            localStorage.setItem('onyx_last_chat_visit', now.toString());
+          }
+        }, (err) => {
+          console.error('CHAT_MESSAGES_SNAPSHOT_ERROR', err);
+          showToast('Chat Live-Sync Fehler');
+        });
+
+        return () => unsubscribeMessages();
+      }, [activeChat, user, currentView, secretView, userProfile]);
+
+      const loadMoreChatMessages = async () => {
+        try {
+          if (!activeChat || !user) return;
+          if (chatLoadingMore) return;
+          if (!chatHasMore) return;
+
+          const cursor = chatOldestCursorRef.current;
+          if (!cursor) return;
+
+          setChatLoadingMore(true);
+          chatLoadedMoreRef.current = true;
+
+          // Mark as prepending so the "scroll-to-bottom" effect does not fire
+          chatIsPrependingRef.current = true;
+
+          const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+          const nextQ = query(messagesRef, orderBy('timestamp', 'desc'), startAfter(cursor), limit(CHAT_PAGE_SIZE));
+
+          const snap = await getDocs(nextQ);
+          const docs = snap.docs || [];
+          const pageDesc = docs.map(d => ({ id: d.id, ...d.data() }));
+          const page = [...pageDesc].reverse();
+
+          // Update cursor to the new oldest doc
+          const newCursor = docs.length > 0 ? docs[docs.length - 1] : cursor;
+          chatOldestCursorRef.current = newCursor;
+
+          // If we received fewer than page size, no more
+          if (docs.length < CHAT_PAGE_SIZE) setChatHasMore(false);
+
+          // Preserve scroll position while prepending
+          const scroller = chatScrollRef.current;
+          const prevScrollHeight = scroller ? scroller.scrollHeight : 0;
+          const prevScrollTop = scroller ? scroller.scrollTop : 0;
+          chatScrollRestoreRef.current = { prevHeight: prevScrollHeight, prevTop: prevScrollTop };
+
+          setChatMessages(prev => {
+            const prevList = Array.isArray(prev) ? prev : [];
+            const existingIds = new Set(prevList.map(m => m.id));
+            const toAdd = page.filter(m => !existingIds.has(m.id));
+            const merged = [...toAdd, ...prevList];
+            merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            return merged;
+          });
+
+          // Wait a tick, then restore position
+          setTimeout(() => {
+            try {
+              const s = chatScrollRef.current;
+              if (!s) return;
+              const { prevHeight, prevTop } = chatScrollRestoreRef.current || { prevHeight: 0, prevTop: 0 };
+              const newHeight = s.scrollHeight;
+              const delta = newHeight - prevHeight;
+              // Keep the same message at the top of the viewport
+              s.scrollTop = prevTop + delta;
+            } catch (_) {}
+            chatAutoLoadLockRef.current = false;
+            chatIsPrependingRef.current = false;
+          }, 0);
+
+        } catch (e) {
+          console.warn('CHAT_LOAD_MORE_ERROR', e);
+        } finally {
+          setChatLoadingMore(false);
+        }
+      };
+
+      // Auto-scroll to bottom ONLY when the user is already near bottom and we are not prepending
+      useEffect(() => {
+        try {
+          if (secretView !== 'chat') return;
+          if (chatIsPrependingRef.current) return;
+          if (!chatStickToBottomRef.current) return;
+          messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+        } catch (_) {}
+      }, [chatMessages, secretView]);
+
+      useEffect(() => {
+        if (secretView === 'settings' && user) {
+          calculateGlobalChatStats();
+        }
+      }, [secretView, user, myChats]);
+
+      const calculateGlobalChatStats = async () => {
+        let sent = 0;
+        let received = 0;
+        for (const chat of myChats) {
+          const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id, 'messages');
+          const snap = await getDocs(messagesRef);
+          snap.forEach(doc => {
+            if (doc.data().senderId === user.uid) sent++;
+            else received++;
+          });
+        }
+        setChatStats({ sent, received, total: sent + received });
+      };
+
+      const ensureWebPushToken = async (currentUser, opts = {}) => {
+  if (!currentUser) return;
+  const forcePrompt = !!opts.forcePrompt;
+
+  const isStandaloneNow = () => {
+    try {
+      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
+      const dm = !!(m && m.matches);
+      const ios = !!(window.navigator && window.navigator.standalone);
+      return dm || ios;
+    } catch (_) { return false; }
+  };
+
+  // PWA-only
+  if (!isStandaloneNow()) return;
+
+  const messaging = await getMessagingSafe();
+  if (!messaging) return;
+
+  if (!('Notification' in window)) return;
+
+  if (Notification.permission !== 'granted') {
+    if (!forcePrompt) return;
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+  }
+
+  try {
+    const swRegistration = await registerPushServiceWorker();
+    if (!swRegistration) throw new Error('SERVICE_WORKER_NOT_READY');
+
+    const token = await getToken(messaging, {
+      vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI',
+      serviceWorkerRegistration: swRegistration
+    });
+
+    if (token) {
+      await setDoc(
+        doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid),
+        { fcmTokenWeb: token, lastWebTokenAt: Date.now(), pushTarget: 'web' },
+        { merge: true }
+      );
+      setPushDiag(prev => ({ ...prev, lastTokenAt: Date.now(), lastError: '' }));
+    } else {
+      setPushDiag(prev => ({ ...prev, lastError: 'NO_TOKEN_RETURNED' }));
+    }
+  } catch (e) {
+    console.warn('[FCM] ensure token failed', e?.message || e);
+    setPushDiag(prev => ({ ...prev, lastError: (e?.message || String(e)) }));
+  }
+};
+
+const requestNotificationPermission = async (currentUser) => {
+  if (!currentUser) return;
+
+  const isStandaloneNow = () => {
+    try {
+      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
+      const dm = !!(m && m.matches);
+      const ios = !!(window.navigator && window.navigator.standalone);
+      return dm || ios;
+    } catch (_) { return false; }
+  };
+
+  if (!isStandaloneNow()) {
+    showToast(isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren, dann Benachrichtigungen aktivieren.' : 'Bitte als PWA installieren, dann Benachrichtigungen aktivieren.');
+    return;
+  }
+
+  try {
+    await ensureWebPushToken(currentUser, { forcePrompt: true });
+    showToast('Benachrichtigungen aktiviert ✅');
+  } catch (err) {
+    console.log('FCM Error', err);
+    showToast('Benachrichtigungen konnten nicht aktiviert werden');
+  }
+};
+
+      useEffect(() => {
+        let unsubscribeMessage = null;
+
+        (async () => {
+          const messaging = await getMessagingSafe();
+          if (!messaging) return;
+	          unsubscribeMessage = onMessage(messaging, (payload) => {
+	            const kind = payload?.data?.kind || '';
+	            const chatId = payload?.data?.chatId || '';
+	            const incomingTitle = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
+	            const incomingBody = payload?.data?.body || payload?.notification?.body || '';
+	            const tag = payload?.data?.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
+	            const notifTitle = (kind === 'chat') ? 'Kalender Aktuell 🔏' : incomingTitle;
+
+	            // Diagnostics: mark push as received even in foreground (SW only fires in background)
+	            try {
+	              setPushDiag((prev) => ({
+	                ...prev,
+	                lastReceivedAt: Date.now(),
+	                lastReceivedTitle: String(notifTitle || '')
+	              }));
+	            } catch (_) {}
+
+	            // Wenn Chat stummgeschaltet ist: keine In-App Benachrichtigung
+	            try {
+	              const muted = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+	              if (kind === 'chat' && chatId && muted.includes(chatId)) return;
+	            } catch (_) {}
+
+	            // Foreground: UI aktualisiert sich via Firestore Listener.
+	            // Chat: optional In-App Ping (Sound/Vibration) wenn App sichtbar ist.
+	            let __isOpenChat = false;
+	            try {
+	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+	              __isOpenChat = (kind === 'chat' && chatId && (currentViewRef?.current === 'secret_chat') && (activeChatIdRef?.current === chatId));
+	              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !__isOpenChat) {
+	                const enableSound = !(prof && prof.inAppChatSound === false);
+	                const enableVibe = !(prof && prof.inAppChatVibrate === false);
+	                if (enableSound || enableVibe) {
+	                  try { lastChatPingRef.current[chatId] = Math.max(lastChatPingRef.current[chatId] || 0, Date.now()); } catch (_) {}
+	                  try { pingInApp({ sound: enableSound, vibrate: enableVibe }); } catch (_) {}
+	                }
+	              }
+	            } catch (_) {}
+
+	            // Toast als Feedback
+	            try {
+	              const toastMsg = (kind === 'chat') ? 'Kalender Aktuell 🔏' : (incomingBody ? `${notifTitle}: ${incomingBody}` : notifTitle);
+	              showToast(toastMsg);
+	            } catch (_) {}
+
+	            // System-Notification im Vordergrund nur bei Test/forceShow oder wenn Tab nicht sichtbar.
+	            // Optional: auch für Chat im Vordergrund, falls aktiviert.
+	            try {
+	              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
+	              const forceShow = String(payload?.data?.forceShow || '') === '1' || kind === 'test';
+	              if (!canNotify) return;
+
+	              // Always show a real OS notification for incoming messages (unless the user is currently inside that conversation).
+	              if (kind === 'chat' && chatId && !__isOpenChat) {
+	                // Privacy: Chat OS notification should not show preview/body
+	                showSystemNotification('Kalender Aktuell 🔏', null, tag);
+	                return;
+	              }
+
+	              // Non-chat pushes (tests, reminders, etc.)
+	              if (forceShow || document.visibilityState !== 'visible') {
+	                showSystemNotification(notifTitle, (kind === 'chat') ? null : incomingBody, tag);
+	              }
+	            } catch (_) {}
+	          });
+        })();
+
+        return () => {
+          try { if (unsubscribeMessage) unsubscribeMessage(); } catch (_) {}
+        };
+      }, [userProfile]);
+
+      const fetchWeather = async () => {
+        try {
+          // Open-Meteo: add richer daily details + hourly for nicer UI
+          const res = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}` +
+            `&current_weather=true` +
+            `&hourly=temperature_2m,precipitation_probability,weathercode` +
+            `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,windspeed_10m_max,sunrise,sunset` +
+            `&timezone=auto`
+          );
+          const data = await res.json();
+          setWeather(data.current_weather);
+          setDailyForecast(data.daily);
+          setHourlyForecast(data.hourly);
+        } catch (error) {}
+      };
+
+      useEffect(() => {
+        if (isLoggedIn) fetchWeather();
+      }, [location, isLoggedIn]);
+
+      useEffect(() => {
+        // reset expanded forecast when location changes
+        setSelectedForecastDay(null);
+      }, [location?.lat, location?.lon]);
+
+      const showToast = (message) => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, message }]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+      };
+
+
+      // --- IN-APP CHAT PING (SOUND / VIBRATION) ---
+      useEffect(() => { try { userProfileRef.current = userProfile; } catch(_) {} }, [userProfile]);
+      useEffect(() => { try { activeChatIdRef.current = activeChat?.id || null; } catch(_) {} }, [activeChat]);
+      useEffect(() => { try { currentViewRef.current = currentView; } catch(_) {} }, [currentView]);
+
+      const ensureAudioContext = () => {
+        try {
+          if (typeof window === 'undefined') return null;
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return null;
+          if (!audioCtxRef.current) audioCtxRef.current = new AC();
+          return audioCtxRef.current;
+        } catch (_) { return null; }
+      };
+
+      const pingInApp = (opts = {}) => {
+        try {
+          const sound = (opts.sound !== false);
+          const vibrate = (opts.vibrate !== false);
+
+          if (vibrate && typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate([35, 45, 35]); } catch (_) {}
+          }
+
+          if (!sound) return;
+
+          const ctx = ensureAudioContext();
+          if (!ctx) return;
+          // Autoplay policy: context may be suspended until first user interaction
+          if (ctx.state === 'suspended') {
+            // resume best-effort
+            try { ctx.resume(); } catch (_) {}
+          }
+
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'sine';
+          o.frequency.value = 880;
+          g.gain.setValueAtTime(0.0001, ctx.currentTime);
+          g.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.14);
+          o.connect(g);
+          g.connect(ctx.destination);
+          o.start();
+          o.stop(ctx.currentTime + 0.15);
+        } catch (_) {}
+      };
+
+      // Ensure audio context can play after first interaction
+      useEffect(() => {
+        const resume = () => {
+          try {
+            const ctx = ensureAudioContext();
+            if (ctx && ctx.state === 'suspended') ctx.resume();
+          } catch (_) {}
+        };
+        try {
+          window.addEventListener('pointerdown', resume, { passive: true });
+          window.addEventListener('touchstart', resume, { passive: true });
+          window.addEventListener('keydown', resume, { passive: true });
+        } catch (_) {}
+        return () => {
+          try {
+            window.removeEventListener('pointerdown', resume);
+            window.removeEventListener('touchstart', resume);
+            window.removeEventListener('keydown', resume);
+          } catch (_) {}
+        };
+      }, []);
+
+      // Reliable live notifications for new messages while the app is running.
+      // This prevents the "toast only" situation when server push is unavailable.
+      useEffect(() => {
+        try {
+          if (!user) return;
+          const prof = userProfileRef.current || userProfile || {};
+          const enableSound = !(prof.inAppChatSound === false);
+          const enableVibe = !(prof.inAppChatVibrate === false);
+          const canNotify = (('Notification' in window) && Notification.permission === 'granted');
+          if (!enableSound && !enableVibe && !canNotify) return;
+          if (!Array.isArray(myChats) || myChats.length === 0) return;
+          if (document.visibilityState !== 'visible') return;
+
+          for (const c of myChats) {
+            const updatedAt = (c && typeof c.updatedAt === 'number') ? c.updatedAt : 0;
+            if (!updatedAt) continue;
+            if (c.lastMessageSenderId === user.uid) {
+              // keep watermark up to date
+              const prev = lastChatPingRef.current[c.id] || 0;
+              if (updatedAt > prev) lastChatPingRef.current[c.id] = updatedAt;
+              continue;
+            }
+            const prev = lastChatPingRef.current[c.id] || 0;
+            if (updatedAt <= prev) continue;
+
+            // don't ping if currently inside this chat
+            const isOpen = (currentViewRef.current === 'secret_chat') && (activeChatIdRef.current === c.id);
+            if (isOpen) {
+              lastChatPingRef.current[c.id] = updatedAt;
+              continue;
+            }
+
+            // muted?
+            const muted = Array.isArray(prof.mutedChatIds) ? prof.mutedChatIds : [];
+            if (muted.includes(c.id)) {
+              lastChatPingRef.current[c.id] = updatedAt;
+              continue;
+            }
+
+            lastChatPingRef.current[c.id] = updatedAt;
+
+            // 1) Optional in-app ping (sound/vibration)
+            if (enableSound || enableVibe) pingInApp({ sound: enableSound, vibrate: enableVibe });
+
+            // 2) System notification (real OS notification)
+            try {
+              if (canNotify) {
+                const key = `onyx_last_notify_chat_${c.id}`;
+                const lastNotified = parseInt(localStorage.getItem(key) || '0', 10) || 0;
+                if (updatedAt > lastNotified) {
+                  const isGroup = c.type === 'group';
+                  let senderName = 'Jemand';
+                  try {
+                    const sid = String(c.lastMessageSenderId || '');
+                    if (sid && sid !== user.uid) {
+                      const sp = getProfile(sid);
+                      senderName = (sp && (sp.displayName || sp.username)) ? (sp.displayName || sp.username) : (c.displayNames && c.displayNames[sid] ? String(c.displayNames[sid]) : 'Jemand');
+                    }
+                  } catch (_) {}
+                  // Privacy: Chat OS notification should not show preview/body
+                  showSystemNotification('Kalender Aktuell 🔏', null, `onyx_chat_${c.id}`);
+                  localStorage.setItem(key, String(updatedAt));
+                }
+              }
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }, [myChats, user, userProfile, currentView, activeChat]);
+
+
+// --- PWA-only: Service Worker + Install Prompt ---
+const promptInstallPwa = async () => {
+  try {
+    if (!deferredInstallPrompt) {
+      showToast(isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren.' : 'Installation ist gerade nicht verfügbar.');
+      return;
+    }
+    deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+    setDeferredInstallPrompt(null);
+    setCanInstallPwa(false);
+    if (choice && choice.outcome === 'accepted') showToast('Installiert ✅');
+    else showToast('Installation abgebrochen');
+  } catch (e) {
+    showToast('Installation nicht möglich');
+  }
+};
+
+const registerPushServiceWorker = async () => {
+  try {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+      setPushDiag(prev => ({ ...prev, sw: 'unsupported', controlling: false }));
+      return null;
+    }
+    const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
+    const swUrl = `${base}firebase-messaging-sw.js?v=36`;
+    const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
+    let readyReg = null;
+    try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
+    const controlling = !!navigator.serviceWorker.controller;
+    setPushDiag(prev => ({ ...prev, sw: 'registered', controlling, lastError: '' }));
+    return readyReg || reg;
+  } catch (e) {
+    setPushDiag(prev => ({ ...prev, sw: 'error', controlling: !!navigator.serviceWorker?.controller, lastError: (e?.message || String(e)) }));
+    return null;
+  }
+};
+
+useEffect(() => {
+  const computeStandalone = () => {
+    try {
+      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
+      const dm = !!(m && m.matches);
+      const ios = !!(window.navigator && window.navigator.standalone);
+      return dm || ios;
+    } catch (_) { return false; }
+  };
+
+  // 1) Track standalone state (PWA)
+  setIsStandalone(computeStandalone());
+
+  // 2) Register SW for caching + background push (no permission prompt here)
+  (async () => {
+    try { await registerPushServiceWorker(); } catch (_) {}
+  })();
+
+  // 3) Install prompt
+  const onBip = (e) => {
+    try {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+      setCanInstallPwa(true);
+    } catch (_) {}
+  };
+  window.addEventListener('beforeinstallprompt', onBip);
+
+  const onInstalled = () => {
+    setDeferredInstallPrompt(null);
+    setCanInstallPwa(false);
+    setIsStandalone(true);
+  };
+  window.addEventListener('appinstalled', onInstalled);
+
+  // 4) Display-mode changes
+  const mql = (window.matchMedia) ? window.matchMedia('(display-mode: standalone)') : null;
+  const onMql = () => setIsStandalone(computeStandalone());
+  if (mql) {
+    if (mql.addEventListener) mql.addEventListener('change', onMql);
+    else if (mql.addListener) mql.addListener(onMql);
+  }
+
+  return () => {
+    window.removeEventListener('beforeinstallprompt', onBip);
+    window.removeEventListener('appinstalled', onInstalled);
+    if (mql) {
+      if (mql.removeEventListener) mql.removeEventListener('change', onMql);
+      else if (mql.removeListener) mql.removeListener(onMql);
+    }
+  };
+}, []);
+
+// Diagnostics: receive a ping from the Service Worker when a push arrives
+useEffect(() => {
+  try {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const onMsg = (evt) => {
+      try {
+        const d = evt?.data || {};
+        if (d.type !== 'PUSH_RECEIVED') return;
+        setPushDiag((prev) => ({
+          ...prev,
+          lastReceivedAt: typeof d.at === 'number' ? d.at : Date.now(),
+          lastReceivedTitle: String(d.title || '')
+        }));
+      } catch (_) {}
+    };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    return () => {
+      try { navigator.serviceWorker.removeEventListener('message', onMsg); } catch (_) {}
+    };
+  } catch (_) {}
+}, []);
+
+
+      const showSystemNotification = async (title, body, tag = 'onyx') => {
+        try {
+          if (typeof window === 'undefined') return;
+          if (!('Notification' in window)) return;
+          if (Notification.permission !== 'granted') return;
+
+          const silentMode = (userProfile && String(userProfile.notificationSoundMode||'system') === 'silent');
+
+          const options = {
+            icon: './icon-192.png',
+            badge: './icon-192.png',
+            tag,
+            renotify: true,
+            silent: silentMode,
+            ...(silentMode ? {} : { vibrate: [200, 100, 200] })
+          };
+
+          // body === null means: do not show any body text (privacy mode)
+          if (body !== null && body !== undefined) {
+            const finalBody = (body && String(body).trim().length > 0) ? `${body}
+Kalender aktuell` : 'Kalender aktuell';
+            options.body = finalBody;
+          }
+
+          if ('serviceWorker' in navigator) {
+            const reg = (await registerPushServiceWorker()) || (await navigator.serviceWorker.getRegistration());
+            if (reg && reg.showNotification) {
+              await reg.showNotification(title, options);
+              return;
+            }
+          }
+
+          // Fallback (falls kein SW verfügbar ist)
+          // eslint-disable-next-line no-new
+          new Notification(title, options);
+        } catch (e) {}
+      };
+
+      const sendLocalPushTest = async () => {
+        try {
+          const canNotify = ('Notification' in window) && Notification.permission === 'granted';
+          if (!canNotify) {
+            showToast('Keine Berechtigung für Benachrichtigungen');
+            return;
+          }
+          await showSystemNotification('🔔 Onyx Test', 'Wenn du das siehst: OS-Notification funktioniert ✅', 'onyx_test_local');
+        } catch (e) {
+          showToast('Test fehlgeschlagen');
+        }
+      };
+
+      const sendServerPushTest = async () => {
+        try {
+          if (!user) return;
+          const id = `${user.uid}_${Date.now()}`;
+          setPushTest({ id, status: 'pending', lastError: '', updatedAt: Date.now() });
+          await setDoc(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', id),
+            {
+              uid: user.uid,
+              createdAt: serverTimestamp(),
+              createdAtMs: Date.now(),
+              status: 'pending',
+              platform: 'web',
+              ua: String((typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '').slice(0, 220)
+            },
+            { merge: true }
+          );
+          showToast('Server-Test ausgelöst (oxynoti)');
+        } catch (e) {
+          showToast('Server-Test fehlgeschlagen');
+        }
+      };
+
+      // Live status for last server test (sent/error)
+      useEffect(() => {
+        try {
+          if (!user) return;
+          if (!pushTest?.id) return;
+          const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', pushTest.id);
+          const unsub = onSnapshot(ref, (snap) => {
+            try {
+              if (!snap.exists()) return;
+              const d = snap.data() || {};
+              const status = String(d.status || '').toLowerCase();
+              const lastError = d.lastError ? String(d.lastError) : '';
+              const updatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : Date.now();
+              setPushTest((prev) => ({ ...prev, status, lastError, updatedAt }));
+              if (status === 'error' && lastError) {
+                setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
+              }
+              if (status === 'sent') {
+                // Let SW handle the visible notification; this toast is just feedback.
+                showToast('Server-Test gesendet ✅');
+              }
+            } catch (_) {}
+          });
+          return () => { try { unsub(); } catch (_) {} };
+        } catch (_) {}
+      }, [pushTest?.id, user]);
+
+      const getWeatherIcon = (code, className = "w-8 h-8 text-white") => {
+        if (code === undefined || code === null) return <Cloud className={className} />;
+        if (code <= 3) return <Sun className={className} />;
+        if (code >= 50 && code <= 69) return <CloudRain className={className} />;
+        return <Cloud className={className} />;
+      };
+
+      const formatDayName = (dateString) => {
+        const date = new Date(dateString);
+        return WOCHENTAGE[date.getDay() === 0 ? 6 : date.getDay() - 1];
+      };
+
+      
+const handleAuth = async (e) => {
+  e.preventDefault();
+  setAuthError('');
+  if (!email || !password) return setAuthError('Bitte E-Mail und Passwort eingeben.');
+  if (isRegistering && (!fullName || String(fullName).trim().length < 2)) return setAuthError('Bitte deinen Namen eingeben.');
+
+  try {
+    let cred = null;
+    if (isRegistering) {
+      cred = await createUserWithEmailAndPassword(auth, email, password);
+      showToast("Erfolgreich registriert!");
+    } else {
+      cred = await signInWithEmailAndPassword(auth, email, password);
+      showToast("Erfolgreich angemeldet!");
+    }
+
+    // Bombensicher: UID muss existieren
+    const signedInUser = cred && cred.user;
+    if (!signedInUser || !signedInUser.uid) {
+      throw new Error("AUTH_NO_UID");
+    }
+
+    // Sofort State setzen (nicht nur auf onAuthStateChanged warten)
+    setUser(signedInUser);
+    setIsLoggedIn(true);
+
+    if (isRegistering && String(fullName||'').trim().length >= 2) {
+      try { await updateProfile(signedInUser, { displayName: String(fullName||'').trim() }); } catch(_) {}
+    }
+
+    await ensureProfileAfterAuth(signedInUser, { fullName: String(fullName||'').trim(), isRegistering });
+  } catch (error) {
+    console.error("AUTH_ERROR", error);
+
+    const code = error && error.code ? String(error.code) : '';
+    const msg = error && error.message ? String(error.message) : '';
+
+    if (msg === "AUTH_NO_UID") {
+      setAuthError("Registrierung/Login fehlgeschlagen (keine Benutzer-ID). Bitte erneut versuchen.");
+      return;
+    }
+
+    switch (code) {
+      case 'auth/email-already-in-use': setAuthError('Diese E-Mail wird bereits verwendet.'); break;
+      case 'auth/invalid-email': setAuthError('Ungültige E-Mail-Adresse.'); break;
+      case 'auth/invalid-credential':
+      case 'auth/user-not-found':
+      case 'auth/wrong-password': setAuthError('E-Mail oder Passwort falsch.'); break;
+      case 'auth/weak-password': setAuthError('Passwort min. 6 Zeichen.'); break;
+      case 'auth/operation-not-allowed': setAuthError('Email/Passwort Login ist in Firebase Auth deaktiviert. Bitte in Firebase → Authentication → Sign-in method aktivieren.'); break;
+      case 'auth/unauthorized-domain': setAuthError('Domain nicht autorisiert. In Firebase Auth → Settings → Authorized domains muss tejari49.github.io erlaubt sein.'); break;
+      case 'auth/network-request-failed': setAuthError('Netzwerkfehler. Bitte Internet prüfen.'); break;
+      default:
+        setAuthError('Fehler: ' + (code || msg || 'Unbekannt'));
+    }
+  }
+};
+
+
+      const handleLogout = async () => {
+        try {
+          await signOut(auth);
+          showToast("Abgemeldet");
+          setEmail(''); setPassword('');
+        } catch (error) {}
+      };
+
+      const handleSearchLocation = async (e) => {
+        e.preventDefault();
+        if (!searchQuery) return;
+        try {
+          const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${searchQuery}&count=5&language=de&format=json`);
+          const data = await res.json();
+          setSearchResults(data.results || []);
+        } catch (error) {}
+      };
+
+      const selectLocation = (loc) => {
+        setLocation({ name: `${loc.name}${loc.admin1 ? `, ${loc.admin1}` : ''}`, lat: loc.latitude, lon: loc.longitude });
+        setSearchResults([]); setSearchQuery('');
+        showToast(`Standort: ${loc.name}`);
+      };
+
+      // --- KALENDER LOGIK ---
+      const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+      const getFirstDayOfMonth = (date) => {
+        let day = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+        return day === 0 ? 6 : day - 1;
+      };
+      const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+      const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+      const goToToday = () => setCurrentDate(new Date());
+
+      // Alle Events kombiniert für die Ansicht
+      const allEvents = [
+        ...events, 
+        ...Object.values(sharedEventsMap).flat()
+      ].filter(e => visibleCalendars.includes(e.calendarId));
+
+// Aktuelles Event im Modal aus der neuesten allEvents Liste (für Live Poll/Kommentare)
+const modalEvent = eventToEdit
+  ? (allEvents.find(e => e.id === eventToEdit.id && (e.calendarId || 'default') === (eventToEdit.calendarId || 'default')) || eventToEdit)
+  : null;
+
+
+// Auto-finalize abgelaufene Abstimmungen (clientseitig, sobald jemand mit Schreibrecht die App öffnet)
+useEffect(() => {
+  if (!user) return;
+
+  const now = Date.now();
+  const list = (allEvents || []).filter(ev => ev && ev.poll && ev.poll.status === 'open');
+  let did = 0;
+
+  (async () => {
+    for (const ev of list) {
+      if (did >= 3) break; // safety cap
+      const poll = ev.poll || {};
+      const ver = Number(poll.version || 1);
+      const calId = ev.calendarId || 'default';
+      if (ver < 2) continue;
+      if (!poll.autoFinalizeAtDeadline) continue;
+      if (!poll.deadlineAt || now < poll.deadlineAt) continue;
+      if (poll.autoFinalized) continue;
+      if (!canWriteCalendar(calId)) continue;
+
+      const key = `${calId}::${ev.id}`;
+      if (autoFinalizedPollsRef.current[key]) continue;
+      autoFinalizedPollsRef.current[key] = true;
+
+      try {
+        await runTransaction(db, async (tx) => {
+          const ref = eventDocRefFor(calId, ev.id);
+          const snap = await tx.get(ref);
+          if (!snap.exists()) return;
+          const data = snap.data() || {};
+          const p = data.poll || null;
+          if (!p || p.status !== 'open') return;
+          if (Number(p.version || 1) < 2) return;
+          if (!p.autoFinalizeAtDeadline) return;
+          if (!p.deadlineAt || Date.now() < p.deadlineAt) return;
+          if (p.autoFinalized) return;
+
+          const voterIds = Array.isArray(p.voterIds) ? p.voterIds : computePollVoterIdsForEvent({ ...ev, ...data });
+          const tally = computePollTally(p, voterIds);
+          const winnerId = tally.winnerOptionId;
+          const winner = (Array.isArray(p.options) ? p.options : []).find(o => o.id === winnerId);
+          if (!winner) return;
+
+          tx.update(ref, {
+            date: winner.date,
+            time: winner.time,
+            updatedAt: Date.now(),
+            'poll.status': 'closed',
+            'poll.winnerOptionId': winnerId,
+            'poll.closedAt': Date.now(),
+            'poll.closedBy': user.uid,
+            'poll.autoFinalized': true
+          });
+        });
+        did += 1;
+      } catch (_) {
+        // ignore
+      }
+    }
+  })();
+}, [user?.uid, events, sharedEventsMap, customCalendars]);
+
+
+      const getCalendarById = (id) => {
+         if (id === 'default') return { id: 'default', name: 'Privat', type: 'normal', ownerId: user?.uid };
+         return customCalendars.find(c => c.id === id);
+      };
+
+      const calendarTint = (calId) => {
+        try {
+          if (!calId || calId === 'default') {
+            return (userProfile && typeof userProfile.defaultCalendarColor === 'string' && userProfile.defaultCalendarColor) ? userProfile.defaultCalendarColor : '#FFFFFF';
+          }
+          const cal = (customCalendars || []).find(c => c && c.id === calId);
+          if (cal && typeof cal.color === 'string' && cal.color) return cal.color;
+          const idx = stableHash(String(calId)) % PASTEL_COLORS.length;
+          return PASTEL_COLORS[idx] || '#FFFFFF';
+        } catch (e) {
+          return '#FFFFFF';
+        }
+      };
+
+      const toggleCalendarVisibility = (id) => {
+         setVisibleCalendars(prev => {
+           const has = prev.includes(id);
+           if (has) {
+             const next = prev.filter(cId => cId !== id);
+             if (next.length === 0) {
+               try { showToast('Mindestens 1 Kalender sichtbar lassen'); } catch (_) {}
+               return prev;
+             }
+             return next;
+           }
+           return [...prev, id];
+         });
+      };
+
+      // --- WIEDERHOLUNGEN (Recurrence) ---
+      const pad2 = (n) => String(n).padStart(2, '0');
+      const formatDateStr = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      const parseDateStr = (s) => {
+        const parts = String(s || '').split('-');
+        const y = parseInt(parts[0] || '1970', 10);
+        const m = parseInt(parts[1] || '1', 10);
+        const dd = parseInt(parts[2] || '1', 10);
+        return new Date(y, (m || 1) - 1, dd || 1);
+      };
+
+      // --- NATÜRLICHE SPRACHE: Parse Text -> Event Felder ---
+      const toIsoDate = (d) => {
+        try {
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${dd}`;
+        } catch (_) {
+          return new Date().toISOString().split('T')[0];
+        }
+      };
+
+      const nextDowFrom = (base, targetDowMon0) => {
+        const b = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+        const baseDowMon0 = (b.getDay() + 6) % 7;
+        let diff = (targetDowMon0 - baseDowMon0 + 7) % 7;
+        // gleiche Woche zulassen (diff=0)
+        b.setDate(b.getDate() + diff);
+        return b;
+      };
+
+      const parseNaturalEventText = (raw, referenceDateStr) => {
+        const input = String(raw || '').trim();
+        if (!input) return null;
+
+        let s = input.replace(/\s+/g, ' ').trim();
+        const base = (() => {
+          try {
+            if (referenceDateStr) {
+              const d = parseDateStr(referenceDateStr);
+              if (!isNaN(d.getTime())) return d;
+            }
+          } catch (_) {}
+          return new Date();
+        })();
+
+        let dateStr = '';
+        let timeStr = '';
+        let location = '';
+        let durationMinutes = null;
+
+        // 1) Dauer (z.B. 45min, 1h, 1.5h, 2std)
+        const durMatch = s.match(/\b\d+(?:[.,]\d+)?\s*(?:h|std|stunden|m|min|mins|minute|minutes)\b/i);
+        if (durMatch) {
+          const token = durMatch[0];
+          const num = (token.match(/\d+(?:[.,]\d+)?/) || [null])[0];
+          const unit = token.toLowerCase();
+          if (num) {
+            const n = parseFloat(num.replace(',', '.'));
+            if (!isNaN(n)) {
+              const isHours = unit.includes('h') || unit.includes('std') || unit.includes('stund');
+              durationMinutes = Math.round(isHours ? n * 60 : n);
+            }
+          }
+          s = s.replace(token, ' ').replace(/\s+/g, ' ').trim();
+        }
+
+        // 2) Zeit (z.B. 14:30 oder 1430)
+        const t1 = s.match(/\b(\d{1,2})[:.](\d{2})\b/);
+        const t2 = !t1 ? s.match(/\b(\d{1,2})(\d{2})\b/) : null;
+        if (t1) {
+          const hh = parseInt(t1[1], 10);
+          const mm = parseInt(t1[2], 10);
+          if (!isNaN(hh) && !isNaN(mm) && hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+            timeStr = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+            s = s.replace(t1[0], ' ').replace(/\s+/g, ' ').trim();
+          }
+        } else if (t2) {
+          const hh = parseInt(t2[1], 10);
+          const mm = parseInt(t2[2], 10);
+          if (!isNaN(hh) && !isNaN(mm) && hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+            timeStr = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+            s = s.replace(t2[0], ' ').replace(/\s+/g, ' ').trim();
+          }
+        }
+
+        // 3) Datum (heute/morgen/übermorgen, ISO, DD.MM)
+        const lower = s.toLowerCase();
+        if (lower.includes('übermorgen')) {
+          const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+          d.setDate(d.getDate() + 2);
+          dateStr = toIsoDate(d);
+          s = s.replace(/übermorgen/i, ' ').replace(/\s+/g, ' ').trim();
+        } else if (lower.includes('morgen')) {
+          const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+          d.setDate(d.getDate() + 1);
+          dateStr = toIsoDate(d);
+          s = s.replace(/morgen/i, ' ').replace(/\s+/g, ' ').trim();
+        } else if (lower.includes('heute')) {
+          dateStr = toIsoDate(base);
+          s = s.replace(/heute/i, ' ').replace(/\s+/g, ' ').trim();
+        }
+
+        // Explizites Datum: YYYY-MM-DD
+        const isoM = s.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+        if (!dateStr && isoM) {
+          const y = parseInt(isoM[1], 10);
+          const m = parseInt(isoM[2], 10);
+          const d = parseInt(isoM[3], 10);
+          if (y && m && d) {
+            dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            s = s.replace(isoM[0], ' ').replace(/\s+/g, ' ').trim();
+          }
+        }
+
+        // Explizites Datum: DD.MM(.YYYY)
+        const dmM = !dateStr ? s.match(/\b(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\b/) : null;
+        if (!dateStr && dmM) {
+          const dd = parseInt(dmM[1], 10);
+          const mm = parseInt(dmM[2], 10);
+          let yy = dmM[3] ? parseInt(dmM[3], 10) : base.getFullYear();
+          if (yy < 100) yy = 2000 + yy;
+          if (dd && mm && yy) {
+            const candidate = new Date(yy, mm - 1, dd);
+            // falls ohne Jahr und in der Vergangenheit: nächstes Jahr
+            if (!dmM[3]) {
+              const base0 = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+              if (candidate.getTime() < base0.getTime() - 3600000) {
+                candidate.setFullYear(candidate.getFullYear() + 1);
+              }
+            }
+            dateStr = toIsoDate(candidate);
+            s = s.replace(dmM[0], ' ').replace(/\s+/g, ' ').trim();
+          }
+        }
+
+        // Wochentag (mo..so)
+        if (!dateStr) {
+          const dowMap = {
+            mo: 0, montag: 0,
+            di: 1, dienstag: 1,
+            mi: 2, mittwoch: 2,
+            do: 3, donnerstag: 3,
+            fr: 4, freitag: 4,
+            sa: 5, samstag: 5,
+            so: 6, sonntag: 6
+          };
+          const dowM = s.toLowerCase().match(/\b(mo|montag|di|dienstag|mi|mittwoch|do|donnerstag|fr|freitag|sa|samstag|so|sonntag)\b/);
+          if (dowM) {
+            const key = dowM[1];
+            const target = dowMap[key];
+            const d = nextDowFrom(base, target);
+            dateStr = toIsoDate(d);
+            s = s.replace(new RegExp('\b' + key + '\b', 'i'), ' ').replace(/\s+/g, ' ').trim();
+          }
+        }
+
+        // 4) Ort (bei / im / in)
+        const locM = s.match(/\b(bei|im|in)\s+([^,]+)$/i);
+        if (locM) {
+          location = String(locM[2] || '').trim();
+          s = s.replace(locM[0], ' ').replace(/\s+/g, ' ').trim();
+        }
+
+        // Rest -> Titel
+        let title = s.replace(/[\r\n]+/g, ' ').trim();
+        title = title.replace(/^[-,.:]+\s*/, '').trim();
+        title = title.replace(/\s*[-,.:]+\s*$/, '').trim();
+        if (!title) title = 'Termin';
+
+        return {
+          title,
+          date: dateStr || '',
+          time: timeStr || '',
+          location: location || '',
+          durationMinutes: (durationMinutes === null || typeof durationMinutes === 'undefined') ? null : durationMinutes
+        };
+      };
+
+      const updateQuickEventText = (val) => {
+        try {
+          setQuickEventText(val);
+          const parsed = parseNaturalEventText(val, selectedDateForEvent || eventForm.date);
+          setQuickEventPreview(parsed);
+        } catch (_) {
+          setQuickEventText(val);
+          setQuickEventPreview(null);
+        }
+      };
+
+      const applyQuickEventToForm = () => {
+        const parsed = quickEventPreview || parseNaturalEventText(quickEventText, selectedDateForEvent || eventForm.date);
+        if (!parsed) return showToast('Nicht erkannt');
+        setEventForm(prev => ({
+          ...prev,
+          title: parsed.title || prev.title,
+          date: parsed.date || prev.date,
+          time: (typeof parsed.time === 'string' && parsed.time) ? parsed.time : prev.time,
+          location: (typeof parsed.location === 'string' && parsed.location) ? parsed.location : prev.location,
+          durationMinutes: (parsed.durationMinutes !== null && typeof parsed.durationMinutes !== 'undefined') ? parsed.durationMinutes : prev.durationMinutes,
+        }));
+        showToast('Übernommen');
+      };
+
+      const addDaysStr = (s, days) => {
+        const d = parseDateStr(s);
+        d.setDate(d.getDate() + days);
+        return formatDateStr(d);
+      };
+      const daysBetween = (a, b) => Math.floor((parseDateStr(b) - parseDateStr(a)) / 86400000);
+      const monthsBetween = (a, b) => {
+        const da = parseDateStr(a);
+        const db = parseDateStr(b);
+        return (db.getFullYear() * 12 + db.getMonth()) - (da.getFullYear() * 12 + da.getMonth());
+      };
+      const weekdayIndexMon0 = (s) => {
+        const js = parseDateStr(s).getDay(); // So=0..Sa=6
+        return (js + 6) % 7; // Mo=0..So=6
+      };
+
+      const buildRecurrenceFromForm = (form) => {
+        const freq = (form.recurrenceFreq || 'NONE').toUpperCase();
+        if (freq === 'NONE') return null;
+        const interval = Math.max(1, parseInt(form.recurrenceInterval || 1, 10) || 1);
+        const untilRaw = String(form.recurrenceUntil || '').trim();
+        let until = untilRaw || null;
+        let byWeekdays = Array.isArray(form.recurrenceByWeekdays) ? form.recurrenceByWeekdays.map(x => parseInt(x, 10)).filter(n => !isNaN(n)) : [];
+        if (freq === 'WEEKLY') {
+          if (byWeekdays.length === 0 && form.date) byWeekdays = [weekdayIndexMon0(form.date)];
+        } else {
+          byWeekdays = [];
+        }
+        return { freq, interval, byWeekdays, until };
+      };
+
+      const eventOccursOn = (ev, dateStr) => {
+        if (!ev || !dateStr) return false;
+        if (ev.type === 'shift') return ev.date === dateStr;
+        const rec = ev.recurrence || null;
+        if (!rec || !rec.freq || rec.freq === 'NONE') return ev.date === dateStr;
+        const start = ev.date;
+        if (!start || dateStr < start) return false;
+        if (rec.until && dateStr > rec.until) return false;
+        const ex = Array.isArray(ev.exDates) ? ev.exDates : [];
+        if (ex.includes(dateStr)) return false;
+        const freq = String(rec.freq).toUpperCase();
+        const interval = Math.max(1, parseInt(rec.interval || 1, 10) || 1);
+        if (freq === 'DAILY') {
+          const diff = daysBetween(start, dateStr);
+          return diff % interval === 0;
+        }
+        if (freq === 'WEEKLY') {
+          const diff = daysBetween(start, dateStr);
+          const weekIndex = Math.floor(diff / 7);
+          if (weekIndex % interval !== 0) return false;
+          const w = weekdayIndexMon0(dateStr);
+          const allowed = Array.isArray(rec.byWeekdays) && rec.byWeekdays.length > 0 ? rec.byWeekdays : [weekdayIndexMon0(start)];
+          return allowed.includes(w);
+        }
+        if (freq === 'MONTHLY') {
+          const mDiff = monthsBetween(start, dateStr);
+          if (mDiff % interval !== 0) return false;
+          return parseDateStr(start).getDate() === parseDateStr(dateStr).getDate();
+        }
+        return false;
+      };
+
+      const getEffectiveOccurrence = (ev, dateStr) => {
+        const ov = (ev && ev.overrides && dateStr) ? ev.overrides[dateStr] : null;
+        const merged = ov ? { ...ev, ...ov, date: dateStr } : { ...ev, date: dateStr };
+        const hasRec = merged.recurrence && merged.recurrence.freq && merged.recurrence.freq !== 'NONE';
+        if (hasRec && ev && ev.id) {
+          merged._baseEvent = ev;
+          merged._baseId = ev.id;
+          merged._seriesStart = ev.date;
+          merged._occurrenceDate = dateStr;
+          merged._isInstance = dateStr !== ev.date;
+          merged.id = `${ev.id}__${dateStr}`;
+        } else {
+          merged._baseEvent = ev;
+          merged._baseId = ev && ev.id;
+          merged._seriesStart = ev && ev.date;
+          merged._occurrenceDate = dateStr;
+          merged._isInstance = false;
+        }
+        return merged;
+      };
+
+      const getEventsForDate = (dateStr) => {
+        if (!dateStr) return [];
+        const out = [];
+        for (const ev of allEvents) {
+          if (!ev) continue;
+          if (eventOccursOn(ev, dateStr)) {
+            out.push(getEffectiveOccurrence(ev, dateStr));
+          }
+        }
+        out.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+        return out;
+      };
+
+      const getOccurrencesInRange = (startStr, endStr) => {
+        if (!startStr || !endStr) return [];
+        const out = [];
+        let d = startStr;
+        let guard = 0;
+        while (d <= endStr && guard < 400) {
+          const dayEvents = getEventsForDate(d);
+          dayEvents.forEach(e => out.push(e));
+          d = addDaysStr(d, 1);
+          guard++;
+        }
+        return out;
+      };
+
+      // --- REMINDER ENGINE (Kalender) ---
+      const remindersIndexRef = useRef([]);
+
+      // Same hashing as oxynoti server (FNV-1a 32-bit) => enables notification tag dedupe
+      const fnv1a32 = (str) => {
+        let h = 0x811c9dc5;
+        const s = String(str || '');
+        for (let i = 0; i < s.length; i++) {
+          h ^= s.charCodeAt(i);
+          h = Math.imul(h, 0x01000193);
+        }
+        return (h >>> 0);
+      };
+
+      const parseDateTimeLocalMs = (dateStr, timeStr) => {
+        try {
+          if (!dateStr || !timeStr) return null;
+          const [y, m, d] = String(dateStr).split('-').map(n => parseInt(n, 10));
+          const [hh, mm] = String(timeStr).split(':').map(n => parseInt(n, 10));
+          if (!y || !m || !d || isNaN(hh) || isNaN(mm)) return null;
+          return new Date(y, (m - 1), d, hh, mm, 0, 0).getTime();
+        } catch (e) {
+          return null;
+        }
+      };
+
+      const effectiveReminderMinutes = (occ) => {
+        try {
+          const mode = (occ && typeof occ.reminderMode === 'string') ? occ.reminderMode : 'default';
+          if (mode === 'none') return null;
+          if (mode === 'custom') {
+            const m = (typeof occ.reminderMinutes === 'number') ? occ.reminderMinutes : parseInt(occ.reminderMinutes || 0, 10);
+            if (isNaN(m)) return null;
+            return Math.max(0, m);
+          }
+          const def = (userProfile && typeof userProfile.defaultReminderMinutes === 'number') ? userProfile.defaultReminderMinutes : null;
+          if (typeof def === 'number' && !isNaN(def)) return Math.max(0, def);
+          return null;
+        } catch (e) {
+          return null;
+        }
+      };
+
+      const buildRemindersIndex = () => {
+        try {
+          const today = new Date().toISOString().split('T')[0];
+          const startStr = addDaysStr(today, -1);
+          const endStr = addDaysStr(today, 60);
+          const occs = getOccurrencesInRange(startStr, endStr)
+            .filter(o => o && o.type !== 'shift');
+
+          const now = Date.now();
+          const idx = [];
+          for (const occ of occs) {
+            const mins = effectiveReminderMinutes(occ);
+            if (mins === null) continue;
+            if (!occ.time) continue;
+            const startMs = parseDateTimeLocalMs(occ.date, occ.time);
+            if (!startMs) continue;
+            const dueMs = startMs - (mins * 60000);
+            if (dueMs < (now - 60000)) continue; // zu alt
+            const baseId = occ._baseId || occ.id || 'event';
+            const occId = occ.id || `${baseId}__${occ.date || ''}`;
+            const occDate = occ._occurrenceDate || occ.date || '';
+            const rid = `${baseId}__${occDate}__${startMs}__${mins}`;
+            idx.push({
+              rid,
+              dueMs,
+              startMs,
+              mins,
+              title: occ.title || 'Termin',
+              time: occ.time || '',
+              calendarId: occ.calendarId || 'default',
+              occDate,
+              baseId,
+              occId
+            });
+          }
+          idx.sort((a, b) => a.dueMs - b.dueMs);
+          remindersIndexRef.current = idx;
+        } catch (e) {
+          remindersIndexRef.current = [];
+        }
+      };
+
+      const fireReminderIfDue = async (item) => {
+        try {
+          const firedKey = `onyx_reminder_fired_${item.rid}`;
+          if (localStorage.getItem(firedKey)) return;
+          localStorage.setItem(firedKey, String(Date.now()));
+
+          const calName = (item.calendarId === 'default') ? 'Privat' : (getCalendarById(item.calendarId)?.name || 'Kalender');
+          const body = `${item.title}${item.time ? ' • ' + item.time : ''} • ${calName}`;
+
+          // In-App Hinweis immer
+          showToast(`⏰ ${body}`);
+
+          // System Notification falls erlaubt
+          try {
+            // Wichtig: oft existiert zwar ein Web-Token, aber der Server-Worker (oxynoti)
+            // ist nicht aktiv oder sendet nicht an Web. Daher IMMER lokal als Fallback.
+            // Tag ist kompatibel mit oxynoti (dedupe über `tag`).
+            const canNotify = ('Notification' in window) && Notification.permission === 'granted';
+            if (canNotify) {
+              const dedupeKey = `${user?.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;
+              const tag = `onyx_event_${fnv1a32(dedupeKey)}`;
+              await showSystemNotification('Erinnerung', body, tag);
+            }
+          } catch (_) {}
+
+          try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch (_) {}
+        } catch (e) {}
+      };
+
+      // Index rebuild on relevant changes
+      useEffect(() => {
+        if (!user) return;
+        buildRemindersIndex();
+      }, [user, events, sharedEventsMap, visibleCalendars, userProfile && userProfile.defaultReminderMinutes]);
+
+      // Periodic due-check (works without long setTimeouts)
+      useEffect(() => {
+        if (!user) return;
+        let timer = null;
+        const tick = () => {
+          try {
+            const now = Date.now();
+            const idx = remindersIndexRef.current || [];
+            // check due in last 60s
+            for (const item of idx) {
+              if (item.dueMs <= now && item.dueMs > (now - 60000)) {
+                fireReminderIfDue(item);
+              }
+            }
+          } catch (e) {}
+        };
+        timer = setInterval(tick, 20000);
+        tick();
+
+        const onVis = () => {
+          if (document.visibilityState === 'visible') {
+            buildRemindersIndex();
+            setTimeout(tick, 200);
+          }
+        };
+        document.addEventListener('visibilitychange', onVis);
+
+        return () => {
+          if (timer) clearInterval(timer);
+          document.removeEventListener('visibilitychange', onVis);
+        };
+      }, [user, userProfile]);
+
+
+
+      // --- NEU: PINSEL & LANGES DRÜCKEN LOGIK ---
+      const handleDayContextMenu = (e, dateStr) => {
+         e.preventDefault();
+         const activeCal = getCalendarById(activeCalendarId);
+         if (!activeCal || activeCal.type !== 'shift') return;
+         if (activeCal.id !== 'default' && activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
+             return showToast("Nur Lesezugriff auf diesen Kalender.");
+         }
+         if (!activeCal.shifts || activeCal.shifts.length === 0) return showToast("Keine Schichten konfiguriert.");
+         
+         setShiftModalData({ dateStr, calId: activeCal.id, shifts: activeCal.shifts });
+      };
+
+      const handleShiftModalSelect = async (shift) => {
+         if (!shiftModalData) return;
+         const { dateStr, calId } = shiftModalData;
+         const existingShift = allEvents.find(e => e.date === dateStr && e.calendarId === calId);
+         
+         if (shift === 'delete') {
+             if (existingShift) await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events', existingShift.id));
+         } else {
+             if (existingShift) {
+                 await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events', existingShift.id), {
+                      shiftId: shift.id, title: shift.name, color: shift.color, updatedAt: Date.now()
+                 });
+             } else {
+                 await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events'), {
+                     date: dateStr, shiftId: shift.id, title: shift.name, color: shift.color, type: 'shift', updatedAt: Date.now()
+                 });
+             }
+         }
+         setShiftModalData(null);
+      };
+
+      const applyShiftPaint = async (dateStr) => {
+        if (paintedDaysRef.current.has(dateStr)) return;
+        paintedDaysRef.current.add(dateStr);
+        
+        const activeCal = getCalendarById(activeCalendarId);
+        if (!activeCal || activeCal.type !== 'shift' || !selectedPaintShift) return;
+        if (activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
+             return;
+        }
+        
+        const existingShift = allEvents.find(e => e.date === dateStr && e.calendarId === activeCal.id);
+        
+        if (selectedPaintShift.id === 'delete') {
+            if (existingShift) await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', activeCal.id, 'events', existingShift.id));
+            return;
+        }
+
+        if (existingShift) {
+            if (existingShift.shiftId !== selectedPaintShift.id) {
+                await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', activeCal.id, 'events', existingShift.id), {
+                     shiftId: selectedPaintShift.id, title: selectedPaintShift.name, color: selectedPaintShift.color, updatedAt: Date.now()
+                });
+            }
+        } else {
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', activeCal.id, 'events'), {
+                date: dateStr, shiftId: selectedPaintShift.id, title: selectedPaintShift.name, color: selectedPaintShift.color, type: 'shift', updatedAt: Date.now()
+            });
+        }
+      };
+
+      const handlePaintStart = (e, dateStr) => {
+         if (!isPaintbrushActive || !selectedPaintShift) return;
+         isPaintingRef.current = true;
+         paintedDaysRef.current.clear();
+         applyShiftPaint(dateStr);
+      };
+
+      const handlePaintMove = (e, dateStr) => {
+         if (!isPaintbrushActive || !isPaintingRef.current) return;
+         if (e.type === 'touchmove') {
+             const touch = e.touches[0];
+             const el = document.elementFromPoint(touch.clientX, touch.clientY);
+             const targetDate = el?.getAttribute('data-date') || el?.closest('[data-date]')?.getAttribute('data-date');
+             if (targetDate) applyShiftPaint(targetDate);
+         } else {
+             applyShiftPaint(dateStr);
+         }
+      };
+
+      const handlePaintEnd = () => {
+         isPaintingRef.current = false;
+      };
+
+      // Regulärer Klick auf Tag
+      const handleDayClick = async (dateStr) => {
+         if (isLongPressAction.current) { isLongPressAction.current = false; return; }
+         
+         const activeCal = getCalendarById(activeCalendarId);
+         if (!activeCal) return;
+
+         if (activeCal.id !== 'default' && activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
+             return showToast("Nur Lesezugriff auf diesen Kalender.");
+         }
+
+         if (activeCal.type === 'shift') {
+             const existingShift = allEvents.find(e => e.date === dateStr && e.calendarId === activeCal.id);
+             const shifts = activeCal.shifts || [];
+             if (shifts.length === 0) return showToast("Dieser Plan hat keine Schichten.");
+
+             if (!existingShift) {
+                 await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', activeCal.id, 'events'), {
+                    date: dateStr, shiftId: shifts[0].id, title: shifts[0].name, color: shifts[0].color, type: 'shift', updatedAt: Date.now()
+                 });
+             } else {
+                 const currIndex = shifts.findIndex(s => s.id === existingShift.shiftId);
+                 if (currIndex >= 0 && currIndex < shifts.length - 1) {
+                     const nextShift = shifts[currIndex + 1];
+                     await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', activeCal.id, 'events', existingShift.id), {
+                         shiftId: nextShift.id, title: nextShift.name, color: nextShift.color, updatedAt: Date.now()
+                     });
+                 } else {
+                     await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', activeCal.id, 'events', existingShift.id));
+                 }
+             }
+         } else {
+             openNewEventModal(dateStr);
+         }
+      };
+
+      
+      const hydrateEventFormFromBaseEvent = (baseEvent, occDate) => {
+         if (!baseEvent) return;
+         const rec = baseEvent.recurrence || null;
+         const hasRec = rec && rec.freq && rec.freq !== 'NONE';
+         const isInstance = !!(hasRec && occDate && baseEvent.date && occDate !== baseEvent.date);
+         setEventEditScope(isInstance ? 'single' : 'series');
+         const ov = (baseEvent.overrides && occDate) ? baseEvent.overrides[occDate] : null;
+         const effective = ov ? { ...baseEvent, ...ov, date: occDate } : { ...baseEvent, date: occDate };
+         setEventForm({
+           title: effective.title || '',
+           date: isInstance ? occDate : (baseEvent.date || new Date().toISOString().split('T')[0]),
+           time: effective.time || '',
+           location: (typeof effective.location === 'string') ? effective.location : ((typeof baseEvent.location === 'string') ? baseEvent.location : ''),
+           durationMinutes: (typeof effective.durationMinutes === 'number' || typeof effective.durationMinutes === 'string') ? effective.durationMinutes : ((typeof baseEvent.durationMinutes === 'number' || typeof baseEvent.durationMinutes === 'string') ? baseEvent.durationMinutes : ''),
+           type: effective.type || 'Privat',
+           desc: effective.desc || '',
+           reminderMode: (typeof effective.reminderMode === 'string') ? effective.reminderMode : ((typeof baseEvent.reminderMode === 'string') ? baseEvent.reminderMode : 'default'),
+           reminderMinutes: (typeof effective.reminderMinutes === 'number') ? effective.reminderMinutes : (typeof baseEvent.reminderMinutes === 'number' ? baseEvent.reminderMinutes : 15),
+           calendarId: baseEvent.calendarId || 'default',
+           recurrenceFreq: (rec && rec.freq) ? rec.freq : 'NONE',
+           recurrenceInterval: (rec && rec.interval) ? rec.interval : 1,
+           recurrenceByWeekdays: (rec && Array.isArray(rec.byWeekdays)) ? rec.byWeekdays : [],
+           recurrenceUntil: (rec && rec.until) ? rec.until : ''
+         });
+      };
+
+const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
+         const baseEvent = (event && event._baseEvent) ? event._baseEvent : event;
+         if (!baseEvent) return;
+         const occDate = occurrenceDate || (event && event._occurrenceDate) || baseEvent.date;
+
+         if (baseEvent.type === 'shift') return;
+
+         setEventToEdit(baseEvent);
+         setSelectedDateForEvent(occDate);
+
+         const calId = baseEvent.calendarId || 'default';
+         const canEdit = canWriteCalendar(calId);
+         setEventCanEdit(!!canEdit);
+         setEventModalMode('view');
+
+         hydrateEventFormFromBaseEvent(baseEvent, occDate);
+         try { setQuickEventText(''); setQuickEventPreview(null); } catch(_) {}
+
+         const openComments = !!(opts && opts.openComments);
+         const openPoll = !!(opts && opts.openPoll);
+         setShowEventComments(openComments);
+         setShowEventPoll(openPoll);
+         setCreatePollOnSave(false);
+         setEventComments([]);
+         setNewCommentText('');
+         initPollDraftFromEvent(baseEvent);
+         setIsModalOpen(true);
+      };
+
+      const enterEventEditMode = () => {
+         if (!eventToEdit) return;
+         if (!eventCanEdit) return showToast("Nur Lesezugriff.");
+         setEventModalMode('edit');
+      };
+
+      const backToEventViewMode = () => {
+         if (!eventToEdit) return;
+         const occDate = selectedDateForEvent || eventToEdit.date;
+         hydrateEventFormFromBaseEvent(eventToEdit, occDate);
+         setEventModalMode('view');
+      };
+
+      // --- KALENDER EINSTELLUNGEN LOGIK ---
+      const saveCalendarSettings = async (e) => {
+         e.preventDefault();
+         try {
+             if (calForm.id) {
+                 await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calForm.id), {
+                     name: calForm.name, type: calForm.type, color: (calForm.color || ''), shifts: calForm.shifts
+                 });
+                 await writeAudit({ calId: calForm.id, action: 'calendar.update', targetType: 'calendar', targetId: calForm.id, summary: `Kalender aktualisiert: ${calForm.name}` });
+                 showToast("Kalender aktualisiert");
+             } else {
+                 const newRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars'), {
+                     name: calForm.name, type: calForm.type, color: (calForm.color || ''), shifts: calForm.shifts, ownerId: user.uid, sharedWith: {}
+                 });
+                 await writeAudit({ calId: newRef?.id || 'default', action: 'calendar.create', targetType: 'calendar', targetId: newRef?.id || '', summary: `Kalender erstellt: ${calForm.name}` });
+                 showToast("Kalender erstellt");
+             }
+             setIsCalManageModalOpen(false);
+         } catch(err) { showToast("Fehler beim Speichern des Kalenders"); }
+      };
+
+      const deleteCalendar = async (calId) => {
+         if(!confirm("Kalender wirklich löschen? Alle Termine gehen verloren.")) return;
+         try {
+             await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId));
+             await writeAudit({ calId, action: 'calendar.delete', targetType: 'calendar', targetId: calId, summary: `Kalender gelöscht: ${getCalendarById(calId)?.name || calId}` });
+             if (activeCalendarId === calId) setActiveCalendarId('default');
+             showToast("Kalender gelöscht");
+         } catch(e) { showToast("Fehler beim Löschen"); }
+      };
+
+      const addShiftToForm = () => {
+          setCalForm(prev => ({
+              ...prev, 
+              shifts: [...(prev.shifts || []), { id: 's'+Date.now(), name: 'Neue Schicht', time: '08:00', color: PASTEL_COLORS[0] }]
+          }));
+      };
+
+      const updateShiftInForm = (id, key, value) => {
+          setCalForm(prev => ({
+              ...prev,
+              shifts: (prev.shifts || []).map(s => s.id === id ? { ...s, [key]: value } : s)
+          }));
+      };
+
+      const removeShiftFromForm = (id) => {
+          setCalForm(prev => ({ ...prev, shifts: (prev.shifts || []).filter(s => s.id !== id) }));
+      };
+
+      const shareCalendar = async (e) => {
+          e.preventDefault();
+          if(!shareCalData) return;
+          const email = shareUsername.trim().toLowerCase();
+          // Kalender-Freunde werden über E-Mail hinzugefügt (nicht über Username)
+          const targetProfile = await findProfileByEmailLower(email);
+          if(!targetProfile) return showToast("Nutzer nicht gefunden (E-Mail prüfen)");
+          if(targetProfile.id === user.uid) return showToast("Das bist du selbst.");
+
+
+          try {
+             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', shareCalData.id), {
+                 [`sharedWith.${targetProfile.id}`]: sharePerm
+             });
+             await writeAudit({ calId: shareCalData.id, action: 'calendar.share', targetType: 'calendar', targetId: shareCalData.id, summary: `Kalender geteilt (${sharePerm}): ${shareCalData.name} → ${targetProfile.email || targetProfile.username || shortId(targetProfile.id,6)}`, details: { targetUid: targetProfile.id, perm: sharePerm } });
+             showToast(`Geteilt mit ${targetProfile.email || targetProfile.username || "Nutzer"} (${sharePerm})`);
+             setShareCalData(prev => prev && prev.id === shareCalData.id ? { ...prev, sharedWith: { ...(prev.sharedWith || {}), [targetProfile.id]: sharePerm } } : prev);
+             setShareUsername('');
+             setIsShareCalModalOpen(false);
+          } catch(err) { showToast("Fehler beim Teilen"); }
+      };
+
+      const unshareCalendar = async (calId, targetUid) => {
+          try {
+             const cal = customCalendars.find(c => c.id === calId);
+             if (!cal) return;
+             const newShared = { ...(cal.sharedWith || {}) };
+             delete newShared[targetUid];
+             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId), { sharedWith: newShared });
+             await writeAudit({ calId, action: 'calendar.unshare', targetType: 'calendar', targetId: calId, summary: `Freigabe entfernt: ${cal?.name || calId} → ${getProfile(targetUid)?.username || shortId(targetUid,6)}`, details: { targetUid } });
+             setShareCalData(prev => prev && prev.id === calId ? { ...prev, sharedWith: newShared } : prev);
+             showToast("Freigabe entfernt");
+          } catch(err) {}
+      };
+
+      // --- PUBLIC SHARE LINKS (busy-only / expiry / passcode / magic-link) ---
+      const makeShareUrl = (token, key = '') => {
+        const base = `${window.location.origin}${BASE_PATH}#/share/${token}`;
+        if (key) return `${base}?k=${encodeURIComponent(key)}`;
+        return base;
+      };
+
+      const getEventsListForCalendar = (calId) => {
+        if (calId === 'default') return Array.isArray(events) ? events : [];
+        return Array.isArray(sharedEventsMap?.[calId]) ? sharedEventsMap[calId] : [];
+      };
+
+      const getOccurrencesInRangeForList = (eventsList, startStr, endStr) => {
+        const list = Array.isArray(eventsList) ? eventsList : [];
+        const out = [];
+        let d = startStr;
+        let guard = 0;
+        while (d <= endStr && guard < 400) {
+          for (const ev of list) {
+            if (!ev) continue;
+            if (eventOccursOn(ev, d)) out.push(getEffectiveOccurrence(ev, d));
+          }
+          d = addDaysStr(d, 1);
+          guard++;
+        }
+        out.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
+        return out;
+      };
+
+      const parseTimeRange = (timeStr) => {
+        const t = String(timeStr || '').trim();
+        if (!t) return { start: '', end: '' };
+        if (t.includes('-')) {
+          const [a, b] = t.split('-').map(x => x.trim());
+          return { start: a, end: b || '' };
+        }
+        return { start: t, end: '' };
+      };
+
+      const computeBusyBlocksForCalendar = (calId, days = 30) => {
+        const startStr = new Date().toISOString().split('T')[0];
+        const endStr = addDaysStr(startStr, Math.max(1, parseInt(days || 30, 10) || 30));
+        const list = getEventsListForCalendar(calId);
+        const occs = getOccurrencesInRangeForList(list, startStr, endStr);
+        const blocks = [];
+        for (const occ of occs) {
+          const dateStr = occ?.date;
+          if (!dateStr) continue;
+          const tr = parseTimeRange(occ?.time);
+          const startMs = parseDateTimeLocalMs(dateStr, tr.start || '00:00');
+          if (!startMs) continue;
+          let endMs = null;
+          if (tr.end) {
+            endMs = parseDateTimeLocalMs(dateStr, tr.end);
+          }
+          if (!endMs) {
+            const dur = (typeof occ?.durationMinutes === 'number') ? occ.durationMinutes : parseInt(occ?.durationMinutes || 0, 10);
+            const dm = (Number.isFinite(dur) && dur > 0) ? dur : 60;
+            endMs = startMs + dm * 60 * 1000;
+          }
+          if (endMs <= startMs) endMs = startMs + 60 * 60 * 1000;
+          blocks.push({ startMs, endMs });
+        }
+        // Merge overlapping blocks
+        blocks.sort((a, b) => a.startMs - b.startMs);
+        const merged = [];
+        for (const b of blocks) {
+          const last = merged.length ? merged[merged.length - 1] : null;
+          if (!last || b.startMs > last.endMs) merged.push({ ...b });
+          else last.endMs = Math.max(last.endMs, b.endMs);
+        }
+        return { startStr, endStr, busyBlocks: merged };
+      };
+
+      const openShareLinkModalForCalendar = (cal) => {
+        const calId = cal?.id || 'default';
+        const calName = calId === 'default' ? 'Privat' : (cal?.name || 'Kalender');
+        setShareLinkCreated(null);
+        setShareLinkDraft(prev => ({
+          ...prev,
+          kind: 'calendar',
+          calId,
+          calName,
+          eventId: null,
+          eventSnapshot: null,
+          mode: 'busy',
+          protection: 'magic',
+          passcode: '',
+          expiresInDays: 7,
+          noExpiry: false,
+        }));
+        setIsShareLinkModalOpen(true);
+      };
+
+      const openShareLinkModalForEvent = (evSnapshot, calId) => {
+        const cid = calId || evSnapshot?.calendarId || 'default';
+        setShareLinkCreated(null);
+        setShareLinkDraft(prev => ({
+          ...prev,
+          kind: 'event',
+          calId: cid,
+          calName: getCalendarById(cid)?.name || (cid === 'default' ? 'Privat' : cid),
+          eventId: evSnapshot?.eventId || evSnapshot?.id || null,
+          eventSnapshot: {
+            title: String(evSnapshot?.title || ''),
+            date: String(evSnapshot?.date || ''),
+            time: String(evSnapshot?.time || ''),
+            location: String(evSnapshot?.location || ''),
+            durationMinutes: (evSnapshot?.durationMinutes ?? null),
+            desc: String(evSnapshot?.desc || ''),
+          },
+          mode: 'full',
+          protection: 'magic',
+          passcode: '',
+          expiresInDays: 7,
+          noExpiry: false,
+        }));
+        setIsShareLinkModalOpen(true);
+      };
+
+      const revokeShareLink = async (token) => {
+        if (!token) return;
+        try {
+          const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'shares', token);
+          await updateDoc(ref, { revokedAtMs: Date.now() });
+          await writeAudit({ calId: shareLinkDraft?.calId || 'default', action: 'share.revoke', targetType: 'share', targetId: token, summary: `Link widerrufen: ${token}` });
+          showToast('Link widerrufen');
+        } catch (e) {
+          console.warn('revokeShareLink failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const createShareLink = async () => {
+        if (!user) return;
+        const d = shareLinkDraft || {};
+        const token = randomToken(18);
+
+        // Expiry
+        let expiresAtMs = null;
+        if (!d.noExpiry) {
+          const days = Math.max(1, parseInt(d.expiresInDays || 7, 10) || 7);
+          expiresAtMs = Date.now() + days * 24 * 60 * 60 * 1000;
+        }
+
+        // Protection
+        let passcodeSalt = null;
+        let passcodeHash = null;
+        let magicKey = '';
+        let magicHash = null;
+        if (d.protection === 'passcode') {
+          const pc = String(d.passcode || '').trim();
+          if (pc.length < 4) return showToast('Passcode min. 4 Zeichen');
+          passcodeSalt = randomToken(8);
+          passcodeHash = await sha256Hex(`${passcodeSalt}|${pc}`);
+        } else if (d.protection === 'magic') {
+          // Magic-Link = nur der zufällige Token (keine zusätzliche Eingabe)
+          magicKey = '';
+          magicHash = null;
+        }
+
+        const base = {
+          kind: d.kind,
+          mode: d.mode,
+          calId: d.calId,
+          calName: d.calName,
+          createdByUid: user.uid,
+          createdAt: serverTimestamp(),
+          createdAtMs: Date.now(),
+          expiresAtMs: expiresAtMs || null,
+          revokedAtMs: null,
+          passcodeSalt: passcodeSalt || null,
+          passcodeHash: passcodeHash || null,
+          magicHash: magicHash || null,
+          isMagicLink: d.protection === 'magic',
+        };
+
+        let payload = { ...base };
+        if (d.kind === 'calendar') {
+          const { startStr, endStr, busyBlocks } = computeBusyBlocksForCalendar(d.calId, 30);
+          payload = {
+            ...payload,
+            rangeStart: startStr,
+            rangeEnd: endStr,
+            busyBlocks,
+          };
+        } else {
+          payload = {
+            ...payload,
+            eventId: d.eventId || null,
+            eventSnapshot: d.eventSnapshot || null,
+          };
+        }
+
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'shares', token), payload);
+          const url = makeShareUrl(token, magicKey);
+          setShareLinkCreated({ url, token });
+          try { await navigator.clipboard?.writeText(url); } catch (_) {}
+
+          await writeAudit({
+            calId: d.calId || 'default',
+            action: 'share.create',
+            targetType: 'share',
+            targetId: token,
+            summary: d.kind === 'calendar' ? `Public Link erstellt (Busy-only): ${d.calName}` : `Public Link erstellt (Event): ${(d.eventSnapshot?.title || '')}`,
+            details: { kind: d.kind, mode: d.mode, protection: d.protection, expiresAtMs: expiresAtMs || null },
+          });
+
+          showToast('Link erstellt (kopiert)');
+        } catch (e) {
+          console.warn('createShareLink failed', e);
+          showToast('Fehler beim Erstellen');
+        }
+      };
+
+      const updateProfileSettings = async (e) => {
+        e.preventDefault();
+        if (!user) return;
+        const nameRaw = new FormData(e.target).get('displayName') || new FormData(e.target).get('username') || '';
+        const displayName = String(nameRaw).trim();
+        await persistDisplayName(displayName, { avatarThumbBase64: userProfile?.avatarThumbBase64 || userProfile?.avatarBase64, avatarFullBase64: userProfile?.avatarFullBase64 || null, toast: 'Profil aktualisiert!' });
+      };
+
+      const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+        try {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('FILE_READ_ERROR'));
+          reader.readAsDataURL(file);
+        } catch (e) { reject(e); }
+      });
+
+      const looksLikeHeic = (file) => {
+        try {
+          const name = String(file?.name || '').toLowerCase();
+          const type = String(file?.type || '').toLowerCase();
+          return type === 'image/heic' || type === 'image/heif' || name.endsWith('.heic') || name.endsWith('.heif');
+        } catch (_) { return false; }
+      };
+
+      const isProbablyImageFile = (file) => {
+        try {
+          const type = String(file?.type || '').toLowerCase();
+          if (type.startsWith('image/')) return true;
+          const name = String(file?.name || '').toLowerCase();
+          if (looksLikeHeic(file)) return true;
+          return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(name);
+        } catch (_) { return false; }
+      };
+
+      const ensureJpegBlobIfHeic = async (file) => {
+        if (!file || !looksLikeHeic(file)) return file;
+        try {
+          const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+          const blob = Array.isArray(out) ? out[0] : out;
+          return blob || file;
+        } catch (e) {
+          console.warn('HEIC convert failed', e);
+          return file;
+        }
+      };
+
+      const loadImageFromDataUrl = (dataUrl) => new Promise((resolve, reject) => {
+        try {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('IMAGE_DECODE_ERROR'));
+          img.src = dataUrl;
+        } catch (e) { reject(e); }
+      });
+
+      const decodeImageFromBlob = async (blob) => {
+        if (!blob) throw new Error('NO_BLOB');
+
+        // Prefer createImageBitmap (better decoding coverage/performance)
+        if (typeof createImageBitmap === 'function') {
+          try {
+            const bmp = await createImageBitmap(blob);
+            return {
+              obj: bmp,
+              w: bmp.width,
+              h: bmp.height,
+              cleanup: () => { try { bmp.close && bmp.close(); } catch (_) {} }
+            };
+          } catch (_) {}
+        }
+
+        // Fallback: HTMLImageElement via object URL
+        const url = URL.createObjectURL(blob);
+        try {
+          const img = new Image();
+          img.decoding = 'async';
+          img.src = url;
+          if (img.decode) {
+            await img.decode();
+          } else {
+            await new Promise((resolve, reject) => {
+              img.onload = () => resolve();
+              img.onerror = () => reject(new Error('IMAGE_DECODE_ERROR'));
+            });
+          }
+          const w = img.naturalWidth || img.width || 0;
+          const h = img.naturalHeight || img.height || 0;
+          if (!w || !h) throw new Error('BAD_DIMENSIONS');
+          return {
+            obj: img,
+            w,
+            h,
+            cleanup: () => { try { URL.revokeObjectURL(url); } catch (_) {} }
+          };
+        } catch (e) {
+          try { URL.revokeObjectURL(url); } catch (_) {}
+          throw e;
+        }
+      };
+
+      const compressImageFileToDataUrl = async (file, { maxDim = 1600, quality = 0.72 } = {}) => {
+        const blob = file;
+        const decoded = await decodeImageFromBlob(blob);
+        try {
+          const w = decoded.w || 0;
+          const h = decoded.h || 0;
+          if (!w || !h) throw new Error('BAD_DIMENSIONS');
+
+          const scale = Math.min(1, maxDim / Math.max(w, h));
+          const nw = Math.max(1, Math.round(w * scale));
+          const nh = Math.max(1, Math.round(h * scale));
+
+          const canvas = document.createElement('canvas');
+          canvas.width = nw;
+          canvas.height = nh;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(decoded.obj, 0, 0, nw, nh);
+
+          // Strict conversion: always return an encoded WebP/JPEG dataURL (no raw/original passthrough).
+          try {
+            const webp = canvas.toDataURL('image/webp', quality);
+            if (webp && webp.startsWith('data:image/webp')) return webp;
+          } catch (_) {}
+          return canvas.toDataURL('image/jpeg', quality);
+        } finally {
+          try { decoded.cleanup && decoded.cleanup(); } catch (_) {}
+        }
+      };
+
+      const compressAvatarFileToDataUrl = async (file, { size = 256, quality = 0.82 } = {}) => {
+        const decoded = await decodeImageFromBlob(file);
+        try {
+          const w = decoded.w || 0;
+          const h = decoded.h || 0;
+          if (!w || !h) throw new Error('BAD_DIMENSIONS');
+
+          const minDim = Math.min(w, h);
+          const sx = Math.max(0, Math.round((w - minDim) / 2));
+          const sy = Math.max(0, Math.round((h - minDim) / 2));
+
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(decoded.obj, sx, sy, minDim, minDim, 0, 0, size, size);
+          return canvas.toDataURL('image/jpeg', quality);
+        } finally {
+          try { decoded.cleanup && decoded.cleanup(); } catch (_) {}
+        }
+      };
+      const handleAvatarUpload = async (e) => {
+        const file0 = e?.target?.files && e.target.files[0];
+        if (!file0) return;
+        try { e.target.value = ''; } catch (_) {}
+
+        if (!isProbablyImageFile(file0)) {
+          showToast('Nur Bilder unterstützt');
+          return;
+        }
+
+        try {
+          const file = await ensureJpegBlobIfHeic(file0);
+          const thumb = await compressAvatarFileToDataUrl(file, { size: 256, quality: 0.86 });
+          const full = await compressImageFileToDataUrl(file, { maxDim: 1200, quality: 0.78 });
+          if (user) {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+              avatarBase64: thumb,
+              avatarThumbBase64: thumb,
+              avatarFullBase64: full
+            }, { merge: true });
+            showToast('Avatar geändert');
+          }
+        } catch (err) {
+          console.warn('avatar compress/upload failed', err);
+          showToast('Fehler bei Avatar');
+        }
+      };
+
+      const getProfile = (uid) => allProfiles.find(p => p.id === uid) || null;
+
+      function normalizeChatId(raw) { return String(raw || '').replace(/\D/g, '').slice(0, 5); }
+
+      const findProfileByFriendCode = async (code5) => {
+        const code = normalizeChatId(code5);
+        if (!/^\d{5}$/.test(code)) return null;
+        try {
+          const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+          // friendCode wird als String gespeichert
+          const q = query(profilesCol, where('friendCode', '==', code), limit(1));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const d = snap.docs[0].data() || {};
+            return { id: snap.docs[0].id, ...d };
+          }
+          // Fallback: alte Profile hatten friendCode evtl. als Number → suche über local allProfiles
+          const local = (allProfiles || []).find(p => String(p.friendCode || '').padStart(5, '0') === code);
+          return local || null;
+        } catch (e) {
+          console.warn('findProfileByFriendCode failed', e);
+          const local = (allProfiles || []).find(p => String(p.friendCode || '').padStart(5, '0') === code);
+          return local || null;
+        }
+      };
+
+      const findProfileByEmailLower = async (emailRaw) => {
+        const email = String(emailRaw || '').trim().toLowerCase();
+        if (!email || !email.includes('@')) return null;
+        try {
+          const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+          const q = query(profilesCol, where('emailLower', '==', email), limit(1));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const d = snap.docs[0].data() || {};
+            return { id: snap.docs[0].id, ...d };
+          }
+          const local = (allProfiles || []).find(p => (p.email || '').toLowerCase() === email || (p.emailLower || '').toLowerCase() === email);
+          return local || null;
+        } catch (e) {
+          const local = (allProfiles || []).find(p => (p.email || '').toLowerCase() === email || (p.emailLower || '').toLowerCase() === email);
+          return local || null;
+        }
+      };
+
+      const startChatWithProfile = async (profileOrId) => {
+        if (!user) return;
+        const targetUserId = (typeof profileOrId === 'string') ? profileOrId : (profileOrId && profileOrId.id);
+        const targetProfile = (typeof profileOrId === 'object' && profileOrId) ? profileOrId : (targetUserId ? getProfile(targetUserId) : null);
+        if (!targetUserId) return;
+        if (targetUserId === user.uid) return showToast('Das bist du selbst');
+
+        const existingChat = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(targetUserId));
+        if (existingChat) {
+          // Track as friend (so user can manage/remove later)
+          try {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
+            await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${targetProfile?.displayName || targetProfile?.username || targetProfile?.email || shortId(targetUserId,6)}` });
+          } catch (_) {}
+          setActiveChat(existingChat);
+          setChatSearchQuery('');
+          setSecretView('chat');
+          return;
+        }
+
+        try {
+          const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? user.email.split('@')[0] : 'Ich'));
+          const otherName = (targetProfile?.displayName || targetProfile?.username || targetProfile?.email || 'Kontakt');
+          const displayNames = { [user.uid]: meName, [targetUserId]: otherName };
+
+          const newChat = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats'), {
+            type: 'dm',
+            participants: [user.uid, targetUserId],
+            displayNames,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            lastMessageSenderId: user.uid,
+            typing: {},
+            typingAt: {},
+            lastRead: { [user.uid]: Date.now() }
+          });
+
+          // Save to friends
+          try {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
+            await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${otherName}` });
+          } catch (_) {}
+
+          setActiveChat({ id: newChat.id, type: 'dm', participants: [user.uid, targetUserId], displayNames, updatedAt: Date.now(), lastMessageSenderId: user.uid });
+        } catch (error) {
+          console.error('startChatWithProfile failed', error);
+          showToast('Chat konnte nicht gestartet werden');
+          return;
+        }
+
+        setChatSearchQuery('');
+        setSecretView('chat');
+      };
+
+      const createGroupChat = async () => {
+        if (!user) return;
+        const title = (groupDraftName || '').trim() || 'Gruppe';
+        const members = Array.from(new Set([user.uid, ...(groupDraftMembers || [])])).filter(Boolean);
+        if (members.length < 3) return showToast('Wähle mindestens 2 Mitglieder aus');
+        try {
+          const newChat = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats'), {
+            type: 'group', title, participants: members, admins: [user.uid], createdAt: Date.now(), updatedAt: Date.now(), lastMessageSenderId: user.uid,
+            typing: {}, typingAt: {}, lastRead: { [user.uid]: Date.now() }
+          });
+          const chatObj = { id: newChat.id, type: 'group', title, participants: members, admins: [user.uid], createdAt: Date.now(), updatedAt: Date.now(), lastMessageSenderId: user.uid };
+          setActiveChat(chatObj);
+          setSecretView('chat');
+          setShowCreateGroup(false);
+          setGroupDraftName('');
+          setGroupDraftMembers([]);
+          setGroupMemberSearch('');
+        } catch (e) {
+          showToast('Fehler beim Erstellen');
+        }
+      };
+
+      const removeFriend = async (friendUid) => {
+        if (!user || !friendUid) return;
+        try {
+          // hide existing DM chat (optional UX)
+          const dm = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(friendUid));
+          const updates = { friends: arrayRemove(friendUid) };
+          if (dm && dm.id) updates.hiddenChats = arrayUnion(dm.id);
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), updates, { merge: true });
+          await writeAudit({ calId: 'default', action: 'friend.remove', targetType: 'friend', targetId: friendUid, summary: `Freund entfernt: ${getProfile(friendUid)?.displayName || getProfile(friendUid)?.username || shortId(friendUid,6)}` });
+          showToast('Freund entfernt');
+        } catch (e) {
+          console.warn('removeFriend failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const updateGroupTitle = async (chat, newTitle) => {
+        if (!user || !chat) return;
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id), { title: (newTitle || '').trim() || 'Gruppe', updatedAt: Date.now() });
+          showToast('Titel gespeichert');
+        } catch (e) { showToast('Fehler'); }
+      };
+
+      const addMemberToGroup = async (chat, memberId) => {
+        if (!user || !chat || !memberId) return;
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id), { participants: arrayUnion(memberId), updatedAt: Date.now() });
+          showToast('Mitglied hinzugefügt');
+        } catch(e) { showToast('Fehler'); }
+      };
+
+      const removeMemberFromGroup = async (chat, memberId) => {
+        if (!user || !chat || !memberId) return;
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id), { participants: arrayRemove(memberId), admins: arrayRemove(memberId), updatedAt: Date.now() });
+          if (memberId === user.uid) {
+            setShowPartnerStats(false);
+            setActiveChat(null);
+            setSecretView('list');
+          }
+          showToast('Mitglied entfernt');
+        } catch(e) { showToast('Fehler'); }
+      };
+
+      const leaveGroup = async (chat) => removeMemberFromGroup(chat, user.uid);
+
+      const toggleAdmin = async (chat, memberId) => {
+        if (!user || !chat || !memberId) return;
+        const isAdmin = Array.isArray(chat.admins) && chat.admins.includes(memberId);
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id), { admins: isAdmin ? arrayRemove(memberId) : arrayUnion(memberId), updatedAt: Date.now() });
+        } catch(e) { showToast('Fehler'); }
+      };
+
+      const isChatAdmin = (chat) => Array.isArray(chat?.admins) && chat.admins.includes(user?.uid);
+
+      const togglePinChat = async (chatId) => {
+        if (!user) return;
+        try {
+          const current = (userProfile && Array.isArray(userProfile.pinnedChats)) ? userProfile.pinnedChats : [];
+          const next = current.includes(chatId) ? current.filter(id => id !== chatId) : [chatId, ...current];
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { pinnedChats: next });
+        } catch (e) {
+          showToast("Fehler beim Pinnen");
+        }
+      };
+
+      const toggleMuteChat = async (chatId) => {
+        if (!user) return;
+        try {
+          const muted = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+          const isMuted = muted.includes(chatId);
+          const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+          await updateDoc(profileRef, { mutedChatIds: isMuted ? arrayRemove(chatId) : arrayUnion(chatId) });
+          showToast(isMuted ? 'Stumm aus' : 'Chat stumm');
+        } catch (e) {
+          showToast('Fehler beim Stummschalten');
+        }
+      };
+
+
+      const startRecording = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorderRef.current = new MediaRecorder(stream);
+          mediaRecorderRef.current.ondataavailable = (e) => {
+            if (e.data.size > 0) audioChunksRef.current.push(e.data);
+          };
+          mediaRecorderRef.current.onstop = () => {
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            audioChunksRef.current = [];
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = () => { sendMessage(null, null, reader.result); };
+          };
+          audioChunksRef.current = [];
+          mediaRecorderRef.current.start();
+          setIsRecording(true);
+        } catch (err) { showToast("Mikrofon-Zugriff verweigert"); }
+      };
+
+      const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+          mediaRecorderRef.current.stop();
+          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+          setIsRecording(false);
+        }
+      };
+
+      const handleTyping = (e) => {
+         const value = e.target.value;
+         setNewMessageText(value);
+         if (!activeChat || !user) return;
+         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: value.length > 0, [`typingAt.${user.uid}`]: Date.now() }).catch(()=>{});
+         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+         typingTimeoutRef.current = setTimeout(() => {
+            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: false, [`typingAt.${user.uid}`]: Date.now() }).catch(()=>{});
+         }, 2200);
+      };
+
+      // Keep mobile keyboard open after send/edit by aggressively re-focusing the chat input.
+      const refocusChatInput = () => {
+        try {
+          const tryFocus = () => {
+            const el = document.getElementById('chatInput');
+            if (!el) return;
+            try { el.focus({ preventScroll: true }); }
+            catch (e) { try { el.focus(); } catch (e2) {} }
+          };
+          requestAnimationFrame(tryFocus);
+          setTimeout(tryFocus, 30);
+          setTimeout(tryFocus, 120);
+        } catch (e) {}
+      };
+
+      const messagePreviewText = (m) => {
+        if (!m) return '';
+        if (m.deleted) return 'Nachricht gelöscht';
+        const t = String(m.text || '').trim();
+        if (t) return t.length > 140 ? `${t.slice(0, 140)}…` : t;
+        if (m.image) return '📷 Bild';
+        if (m.audio) return '🎤 Sprachnachricht';
+        if (m.event) return `📅 ${String(m.event.title || 'Termin')}`;
+        return '';
+      };
+
+      const senderLabelFromId = (senderId) => {
+        try {
+          if (!senderId) return 'Unbekannt';
+          if (senderId === user?.uid) return 'Du';
+          const p = getProfile(senderId);
+          return (p?.displayName || p?.username || p?.email || 'Unbekannt');
+        } catch (_) { return 'Unbekannt'; }
+      };
+
+      const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
+        if (e) e.preventDefault();
+
+        if (!activeChat || !user) return;
+
+        // Edit existing
+        if (editingMessage) {
+          try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', editingMessage.id), {
+              text: (newMessageText || '').trim(),
+              edited: true,
+              editedAt: Date.now()
+            });
+            setEditingMessage(null);
+            setNewMessageText('');
+            setReplyToMessage(null);
+            showToast('Gespeichert');
+            refocusChatInput();
+          } catch (err) {
+            console.error('edit message failed', err);
+            showToast('Fehler beim Bearbeiten');
+          }
+          return;
+        }
+
+        const textVal = (newMessageText || '').trim();
+        if (!textVal && !imageBase64 && !audioBase64 && !eventDetails) return;
+
+        const replyTo = replyToMessage ? {
+          id: replyToMessage.id,
+          senderId: replyToMessage.senderId || null,
+          preview: messagePreviewText(replyToMessage),
+        } : null;
+
+        const clientMsgId = `${user.uid}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const payload = {
+          clientMsgId,
+          senderId: user.uid,
+          text: textVal,
+          image: imageBase64,
+          audio: audioBase64,
+          event: eventDetails,
+          replyTo: replyTo,
+          selfDestruct: !!selfDestruct,
+          timestamp: Date.now(),
+          createdAt: serverTimestamp(),
+          read: false
+        };
+
+        // When sending, always stick to bottom
+        try { chatStickToBottomRef.current = true; } catch (_) {}
+
+        // Optimistic UI (erscheint sofort)
+        const optimistic = { id: `local_${clientMsgId}`, ...payload, pending: true };
+        setChatMessages(prev => {
+          const next = [...(prev || []), optimistic];
+          next.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+          return next;
+        });
+
+        // Input sofort leeren
+        setNewMessageText('');
+setSelfDestruct(false);
+        setReplyToMessage(null);
+        refocusChatInput();
+
+        try {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+            updatedAt: Date.now(),
+            lastMessageSenderId: user.uid,
+            [`typing.${user.uid}`]: false,
+            [`typingAt.${user.uid}`]: Date.now()
+          });
+
+          const now = Date.now();
+          setLastChatVisit(now);
+          localStorage.setItem('onyx_last_chat_visit', now.toString());
+        } catch (error) {
+          console.error('sendMessage failed', error);
+          // Optimistic rollback
+          setChatMessages(prev => (prev || []).filter(m => m.clientMsgId !== clientMsgId));
+          showToast('Senden fehlgeschlagen');
+          refocusChatInput();
+        }
+      };
+
+      const acceptSharedEvent = async (eventDetails) => {
+        if (!user) return;
+        try {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), {
+            title: eventDetails.title, date: eventDetails.date, time: eventDetails.time, type: 'Projekt', desc: 'Geteilter Termin aus Chat', reminderMode: 'default', reminderMinutes: null, createdAt: Date.now(), updatedAt: Date.now(), calendarId: 'default'
+          });
+          showToast("Termin im Kalender gespeichert!");
+        } catch (error) { showToast("Fehler beim Speichern"); }
+      };
+
+      const deleteMessage = async (msgId) => {
+        if (!activeChat || !user) return;
+        try {
+          // Soft-delete: keep message visible with a "gelöscht" hint instead of removing it.
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), {
+            deleted: true,
+            deletedAt: Date.now(),
+            deletedBy: user.uid,
+            text: '',
+            image: null,
+            audio: null,
+            event: null
+          });
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+            updatedAt: Date.now(),
+            lastMessageSenderId: user.uid
+          }).catch(()=>{});
+          setSelectedMessageId(null);
+          showToast("Nachricht gelöscht");
+          refocusChatInput();
+        } catch (error) { showToast("Fehler beim Löschen"); }
+      };
+      const handleImageUpload = async (e) => {
+        const file0 = e?.target?.files && e.target.files[0];
+        if (!file0) return;
+        try { e.target.value = ''; } catch (_) {}
+
+        if (!isProbablyImageFile(file0)) {
+          showToast('Nur Bilder unterstützt');
+          return;
+        }
+
+        try {
+          const file = await ensureJpegBlobIfHeic(file0);
+          const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
+          await sendMessage(null, compressed);
+        } catch (err) {
+          console.warn('image compress/upload failed', err);
+          showToast('Bild konnte nicht verarbeitet werden');
+        }
+      };
+
+      const formatTime = (ts) => {
+        if (!ts) return '';
+        try { return new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); } catch(e) { return ''; }
+      };
+
+      const formatAudioClock = (sec) => {
+        const s = Number(sec || 0);
+        if (!isFinite(s) || s < 0) return '0:00';
+        const mm = Math.floor(s / 60);
+        const ss = Math.floor(s % 60);
+        return `${mm}:${String(ss).padStart(2, '0')}`;
+      };
+
+      const AudioMessageBubble = ({ src, msgId, isMe }) => {
+        const audioRef = useRef(null);
+        const [duration, setDuration] = useState(0);
+        const [pos, setPos] = useState(0);
+        const isPlaying = playingAudioId === msgId;
+
+        useEffect(() => {
+          const a = audioRef.current;
+          if (!a) return;
+          const onLoaded = () => { try { setDuration(a.duration || 0); } catch (_) {} };
+          const onTime = () => { try { setPos(a.currentTime || 0); } catch (_) {} };
+          const onEnded = () => { setPlayingAudioId(null); setPos(0); };
+          a.addEventListener('loadedmetadata', onLoaded);
+          a.addEventListener('timeupdate', onTime);
+          a.addEventListener('ended', onEnded);
+          return () => {
+            try { a.removeEventListener('loadedmetadata', onLoaded); } catch (_) {}
+            try { a.removeEventListener('timeupdate', onTime); } catch (_) {}
+            try { a.removeEventListener('ended', onEnded); } catch (_) {}
+          };
+        }, []);
+
+        useEffect(() => {
+          const a = audioRef.current;
+          if (!a) return;
+          if (isPlaying) {
+            a.play().catch(() => { setPlayingAudioId(null); });
+          } else {
+            try { a.pause(); } catch (_) {}
+          }
+        }, [isPlaying, msgId]);
+
+        const toggle = () => {
+          if (!audioRef.current) return;
+          if (isPlaying) setPlayingAudioId(null);
+          else setPlayingAudioId(msgId);
+        };
+
+        const seek = (next) => {
+          const a = audioRef.current;
+          if (!a) return;
+          const n = Number(next);
+          if (!isFinite(n)) return;
+          try { a.currentTime = Math.max(0, Math.min(n, duration || 0)); } catch (_) {}
+          setPos(Math.max(0, Math.min(n, duration || 0)));
+        };
+
+        return (
+          <div className={`mb-2 w-full max-w-[320px] rounded-xl border ${isMe ? 'bg-black/10 border-black/20' : 'bg-black/40 border-neutral-700'} p-2 flex items-center gap-2`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button type="button" onClick={toggle} className={`w-9 h-9 rounded-full flex items-center justify-center border transition-colors ${isMe ? 'border-black/20 hover:bg-black/10' : 'border-neutral-600 hover:bg-neutral-800'}`} title={isPlaying ? 'Pause' : 'Play'}>
+              {isPlaying ? <Pause className={`w-5 h-5 ${isMe ? 'text-black' : 'text-white'}`} /> : <Play className={`w-5 h-5 ${isMe ? 'text-black' : 'text-white'}`} />}
+            </button>
+            <div className="flex-1 min-w-0">
+              <input
+                type="range"
+                min={0}
+                max={Math.max(duration || 0, 0)}
+                step={0.05}
+                value={Math.min(pos || 0, duration || 0)}
+                onChange={(e) => seek(e.target.value)}
+                className="w-full accent-white"
+              />
+              <div className={`mt-1 text-[10px] tabular-nums flex items-center justify-between ${isMe ? 'text-black/70' : 'text-neutral-300/80'}`}>
+                <span>{formatAudioClock(pos || 0)}</span>
+                <span>{formatAudioClock(duration || 0)}</span>
+              </div>
+            </div>
+            <audio ref={audioRef} src={src} preload="metadata" />
+          </div>
+        );
+      };
+
+      const getPresence = (uid) => {
+        const p = getProfile(uid);
+        if (!p) return { status: 'offline', lastSeen: 0, online: false };
+        const lastSeen = p.presenceLastSeen || 0;
+        const online = (p.presenceStatus === 'online') && (Date.now() - lastSeen < 45000);
+        return { status: online ? 'online' : 'offline', lastSeen, online };
+      };
+
+      const getChatPartnerName = (chat) => {
+        if (!chat) return 'Chat';
+        if (isGroupChat(chat)) return chat.title || 'Gruppe';
+        const pid = (chat?.participants || []).find(id => id !== user?.uid);
+        const prof = pid ? getProfile(pid) : null;
+        return (prof?.displayName || prof?.username || chat?.displayNames?.[pid] || prof?.email || 'Unbekannt');
+      };
+      const getChatPartnerAvatar = (chat) => {
+        if (!chat) return null;
+        if (isGroupChat(chat)) return chat.avatarBase64 || null;
+        const pid = (chat?.participants || []).find(id => id !== user?.uid);
+        const prof = pid ? getProfile(pid) : null;
+        return prof?.avatarThumbBase64 || prof?.avatarBase64 || null;
+      };
+
+      const getChatPartnerAvatarFull = (chat) => {
+        if (!chat) return null;
+        if (isGroupChat(chat)) return chat.avatarBase64 || null;
+        const pid = (chat?.participants || []).find(id => id !== user?.uid);
+        const prof = pid ? getProfile(pid) : null;
+        return prof?.avatarFullBase64 || prof?.avatarBase64 || prof?.avatarThumbBase64 || null;
+      };
+
+      const getChatParticipants = (chat) => Array.isArray(chat?.participants) ? chat.participants : [];
+      const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
+      
+      const exportICS = (exportAll = true) => {
+        let eventsToExport = allEvents;
+        if (!exportAll) eventsToExport = getEventsForDate(new Date().toISOString().split('T')[0]);
+        if (eventsToExport.length === 0) return showToast("Keine Termine");
+        let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Onyx Calendar//DE\n";
+        eventsToExport.forEach(e => {
+          const dateStr = e.date.replace(/-/g, ''); const timeStr = (e.time || '12:00').replace(':', '') + '00';
+          icsContent += "BEGIN:VEVENT\n" + `SUMMARY:${e.title}\n` + `DTSTART;TZID=Europe/Zurich:${dateStr}T${timeStr}\n` + `DESCRIPTION:${e.desc || ''}\n` + "END:VEVENT\n";
+        });
+        icsContent += "END:VCALENDAR";
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([icsContent], { type: 'text/calendar' }));
+        a.download = exportAll ? 'onyx_alle.ics' : 'onyx_heute.ics'; a.click(); showToast("Download gestartet");
+      };
+
+      const handleImportICS = (e) => {
+        const file = e.target.files[0];
+        if (file && user) {
+          showToast(`Datei "${file.name}" wird gelesen...`);
+          setTimeout(async () => {
+            try {
+              await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), {
+                title: 'Importierter Termin', date: new Date().toISOString().split('T')[0], time: '12:00', type: 'Privat', desc: 'Aus ICS importiert', createdAt: Date.now(), calendarId: 'default'
+              });
+              showToast('Import abgeschlossen.');
+            } catch (error) {}
+          }, 1000);
+        }
+      };
+
+      if (!isAppReady) {
+        return (
+          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4" style={{ height: 'var(--app-height, 100vh)' }}>
+            <div className="flex flex-col items-center animate-pulse"><div className="w-12 h-12 bg-white rounded-sm mb-6"></div><h1 className="text-xl tracking-widest text-neutral-500">ONYX LÄDT...</h1></div>
+          </div>
+        );
+      }
+
+      // Public share page (no login required)
+      if (publicShareToken) {
+        const d = publicShareDoc || {};
+        const needsPasscode = !!(d.passcodeHash && d.passcodeSalt);
+        const canView = !!publicShareAuthed || !needsPasscode;
+
+        const groupBusyByDay = (blocks) => {
+          const out = new Map();
+          for (const b of (Array.isArray(blocks) ? blocks : [])) {
+            const s = new Date(b.startMs);
+            const key = s.toISOString().split('T')[0];
+            const arr = out.get(key) || [];
+            arr.push(b);
+            out.set(key, arr);
+          }
+          const keys = Array.from(out.keys()).sort();
+          return keys.map(k => ({ day: k, blocks: (out.get(k) || []).sort((a, b) => a.startMs - b.startMs) }));
+        };
+
+        const downloadIcsForSharedEvent = () => {
+          try {
+            const ev = d.eventSnapshot || {};
+            const dateStr = String(ev.date || '').replace(/-/g, '');
+            const timeStr = (String(ev.time || '12:00').split('-')[0].trim() || '12:00').replace(':', '') + '00';
+            const ics = [
+              'BEGIN:VCALENDAR',
+              'VERSION:2.0',
+              'PRODID:-//Onyx Calendar//DE',
+              'BEGIN:VEVENT',
+              `SUMMARY:${String(ev.title || 'Termin').replace(/\n/g,' ')}`,
+              `DTSTART;TZID=Europe/Zurich:${dateStr}T${timeStr}`,
+              ev.location ? `LOCATION:${String(ev.location).replace(/\n/g,' ')}` : '',
+              ev.desc ? `DESCRIPTION:${String(ev.desc).replace(/\n/g,' ')}` : '',
+              'END:VEVENT',
+              'END:VCALENDAR'
+            ].filter(Boolean).join('\n');
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+            a.download = 'onyx_share.ics';
+            a.click();
+          } catch (_) {}
+        };
+
+        return (
+          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4 relative overflow-hidden" style={{ height: 'var(--app-height, 100vh)' }}>
+            <div className="fixed top-4 right-4 z-[60] space-y-2">
+              {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
+            </div>
+
+            <div className="max-w-2xl w-full p-6 md:p-8 bg-black border border-neutral-800 rounded-2xl shadow-2xl">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-white rounded-sm"></div>
+                  <div>
+                    <div className="text-xs text-neutral-500 uppercase tracking-widest">ONYX • Public Share</div>
+                    <div className="text-lg font-medium text-white">{d.kind === 'calendar' ? (d.calName || 'Kalender') : (d.eventSnapshot?.title || 'Termin')}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { window.location.hash = '#/'; }}
+                  className="px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-200 hover:border-neutral-500"
+                >
+                  Zur App
+                </button>
+              </div>
+
+              <div className="mt-6">
+                {publicShareLoading ? (
+                  <div className="text-sm text-neutral-500">Lade…</div>
+                ) : publicShareError ? (
+                  <div className="text-sm text-red-400">{publicShareError}</div>
+                ) : !publicShareDoc ? (
+                  <div className="text-sm text-neutral-500">—</div>
+                ) : !canView ? (
+                  <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
+                    <div className="flex items-center gap-2 text-sm text-white font-medium"><Lock className="w-4 h-4" /> Geschützt</div>
+                    {needsPasscode ? (
+                      <>
+                        <p className="mt-2 text-xs text-neutral-500">Bitte Passcode eingeben.</p>
+                        <div className="mt-3 flex gap-2">
+                          <input value={publicSharePasscode} onChange={(e) => setPublicSharePasscode(e.target.value)} placeholder="Passcode" className="flex-1 bg-black border border-neutral-800 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                          <button type="button" onClick={verifyPublicSharePasscode} className="px-4 py-2 rounded-lg bg-white text-black font-semibold hover:bg-gray-200">Öffnen</button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-xs text-neutral-500">Dieser Link ist geschützt.</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {d.expiresAtMs ? (
+                      <div className="text-[11px] text-neutral-500">Läuft ab: {new Date(d.expiresAtMs).toLocaleString('de-CH')}</div>
+                    ) : (
+                      <div className="text-[11px] text-neutral-500">Ohne Ablaufdatum</div>
+                    )}
+
+                    {d.kind === 'calendar' ? (
+                      <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
+                        <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Busy‑Only</div>
+                        <div className="text-[11px] text-neutral-500 mb-4">Zeigt nur belegte Zeiten (ohne Titel/Ort). Range: {d.rangeStart} → {d.rangeEnd}</div>
+
+                        {Array.isArray(d.busyBlocks) && d.busyBlocks.length ? (
+                          <div className="space-y-3 max-h-[52vh] overflow-y-auto no-scrollbar pr-1">
+                            {groupBusyByDay(d.busyBlocks).map(day => (
+                              <div key={day.day} className="border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-sm text-white font-medium tabular-nums">{day.day}</div>
+                                <div className="mt-2 space-y-1">
+                                  {day.blocks.map((b, idx) => (
+                                    <div key={idx} className="text-xs text-neutral-300 tabular-nums">
+                                      {new Date(b.startMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })} – {new Date(b.endMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-neutral-500">Keine belegten Zeiten in der Range.</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
+                        <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Event</div>
+                        <div className="text-lg text-white font-medium">{d.eventSnapshot?.title || 'Termin'}</div>
+                        <div className="mt-1 text-sm text-neutral-300 tabular-nums">{d.eventSnapshot?.date}{d.eventSnapshot?.time ? ` • ${d.eventSnapshot?.time}` : ''}</div>
+                        {d.eventSnapshot?.location ? <div className="mt-2 text-sm text-neutral-400">📍 {d.eventSnapshot.location}</div> : null}
+                        {d.eventSnapshot?.desc ? <div className="mt-3 text-sm text-neutral-300 whitespace-pre-wrap">{d.eventSnapshot.desc}</div> : null}
+                        <div className="mt-4 flex gap-2">
+                          <button type="button" onClick={downloadIcsForSharedEvent} className="flex-1 py-2.5 rounded-xl bg-white text-black font-semibold hover:bg-gray-200">ICS Download</button>
+                          <button type="button" onClick={() => { try { navigator.clipboard?.writeText(window.location.href); showToast('Link kopiert'); } catch (_) {} }} className="px-3 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 hover:border-neutral-500" title="Link kopieren">
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (!isLoggedIn) {
+        return (
+          <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4 relative overflow-hidden" style={{ height: 'var(--app-height, 100vh)' }}>
+            <div className="fixed top-4 right-4 z-[60] space-y-2">
+              {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
+            </div>
+            <div className="max-w-md w-full p-8 flex flex-col items-center bg-black border border-neutral-800 rounded-2xl shadow-2xl z-10">
+              <div className="w-10 h-10 bg-white rounded-sm mb-6"></div><h1 className="text-3xl font-bold tracking-widest mb-2">ONYX</h1>
+              <p className="text-neutral-500 mb-8 text-center text-sm">{isRegistering ? 'Erstelle deinen Account.' : 'Melde dich an, um fortzufahren.'}</p>
+              {authError && <div className="w-full bg-red-950/30 border border-red-900/50 text-red-400 p-3 rounded-lg mb-6 text-xs flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><p>{authError}</p></div>}
+              <form onSubmit={handleAuth} className="w-full space-y-4">
+                {isRegistering && (
+                  <div className="relative"><User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-600" /><input type="text" placeholder="Dein Name" value={fullName} onChange={(e) => setFullName(e.target.value)} required className="w-full bg-neutral-900/50 border border-neutral-800 text-white placeholder-neutral-600 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500 transition-colors" /></div>
+                )}
+
+                <div className="relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-600" /><input type="email" placeholder="E-Mail Adresse" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-neutral-900/50 border border-neutral-800 text-white placeholder-neutral-600 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500 transition-colors" /></div>
+                <div className="relative"><Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-600" /><input type="password" placeholder="Passwort" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-neutral-900/50 border border-neutral-800 text-white placeholder-neutral-600 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500 transition-colors" /></div>
+                <button type="submit" className="w-full bg-white text-black py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors mt-2">{isRegistering ? 'Account erstellen' : 'Anmelden'}</button>
+              </form>
+              <div className="mt-8 text-center text-sm text-neutral-500">{isRegistering ? 'Bereits einen Account? ' : 'Noch keinen Account? '}<button onClick={() => { setIsRegistering(!isRegistering); setAuthError(''); }} className="text-white hover:underline font-medium">{isRegistering ? 'Hier anmelden' : 'Jetzt registrieren'}</button></div>
+            </div>
+          </div>
+        );
+      }
+
+      const activeCalForView = getCalendarById(activeCalendarId);
+
+      return (
+        <div 
+          className="flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative" style={{ height: 'var(--app-height, 100vh)' }}
+          onTouchStart={handleGlobalTouchStart}
+          onTouchMove={handleGlobalTouchMove}
+          onTouchEnd={handleGlobalTouchEnd}
+        >
+          {/* PULL TO REFRESH INDICATOR */}
+          <div className="absolute top-0 left-0 w-full flex justify-center z-[100] transition-transform duration-200 pointer-events-none" style={{ transform: `translateY(${pullDistance - 50}px)` }}>
+            <div className={`bg-neutral-900 border border-neutral-700 p-2 rounded-full shadow-lg ${isRefreshing ? 'animate-spin-fast' : ''}`}>
+              <RefreshCw className="w-5 h-5 text-white" />
+            </div>
+          </div>
+
+          <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
+            {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in pointer-events-auto"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
+          </div>
+
+          <aside className="hidden md:flex w-64 border-r border-neutral-800 flex-col shrink-0 bg-black z-10">
+            <div className="p-6 flex-1 overflow-y-auto">
+              <h1 className="text-xl font-bold tracking-wider mb-8 flex items-center gap-3"><div className="w-4 h-4 bg-white rounded-sm"></div>ONYX</h1>
+              <button onClick={() => openNewEventModal()} className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 px-4 rounded-md font-medium hover:bg-gray-200 transition-colors mb-8"><Plus className="w-5 h-5" /> Neuer Termin</button>
+              <nav className="space-y-2 mb-8">
+                <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
+                <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
+                <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
+              </nav>
+
+              {/* Kalender Liste in der Sidebar */}
+              <h3 className="text-xs uppercase tracking-widest text-neutral-500 mb-3 font-semibold px-2">Kalender</h3>
+              <div className="space-y-1">
+                 <div className="flex items-center justify-between p-2 rounded-lg hover:bg-neutral-900/50 transition-colors group">
+                    <label className="flex items-center gap-3 cursor-pointer flex-1">
+                      <input type="checkbox" checked={visibleCalendars.includes('default')} onChange={() => toggleCalendarVisibility('default')} className="appearance-none w-4 h-4 border border-neutral-600 rounded-sm checked:bg-white checked:border-white transition-colors cursor-pointer" />
+                      <span className="text-sm text-neutral-300 truncate">Privat</span>
+                    </label>
+                    <button onClick={() => setActiveCalendarId('default')} className={`w-3 h-3 rounded-full ${activeCalendarId === 'default' ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-transparent border border-neutral-600 group-hover:border-white'}`} title="Als aktiven Kalender setzen"></button>
+                 </div>
+                 {customCalendars.map(cal => (
+                   <div key={cal.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-neutral-900/50 transition-colors group">
+                      <label className="flex items-center gap-3 cursor-pointer flex-1 overflow-hidden">
+                        <input type="checkbox" checked={visibleCalendars.includes(cal.id)} onChange={() => toggleCalendarVisibility(cal.id)} className="appearance-none w-4 h-4 border border-neutral-600 rounded-sm checked:bg-white checked:border-white transition-colors cursor-pointer shrink-0" />
+                        <span className="text-sm text-neutral-300 truncate">{cal.name} {cal.ownerId !== user.uid ? '(Geteilt)' : ''}</span>
+                      </label>
+                      <button onClick={() => setActiveCalendarId(cal.id)} className={`w-3 h-3 rounded-full shrink-0 ${activeCalendarId === cal.id ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-transparent border border-neutral-600 group-hover:border-white'}`} title="Als aktiven Kalender setzen"></button>
+                   </div>
+                 ))}
+              </div>
+            </div>
+          </aside>
+
+          <nav className="md:hidden fixed bottom-0 left-0 w-full h-16 bg-black border-t border-neutral-800 flex items-center justify-around z-40 px-2 pb-safe">
+            <button onClick={() => setCurrentView('dashboard')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-6 h-6" /></button>
+            <button onClick={() => setCurrentView('calendar')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-6 h-6" /></button>
+            <button onClick={() => openNewEventModal()} className="p-3 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg"><Plus className="w-6 h-6" /></button>
+            <button onClick={() => setCurrentView('settings')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-6 h-6" /></button>
+          </nav>
+
+          <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative">
+            {currentView === 'dashboard' && (
+              <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
+                <header className="flex justify-between items-center mb-8 md:mb-10">
+                  <h2 className="text-3xl md:text-4xl font-light">Guten Morgen{dashboardName ? `, ${dashboardName}` : ''}.</h2>
+                </header>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
+                  <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between cursor-pointer hover:border-neutral-600 transition-colors group">
+                    <div><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider mb-1 flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {location.name}</h3><p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p></div>
+                    <div>{getWeatherIcon(weather?.weathercode, "w-10 h-10 md:w-12 md:h-12 text-white")}</div>
+                  </div>
+                  <div className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-start gap-4">
+                    <Info className="w-5 h-5 md:w-6 md:h-6 text-neutral-400 shrink-0 mt-1" />
+                    <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-xl md:text-2xl font-semibold text-neutral-100 leading-snug">“{dailyFact}”</p></div>
+                  </div>
+	                </div>
+	              </div>
+	            )}
+                <div className="flex-1 overflow-y-auto bg-black" style={{ display: calendarViewMode === 'agenda' ? 'block' : 'none' }}>
+                  {(() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    let start = today;
+                    let end = today;
+                    if (agendaRange === '7') end = addDaysStr(today, 6);
+                    else if (agendaRange === '30') end = addDaysStr(today, 29);
+                    else {
+                      const y = currentDate.getFullYear();
+                      const m = currentDate.getMonth();
+                      start = formatDateStr(new Date(y, m, 1));
+                      end = formatDateStr(new Date(y, m + 1, 0));
+                    }
+
+                    let items = getOccurrencesInRange(start, end);
+                    const q = (calendarSearchQuery || '').trim().toLowerCase();
+                    if (q) {
+                      items = items.filter(ev => (
+                        (ev.title || '').toLowerCase().includes(q) ||
+                        (ev.desc || '').toLowerCase().includes(q) ||
+                        (ev.type || '').toLowerCase().includes(q) ||
+                        (ev.time || '').toLowerCase().includes(q)
+                      ));
+                    }
+
+                    const map = {};
+                    items.forEach(ev => {
+                      if (!map[ev.date]) map[ev.date] = [];
+                      map[ev.date].push(ev);
+                    });
+                    const dates = Object.keys(map).sort();
+
+                    return (
+                      <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-widest text-neutral-500">Agenda</p>
+                            <h3 className="text-lg md:text-xl font-medium text-white">
+                              {agendaRange === 'month' ? `${MONATE[currentDate.getMonth()]} ${currentDate.getFullYear()}` : `${start} – ${end}`}
+                            </h3>
+                          </div>
+                          <button onClick={() => openNewEventModal()} className="text-xs bg-white text-black px-3 py-2 rounded-md font-medium hover:bg-gray-200 transition-colors flex items-center gap-2">
+                            <Plus className="w-4 h-4" /> Neu
+                          </button>
+                        </div>
+
+                        {dates.length === 0 ? (
+                          <div className="p-10 text-center border border-dashed border-neutral-800 rounded-2xl text-neutral-500">
+                            Keine Termine gefunden.
+                          </div>
+                        ) : (
+                          dates.map(dateStr => (
+                            <div key={dateStr} className="border border-neutral-900 rounded-2xl overflow-hidden bg-neutral-950/30">
+                              <div className="px-4 py-3 bg-neutral-950 border-b border-neutral-900 flex items-center justify-between">
+                                <div className="font-medium text-white">{new Date(dateStr + 'T00:00:00').toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'short' })}</div>
+                                <div className="text-xs text-neutral-500">{map[dateStr].length} Termine</div>
+                              </div>
+                              <div className="divide-y divide-neutral-900">
+                                {map[dateStr].sort((a, b) => (a.time || '').localeCompare(b.time || '')).map(ev => (
+                                  <div key={ev.id} onClick={() => openEditEventModal(ev, ev._occurrenceDate)} className="p-4 hover:bg-neutral-950 cursor-pointer flex items-start gap-4">
+                                    {ev.type === 'shift' ? (
+                                      <div className="w-10 h-10 rounded-lg shrink-0" style={{ backgroundColor: ev.color }} />
+                                    ) : (
+                                      <div
+                                        className="w-10 h-10 rounded-lg shrink-0 bg-neutral-900 border border-neutral-800 flex items-center justify-center"
+                                        style={{ borderLeft: `4px solid ${calendarTint(ev.calendarId || 'default')}` }}
+                                      >
+                                        <Clock className="w-4 h-4 text-neutral-400" />
+                                      </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <div className="font-medium text-white truncate">{ev.title}</div>
+                                        {ev._isInstance && (
+                                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-300 uppercase tracking-widest">Wdh</span>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-neutral-500 mt-1 truncate">
+                                        {ev.type === 'shift' ? 'Schicht' : (ev.time ? `${ev.time} · ` : '')}{ev.type || 'Privat'}{ev.desc ? ` · ${ev.desc}` : ''}
+                                        {ev.calendarId && (
+                                          <span className="text-neutral-600"> · {getCalendarById(ev.calendarId)?.name || 'Kalender'}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <ChevronRight className="w-4 h-4 text-neutral-600 shrink-0 mt-1" />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+              {/* KALENDER FEED (unter dem Kalender): Abstimmungen & Kommentare */}
+                {(() => {
+                  const feedEvents = (allEvents || []).filter(e => e && e.type !== 'shift');
+                  const openPollEvents = feedEvents.filter(e => e && e.poll && e.poll.status === 'open');
+                  const commentEvents = feedEvents
+                    .filter(e => e && e.lastCommentAt)
+                    .sort((a,b) => (b.lastCommentAt || 0) - (a.lastCommentAt || 0))
+                    .slice(0, 6);
+
+                  const feedTitle = (() => {
+                    try {
+                      if (!Array.isArray(visibleCalendars) || visibleCalendars.length === 0) return 'Privat';
+                      if (visibleCalendars.length === 1) return getCalendarById(visibleCalendars[0])?.name || 'Privat';
+                      return `${visibleCalendars.length} Kalender`;
+                    } catch (_) { return 'Kalender'; }
+                  })();
+
+                  return (
+                    <div className="bg-neutral-950 border-t border-neutral-800 px-4 md:px-8 py-4 shrink-0">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-widest text-neutral-500">Kalender-Feed</p>
+                          <h3 className="text-sm font-medium text-white">{feedTitle}</h3>
+                        </div>
+                        <div className="text-[11px] text-neutral-500">🗳️ {openPollEvents.length} • 💬 {commentEvents.length}</div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-xs font-semibold text-white">🗳️ Abstimmungen</div>
+                            {openPollEvents.some(x => !canWriteCalendar(x.calendarId || 'default')) && (
+                              <div className="text-[10px] text-neutral-600">teilweise nur Lesen</div>
+                            )}
+                          </div>
+
+                          {openPollEvents.length === 0 ? (
+                            <div className="text-xs text-neutral-500">Keine offenen Abstimmungen.</div>
+                          ) : openPollEvents.map(ev => {
+                            const poll = ev.poll || {};
+                            const voterIds = Array.isArray(poll.voterIds) ? poll.voterIds : [];
+                            const tally = computePollTally(poll, voterIds);
+                            const votesCount = tally.respondedCount;
+                            const totalVoters = tally.totalVoters || voterIds.length;
+                            const canFinalizeNow = !!tally.canFinalizeNow;
+                            const winnerId = tally.winnerOptionId;
+                            const deadlineLabel = tally.deadlineAt ? formatDeadlineShort(tally.deadlineAt) : '';
+                            const myLegacyVote = (tally.version < 2) ? ((tally.votes || {})[user.uid] || '') : '';
+                            const myRow = (tally.version >= 2 && tally.votes && typeof tally.votes[user.uid] === 'object') ? tally.votes[user.uid] : {};
+                            const myComplete = (tally.version < 2) ? !!myLegacyVote : ((poll.options || []).every(o => isPollState((myRow || {})[o.id])));
+                            const canWrite = canWriteCalendar(ev.calendarId || 'default');
+
+                            return (
+                              <div key={ev.id} className="border border-neutral-800 rounded-xl p-3 mb-2 last:mb-0">
+                                <div className="flex items-start justify-between gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditEventModal(ev, null, { openPoll: true })}
+                                    className="text-left min-w-0"
+                                  >
+                                    <div className="text-sm font-medium text-white truncate">{ev.title}</div>
+                                    <div className="text-[11px] text-neutral-500">{votesCount}/{totalVoters || '–'} Antworten</div>
+                                    <div className="text-[10px] text-neutral-600 flex items-center gap-2 mt-1">
+                                      <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(ev.calendarId || 'default') }} />
+                                      <span className="truncate">{getCalendarById(ev.calendarId || 'default')?.name || 'Privat'}{canWrite ? '' : ' · nur Lesen'}</span>
+                                    </div>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditEventModal(ev, null, { openPoll: true })}
+                                    className="px-2 py-1 rounded-lg border border-neutral-800 text-neutral-300 text-[11px] hover:border-neutral-500"
+                                  >
+                                    Öffnen
+                                  </button>
+                                </div>
+
+                                <div className="mt-2 space-y-2">
+                                  {(poll.options || []).map(opt => {
+                                    const t = (tally.byOptionId && tally.byOptionId[opt.id]) ? tally.byOptionId[opt.id] : { yes: 0, maybe: 0, no: 0, score: 0 };
+                                    const isWinner = winnerId === opt.id;
+
+                                    if (tally.version >= 2) {
+                                      const myState = (myRow || {})[opt.id] || '';
+                                      const baseBtn = 'px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors';
+                                      const onCls = 'bg-white text-black border-white';
+                                      const offCls = 'bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-500';
+
+                                      return (
+                                        <div
+                                          key={opt.id}
+                                          className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800') + (!canWrite ? ' opacity-60' : '')}
+                                        >
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div className="text-xs text-white">{opt.date} • {opt.time}{isWinner ? ' ⭐' : ''}</div>
+                                            <div className="flex items-center gap-1">
+                                              <button
+                                                type="button"
+                                                disabled={!canWrite || pollBusy}
+                                                onClick={() => voteInPollForSpecificEvent(ev, opt.id, POLL_STATE.YES)}
+                                                className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)}
+                                                title="Fix"
+                                              >
+                                                ✅
+                                              </button>
+                                              <button
+                                                type="button"
+                                                disabled={!canWrite || pollBusy}
+                                                onClick={() => voteInPollForSpecificEvent(ev, opt.id, POLL_STATE.MAYBE)}
+                                                className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)}
+                                                title="Kann"
+                                              >
+                                                🤷
+                                              </button>
+                                              <button
+                                                type="button"
+                                                disabled={!canWrite || pollBusy}
+                                                onClick={() => voteInPollForSpecificEvent(ev, opt.id, POLL_STATE.NO)}
+                                                className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)}
+                                                title="Nein"
+                                              >
+                                                ❌
+                                              </button>
+                                            </div>
+                                          </div>
+                                          <div className="mt-1 text-[10px] text-neutral-500 tabular-nums">✅{t.yes} &nbsp; 🤷{t.maybe} &nbsp; ❌{t.no}</div>
+                                        </div>
+                                      );
+                                    }
+
+                                    // Legacy (1.0)
+                                    const voted = myLegacyVote === opt.id;
+                                    const c = t.yes || 0;
+                                    return (
+                                      <button
+                                        key={opt.id}
+                                        type="button"
+                                        disabled={!canWrite || pollBusy}
+                                        onClick={() => voteInPollForSpecificEvent(ev, opt.id)}
+                                        className={"w-full text-left border rounded-xl px-3 py-2 transition-colors " + (voted ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500') + (!canWrite ? ' opacity-60 cursor-not-allowed' : '')}
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <div className="text-xs text-white">{opt.date} • {opt.time}</div>
+                                          <div className="text-[10px] text-neutral-400">{c}</div>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+
+                                <div className="mt-2 flex items-center justify-between">
+                                  <div className="text-[11px] text-neutral-500">
+                                    {myComplete ? 'Du: fertig ✅' : 'Du: offen'}{deadlineLabel ? ` · Deadline: ${deadlineLabel}` : ''}
+                                  </div>
+                                  {canWrite && (
+                                    <button
+                                      type="button"
+                                      disabled={!canFinalizeNow || pollBusy}
+                                      onClick={() => finalizePollForSpecificEvent(ev)}
+                                      className={"px-2 py-1 rounded-lg font-semibold text-[11px] " + ((!canFinalizeNow || pollBusy) ? 'bg-neutral-900 border border-neutral-800 text-neutral-500 cursor-not-allowed' : 'bg-white text-black')}
+                                      title={canFinalizeNow ? 'Gewinner übernehmen' : 'Warten bis alle fertig sind oder Deadline'}
+                                    >
+                                      Finalisieren
+                                    </button>
+                                  )}
+                                </div>
+
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-xs font-semibold text-white">💬 Kommentare</div>
+                            <div className="text-[10px] text-neutral-600">letzte</div>
+                          </div>
+
+                          {commentEvents.length === 0 ? (
+                            <div className="text-xs text-neutral-500">Noch keine Kommentare in den sichtbaren Kalendern.</div>
+                          ) : commentEvents.map(ev => (
+                            <button
+                              key={ev.id}
+                              type="button"
+                              onClick={() => openEditEventModal(ev, null, { openComments: true })}
+                              className="w-full text-left border border-neutral-800 rounded-xl p-3 mb-2 last:mb-0 hover:border-neutral-500 transition-colors"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-medium text-white truncate">{ev.title}</div>
+                                  <div className="text-[10px] text-neutral-600 flex items-center gap-2 mt-1">
+                                    <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(ev.calendarId || 'default') }} />
+                                    <span className="truncate">{getCalendarById(ev.calendarId || 'default')?.name || 'Privat'}</span>
+                                  </div>
+                                  <div className="text-[11px] text-neutral-500 truncate">{(ev.lastCommentByName || 'User') + ': ' + (ev.lastCommentText || '')}</div>
+                                </div>
+                                <div className="text-[10px] text-neutral-600 shrink-0">{ev.lastCommentAt ? new Date(ev.lastCommentAt).toLocaleString('de-CH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+</div>
+            )}
+            {currentView === 'settings' && (() => {
+    const q = (settingsQuery || '').trim().toLowerCase();
+    const match = (...keys) => {
+      if (!q) return true;
+      const all = keys.flat().filter(Boolean).map(x => String(x).toLowerCase());
+      return all.some(k => k.includes(q));
+    };
+    const show = (tabId, keys) => {
+      if (q) return match(keys);
+      return settingsTab === tabId;
+    };
+    const TABS = [
+      { id: 'calendars', label: 'Kalender', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
+      { id: 'notifications', label: 'Benachr.', icon: Bell, keys: ['push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
+      { id: 'links', label: 'Public Links', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
+      { id: 'audit', label: 'Audit', icon: History, keys: ['audit', 'verlauf', 'log', 'änderung', 'wer'] },
+      { id: 'account', label: 'Account', icon: User, keys: ['account', 'datenschutz', 'abmelden', 'email'] },
+      { id: 'ics', label: 'Import/Export', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
+    ];
+
+    const filteredTabs = q ? TABS.filter(t => match(t.keys)) : TABS;
+
+
+              const AccordionItem = ({ id, label, icon: Icon, keys, children }) => {
+                const visible = !q || match(keys);
+                if (!visible) return null;
+                const open = q ? true : (settingsTab === id);
+                const toggle = () => {
+                  if (q) return;
+                  setSettingsTab(prev => (prev === id ? '' : id));
+                };
+                return (
+                  <div className="border border-neutral-800 rounded-2xl overflow-hidden bg-neutral-950/50">
+                    <button type="button" onClick={toggle} className="w-full flex items-center justify-between px-4 py-3 bg-neutral-950 hover:bg-neutral-900 transition-colors">
+                      <div className="flex items-center gap-3">
+                        {Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}
+                        <span className="text-sm font-medium text-white">{label}</span>
+                      </div>
+                      <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform " + (open ? 'rotate-90' : '')} />
+                    </button>
+                    {open && (
+                      <div className="px-4 pb-4 pt-3">
+                        {children}
+                      </div>
+                    )}
+                  </div>
+                );
+              };
+
+    return (
+      <div className="p-6 md:p-10 max-w-6xl mx-auto w-full animate-fade-in">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+          <div className="min-w-0">
+            <h2 className="text-3xl md:text-4xl font-light">Einstellungen</h2>
+            <p className="mt-2 text-sm text-neutral-500">
+              Suche nach „Push“, „Link“, „Farbe“… oder nutze die Kategorien.
+            </p>
+          </div>
+
+          <div className="w-full md:w-[360px]">
+            <div className="relative">
+              <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                value={settingsQuery}
+                onChange={(e) => setSettingsQuery(e.target.value)}
+                placeholder="Einstellungen durchsuchen…"
+                className="w-full bg-black border border-neutral-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
+              />
+              {!!settingsQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSettingsQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-neutral-500 hover:text-white"
+                  title="Zurücksetzen"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Mobile tab row */}
+            <div className="hidden">
+              {(q ? filteredTabs : TABS).map(t => {
+                const Icon = t.icon;
+                const active = (!q && settingsTab === t.id);
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
+                    className={"shrink-0 px-3 py-2 rounded-xl border text-xs flex items-center gap-2 " + (active ? "bg-white text-black border-white" : "bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-600")}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6">
+          {/* Desktop sidebar */}
+          <aside className="hidden">
+            <div className="bg-neutral-950/50 border border-neutral-800 rounded-2xl p-2">
+              {TABS.map(t => {
+                const Icon = t.icon;
+                const active = settingsTab === t.id && !q;
+                const disabledBySearch = q && !match(t.keys);
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
+                    className={
+                      "w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors " +
+                      (active ? "bg-white text-black" : "text-neutral-300 hover:bg-neutral-900") +
+                      (disabledBySearch ? " opacity-50" : "")
+                    }
+                    title={disabledBySearch ? "Nicht im Suchresultat" : ""}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span className="truncate">{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 text-[11px] text-neutral-600 leading-relaxed">
+              <div className="flex items-center gap-2">
+                <Info className="w-3.5 h-3.5" />
+                <span>„Test (Server)“ braucht Firestore‑Zugriff (kein Adblock/Shield).</span>
+              </div>
+            </div>
+          </aside>
+
+          <main className="space-y-3 min-w-0">
+            {/* KALENDER VERWALTUNG */}
+            <AccordionItem id="calendars" label="Kalender" icon={CalendarIcon} keys={['kalender','schicht','farbe','privat','freigabe','teilen','share','busy']} >
+              <section id="settings-calendars">
+                <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-4">
+                  <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-2">
+                    <CalendarIcon className="w-4 h-4" /> Meine Kalender & Schichten
+                  </h3>
+                  <button onClick={() => { setCalForm({ id: null, name: '', type: 'normal', color: PASTEL_COLORS[(Date.now() % PASTEL_COLORS.length)], shifts: [] }); setIsCalManageModalOpen(true); }} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">+ Neu</button>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <p className="font-medium text-white flex items-center gap-2">Privat <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Standard</span></p>
+                      <p className="text-xs text-neutral-500 mt-1">Dein persönlicher Standard-Kalender.</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Farbe</span>
+                      <input
+                        type="color"
+                        value={((userProfile && typeof userProfile.defaultCalendarColor === 'string' && userProfile.defaultCalendarColor) ? userProfile.defaultCalendarColor : '#ffffff')}
+                        onChange={async (e) => {
+                          try {
+                            const v = e.target.value;
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultCalendarColor: v }, { merge: true });
+                            showToast('Gespeichert');
+                          } catch(_) { showToast('Fehler'); }
+                        }}
+                        className="w-10 h-10 rounded-lg bg-transparent border border-neutral-800"
+                        title="Farbe Privat"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => openShareLinkModalForCalendar({ id: 'default', name: 'Privat' })}
+                        className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+                        title="Public Busy‑Only Link"
+                      >
+                        <Lock className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {customCalendars.filter(c => c.ownerId === user.uid).map(cal => (
+                    <div key={cal.id} className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-white flex items-center gap-2">{cal.name} {cal.type==='shift' && <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-900/50 px-2 py-0.5 rounded-full uppercase">Schichtplan</span>}</p>
+                        <p className="text-xs text-neutral-500 mt-1">Freigegeben für: {Object.keys(cal.sharedWith || {}).length} Nutzer</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busy‑Only Link"><Lock className="w-4 h-4"/></button>
+                        <button onClick={() => { setShareCalData(cal); setIsShareCalModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Share2 className="w-4 h-4"/></button>
+                        <button onClick={() => { setCalForm({ ...cal, color: (cal.color || calendarTint(cal.id)) }); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
+                        <button onClick={() => deleteCalendar(cal.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 className="w-4 h-4"/></button>
+                      </div>
+                    </div>
+                  ))}
+                  {customCalendars.filter(c => c.ownerId !== user.uid).map(cal => (
+                    <div key={cal.id} className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between opacity-80">
+                      <div>
+                        <p className="font-medium text-white flex items-center gap-2">{cal.name} <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Geteilt mit dir</span></p>
+                        <p className="text-xs text-neutral-500 mt-1">Rechte: {cal.sharedWith[user.uid] === 'write' ? 'Lesen & Schreiben' : 'Nur Lesen'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </AccordionItem>
+
+            {/* BENACHRICHTIGUNGEN */}
+            <AccordionItem id="notifications" label="Benachrichtigungen" icon={Bell} keys={['benachr','push','erinnerung','reminder','pwa','token','test']} >
+              <section id="settings-notifications">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <Bell className="w-4 h-4" /> Benachrichtigungen
+                </h3>
+
+                {/* Core settings */}
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-medium text-white">Kalender-Erinnerungen</p>
+                      <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit „Standard“). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      {!isStandalone && canInstallPwa && (
+                        <button
+                          type="button"
+                          onClick={() => { try { promptInstallPwa(); } catch(e) {} }}
+                          className="px-4 py-2 bg-white text-black rounded-md text-sm font-semibold hover:bg-gray-200 transition-colors"
+                        >
+                          Installieren
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={!isStandalone}
+                        onClick={() => { try { requestNotificationPermission(user); } catch(e) {} }}
+                        className={"px-4 py-2 rounded-md text-sm transition-colors " + (isStandalone ? "bg-neutral-900 border border-neutral-800 hover:text-white" : "bg-neutral-950 border border-neutral-900 text-neutral-600 cursor-not-allowed")}
+                        title={isStandalone ? "Benachrichtigungen aktivieren" : (isIosUA ? "iPhone/iPad: Teilen → Zum Home-Bildschirm" : "Bitte zuerst installieren")}
+                      >
+                        Erlauben
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Standard-Erinnerung</label>
+                      <select
+                        value={(() => {
+                          const v = (userProfile && typeof userProfile.defaultReminderMinutes === 'number') ? String(userProfile.defaultReminderMinutes) : 'none';
+                          return v;
+                        })()}
+                        onChange={async (e) => {
+                          try {
+                            const v = e.target.value;
+                            const next = (v === 'none') ? null : (parseInt(v, 10) || 0);
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultReminderMinutes: next }, { merge: true });
+                            showToast('Gespeichert');
+                          } catch (err) {
+                            showToast('Fehler');
+                          }
+                        }}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="none">Keine</option>
+                        <option value="0">Bei Beginn</option>
+                        <option value="5">5 Minuten vorher</option>
+                        <option value="10">10 Minuten vorher</option>
+                        <option value="15">15 Minuten vorher</option>
+                        <option value="30">30 Minuten vorher</option>
+                        <option value="60">1 Stunde vorher</option>
+                        <option value="120">2 Stunden vorher</option>
+                        <option value="1440">1 Tag vorher</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benachrichtigungston</label>
+                      <select
+                        value={(() => {
+                          const v = (userProfile && userProfile.notificationSoundMode) ? String(userProfile.notificationSoundMode) : 'system';
+                          return (v === 'silent') ? 'silent' : 'system';
+                        })()}
+                        onChange={async (e) => {
+                          try {
+                            const v = e.target.value;
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { notificationSoundMode: v }, { merge: true });
+                            showToast('Gespeichert');
+                          } catch (err) {
+                            showToast('Fehler');
+                          }
+                        }}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="system">System (Standard)</option>
+                        <option value="silent">Stumm</option>
+                      </select>
+                      <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – du kannst nur Systemton nutzen oder stumm schalten.</p>
+                    </div>
+                  </div>
+
+                  <details className="border border-neutral-800 rounded-xl bg-black p-4">
+                    <summary className="cursor-pointer text-xs text-neutral-300 font-semibold select-none flex items-center gap-2">
+                      <Activity className="w-4 h-4" /> Diagnostik & Tests
+                    </summary>
+
+                    <div className="mt-3 space-y-3">
+                      <div className="text-[11px] text-neutral-600">
+                        Status: <span className="text-neutral-300">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</span>
+                      </div>
+
+                      <div className="text-[11px] text-neutral-600">
+                        Service Worker: <span className="text-neutral-300">{pushDiag.sw}</span>{pushDiag.controlling ? <span className="text-neutral-500"> · controlling ✅</span> : <span className="text-neutral-500"> · not controlling</span>}
+                      </div>
+
+                      <div className="text-[11px] text-neutral-600">
+                        Web Token: <span className="text-neutral-300">{(userProfile && userProfile.fcmTokenWeb) ? 'vorhanden ✅' : 'nicht gesetzt'}</span>
+                      </div>
+
+                      <div className="text-[11px] text-neutral-600">
+                        Letzter Push-Empfang: <span className="text-neutral-300">{pushDiag.lastReceivedAt ? `${new Date(pushDiag.lastReceivedAt).toLocaleString()}${pushDiag.lastReceivedTitle ? ` · ${pushDiag.lastReceivedTitle}` : ''}` : '—'}</span>
+                      </div>
+
+                      {!!pushTest?.id && (
+                        <div className="text-[11px] text-neutral-600 break-words">
+                          Server-Test Status: <span className="text-neutral-300">{pushTest.status || 'pending'}</span>
+                          {pushTest.lastError ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
+                        </div>
+                      )}
+
+                      {!isStandalone && (
+                        <div className="text-[11px] text-amber-400">
+                          {isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren.' : 'Bitte installieren, dann „Erlauben“. '}
+                        </div>
+                      )}
+
+                      {!!(pushDiag && pushDiag.lastError) && (
+                        <div className="text-[11px] text-amber-400 break-words">
+                          Push-Fehler: {String(pushDiag.lastError)}
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => { try { sendLocalPushTest(); } catch(_) {} }}
+                          className="px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-xs hover:border-neutral-500"
+                        >
+                          Test (lokal)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { try { sendServerPushTest(); } catch(_) {} }}
+                          className="px-3 py-2 bg-white text-black rounded-md text-xs font-semibold hover:bg-gray-200"
+                        >
+                          Test (Server)
+                        </button>
+                      </div>
+
+                      <div className="text-[11px] text-neutral-600 leading-relaxed">
+                        Hinweis: Wenn „Test (Server)“ sofort fehlschlägt, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create</span>.
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </section>
+            </AccordionItem>
+
+            {/* PUBLIC LINKS */}
+            <AccordionItem id="links" label="Public Links" icon={Link2} keys={['public','link','busy','passcode','magic','ablauf']} >
+              <section id="settings-links">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <Link2 className="w-4 h-4" /> Public Links
+                </h3>
+
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                  
+<div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+  <div className="flex-1 min-w-0">
+    <div className="text-sm text-white font-medium">Busy‑Only Links</div>
+    <div className="text-[11px] text-neutral-500 mt-1">Externe sehen nur belegte Zeitblöcke (keine Titel/Orte). Optional mit Ablauf & Passcode.</div>
+  </div>
+  <div className="flex flex-col sm:flex-row gap-2">
+    <select
+      value={settingsShareCalId}
+      onChange={(e) => setSettingsShareCalId(e.target.value)}
+      className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
+      title="Kalender auswählen"
+    >
+      <option value="default">Privat</option>
+      {(customCalendars || []).filter(c => c.ownerId === user.uid).map(c => (
+        <option key={c.id} value={c.id}>{c.name}</option>
+      ))}
+    </select>
+    <button
+      type="button"
+      onClick={() => {
+        const cal = (settingsShareCalId === 'default')
+          ? { id: 'default', name: 'Privat' }
+          : (customCalendars || []).find(c => c.id === settingsShareCalId) || { id: 'default', name: 'Privat' };
+        openShareLinkModalForCalendar(cal);
+      }}
+      className="px-3 py-2 bg-white text-black rounded-lg text-xs font-semibold hover:bg-gray-200"
+    >
+      Link erstellen
+    </button>
+  </div>
+</div>
+
+{(() => {
+  const now = Date.now();
+  const all = Array.isArray(shareLinks) ? shareLinks.slice() : [];
+  const notRevoked = all.filter(l => l && !l.revokedAtMs);
+  notRevoked.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+  const active = notRevoked.filter(l => !l.expiresAtMs || now <= l.expiresAtMs);
+  const expired = notRevoked.filter(l => l.expiresAtMs && now > l.expiresAtMs);
+
+  const renderItem = (l) => {
+    const url = makeShareUrl(l.id);
+    const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '—';
+    const calName = (l.calName || (l.calId === 'default' ? 'Privat' : (customCalendars || []).find(c => c.id === l.calId)?.name) || 'Kalender');
+    const prot = (l.protection || 'magic');
+    const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magic‑Link');
+    return (
+      <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
+        <div className="min-w-0">
+          <div className="text-sm text-white font-medium truncate">
+            {l.kind === 'event' ? 'Event' : 'Kalender'} • {calName}
+          </div>
+          <div className="mt-0.5 text-[11px] text-neutral-500">
+            Ablauf: {exp} · Schutz: {protLabel}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => { try { navigator.clipboard?.writeText(url); showToast('Kopiert'); } catch (_) {} }}
+            className="p-2 border border-neutral-800 rounded-lg text-neutral-300 hover:bg-neutral-900"
+            title="Kopieren"
+          >
+            <Copy className="w-4 h-4"/>
+          </button>
+          <button
+            type="button"
+            onClick={() => revokeShareLink(l.id)}
+            className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"
+            title="Widerrufen"
+          >
+            <Trash2 className="w-4 h-4"/>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  if (active.length === 0 && expired.length === 0) {
+    return (
+      <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
+        Noch keine Links. Erstelle einen Link über <span className="text-neutral-300">Link erstellen</span> oder das <span className="text-neutral-300">🔒</span> Icon am Kalender.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {active.length > 0 && (
+        <div>
+          <div className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold mb-2">Aktiv</div>
+          <div className="space-y-2">{active.slice(0, 40).map(renderItem)}</div>
+        </div>
+      )}
+
+      {expired.length > 0 && (
+        <details className="border border-neutral-800 rounded-xl bg-black p-4">
+          <summary className="cursor-pointer text-xs text-neutral-400 font-semibold select-none">Abgelaufen ({expired.length})</summary>
+          <div className="mt-3 space-y-2">{expired.slice(0, 40).map(renderItem)}</div>
+        </details>
+      )}
+    </div>
+  );
+})()}</div>
+              </section>
+            </AccordionItem>
+
+            {/* AUDIT LOG */}
+            <AccordionItem id="audit" label="Audit" icon={History} keys={['audit','log','verlauf','änderung','wer']} >
+              <section id="settings-audit">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <History className="w-4 h-4" /> Audit Log
+                </h3>
+
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                  {/* Reuse existing audit UI by rendering the original section content via IIFE */}
+                  {(() => (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-xs text-neutral-400 mb-2 font-semibold">Meine Aktionen</div>
+                        {(auditEntries || []).length === 0 ? (
+                          <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
+                        ) : (
+                          <div className="space-y-2 max-h-[34vh] overflow-y-auto no-scrollbar pr-1">
+                            {(auditEntries || []).slice(0, 50).map(a => (
+                              <div key={a.id} className="border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-xs text-neutral-300">{a.summary || a.action}</div>
+                                <div className="mt-1 text-[10px] text-neutral-600 tabular-nums">{a.tsMs ? new Date(a.tsMs).toLocaleString('de-CH') : ''}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="border-t border-neutral-800 pt-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-xs text-neutral-400 font-semibold">Kalender‑Audit</div>
+                          <select
+                            value={auditCalId || 'default'}
+                            onChange={(e) => setAuditCalId(e.target.value)}
+                            className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
+                          >
+                            <option value="default">Privat (nur „Meine Aktionen“)</option>
+                            {(customCalendars || []).map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="mt-3">
+                          {auditCalId === 'default' ? (
+                            <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalender‑Audit (siehe „Meine Aktionen“).</div>
+                          ) : (auditCalEntries || []).length === 0 ? (
+                            <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
+                          ) : (
+                            <div className="space-y-2 max-h-[34vh] overflow-y-auto no-scrollbar pr-1">
+                              {(auditCalEntries || []).slice(0, 50).map(a => (
+                                <div key={a.id} className="border border-neutral-800 rounded-xl p-3 bg-black">
+                                  <div className="text-xs text-neutral-300">{a.summary || a.action}</div>
+                                  <div className="mt-1 text-[10px] text-neutral-600 tabular-nums">{a.tsMs ? new Date(a.tsMs).toLocaleString('de-CH') : ''} · {a.uid ? (getProfile(a.uid)?.username || shortId(a.uid, 6)) : ''}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))()}
+                </div>
+              </section>
+            </AccordionItem>
+
+            {/* ACCOUNT */}
+            <AccordionItem id="account" label="Account" icon={User} keys={['account','datenschutz','abmelden','email']} >
+              <section id="settings-account">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <User className="w-4 h-4" /> Datenschutz & Account
+                </h3>
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <p className="font-medium text-white">Angemeldet als: {user?.email}</p>
+
+                    {userProfile && (
+                      <div className="mt-1 space-y-1">
+                        <p className="text-sm text-neutral-400">Name: {userProfile.displayName || userProfile.username}</p>
+
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm text-neutral-400">Alias: <span className="font-mono text-neutral-200">{userProfile.username}</span></p>
+                          <button
+                            type="button"
+                            onClick={() => { setAliasDraft(userProfile.username || ''); setAliasEditError(''); setAliasEditOpen(true); }}
+                            className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
+                            title="Alias ändern"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {aliasEditOpen && (
+                          <div className="mt-3 border border-neutral-800 rounded-xl p-3 bg-black space-y-2">
+                            <div className="text-xs text-neutral-500">Alias ändern (2–20 Zeichen). Erlaubt: a–z, 0–9, <span className="font-mono">._-</span>. Leerzeichen → <span className="font-mono">_</span>.</div>
+                            <input
+                              value={aliasDraft}
+                              onChange={(e) => { setAliasDraft(e.target.value); setAliasEditError(''); }}
+                              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-neutral-500"
+                              placeholder="dein_alias"
+                              maxLength={40}
+                              autoFocus
+                            />
+                            {aliasEditError ? <div className="text-xs text-red-400">{aliasEditError}</div> : null}
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => persistAliasUsername(aliasDraft)}
+                                disabled={aliasSaving}
+                                className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
+                              >
+                                {aliasSaving ? 'Speichern…' : 'Speichern'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setAliasEditOpen(false); setAliasEditError(''); }}
+                                className="px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:bg-neutral-800"
+                              >
+                                Abbrechen
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={handleLogout} className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors">Abmelden</button>
+                </div>
+              
+                <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-medium text-white">Passwort</p>
+                      <p className="text-xs text-neutral-500 mt-1">
+                        {hasPasswordProvider()
+                          ? 'Passwort ändern (mit aktuellem Passwort bestätigen).'
+                          : 'Dieses Konto nutzt keinen Passwort‑Login. Du kannst dir eine Reset‑Mail senden, um ein Passwort zu setzen/ändern.'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {hasPasswordProvider() && (
+                        <button
+                          type="button"
+                          onClick={() => { setPwEditOpen(v => !v); setPwError(''); setPwResetSent(false); }}
+                          className={"px-3 py-2 rounded-md text-xs font-semibold border transition-colors " + (pwEditOpen ? "bg-white text-black border-white hover:bg-gray-200" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
+                        >
+                          {pwEditOpen ? 'Schließen' : 'Ändern'}
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => doSendPasswordReset()}
+                        className="px-3 py-2 rounded-md text-xs font-semibold bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-800"
+                        title="Reset‑Mail senden"
+                      >
+                        Reset‑Mail
+                      </button>
+                    </div>
+                  </div>
+
+                  {pwResetSent && (
+                    <div className="mt-3 text-xs text-neutral-300">Reset‑Mail gesendet ✅</div>
+                  )}
+
+                  {hasPasswordProvider() && pwEditOpen && (
+                    <div className="mt-4 space-y-3">
+                      <input
+                        type="password"
+                        value={pwCurrent}
+                        onChange={(e) => { setPwCurrent(e.target.value); setPwError(''); }}
+                        placeholder="Aktuelles Passwort"
+                        className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                        autoComplete="current-password"
+                      />
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input
+                          type="password"
+                          value={pwNew}
+                          onChange={(e) => { setPwNew(e.target.value); setPwError(''); }}
+                          placeholder="Neues Passwort (min. 6)"
+                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                          autoComplete="new-password"
+                        />
+                        <input
+                          type="password"
+                          value={pwNew2}
+                          onChange={(e) => { setPwNew2(e.target.value); setPwError(''); }}
+                          placeholder="Wiederholen"
+                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                          autoComplete="new-password"
+                        />
+                      </div>
+
+                      {pwError ? <div className="text-xs text-red-400">{pwError}</div> : null}
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => doChangePassword()}
+                          disabled={pwSaving}
+                          className="px-4 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
+                        >
+                          {pwSaving ? 'Speichern…' : 'Speichern'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setPwEditOpen(false); setPwCurrent(''); setPwNew(''); setPwNew2(''); setPwError(''); }}
+                          className="px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:bg-neutral-800"
+                        >
+                          Abbrechen
+                        </button>
+                      </div>
+
+                      <div className="text-[11px] text-neutral-600">
+                        Tipp: Wenn du dein aktuelles Passwort nicht mehr weißt, nutze „Reset‑Mail“.
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+</section>
+            </AccordionItem>
+
+            {/* ICS */}
+            <AccordionItem id="ics" label="Import/Export" icon={Download} keys={['ics','import','export','download','upload']} >
+              <section id="settings-ics">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <Download className="w-4 h-4" /> Import / Export (.ics)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                    <Download className="w-6 h-6 text-white mb-4" />
+                    <h4 className="font-medium text-white mb-1">Kalender exportieren</h4>
+                    <p className="text-xs text-neutral-500 mb-4 h-8">Lade deine Termine als Standard .ics Datei herunter.</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => exportICS(true)} className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-md text-sm hover:bg-neutral-800 transition-colors">Alle</button>
+                      <button onClick={() => exportICS(false)} className="flex-1 px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-md text-sm hover:bg-neutral-800 transition-colors">Nur Heute</button>
+                    </div>
+                  </div>
+                  <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 relative overflow-hidden group">
+                    <Upload className="w-6 h-6 text-white mb-4" />
+                    <h4 className="font-medium text-white mb-1">Datei importieren</h4>
+                    <p className="text-xs text-neutral-500 mb-4 h-8">Füge Termine aus einer externen .ics Datei hinzu.</p>
+                    <div className="relative">
+                      <button className="w-full px-3 py-2 bg-white text-black rounded-md text-sm font-medium group-hover:bg-gray-200 transition-colors text-center">Datei auswählen</button>
+                      <input type="file" accept=".ics" onChange={handleImportICS} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </AccordionItem>
+
+            {/* If search yields nothing */}
+            {q && filteredTabs.length === 0 && (
+              <div className="border border-neutral-800 rounded-2xl p-6 bg-neutral-950/50 text-sm text-neutral-500">
+                Keine Treffer für „{settingsQuery}“.
+              </div>
+            )}
+          </main>
+        </div>
+      </div>
+    );
+  })()}
+
+            {currentView === 'secret_chat' && (
+              <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>
+              <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up" style={{ height: 'var(--app-height, 100vh)' }}>
+                
+                {/* Geheimer Chat Header */}
+                <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
+                  {secretView === 'chat' && activeChat ? (
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => { setActiveChat(null); setSecretView('list'); }} className="text-neutral-400 hover:text-white transition-colors mr-2">
+                        <ArrowLeft className="w-6 h-6" /> 
+                      </button>
+                      
+                      <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setShowPartnerStats(true)}>
+                        {getChatPartnerAvatar(activeChat) ? (
+                          <img src={getChatPartnerAvatar(activeChat)} className="w-10 h-10 rounded-full border border-neutral-700 object-cover" />
+                        ) : (
+                          <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-sm font-bold text-white uppercase">{initialsFrom(getChatPartnerName(activeChat))}</div>
+                        )}
+                        <div className="flex flex-col">
+                          <span className="font-medium text-white leading-tight">{getChatPartnerName(activeChat)}</span>
+                          {(activeChatData && getTypingUsers(activeChatData).length > 0) ? (
+                             <span className="text-[11px] text-green-400 animate-pulse font-medium">
+                               {isGroupChat(activeChatData) ? (getTypingUsers(activeChatData).length === 1 ? `${getProfile(getTypingUsers(activeChatData)[0])?.username || 'Jemand'} tippt...` : `${getTypingUsers(activeChatData).length} tippen...`) : 'tippt...'}
+                             </span>
+                          ) : (
+                             <span className="text-[11px] text-neutral-500">
+                               {isGroupChat(activeChatData) ? (() => { const ids = getChatParticipants(activeChatData); const onlineCount = ids.filter(id => getPresence(id).online).length; return `${onlineCount} online • ${ids.length} Mitglieder`; })() : (() => { const pr = getPresence(partnerId); if (pr.online) return 'online'; if (pr.lastSeen) return `zuletzt gesehen ${formatTime(pr.lastSeen)}`; return 'offline'; })()}
+                             </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : secretView === 'settings' ? (
+                    <button onClick={() => setSecretView('list')} className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors">
+                      <ArrowLeft className="w-5 h-5" /> <span className="font-medium text-white">Chat Profil</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-3"><MessageSquare className="w-5 h-5 text-white" /><h2 className="text-lg md:text-xl font-medium text-white">Sichere Verbindung</h2></div>
+                  )}
+                  
+                  <div className="ml-auto flex items-center gap-4">
+                    {userProfile && secretView === 'list' && (
+                      <button onClick={() => setSecretView('settings')} className="text-neutral-500 hover:text-white transition-colors p-2">
+                        <Settings className="w-5 h-5" />
+                      </button>
+                    )}
+                    {secretView === 'chat' && activeChat && (
+                      <button onClick={() => { setIsMessageSearchOpen(v => !v); setTimeout(() => document.getElementById('msgSearchInput')?.focus(), 0); }} className={`text-neutral-500 hover:text-white transition-colors p-2 ${isMessageSearchOpen ? 'bg-neutral-900 rounded-lg' : ''}`} title="Chat durchsuchen">
+                        <Search className="w-5 h-5" />
+                      </button>
+                    )}
+                    {/* Chat Anzeige/Lesestatus konfigurierbar im Chat Profil */}
+                    {secretView === 'chat' && activeChat && userProfile && (
+                      <button
+                        onClick={() => toggleMuteChat(activeChat.id)}
+                        className="text-neutral-500 hover:text-white transition-colors p-2"
+                        title={(Array.isArray(userProfile?.mutedChatIds) && userProfile.mutedChatIds.includes(activeChat.id)) ? 'Stumm aus' : 'Stumm schalten'}
+                      >
+                        {(Array.isArray(userProfile?.mutedChatIds) && userProfile.mutedChatIds.includes(activeChat.id)) ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+                      </button>
+                    )}
+                    <button onClick={() => { setActiveChat(null); setCurrentView('calendar'); }} className="text-neutral-500 hover:text-white text-2xl leading-none p-2">&times;</button>
+                  </div>
+                </header>
+
+                <div className="flex-1 overflow-hidden flex flex-col">
+                  {!userProfile ? (
+                    <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">Identität festlegen</h3><p className="text-sm text-neutral-500 mb-6">Wähle einen einzigartigen Benutzernamen.</p>
+                    <form onSubmit={saveUsername}>
+                      <input type="text" name="username" defaultValue={userProfile?.displayName || userProfile?.username || user?.email?.split('@')[0] || ''} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
+                      <div className="flex items-center justify-between text-xs text-neutral-500 mb-4">
+                        <div>Deine Chat-ID:</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-neutral-200">{userProfile?.friendCode || '-----'}</span>
+                          <button type="button" onClick={() => { const v = String(userProfile?.friendCode||''); if (v) { navigator.clipboard?.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-2 py-1 rounded bg-neutral-900 border border-neutral-700 text-neutral-200 hover:bg-neutral-800">Kopieren</button>
+                        </div>
+                      </div>
+
+                      <button type="submit" className="w-full bg-white text-black font-medium py-3 rounded-lg hover:bg-gray-200 transition-colors">Bestätigen</button>
+                    </form>
+                    </div></div>
+                  
+                  ) : secretView === 'settings' ? (
+                    <div className="flex-1 overflow-y-auto p-6 max-w-2xl w-full mx-auto space-y-8">
+                      <div className="flex flex-col items-center border border-neutral-800 rounded-xl p-8 bg-neutral-950/50">
+                        <div className="relative mb-6">
+                          {userProfile.avatarBase64 ? (
+                            <img
+                              src={userProfile.avatarThumbBase64 || userProfile.avatarBase64}
+                              className="w-32 h-32 rounded-full border-2 border-neutral-700 object-cover cursor-zoom-in"
+                              alt="Profilbild"
+                              onClick={() => openImageViewer(userProfile.avatarFullBase64 || userProfile.avatarBase64 || userProfile.avatarThumbBase64)}
+                            />
+                          ) : (
+                            <div className="w-32 h-32 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-4xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile?.email || '')}</div>
+                          )}
+                          <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
+                            <Camera className="w-4 h-4" />
+                            <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleAvatarUpload} />
+                          </label>
+                        </div>
+                        <form onSubmit={updateProfileSettings} className="w-full max-w-xs space-y-4">
+                          <input type="text" name="displayName" defaultValue={userProfile.displayName || userProfile.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
+                          <div className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                            <div className="flex flex-col">
+                              <span className="text-[10px] uppercase tracking-widest text-neutral-500">Chat‑ID (5‑stellig)</span>
+                              <span className="font-mono text-white text-sm">{userProfile?.friendCode || '-----'}</span>
+                            </div>
+                            <button type="button" onClick={() => { const v = String(userProfile?.friendCode||''); if (v && v !== '-----') { navigator.clipboard?.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors">
+                              Kopieren
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-neutral-500 text-center">Freunde im Chat fügst du über diese Chat‑ID hinzu. Kalender‑Freunde werden per E‑Mail geteilt.</p>
+
+                          <button type="submit" className="w-full bg-neutral-800 text-white font-medium py-3 rounded-lg hover:bg-neutral-700 transition-colors">Profil speichern</button>
+                        </form>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4 text-center">
+                        <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50">
+                          <p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Gesendet</p>
+                          <p className="text-2xl font-light text-white">{chatStats.sent}</p>
+                        </div>
+                        <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50">
+                          <p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Empfangen</p>
+                          <p className="text-2xl font-light text-white">{chatStats.received}</p>
+                        </div>
+                        <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50">
+                          <p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Total</p>
+                          <p className="text-2xl font-light text-white">{chatStats.total}</p>
+                        </div>
+                      </div>
+
+                      {/* Chat Anzeige (global, konfigurierbar hier im Secret Chat) */}
+                      <div className="border border-neutral-800 rounded-xl p-6 bg-neutral-950/50">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Chat Anzeige</h3>
+                            <p className="mt-1 text-sm text-neutral-400">Gilt für alle Chats: Lesestatus (zugestellt/gesehen) & Zeitstempel.</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-neutral-800 bg-black/40">
+                            <div>
+                              <div className="text-sm text-neutral-200">Zeit anzeigen</div>
+                              <div className="text-xs text-neutral-500">Zeit unter Nachrichten ein-/ausblenden.</div>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={chatMetaPrefs.showTime}
+                              onChange={(e) => setChatMetaPrefs(p => ({ ...p, showTime: !!e.target.checked }))}
+                            />
+                          </label>
+
+                          <div className="p-3 rounded-xl border border-neutral-800 bg-black/40">
+                            <div className="text-sm text-neutral-200">Lesestatus</div>
+                            <div className="text-xs text-neutral-500 mb-2">Aus / Status / Mit Zeit</div>
+                            <div className="flex gap-2">
+                              <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'off' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'off' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Aus</button>
+                              <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'compact' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'compact' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Status</button>
+                              <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'full' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'full' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Mit Zeit</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+
+                  ) : secretView === 'list' ? (
+                    <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
+                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
+                        <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein (nur Ziffern). Andere Zeichen werden ignoriert.</div>
+                        
+                        {chatFriendLoading && (
+                          <div className="mt-3 px-4 text-xs text-neutral-500">Suche...</div>
+                        )}
+                        {!chatFriendLoading && chatFriendError && (
+                          <div className="mt-3 px-4 text-xs text-red-400">{chatFriendError}</div>
+                        )}
+                        {!chatFriendLoading && chatFriendResult && (
+                          <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">
+                            <div onClick={() => startChatWithProfile(chatFriendResult)} className="p-4 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
+                              <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
+                                {chatFriendResult.avatarBase64 ? (
+                                  <img
+                                    src={chatFriendResult.avatarThumbBase64 || chatFriendResult.avatarBase64}
+                                    className="w-full h-full object-cover cursor-zoom-in"
+                                    alt="Profilbild"
+                                    onClick={(e) => { e.stopPropagation(); openImageViewer(chatFriendResult.avatarFullBase64 || chatFriendResult.avatarBase64 || chatFriendResult.avatarThumbBase64); }}
+                                  />
+                                ) : initialsFrom(chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email || '')}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-medium text-white">{chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email}</span>
+                                <span className="text-[11px] text-neutral-500 font-mono">Chat-ID: {String(chatFriendResult.friendCode || '').padStart(5,'0')}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-end mb-6 px-2">
+                        <button onClick={() => { setShowCreateGroup(true); setGroupDraftName(''); setGroupDraftMembers([]); setGroupMemberSearch(''); }} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">
+                          <Users className="w-4 h-4" /> Gruppe erstellen
+                        </button>
+                      </div>
+                      <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-4 font-semibold px-2">Verlauf</h4>
+                      <div className="space-y-2">
+                        {sortedMyChats.length === 0 ? (
+                          <div className="p-8 text-center border border-dashed border-neutral-800 rounded-xl text-neutral-500 text-sm">Noch keine Chats vorhanden.</div>
+                        ) : (
+                          <>
+                            {pinnedChatIds.length > 0 && (
+                              <div className="px-2 pt-1 pb-2 text-[10px] uppercase tracking-widest text-neutral-600">Pinned</div>
+                            )}
+                            {sortedMyChats.map(chat => {
+                              const isPinned = pinnedChatIds.includes(chat.id);
+                              const mutedChatIds = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+                              const isMuted = mutedChatIds.includes(chat.id);
+                              const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
+                              const otherUid = isDm ? chat.participants.find(id => id !== user.uid) : null;
+                              return (
+                                <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
+                                  <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
+                                    {getChatPartnerAvatar(chat) ? (
+                                    <img
+                                      src={getChatPartnerAvatar(chat)}
+                                      className="w-full h-full object-cover cursor-zoom-in"
+                                      alt="Profilbild"
+                                      onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatarFull(chat) || getChatPartnerAvatar(chat)); }}
+                                    />
+                                  ) : initialsFrom(getChatPartnerName(chat))}
+                                  </div>
+                                  <div className="flex-1 overflow-hidden">
+                                    <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
+                                    {chat.lastMessageSenderId !== user.uid && chat.updatedAt > lastChatVisit ? (
+                                      <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
+                                    ) : (
+                                      <p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>
+                                    )}
+                                  </div>
+                                  <button onClick={(e) => { e.stopPropagation(); toggleMuteChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isMuted ? 'bg-neutral-950 text-white border-neutral-500' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isMuted ? 'Stumm aus' : 'Stumm schalten'}>
+                                    {isMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                                  </button>
+                                  {isDm && otherUid && (
+                                    <button onClick={(e) => { e.stopPropagation(); if (confirm('Freund entfernen und Chat ausblenden?')) removeFriend(otherUid); }} className="p-2 rounded-lg border border-red-900/30 bg-red-900/10 text-red-400 hover:bg-red-900/30" title="Freund entfernen">
+                                      <UserMinus className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                  <button onClick={(e) => { e.stopPropagation(); togglePinChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isPinned ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isPinned ? 'Unpin' : 'Pin'}>
+                                    <Pin className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => setSelectedMessageId(null)}>
+                      {isMessageSearchOpen && (
+
+                        <div className="px-4 py-2 bg-neutral-950 border-b border-neutral-900 flex flex-col gap-2 shrink-0">
+
+                          <div className="flex items-center gap-2">
+
+                            <Search className="w-4 h-4 text-neutral-500" />
+
+                            <input
+
+                              id="msgSearchInput"
+
+                              value={messageSearchQuery}
+
+                              onChange={(e) => setMessageSearchQuery(e.target.value)}
+
+                              placeholder="Nachrichten durchsuchen..."
+
+                              className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
+
+                            />
+
+                            <button onClick={() => { setMessageSearchQuery(''); setMessageMatchIndex(0); }} className="text-neutral-500 hover:text-white transition-colors" title="Leeren"><X className="w-4 h-4" /></button>
+
+
+                            {(((messageSearchQuery || '').trim()) || messageSearchFilter !== 'all') && (
+
+                              <div className="flex items-center gap-2 ml-2 text-xs text-neutral-500">
+
+                                <span>{messageMatches.length > 0 ? (Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1)) + 1) : 0}/{messageMatches.length}</span>
+
+                                <button onClick={() => { if (messageMatches.length > 0) setMessageMatchIndex(i => (i - 1 + messageMatches.length) % messageMatches.length); }} disabled={messageMatches.length <= 1} className="p-1 rounded hover:bg-neutral-800 disabled:opacity-40"><ChevronLeft className="w-4 h-4" /></button>
+
+                                <button onClick={() => { if (messageMatches.length > 0) setMessageMatchIndex(i => (i + 1) % messageMatches.length); }} disabled={messageMatches.length <= 1} className="p-1 rounded hover:bg-neutral-800 disabled:opacity-40"><ChevronRight className="w-4 h-4" /></button>
+
+                              </div>
+
+                            )}
+
+                          </div>
+
+
+                          <div className="flex flex-wrap items-center gap-2">
+
+                            <button onClick={() => { setMessageSearchFilter('all'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'all' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Alle</button>
+
+                            <button onClick={() => { setMessageSearchFilter('media'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'media' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Medien</button>
+
+                            <button onClick={() => { setMessageSearchFilter('audio'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'audio' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Audio</button>
+
+                            <button onClick={() => { setMessageSearchFilter('links'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'links' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Links</button>
+
+                          </div>
+
+                        </div>
+                      )}
+
+                      
+                      <div
+                        ref={chatScrollRef}
+                        onScroll={(e) => {
+                          const el = e.currentTarget;
+                          if (!el) return;
+
+                          // Track whether user is close to bottom (used to decide auto-scroll on new messages)
+                          try {
+                            const distToBottom = el.scrollHeight - (el.scrollTop + el.clientHeight);
+                            chatStickToBottomRef.current = distToBottom < 120;
+                          } catch (_) {}
+
+                          if (chatAutoLoadLockRef.current) return;
+                          if (chatLoadingMore) return;
+                          if (!chatHasMore) return;
+                          if (el.scrollTop < 90) {
+                            chatAutoLoadLockRef.current = true;
+                            loadMoreChatMessages();
+                          }
+                        }}
+                        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 flex flex-col"
+                      >
+                        {chatHasMore && (
+                          <div className="-mt-2 mb-2 flex items-center justify-center">
+                            <div className="px-3 py-1.5 rounded-full border border-neutral-800 bg-neutral-950 text-[11px] text-neutral-400">
+                              {chatLoadingMore ? "Lade ältere Nachrichten…" : "Scroll nach oben für mehr"}
+                            </div>
+                          </div>
+                        )}
+
+                        {visibleChatMessages.map((msg) => {
+                          const isMe = msg.senderId === user.uid;
+                          const showActions = selectedMessageId === msg.id;
+                          
+                          return (
+                            <div key={msg.id} id={`msg-${msg.id}`} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                              <div 
+                                onClick={(e) => { e.stopPropagation(); setSelectedMessageId(showActions ? null : msg.id); }}
+                                className={`max-w-[85%] rounded-2xl p-3 cursor-pointer transition-colors relative ${isMe ? 'bg-white text-black rounded-tr-sm hover:bg-gray-200' : 'bg-neutral-900 border border-neutral-800 text-white rounded-tl-sm hover:bg-neutral-800'}${isMessageSearchOpen && currentMatchId && String(currentMatchId) === String(msg.id) ? ' ring-2 ring-white/70' : ''}`}
+                              >
+                                {/* Selbstzerstörungs-Indikator */}
+                                {msg.selfDestruct && (
+                                  <div className="text-[10px] text-red-500 font-bold mb-2 flex items-center gap-1">
+                                    <Bomb className="w-3 h-3" /> Zerstört sich nach Lesen
+                                  </div>
+                                )}
+                                {!msg.deleted && msg.replyTo && (
+                                  (() => {
+                                    const refId = msg.replyTo?.id;
+                                    const refMsg = refId ? (chatMessages || []).find(m => m.id === refId) : null;
+                                    const label = senderLabelFromId(refMsg?.senderId || msg.replyTo?.senderId);
+                                    const preview = (refMsg ? messagePreviewText(refMsg) : String(msg.replyTo?.preview || '').trim()) || '—';
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (!refId) return;
+                                          try {
+                                            const el = document.getElementById(`msg-${refId}`);
+                                            if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                          } catch (_) {}
+                                        }}
+                                        className={`mb-2 w-full text-left px-3 py-2 rounded-xl border ${isMe ? 'bg-black/10 border-black/20' : 'bg-black/40 border-neutral-700'} hover:opacity-90 transition-opacity`}
+                                        title="Zitierte Nachricht"
+                                      >
+                                        <div className={`text-[10px] uppercase tracking-widest font-semibold ${isMe ? 'text-black/70' : 'text-neutral-400'}`}>{label}</div>
+                                        <div className={`mt-0.5 text-xs break-words max-h-10 overflow-hidden ${isMe ? 'text-black/80' : 'text-neutral-200'}`}>{preview}</div>
+                                      </button>
+                                    );
+                                  })()
+                                )}
+{!msg.deleted && msg.image && (
+                                  <img
+                                    src={msg.image}
+                                    alt="Upload"
+                                    className="rounded-lg mb-2 max-h-64 object-contain cursor-zoom-in"
+                                    onClick={(e) => { e.stopPropagation(); openImageViewer(msg.image); }}
+                                  />
+                                )}
+                                {!msg.deleted && msg.audio && <AudioMessageBubble src={msg.audio} msgId={msg.id} isMe={isMe} />}
+                                
+                                {/* Termin-Kachel Rendering */}
+                                {!msg.deleted && msg.event && (
+                                  <div className={`mt-2 p-3 rounded-xl border ${isMe ? 'bg-black/10 border-black/20' : 'bg-black/40 border-neutral-700'}`}>
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <CalendarIcon className="w-4 h-4" />
+                                      <span className="font-bold">{msg.event.title}</span>
+                                    </div>
+                                    <div className="text-xs mb-3 opacity-80">
+                                      {msg.event.date} um {msg.event.time} Uhr
+                                    </div>
+                                    {!isMe && (
+                                      <button onClick={(e) => { e.stopPropagation(); acceptSharedEvent(msg.event); }} className="w-full bg-white text-black py-1.5 rounded-md text-xs font-bold hover:bg-gray-200 transition-colors">
+                                        Zusagen & Eintragen
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+
+                                {msg.deleted ? (
+                                  <p className={`text-sm italic whitespace-pre-wrap ${isMe ? 'text-neutral-600' : 'text-neutral-500'}`}>
+                                    Nachricht gelöscht
+                                  </p>
+                                ) : (
+                                  msg.text && <p className="text-sm whitespace-pre-wrap">{(isMessageSearchOpen && String(messageSearchQuery || '').trim()) ? renderHighlightedText(msg.text, messageSearchQuery, { isMe, active: String(currentMatchId) === String(msg.id) }) : msg.text}</p>
+                                )}
+                                
+                                <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
+                                  {msg.deleted && <span className="text-[9px] mr-1">(gelöscht)</span>}
+                                  {!msg.deleted && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
+                                  {chatMetaPrefs.showTime && (
+                                    <span className="text-[10px] block text-right">
+                                      {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                    </span>
+                                  )}
+                                  {isMe && chatMetaPrefs.receipts !== 'off' && (
+                                    <span className="text-[10px] ml-1">
+                                      {(() => {
+                                        const mode = chatMetaPrefs.receipts;
+                                        const chat = activeChatData || activeChat;
+                                        const group = isGroupChat(chat);
+                                        if (group) {
+                                          const ids = getChatParticipants(chat);
+                                          const lastRead = (activeChatData && activeChatData.lastRead) ? activeChatData.lastRead : (chat && chat.lastRead) ? chat.lastRead : {};
+                                          const denom = Math.max(0, ids.length - 1);
+                                          const seenCount = ids.filter(id => id !== user.uid && (lastRead?.[id] || 0) >= (msg.timestamp || 0)).length;
+                                          if (seenCount > 0) return (mode === 'compact') ? `gesehen ${seenCount}/${denom}` : `gesehen von ${seenCount}/${denom}`;
+                                          if (msg.deliveredAt || msg.delivered) return 'zugestellt';
+                                          return 'gesendet';
+                                        }
+                                        if (msg.readAt) return mode === 'full' ? `gesehen ${formatTime(msg.readAt)}`.trim() : 'gesehen';
+                                        if (msg.read) return 'gesehen';
+                                        if (msg.deliveredAt) return mode === 'full' ? `zugestellt ${formatTime(msg.deliveredAt)}`.trim() : 'zugestellt';
+                                        if (msg.delivered) return 'zugestellt';
+                                        return 'gesendet';
+                                      })()}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {showActions && (
+                                  <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
+                                    {!msg.deleted && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setReplyToMessage({
+                                            id: msg.id,
+                                            senderId: msg.senderId,
+                                            text: msg.text || '',
+                                            image: !!msg.image,
+                                            audio: !!msg.audio,
+                                            event: msg.event ? { title: msg.event.title || 'Termin' } : null,
+                                            deleted: !!msg.deleted
+                                          });
+                                          setEditingMessage(null);
+                                          setSelectedMessageId(null);
+                                          try { document.getElementById('chatInput')?.focus(); } catch (_) {}
+                                        }}
+                                        className="p-2 text-white hover:bg-neutral-700 rounded-md"
+                                        title="Zitieren"
+                                      >
+                                        <CornerUpLeft className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                    
+                                    {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
+                                      <button onClick={(e) => { e.stopPropagation(); setReplyToMessage(null); setEditingMessage(msg); setNewMessageText(msg.text); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
+                                    )}
+                                    {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                      <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="Löschen"><Trash2 className="w-4 h-4" /></button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div ref={messagesEndRef} />
+                      </div>
+
+                      <div className="p-4 bg-neutral-950 border-t border-neutral-900 shrink-0">
+                        {editingMessage && (
+                          <div className="flex items-center justify-between bg-neutral-900 border border-neutral-800 p-2 px-3 rounded-t-xl text-xs text-neutral-400 border-b-0">
+                            <span className="truncate">Nachricht bearbeiten...</span>
+                            <button onClick={() => { setEditingMessage(null); setNewMessageText(''); }} className="hover:text-white shrink-0 ml-2"><X className="w-4 h-4"/></button>
+                          </div>
+                        )}
+
+                        {!editingMessage && replyToMessage && (
+                          <div className="flex items-center justify-between bg-neutral-900 border border-neutral-800 p-2 px-3 rounded-t-xl text-xs text-neutral-400 border-b-0">
+                            <div className="min-w-0">
+                              <div className="text-[10px] uppercase tracking-widest text-neutral-500">Zitieren</div>
+                              <div className="truncate">
+                                <span className="text-neutral-300 font-semibold">{senderLabelFromId(replyToMessage.senderId)}</span>
+                                <span className="text-neutral-600 mx-2">•</span>
+                                <span className="text-neutral-400">{messagePreviewText(replyToMessage)}</span>
+                              </div>
+                            </div>
+                            <button onClick={() => { setReplyToMessage(null); }} className="hover:text-white shrink-0 ml-3"><X className="w-4 h-4"/></button>
+                          </div>
+                        )}
+
+                        <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
+                          <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-x-auto no-scrollbar`}>
+                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Bild senden">
+                              <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleImageUpload} />
+                            </label>
+
+                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Foto machen">
+                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={handleImageUpload} />
+                            </label>
+                            
+                            <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
+                              <CalendarPlus className="w-5 h-5" />
+                            </button>
+
+                            <button type="button" onClick={() => setSelfDestruct(!selfDestruct)} className={`p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 hidden sm:flex ${selfDestruct ? 'bg-red-900/30 border-red-500 text-red-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400'}`} title="Snapchat-Modus (10s)">
+                              <Bomb className="w-5 h-5" />
+                            </button>
+                          </div>
+                          
+                          <div className="flex-1 relative">
+                            {isRecording ? (
+                              <div className="w-full bg-red-950 border border-red-900 text-red-500 rounded-2xl pl-4 pr-12 py-3 flex items-center justify-between animate-pulse">
+                                <span className="text-sm font-medium">Aufnahme läuft...</span>
+                              </div>
+                            ) : (
+                              <textarea 
+                                id="chatInput"
+                                value={newMessageText} 
+                                onChange={handleTyping} 
+                                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); } }} 
+                                placeholder="Nachricht..." 
+                                rows="1" 
+                                className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(editingMessage || replyToMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
+                                style={{ minHeight: '44px', maxHeight: '120px' }} 
+                              />
+                            )}
+                            
+                            <div className="absolute right-1 bottom-1 flex items-center">
+                              {!newMessageText.trim() && !editingMessage && (
+                                <button 
+                                  type="button" 
+                                  onClick={isRecording ? stopRecording : startRecording} 
+                                  className={`p-2 rounded-full transition-colors ${isRecording ? 'text-red-500 hover:bg-red-900/30' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+                                >
+                                  {isRecording ? <Square className="w-5 h-5" fill="currentColor" /> : <Mic className="w-5 h-5" />}
+                                </button>
+                              )}
+                              
+                              {(!isRecording && (newMessageText.trim() || editingMessage)) && (
+                                <button
+                                  type="submit"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onPointerDown={(e) => e.preventDefault()}
+                                  className="p-2 text-white hover:bg-neutral-800 rounded-full transition-colors"
+                                  title="Senden"
+                                >
+                                  <Send className="w-5 h-5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              </ErrorBoundary>
+            )}
+          </main>
+
+          
+          {/* WETTER MODAL */}
+          {isWeatherModalOpen && (
+            <div className="fixed inset-0 z-[75] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }}>
+              <div ref={eventModalScrollRef} className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up max-h-[92dvh] overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }} onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</p>
+                    <h3 className="text-lg font-medium text-white flex items-center gap-2"><MapPin className="w-4 h-4 text-neutral-400" /> {location.name}</h3>
+                  </div>
+                  <button onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      {weather ? `Wind ${Math.round(weather.windspeed || 0)} km/h` : 'Lade Daten…'}
+                    </p>
+                  </div>
+                  <div className="shrink-0">
+                    {getWeatherIcon(weather?.weathercode, "w-12 h-12 text-white")}
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Vorhersage</h4>
+                  <div className="space-y-2">
+                    {(dailyForecast?.time || []).slice(0, 7).map((d, i) => (
+                      <div key={d} className="bg-black border border-neutral-800 rounded-xl overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedForecastDay((prev) => (prev === i ? null : i))}
+                          className="w-full flex items-center justify-between px-3 py-2 hover:bg-neutral-900 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 text-[11px] font-semibold text-neutral-300">{formatDayName(d)}</div>
+                            <div className="flex items-center gap-2">
+                              {getWeatherIcon(dailyForecast?.weathercode?.[i], "w-5 h-5 text-white")}
+                              <span className="text-xs text-neutral-400">{new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="hidden sm:flex items-center gap-2 text-[11px] text-neutral-400">
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">💧 {Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}%</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">🌬️ {Math.round(dailyForecast?.windspeed_10m_max?.[i] ?? 0)} km/h</span>
+                            </div>
+                            <div className="text-sm tabular-nums">
+                              <span className="text-white">{Math.round(dailyForecast?.temperature_2m_max?.[i] ?? 0)}°</span>
+                              <span className="text-neutral-600 mx-1">/</span>
+                              <span className="text-neutral-400">{Math.round(dailyForecast?.temperature_2m_min?.[i] ?? 0)}°</span>
+                            </div>
+                            <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform ${selectedForecastDay === i ? 'rotate-180' : ''}`} />
+                          </div>
+                        </button>
+
+                        {selectedForecastDay === i && (
+                          <div className="px-3 pb-3 pt-2 border-t border-neutral-900 text-sm text-neutral-300">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-neutral-500">Regen</div>
+                                <div className="mt-1 text-sm">{Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}% • {Math.round(dailyForecast?.precipitation_sum?.[i] ?? 0)} mm</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-neutral-500">Wind</div>
+                                <div className="mt-1 text-sm">bis {Math.round(dailyForecast?.windspeed_10m_max?.[i] ?? 0)} km/h</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-neutral-500">Sonnenaufgang</div>
+                                <div className="mt-1 text-sm">{dailyForecast?.sunrise?.[i] ? new Date(dailyForecast.sunrise[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '—'}</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-neutral-500">Sonnenuntergang</div>
+                                <div className="mt-1 text-sm">{dailyForecast?.sunset?.[i] ? new Date(dailyForecast.sunset[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '—'}</div>
+                              </div>
+                            </div>
+
+                            {/* Optional: mini hourly for this day (first ~8 hours) */}
+                            {Array.isArray(hourlyForecast?.time) && (
+                              <div className="mt-3">
+                                <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Stündlich</div>
+                                <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                                  {(() => {
+                                    try {
+                                      const dayStr = String(d).slice(0, 10);
+                                      const idxs = [];
+                                      for (let k = 0; k < hourlyForecast.time.length; k++) {
+                                        if (String(hourlyForecast.time[k]).slice(0, 10) === dayStr) idxs.push(k);
+                                      }
+                                      return idxs.slice(0, 8).map((k) => (
+                                        <div key={hourlyForecast.time[k]} className="min-w-[64px] rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-2 text-center">
+                                          <div className="text-[11px] text-neutral-400">{new Date(hourlyForecast.time[k]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}</div>
+                                          <div className="mt-1 text-sm font-medium text-white tabular-nums">{Math.round(hourlyForecast?.temperature_2m?.[k] ?? 0)}°</div>
+                                          <div className="mt-1 text-[11px] text-neutral-400">💧 {Math.round(hourlyForecast?.precipitation_probability?.[k] ?? 0)}%</div>
+                                        </div>
+                                      ));
+                                    } catch (_) { return null; }
+                                  })()}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Standort suchen</h4>
+                  <form onSubmit={handleSearchLocation} className="flex gap-2">
+                    <input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Ort (z.B. Zürich)…"
+                      className="flex-1 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                    />
+                    <button type="submit" className="px-4 py-3 bg-white text-black rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+                      <Search className="w-4 h-4" />
+                    </button>
+                  </form>
+
+                  {searchResults.length > 0 && (
+                    <div className="mt-3 bg-black border border-neutral-800 rounded-xl overflow-hidden">
+                      {searchResults.map((loc) => (
+                        <button
+                          key={`${loc.id}-${loc.latitude}-${loc.longitude}`}
+                          onClick={() => { selectLocation(loc); }}
+                          className="w-full text-left px-4 py-3 text-sm hover:bg-neutral-900 transition-colors border-b border-neutral-900 last:border-0"
+                        >
+                          <span className="text-white font-medium">{loc.name}</span>
+                          <span className="text-neutral-500 text-xs ml-2">{loc.admin1 ? `${loc.admin1}` : ''} {loc.country ? `• ${loc.country}` : ''}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 mt-5">
+                  <button
+                    type="button"
+                    onClick={async () => { await fetchWeather(); showToast("Aktualisiert"); }}
+                    className="flex-1 py-3 rounded-lg text-sm bg-neutral-900 border border-neutral-800 hover:border-neutral-500 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    Aktualisieren
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }}
+                    className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors"
+                  >
+                    Schließen
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* EVENT MODAL */}
+          {isModalOpen && (
+            <div className="fixed inset-0 z-[85] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={closeEventModal}>
+              <div ref={eventModalScrollRef} className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up max-h-[92dvh] overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }} onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">{eventToEdit ? (eventModalMode === 'view' ? 'Ansicht' : 'Bearbeiten') : 'Neu'}</p>
+                    <h3 className="text-lg font-medium text-white">{eventToEdit ? (eventModalMode === 'view' ? 'Termin' : 'Termin bearbeiten') : 'Neuer Termin'}</h3>
+                    {eventToEdit && !eventCanEdit && (
+                      <p className="mt-1 text-[11px] text-neutral-500">Nur Lesezugriff</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {eventToEdit && eventModalMode === 'view' && eventCanEdit && (
+                      <button
+                        type="button"
+                        onClick={enterEventEditMode}
+                        className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                        title="Bearbeiten"
+                      >
+                        <Edit2 className="w-5 h-5" />
+                      </button>
+                    )}
+                    {eventToEdit && eventModalMode === 'view' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const snap = {
+                            eventId: (eventToEdit?._baseId || eventToEdit?.id || null),
+                            title: eventForm.title,
+                            date: eventForm.date,
+                            time: eventForm.time,
+                            location: eventForm.location,
+                            durationMinutes: eventForm.durationMinutes,
+                            desc: eventForm.desc,
+                            calendarId: (eventForm.calendarId || eventToEdit?.calendarId || 'default'),
+                          };
+                          openShareLinkModalForEvent(snap, snap.calendarId);
+                        }}
+                        className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                        title="Public Link (Event)"
+                      >
+                        <Link2 className="w-5 h-5" />
+                      </button>
+                    )}
+                    {eventToEdit && eventModalMode !== 'view' && (
+                      <button
+                        type="button"
+                        onClick={backToEventViewMode}
+                        className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                        title="Zurück"
+                      >
+                        <CornerUpLeft className="w-5 h-5" />
+                      </button>
+                    )}
+                    <button onClick={closeEventModal} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+
+                {eventToEdit && eventModalMode !== 'view' && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && (
+                  <div className="mb-4 p-4 bg-black border border-neutral-800 rounded-2xl">
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold mb-2">Änderung gilt für</p>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => { setEventEditScope('single'); setEventForm(prev => ({ ...prev, date: selectedDateForEvent })); }} className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${eventEditScope === 'single' ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}>Nur dieses Datum</button>
+                      <button type="button" onClick={() => { setEventEditScope('series'); setEventForm(prev => ({ ...prev, date: eventToEdit.date })); }} className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${eventEditScope === 'series' ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}>Ganze Serie</button>
+                    </div>
+                    <p className="mt-2 text-[11px] text-neutral-500">Aktuelles Datum: <span className="text-neutral-300">{selectedDateForEvent}</span></p>
+                  </div>
+                )}
+
+                {eventToEdit && eventModalMode === 'view' && (
+                  <div className="space-y-3">
+                    <div className="bg-black border border-neutral-800 rounded-2xl p-4">
+                      <div className="text-white text-lg font-medium">{eventForm.title || 'Termin'}</div>
+                      <div className="mt-1 text-sm text-neutral-300">
+                        <span className="tabular-nums">{eventForm.date}</span>
+                        {eventForm.time ? <span className="text-neutral-600 mx-2">•</span> : null}
+                        {eventForm.time ? <span className="tabular-nums">{eventForm.time}</span> : null}
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kategorie</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.type || '—'}</div>
+                        </div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kalender</div>
+                          <div className="mt-1 text-neutral-200">{getCalendarById(eventForm.calendarId || 'default')?.name || 'Privat'}</div>
+                        </div>
+                                              <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Ort</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.location ? eventForm.location : '—'}</div>
+                        </div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Dauer</div>
+                          <div className="mt-1 text-neutral-200">{(eventForm.durationMinutes !== null && typeof eventForm.durationMinutes !== 'undefined' && String(eventForm.durationMinutes).trim() !== '') ? `${eventForm.durationMinutes} min` : '—'}</div>
+                        </div>
+</div>
+
+                      {(eventForm.recurrenceFreq && eventForm.recurrenceFreq !== 'NONE') && (
+                        <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wiederholung</div>
+                          <div className="mt-1 text-neutral-200">
+                            {eventForm.recurrenceFreq === 'DAILY' ? 'Täglich' : eventForm.recurrenceFreq === 'WEEKLY' ? 'Wöchentlich' : eventForm.recurrenceFreq === 'MONTHLY' ? 'Monatlich' : eventForm.recurrenceFreq}
+                            {eventForm.recurrenceInterval && eventForm.recurrenceInterval > 1 ? ` • alle ${eventForm.recurrenceInterval}` : ''}
+                            {eventForm.recurrenceUntil ? ` • bis ${eventForm.recurrenceUntil}` : ''}
+                          </div>
+                        </div>
+                      )}
+
+                      {eventForm.desc ? (
+                        <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Beschreibung</div>
+                          <div className="mt-1 text-neutral-200 whitespace-pre-wrap">{eventForm.desc}</div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 text-[11px] text-neutral-500">Keine Beschreibung.</div>
+                      )}
+                    </div>
+
+                    {eventCanEdit && (
+                      <button
+                        type="button"
+                        onClick={enterEventEditMode}
+                        className="w-full py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Edit2 className="w-4 h-4" /> Bearbeiten
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={closeEventModal}
+                      className="w-full py-3 rounded-lg text-sm text-neutral-400 bg-neutral-900 border border-neutral-800 hover:text-white transition-colors"
+                    >
+                      Schließen
+                    </button>
+                  </div>
+                )}
+
+                {!(eventToEdit && eventModalMode === 'view') && (
+                  <form onSubmit={saveEvent} className="space-y-3">
+                  <div className="bg-black border border-neutral-800 rounded-2xl p-4">
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">⚡ Schnelleingabe</label>
+                    <textarea
+                      value={quickEventText}
+                      onChange={(e) => updateQuickEventText(e.target.value)}
+                      placeholder="z.B. Fr 14:30 Arzt bei Dr. X, 45min"
+                      rows="2"
+                      className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none"
+                    />
+                    {quickEventPreview && (
+                      <div className="mt-2 text-[11px] text-neutral-500">
+                        Erkannt: <span className="text-neutral-300">{quickEventPreview.date || (selectedDateForEvent || eventForm.date)}{quickEventPreview.time ? ` • ${quickEventPreview.time}` : ''}{(quickEventPreview.durationMinutes !== null && typeof quickEventPreview.durationMinutes !== 'undefined') ? ` • ${quickEventPreview.durationMinutes}min` : ''}{quickEventPreview.location ? ` • Ort: ${quickEventPreview.location}` : ''}</span>
+                        <span className="text-neutral-600"> — </span><span className="text-white">{quickEventPreview.title}</span>
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={applyQuickEventToForm}
+                        className="flex-1 py-2 rounded-lg text-sm font-semibold bg-white text-black hover:bg-gray-200 transition-colors"
+                      >
+                        Übernehmen
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setQuickEventText(''); setQuickEventPreview(null); }}
+                        className="px-3 py-2 rounded-lg text-sm border border-neutral-800 text-neutral-300 hover:border-neutral-500"
+                      >
+                        Leeren
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Titel</label>
+                    <input
+                      value={eventForm.title}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, title: e.target.value }))}
+                      placeholder="z.B. Arzttermin"
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                      required
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Datum</label>
+                      <input
+                        type="date"
+                        value={eventForm.date}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, date: e.target.value }))}
+                        disabled={ eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' }
+                        className={`mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500 ${eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        required
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Zeit</label>
+                      <input
+                        type="time"
+                        value={eventForm.time}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, time: e.target.value }))}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Ort</label>
+                      <input
+                        value={eventForm.location || ''}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, location: e.target.value }))}
+                        placeholder="z.B. Büro / Dr. X"
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                      />
+                    </div>
+                    <div className="w-32">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Dauer</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={eventForm.durationMinutes === null || typeof eventForm.durationMinutes === 'undefined' ? '' : eventForm.durationMinutes}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, durationMinutes: e.target.value }))}
+                        placeholder="min"
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                      />
+                    </div>
+                  </div>
+
+                  {!eventToEdit && (
+                    <div className="bg-black border border-neutral-800 rounded-2xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">🗳️ Abstimmung</label>
+                          <p className="mt-1 text-[11px] text-neutral-500">Beim Speichern werden Zeitvorschläge an Mitglieder mit Schreibrecht gesendet.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreatePollOnSave(v => {
+                              const next = !v;
+                              if (next) initPollDraftFromEvent({ date: eventForm.date, time: eventForm.time, calendarId: eventForm.calendarId || 'default' });
+                              return next;
+                            });
+                          }}
+                          className={"px-3 py-2 rounded-lg text-xs font-semibold border transition-colors " + (createPollOnSave ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500')}
+                        >
+                          {createPollOnSave ? 'Ja, abstimmen' : 'Nein'}
+                        </button>
+                      </div>
+
+                      {createPollOnSave && (
+                        <div className="mt-3 space-y-3">
+                          <div className="text-xs text-neutral-400">Vorschläge (mind. 2):</div>
+                          {[0,1,2].map((i) => (
+                            <div key={i} className="flex gap-2">
+                              <input
+                                type="date"
+                                value={pollDraft[i]?.date || ''}
+                                onChange={(e) => setPollDraft(prev => prev.map((x, idx) => idx === i ? { ...x, date: e.target.value } : x))}
+                                className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                              />
+                              <input
+                                type="time"
+                                value={pollDraft[i]?.time || ''}
+                                onChange={(e) => setPollDraft(prev => prev.map((x, idx) => idx === i ? { ...x, time: e.target.value } : x))}
+                                className="w-28 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                              />
+                            </div>
+                          ))}
+
+                          
+
+                          <div className="mt-2 bg-neutral-950/40 border border-neutral-800 rounded-xl p-3">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold mb-2">Deadline (optional)</div>
+                            <div className="flex gap-2">
+                              <input
+                                type="date"
+                                value={pollDeadlineDate}
+                                onChange={(e) => setPollDeadlineDate(e.target.value)}
+                                className="flex-1 bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                              />
+                              <input
+                                type="time"
+                                value={pollDeadlineTime}
+                                onChange={(e) => setPollDeadlineTime(e.target.value)}
+                                className="w-28 bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                              />
+                            </div>
+                            <div className="mt-2 flex items-center justify-between">
+                              <div className="text-[11px] text-neutral-500">Auto-Finalisieren nach Deadline</div>
+                              <button
+                                type="button"
+                                onClick={() => setPollAutoFinalize(v => !v)}
+                                className={"px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors " + (pollAutoFinalize ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500')}
+                              >
+                                {pollAutoFinalize ? 'An' : 'Aus'}
+                              </button>
+                            </div>
+                            <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: ✅ Fix · 🤷 Kann · ❌ Nein (pro Vorschlag)</div>
+                          </div>
+<div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => initPollDraftFromEvent({ date: eventForm.date, time: eventForm.time, calendarId: eventForm.calendarId || 'default' })}
+                              className="flex-1 px-3 py-2 rounded-lg border border-neutral-800 text-neutral-300 text-sm hover:border-neutral-500"
+                            >
+                              Reset
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Convenience: setze Hauptdatum/Zeit auf ersten Vorschlag
+                                const first = (pollDraft && pollDraft[0]) ? pollDraft[0] : null;
+                                if (first?.date) setEventForm(prev => ({ ...prev, date: first.date }));
+                                if (first?.time) setEventForm(prev => ({ ...prev, time: first.time }));
+                              }}
+                              className="flex-1 px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 text-sm hover:border-neutral-500"
+                            >
+                              1. Vorschlag übernehmen
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="bg-black border border-neutral-800 rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Erinnerung</label>
+                      {!eventForm.time && <span className="text-[10px] text-neutral-500">benötigt Uhrzeit</span>}
+                    </div>
+                    <select
+                      value={(eventForm.reminderMode === 'custom') ? String(eventForm.reminderMinutes ?? 15) : (eventForm.reminderMode === 'none' ? 'none' : 'default')}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === 'default') {
+                          setEventForm(prev => ({ ...prev, reminderMode: 'default' }));
+                        } else if (v === 'none') {
+                          setEventForm(prev => ({ ...prev, reminderMode: 'none', reminderMinutes: 15 }));
+                        } else {
+                          const m = parseInt(v, 10);
+                          setEventForm(prev => ({ ...prev, reminderMode: 'custom', reminderMinutes: isNaN(m) ? 15 : m }));
+                        }
+                      }}
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="default">Standard (Einstellungen)</option>
+                      <option value="none">Keine</option>
+                      <option value="0">Bei Beginn</option>
+                      <option value="5">5 Minuten vorher</option>
+                      <option value="10">10 Minuten vorher</option>
+                      <option value="15">15 Minuten vorher</option>
+                      <option value="30">30 Minuten vorher</option>
+                      <option value="60">1 Stunde vorher</option>
+                      <option value="120">2 Stunden vorher</option>
+                      <option value="1440">1 Tag vorher</option>
+                    </select>
+                    <p className="mt-2 text-[11px] text-neutral-500">Hinweis: In der PWA funktionieren Erinnerungen zuverlässig, wenn Benachrichtigungen erlaubt sind und Onyx mindestens im Hintergrund aktiv ist.</p>
+                  </div>
+
+
+                  <div className="bg-black border border-neutral-800 rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wiederholung</label>
+                      {eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' && (
+                        <span className="text-[10px] text-neutral-500">nur in Serie änderbar</span>
+                      )}
+                    </div>
+                    <select
+                      value={eventForm.recurrenceFreq}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setEventForm(prev => {
+                          const next = { ...prev, recurrenceFreq: v };
+                          if (v === 'NONE') {
+                            next.recurrenceInterval = 1; next.recurrenceByWeekdays = []; next.recurrenceUntil = '';
+                          } else if (v === 'WEEKLY') {
+                            if (!Array.isArray(next.recurrenceByWeekdays) || next.recurrenceByWeekdays.length === 0) {
+                              const wd = next.date ? weekdayIndexMon0(next.date) : 0;
+                              next.recurrenceByWeekdays = [wd];
+                            }
+                            if (!next.recurrenceInterval) next.recurrenceInterval = 1;
+                          } else {
+                            next.recurrenceByWeekdays = [];
+                            if (!next.recurrenceInterval) next.recurrenceInterval = 1;
+                          }
+                          return next;
+                        });
+                      }}
+                      disabled={ eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' }
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="NONE">Keine</option>
+                      <option value="DAILY">Täglich</option>
+                      <option value="WEEKLY">Wöchentlich</option>
+                      <option value="MONTHLY">Monatlich</option>
+                    </select>
+
+                    {eventForm.recurrenceFreq !== 'NONE' && (
+                      <div className="mt-3 space-y-3">
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Intervall</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={eventForm.recurrenceInterval}
+                              onChange={(e) => setEventForm(prev => ({ ...prev, recurrenceInterval: parseInt(e.target.value || '1', 10) || 1 }))}
+                              disabled={ eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' }
+                              className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Bis (optional)</label>
+                            <input
+                              type="date"
+                              value={eventForm.recurrenceUntil}
+                              onChange={(e) => setEventForm(prev => ({ ...prev, recurrenceUntil: e.target.value }))}
+                              disabled={ eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' }
+                              className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                            />
+                          </div>
+                        </div>
+
+                        {eventForm.recurrenceFreq === 'WEEKLY' && (
+                          <div>
+                            <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wochentage</label>
+                            <div className="mt-2 grid grid-cols-7 gap-1">
+                              {WOCHENTAGE.map((wd, idx) => (
+                                <button
+                                  key={wd}
+                                  type="button"
+                                  onClick={() => setEventForm(prev => {
+                                    const set = new Set(Array.isArray(prev.recurrenceByWeekdays) ? prev.recurrenceByWeekdays : []);
+                                    if (set.has(idx)) set.delete(idx); else set.add(idx);
+                                    return { ...prev, recurrenceByWeekdays: Array.from(set).sort((a,b) => a-b) };
+                                  })}
+                                  disabled={ eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' }
+                                  className={`py-2 rounded-md text-[10px] font-semibold border transition-colors ${eventForm.recurrenceByWeekdays.includes(idx) ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
+                                >
+                                  {wd}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kategorie</label>
+                    <input
+                      list="eventTypeList"
+                      value={eventForm.type}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, type: e.target.value }))}
+                      placeholder="z.B. Arbeit"
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                    />
+                    <datalist id="eventTypeList">
+                      <option value="Privat" />
+                      <option value="Arbeit" />
+                      <option value="Projekt" />
+                      <option value="Geburtstag" />
+                      <option value="Erinnerung" />
+                    </datalist>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Beschreibung</label>
+                    <textarea
+                      value={eventForm.desc}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, desc: e.target.value }))}
+                      placeholder="Optional…"
+                      rows={3}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kalender</label>
+                    <select
+                      value={eventForm.calendarId}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, calendarId: e.target.value }))}
+                      disabled={ eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' }
+                      className={`mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500 ${eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <option value="default">Privat (Standard)</option>
+                      {customCalendars
+                        .filter(c => c.type !== 'shift' && (c.ownerId === user.uid || c.sharedWith?.[user.uid] === 'write'))
+                        .map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}{c.ownerId !== user.uid ? ' (geteilt)' : ''}
+                          </option>
+                        ))
+                      }
+                    </select>
+                    <p className="mt-1 text-[11px] text-neutral-500">{(eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single') ? 'Hinweis: Einzelnes Vorkommen kann nicht in einen anderen Kalender verschoben werden.' : 'Schichtpläne können nur über die Tagesauswahl bearbeitet werden.'}</p>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    {eventToEdit ? (
+                      (eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date) ? (
+                        <>
+                          <button type="button" onClick={() => deleteEvent('single')} className="py-3 px-4 rounded-lg text-sm text-red-300 bg-red-500/10 border border-red-900/40 hover:bg-red-500/20 transition-colors">
+                            Dieses Datum
+                          </button>
+                          <button type="button" onClick={() => deleteEvent('series')} className="py-3 px-4 rounded-lg text-sm text-red-500 bg-red-500/10 border border-red-900/40 hover:bg-red-500/20 transition-colors">
+                            Serie
+                          </button>
+                        </>
+                      ) : (
+                        <button type="button" onClick={() => deleteEvent('series')} className="py-3 px-4 rounded-lg text-sm text-red-500 bg-red-500/10 border border-red-900/40 hover:bg-red-500/20 transition-colors">
+                          Löschen
+                        </button>
+                      )
+                    ) : (
+                      <button type="button" onClick={closeEventModal} className="py-3 px-4 rounded-lg text-sm text-neutral-400 bg-neutral-900 border border-neutral-800 hover:text-white transition-colors">
+                        Abbrechen
+                      </button>
+                    )}
+                    <button type="submit" className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">
+                      Speichern
+                    </button>
+                  </div>
+
+                  {eventToEdit && (
+                    <button type="button" onClick={closeEventModal} className="w-full py-3 rounded-lg text-sm text-neutral-400 bg-neutral-900 border border-neutral-800 hover:text-white transition-colors">
+                      Schließen
+                    </button>
+                  )}
+                </form>
+                )}
+
+
+{eventToEdit && (
+  <div className="mt-4 pt-4 border-t border-neutral-800">
+    <div className="flex gap-2 mb-3">
+      <button
+        type="button"
+        onClick={() => { setShowEventComments(v => !v); setShowEventPoll(false); }}
+        className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${showEventComments ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
+      >
+        💬 Kommentare
+      </button>
+      <button
+        type="button"
+        onClick={() => { setShowEventPoll(v => !v); setShowEventComments(false); initPollDraftFromEvent(modalEvent || eventToEdit); }}
+        className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${showEventPoll ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
+      >
+        🗳️ Abstimmung
+      </button>
+    </div>
+
+    {showEventComments && (
+      <div className="bg-black border border-neutral-800 rounded-2xl p-3">
+        <div className="h-48 overflow-auto space-y-2 pr-1">
+          {eventComments.length === 0 ? (
+            <div className="text-xs text-neutral-500">Noch keine Kommentare.</div>
+          ) : eventComments.map((c) => (
+            <div
+              key={c.id}
+              className={`max-w-[85%] rounded-2xl px-3 py-2 ${c.senderId === user.uid ? 'bg-white text-black ml-auto' : 'bg-neutral-900 text-white'}`}
+            >
+              <div className="text-[10px] opacity-70 mb-1">{c.senderId === user.uid ? 'Du' : (c.senderName || 'User')}</div>
+              <div className="text-sm whitespace-pre-wrap">{c.text}</div>
+              <div className="text-[10px] opacity-60 mt-1">{c.timestamp ? new Date(c.timestamp).toLocaleString('de-CH') : ''}</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 mt-3">
+          <input
+            value={newCommentText}
+            onChange={(e) => setNewCommentText(e.target.value)}
+            placeholder="Kommentar..."
+            className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+          />
+          <button
+            type="button"
+            onClick={sendEventComment}
+            className="px-3 py-2 rounded-lg bg-white text-black font-semibold text-sm"
+          >
+            Senden
+          </button>
+        </div>
+      </div>
+    )}
+
+    {showEventPoll && (
+      <div className="bg-black border border-neutral-800 rounded-2xl p-3 space-y-3">
+        {modalEvent && modalEvent.poll && modalEvent.poll.status === 'closed' && (
+          <div className="text-xs text-neutral-400">
+            Letzte Abstimmung geschlossen ✅
+          </div>
+        )}
+
+        {(!modalEvent || !modalEvent.poll || modalEvent.poll.status !== 'open') ? (
+          <div className="space-y-3">
+            <p className="text-xs text-neutral-400">
+              3 Vorschläge senden → Mitglieder mit <span className="text-white">Schreibrecht</span> im Kalender stimmen ab. Gewinner wird automatisch gesetzt.
+            </p>
+
+            {[0,1,2].map((i) => (
+              <div key={i} className="flex gap-2">
+                <input
+                  type="date"
+                  value={pollDraft[i]?.date || ''}
+                  onChange={(e) => setPollDraft(prev => prev.map((x, idx) => idx === i ? { ...x, date: e.target.value } : x))}
+                  className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                />
+                <input
+                  type="time"
+                  value={pollDraft[i]?.time || ''}
+                  onChange={(e) => setPollDraft(prev => prev.map((x, idx) => idx === i ? { ...x, time: e.target.value } : x))}
+                  className="w-28 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                />
+              </div>
+            ))}
+
+            <div className="mt-2 bg-neutral-950/40 border border-neutral-800 rounded-xl p-3">
+              <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold mb-2">Deadline (optional)</div>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={pollDeadlineDate}
+                  onChange={(e) => setPollDeadlineDate(e.target.value)}
+                  className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                />
+                <input
+                  type="time"
+                  value={pollDeadlineTime}
+                  onChange={(e) => setPollDeadlineTime(e.target.value)}
+                  className="w-28 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <div className="text-[11px] text-neutral-500">Auto-Finalisieren nach Deadline</div>
+                <button
+                  type="button"
+                  onClick={() => setPollAutoFinalize(v => !v)}
+                  className={"px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors " + (pollAutoFinalize ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500')}
+                >
+                  {pollAutoFinalize ? 'An' : 'Aus'}
+                </button>
+              </div>
+              <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: ✅ Fix · 🤷 Kann · ❌ Nein (pro Vorschlag)</div>
+            </div>
+
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={pollBusy}
+                onClick={createPollForEvent}
+                className={`flex-1 px-3 py-2 rounded-lg font-semibold text-sm ${pollBusy ? 'bg-neutral-700 text-neutral-300' : 'bg-white text-black'}`}
+              >
+                Vorschläge senden
+              </button>
+              <button
+                type="button"
+                onClick={() => initPollDraftFromEvent(modalEvent || eventToEdit)}
+                className="px-3 py-2 rounded-lg border border-neutral-800 text-neutral-300 text-sm hover:border-neutral-500"
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+        ) : (
+                    <div className="space-y-3">
+            {(() => {
+              const poll = modalEvent.poll || {};
+              const voterIds = Array.isArray(poll.voterIds) ? poll.voterIds : [];
+              const tally = computePollTally(poll, voterIds);
+              const deadlineLabel = tally.deadlineAt ? formatDeadlineShort(tally.deadlineAt) : '';
+              const canFinalizeNow = !!tally.canFinalizeNow;
+              const winnerId = tally.winnerOptionId;
+              const myLegacyVote = (tally.version < 2) ? ((tally.votes || {})[user.uid] || '') : '';
+              const myRow = (tally.version >= 2 && tally.votes && typeof tally.votes[user.uid] === 'object') ? tally.votes[user.uid] : {};
+              const myComplete = (tally.version < 2) ? !!myLegacyVote : ((poll.options || []).every(o => isPollState((myRow || {})[o.id])));
+
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-neutral-400">
+                      Abstimmung läuft • {tally.respondedCount}/{tally.totalVoters || (poll.voterIds || []).length} Antworten{deadlineLabel ? ` · Deadline: ${deadlineLabel}` : ''}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!canFinalizeNow || pollBusy}
+                      onClick={finalizePollForEvent}
+                      className={"px-3 py-2 rounded-lg font-semibold text-xs " + ((!canFinalizeNow || pollBusy) ? 'bg-neutral-900 border border-neutral-800 text-neutral-500 cursor-not-allowed' : 'bg-white text-black')}
+                      title={canFinalizeNow ? 'Gewinner übernehmen' : 'Warten bis alle fertig sind oder Deadline'}
+                    >
+                      Gewinner übernehmen
+                    </button>
+                  </div>
+
+                  {tally.version < 2 && (
+                    <div className="text-[11px] text-yellow-300 border border-yellow-900/30 bg-yellow-900/10 rounded-xl p-3">
+                      Diese Abstimmung ist 1.0 (eine Stimme pro Person). Neue Abstimmungen nutzen 2.0 (✅/🤷/❌ pro Vorschlag).
+                      {(poll.createdBy === user.uid) && (
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            disabled={pollBusy}
+                            onClick={() => upgradePollToV2(modalEvent)}
+                            className={"px-3 py-2 rounded-lg text-[11px] font-semibold border " + (pollBusy ? 'bg-neutral-900 border-neutral-800 text-neutral-500' : 'bg-white text-black border-white')}
+                          >
+                            Auf 2.0 upgraden (Votes reset)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    {(poll.options || []).map((opt) => {
+                      const t = (tally.byOptionId && tally.byOptionId[opt.id]) ? tally.byOptionId[opt.id] : { yes: 0, maybe: 0, no: 0, score: 0 };
+                      const isWinner = winnerId === opt.id;
+
+                      if (tally.version >= 2) {
+                        const myState = (myRow || {})[opt.id] || '';
+                        const baseBtn = 'px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors';
+                        const onCls = 'bg-white text-black border-white';
+                        const offCls = 'bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-500';
+
+                        return (
+                          <div
+                            key={opt.id}
+                            className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800')}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-sm text-white">{opt.date} • {opt.time}{isWinner ? ' ⭐' : ''}</div>
+                              <div className="flex items-center gap-1">
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.YES)} className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)} title="Fix">✅</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.MAYBE)} className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)} title="Kann">🤷</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.NO)} className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)} title="Nein">❌</button>
+                              </div>
+                            </div>
+                            <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">✅{t.yes} &nbsp; 🤷{t.maybe} &nbsp; ❌{t.no}</div>
+                          </div>
+                        );
+                      }
+
+                      // Legacy (1.0)
+                      const myVote = myLegacyVote;
+                      const voted = myVote === opt.id;
+                      const c = t.yes || 0;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => voteInPoll(opt.id)}
+                          className={"w-full text-left border rounded-xl px-3 py-2 " + (voted ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500')}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm text-white">{opt.date} • {opt.time}</div>
+                            <div className="text-xs text-neutral-400">{c} Vote{c === 1 ? '' : 's'}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="text-[11px] text-neutral-500">
+                    {myComplete ? 'Du: fertig ✅' : 'Du: offen'}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+)}
+              </div>
+            </div>
+          )}
+
+          {/* KALENDER VERWALTEN MODAL */}
+          {isCalManageModalOpen && (
+            <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => setIsCalManageModalOpen(false)}>
+              <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">{calForm?.id ? 'Bearbeiten' : 'Neu'}</p>
+                    <h3 className="text-lg font-medium text-white">{calForm?.id ? 'Kalender bearbeiten' : 'Neuer Kalender'}</h3>
+                  </div>
+                  <button onClick={() => setIsCalManageModalOpen(false)} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={saveCalendarSettings} className="space-y-4">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Name</label>
+                    <input
+                      value={calForm?.name || ''}
+                      onChange={(e) => setCalForm(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="z.B. Arbeit / Schule / Team"
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                      required
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between bg-black border border-neutral-800 rounded-2xl p-4">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Farbe</div>
+                      <div className="mt-1 text-xs text-neutral-500">Wird für Marker/Rand im Kalender genutzt.</div>
+                    </div>
+                    <input
+                      type="color"
+                      value={calForm?.color || '#ffffff'}
+                      onChange={(e) => setCalForm(prev => ({ ...prev, color: e.target.value }))}
+                      className="w-10 h-10 rounded-lg bg-transparent border border-neutral-800"
+                      title="Kalenderfarbe"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Typ</label>
+                    <select
+                      value={calForm?.type || 'normal'}
+                      onChange={(e) => setCalForm(prev => ({ ...prev, type: e.target.value, shifts: prev.shifts || [] }))}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="normal">Normal (Termine)</option>
+                      <option value="shift">Schichtplan (Farben)</option>
+                    </select>
+                    <p className="mt-1 text-[11px] text-neutral-500">Schichtplan: Tippen wechselt Schichten, lang drücken öffnet Auswahl, „Pinsel“ malt mehrere Tage.</p>
+                  </div>
+
+                  {calForm?.type === 'shift' && (
+                    <div className="bg-black border border-neutral-800 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold">Schichten</h4>
+                        <button type="button" onClick={addShiftToForm} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">
+                          + Schicht
+                        </button>
+                      </div>
+
+                      {(calForm.shifts || []).length === 0 ? (
+                        <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
+                          Noch keine Schichten. Füge mindestens eine hinzu.
+                        </div>
+                      ) : (
+                        <div className="space-y-3 max-h-[45vh] overflow-y-auto no-scrollbar pr-1">
+                          {(calForm.shifts || []).map((sh) => (
+                            <div key={sh.id} className="border border-neutral-800 rounded-xl p-3 bg-neutral-950/30">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="color"
+                                  value={sh.color || '#ffffff'}
+                                  onChange={(e) => updateShiftInForm(sh.id, 'color', e.target.value)}
+                                  className="w-12 h-10 bg-transparent border border-neutral-800 rounded-lg"
+                                  title="Farbe"
+                                />
+                                <input
+                                  value={sh.name || ''}
+                                  onChange={(e) => updateShiftInForm(sh.id, 'name', e.target.value)}
+                                  placeholder="Name (z.B. Früh)"
+                                  className="flex-1 bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                                />
+                                <button type="button" onClick={() => removeShiftFromForm(sh.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors" title="Entfernen">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                              <div className="mt-2">
+                                <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Zeit</label>
+                                <input
+                                  type="time"
+                                  value={sh.time || '08:00'}
+                                  onChange={(e) => updateShiftInForm(sh.id, 'time', e.target.value)}
+                                  className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={() => setIsCalManageModalOpen(false)} className="flex-1 py-3 rounded-lg text-sm text-neutral-400 bg-neutral-900 border border-neutral-800 hover:text-white transition-colors">
+                      Abbrechen
+                    </button>
+                    <button type="submit" className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">
+                      Speichern
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* KALENDER TEILEN MODAL */}
+          {isShareCalModalOpen && shareCalData && (
+            <div className="fixed inset-0 z-[82] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => { setIsShareCalModalOpen(false); setShareUsername(''); }}>
+              <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">Teilen</p>
+                    <h3 className="text-lg font-medium text-white">{shareCalData.name}</h3>
+                  </div>
+                  <button onClick={() => { setIsShareCalModalOpen(false); setShareUsername(''); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={shareCalendar} className="space-y-3">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">E-Mail</label>
+                    <input
+                      value={shareUsername}
+                      onChange={(e) => setShareUsername(e.target.value)}
+                      placeholder="E-Mail Adresse (z.B. name@mail.com)"
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                      required
+                    />
+                    <p className="mt-1 text-[11px] text-neutral-500">Hinweis: Der andere Nutzer muss sich einmal registriert haben, damit sein Profil über E-Mail gefunden wird.</p>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Rechte</label>
+                    <select
+                      value={sharePerm}
+                      onChange={(e) => setSharePerm(e.target.value)}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="read">Nur Lesen</option>
+                      <option value="write">Lesen & Schreiben</option>
+                    </select>
+                  </div>
+
+                  <button type="submit" className="w-full py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">
+                    Freigeben
+                  </button>
+                </form>
+
+                <div className="mt-5">
+                  <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Aktive Freigaben</h4>
+                  {Object.keys(shareCalData.sharedWith || {}).length === 0 ? (
+                    <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
+                      Noch keine Freigaben.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[35vh] overflow-y-auto no-scrollbar pr-1">
+                      {Object.entries(shareCalData.sharedWith || {}).map(([uid, perm]) => (
+                        <div key={uid} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
+                          <div className="flex flex-col">
+                            <span className="text-sm text-white font-medium">{getProfile(uid)?.username || shortId(uid,6)}</span>
+                            <span className="text-[11px] text-neutral-500">{perm === 'write' ? 'Lesen & Schreiben' : 'Nur Lesen'}</span>
+                          </div>
+                          <button onClick={() => unshareCalendar(shareCalData.id, uid)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors" title="Entfernen">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5">
+                  <button
+                    type="button"
+                    onClick={() => { setIsShareCalModalOpen(false); setShareUsername(''); }}
+                    className="w-full py-3 rounded-lg text-sm bg-neutral-900 border border-neutral-800 hover:border-neutral-500 text-neutral-300 hover:text-white transition-colors"
+                  >
+                    Schließen
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PUBLIC SHARE LINK MODAL (Busy-only / Passcode / Magic-Link / Expiry) */}
+          {isShareLinkModalOpen && (
+            <div className="fixed inset-0 z-[83] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }}>
+              <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">Privacy-first Sharing</p>
+                    <h3 className="text-lg font-medium text-white">Public Link</h3>
+                    <p className="text-[11px] text-neutral-500 mt-1">
+                      {shareLinkDraft.kind === 'calendar' ? `Busy‑Only: ${shareLinkDraft.calName || 'Kalender'}` : `Event: ${(shareLinkDraft.eventSnapshot?.title || 'Termin')}`}
+                    </p>
+                  </div>
+                  <button onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {shareLinkDraft.kind === 'calendar' && (
+                  <div className="bg-black border border-neutral-800 rounded-xl p-4 mb-4">
+                    <div className="text-xs font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Busy‑Only</div>
+                    <div className="mt-1 text-[11px] text-neutral-500">Extern sieht nur Zeitblöcke (keine Titel/Orte).</div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Schutz</label>
+                    <select
+                      value={shareLinkDraft.protection}
+                      onChange={(e) => setShareLinkDraft(prev => ({ ...prev, protection: e.target.value, passcode: '' }))}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="magic">Magic‑Link (ohne Eingabe)</option>
+                      <option value="passcode">Passcode</option>
+                      <option value="none">Offen (nicht empfohlen)</option>
+                    </select>
+                    {shareLinkDraft.protection === 'passcode' && (
+                      <input
+                        value={shareLinkDraft.passcode}
+                        onChange={(e) => setShareLinkDraft(prev => ({ ...prev, passcode: e.target.value }))}
+                        placeholder="Passcode (min. 4)"
+                        className="mt-2 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Ablauf</label>
+                    <div className="mt-1 bg-black border border-neutral-800 rounded-lg px-3 py-3">
+                      <label className="flex items-center gap-2 text-xs text-neutral-300">
+                        <input type="checkbox" checked={!!shareLinkDraft.noExpiry} onChange={(e) => setShareLinkDraft(prev => ({ ...prev, noExpiry: e.target.checked }))} />
+                        Kein Ablauf
+                      </label>
+                      {!shareLinkDraft.noExpiry && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="365"
+                            value={shareLinkDraft.expiresInDays}
+                            onChange={(e) => setShareLinkDraft(prev => ({ ...prev, expiresInDays: e.target.value }))}
+                            className="w-20 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
+                          />
+                          <span className="text-xs text-neutral-500">Tage</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex gap-2">
+                  <button type="button" onClick={createShareLink} className="flex-1 py-3 rounded-lg text-sm font-semibold bg-white text-black hover:bg-gray-200 transition-colors">
+                    Link erstellen
+                  </button>
+                  <button type="button" onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }} className="px-4 py-3 rounded-lg text-sm bg-neutral-900 border border-neutral-800 text-neutral-300 hover:border-neutral-500">
+                    Schließen
+                  </button>
+                </div>
+
+                {shareLinkCreated && (
+                  <div className="mt-4 bg-black border border-neutral-800 rounded-xl p-4">
+                    <div className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Link</div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <input readOnly value={shareLinkCreated.url} className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white" />
+                      <button type="button" onClick={() => { try { navigator.clipboard?.writeText(shareLinkCreated.url); showToast('Kopiert'); } catch (_) {} }} className="p-2 rounded-lg bg-white text-black hover:bg-gray-200" title="Kopieren">
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="mt-2 text-[11px] text-neutral-500">Hinweis: Externe Links benötigen passende Firestore‑Rules für <span className="font-mono text-neutral-300">shares</span>.</div>
+                  </div>
+                )}
+
+                <div className="mt-5">
+                  <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Aktive Links</h4>
+                  {(() => {
+                    const relevant = (shareLinks || []).filter(l => {
+                      if (!l || l.revokedAtMs) return false;
+                      if (String(l.kind) !== String(shareLinkDraft.kind)) return false;
+                      if (String(l.calId || 'default') !== String(shareLinkDraft.calId || 'default')) return false;
+                      if (shareLinkDraft.kind === 'event') {
+                        const want = String(shareLinkDraft.eventId || '');
+                        const got = String(l.eventId || '');
+                        if (want && got && want !== got) return false;
+                      }
+                      return true;
+                    });
+                    if (relevant.length === 0) {
+                      return <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">Keine aktiven Links.</div>;
+                    }
+                    return (
+                      <div className="space-y-2 max-h-[32vh] overflow-y-auto no-scrollbar pr-1">
+                        {relevant.slice(0, 20).map(l => {
+                          const url = makeShareUrl(l.id || l.token || l.shareId || l._id || l.docId || l.id, '');
+                          const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '—';
+                          return (
+                            <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
+                              <div className="min-w-0">
+                                <div className="text-sm text-white font-medium truncate">{l.kind === 'calendar' ? 'Busy‑Only' : 'Event'} • {shareLinkDraft.calName}</div>
+                                <div className="text-[11px] text-neutral-500">Ablauf: {exp}</div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button type="button" onClick={() => { try { navigator.clipboard?.writeText(makeShareUrl(l.id)); showToast('Kopiert'); } catch (_) {} }} className="p-2 border border-neutral-800 rounded-lg text-neutral-300 hover:bg-neutral-900" title="Kopieren"><Copy className="w-4 h-4"/></button>
+                                <button type="button" onClick={() => revokeShareLink(l.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors" title="Widerrufen"><Trash2 className="w-4 h-4"/></button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
+
+
+          {/* SCHICHT AUSWAHL MODAL (Langes Drücken) */}
+          {shiftModalData && (
+             <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => setShiftModalData(null)}>
+                <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-xs rounded-t-2xl sm:rounded-xl p-4 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
+                   <h3 className="text-white font-medium mb-1 text-center">Schicht wählen</h3>
+                   <p className="text-neutral-500 text-xs text-center mb-4 border-b border-neutral-800 pb-3">{new Date(shiftModalData.dateStr).toLocaleDateString('de-DE')}</p>
+                   
+                   <div className="space-y-2 max-h-[50vh] overflow-y-auto no-scrollbar">
+                      {shiftModalData.shifts.map(s => (
+                         <button key={s.id} onClick={() => handleShiftModalSelect(s)} className="w-full py-3 rounded-xl text-sm font-semibold text-black transition-transform active:scale-95 shadow-sm" style={{backgroundColor: s.color}}>
+                            {s.name} <span className="font-normal opacity-70 ml-2">{s.time}</span>
+                         </button>
+                      ))}
+                      <button onClick={() => handleShiftModalSelect('delete')} className="w-full py-3 rounded-xl text-sm font-medium text-red-500 bg-red-500/10 border border-red-900/50 hover:bg-red-500/20 mt-4 transition-colors">
+                         Frei / Löschen
+                      </button>
+                   </div>
+                </div>
+             </div>
+          )}
+
+          {showCreateGroup && (
+            <div className="fixed inset-0 z-[75] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="w-full max-w-md bg-neutral-950 border border-neutral-800 rounded-2xl p-6 relative animate-fade-in shadow-2xl">
+                <button onClick={() => setShowCreateGroup(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white"><X className="w-5 h-5"/></button>
+                <h3 className="text-xl font-medium text-white mb-1">Gruppe erstellen</h3>
+                <p className="text-xs text-neutral-500 mb-6">Mindestens 3 Teilnehmer (du + 2)</p>
+
+                <label className="text-xs text-neutral-400">Gruppenname</label>
+                <input value={groupDraftName} onChange={(e) => setGroupDraftName(e.target.value)} placeholder="z.B. Team, Familie…" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500 mt-2" />
+
+                <div className="mt-5">
+                  <label className="text-xs text-neutral-400">Mitglieder hinzufügen</label>
+                  <div className="relative mt-2">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                    <input value={groupMemberSearch} onChange={(e) => setGroupMemberSearch(e.target.value)} placeholder="Name suchen…" className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
+                  </div>
+
+                  {(groupMemberSearch || '').trim() !== '' && (
+                    <div className="mt-2 max-h-52 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-xl">
+                      {allProfiles
+                        .filter(p => p.id !== user.uid)
+                        .filter(p => (p.username || '').toLowerCase().includes(groupMemberSearch.toLowerCase()))
+                        .filter(p => !(groupDraftMembers || []).includes(p.id))
+                        .slice(0, 20)
+                        .map(p => (
+                          <div key={p.id} onClick={() => { setGroupDraftMembers(prev => Array.from(new Set([...(prev || []), p.id]))); setGroupMemberSearch(''); }} className="p-3 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
+                            <div className="w-9 h-9 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
+                              {p.avatarBase64 ? (
+                                 <img
+                                   src={p.avatarThumbBase64 || p.avatarBase64}
+                                   className="w-full h-full object-cover cursor-zoom-in"
+                                   alt="Profilbild"
+                                   onClick={(e) => { e.stopPropagation(); openImageViewer(p.avatarFullBase64 || p.avatarBase64 || p.avatarThumbBase64); }}
+                                 />
+                               ) : (p.username || '?').substring(0,2)}
+                            </div>
+                            <div className="flex-1">
+                              <div className="text-white text-sm font-medium">{p.username}</div>
+                              <div className="text-xs text-neutral-500">{getPresence(p.id).online ? 'online' : (getPresence(p.id).lastSeen ? `zuletzt ${formatTime(getPresence(p.id).lastSeen)}` : 'offline')}</div>
+                            </div>
+                            <Plus className="w-4 h-4 text-neutral-400" />
+                          </div>
+                        ))}
+                      {allProfiles.filter(p => p.id !== user.uid).filter(p => (p.username || '').toLowerCase().includes(groupMemberSearch.toLowerCase())).filter(p => !(groupDraftMembers || []).includes(p.id)).length === 0 && (
+                        <div className="p-3 text-neutral-500 text-sm text-center">Kein Treffer</div>
+                      )}
+                    </div>
+                  )}
+
+                  {(groupDraftMembers || []).length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {groupDraftMembers.map(id => {
+                        const p = getProfile(id);
+                        return (
+                          <span key={id} className="inline-flex items-center gap-2 bg-neutral-900 border border-neutral-800 text-white text-xs px-3 py-1.5 rounded-full">
+                            {(p?.username || 'User').substring(0, 18)}
+                            <button onClick={(e) => { e.stopPropagation(); setGroupDraftMembers(prev => (prev || []).filter(x => x !== id)); }} className="text-neutral-400 hover:text-white">×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 flex gap-2">
+                  <button onClick={() => setShowCreateGroup(false)} className="flex-1 bg-neutral-900 border border-neutral-800 text-white py-3 rounded-xl text-sm font-semibold hover:bg-neutral-800">Abbrechen</button>
+                  <button onClick={() => createGroupChat()} disabled={(groupDraftMembers || []).length < 2} className={`flex-1 py-3 rounded-xl text-sm font-semibold ${((groupDraftMembers || []).length < 2) ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed' : 'bg-white text-black hover:bg-gray-200'}`}>
+                    Erstellen
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PARTNER STATS MODAL */}
+          {showPartnerStats && activeChat && (
+             <div className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+                <div className="w-full max-w-sm bg-neutral-950 border border-neutral-800 rounded-2xl p-6 relative animate-fade-in shadow-2xl">
+                   <button onClick={() => setShowPartnerStats(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white"><X className="w-5 h-5"/></button>
+                   <div className="flex flex-col items-center mb-8">
+                     {getChatPartnerAvatar(activeChat) ? (
+                        <img
+                        src={getChatPartnerAvatar(activeChat)}
+                        className="w-20 h-20 rounded-full border-2 border-neutral-700 object-cover mb-4 cursor-zoom-in"
+                        alt="Profilbild"
+                        onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatarFull(activeChat) || getChatPartnerAvatar(activeChat)); }}
+                      />
+                      ) : (
+                        <div className="w-20 h-20 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-2xl font-bold text-white uppercase mb-4">{initialsFrom(getChatPartnerName(activeChat))}</div>
+                      )}
+                      <h3 className="text-xl font-medium text-white">{getChatPartnerName(activeChat)}</h3>
+                      <p className="text-xs text-neutral-500 uppercase tracking-widest mt-1">Chat Analyse</p>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-4">
+                     {isGroupChat(activeChatData || activeChat) ? (
+                       <>
+                         <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
+                           <p className="text-xs text-neutral-500 uppercase mb-1">Mitglieder</p>
+                           <p className="text-2xl font-light text-white">{getChatParticipants(activeChatData || activeChat).length}</p>
+                         </div>
+                         <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
+                           <p className="text-xs text-neutral-500 uppercase mb-1">Online</p>
+                           <p className="text-2xl font-light text-white">{getChatParticipants(activeChatData || activeChat).filter(id => getPresence(id).online).length}</p>
+                         </div>
+                       </>
+                     ) : (
+                       <>
+                         <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
+                           <p className="text-xs text-neutral-500 uppercase mb-1">Von Dir</p>
+                           <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId === user.uid).length}</p>
+                         </div>
+                         <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
+                           <p className="text-xs text-neutral-500 uppercase mb-1">Von {safeTrim(getChatPartnerName(activeChat), "Unbekannt").slice(0,6)}.</p>
+                           <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId !== user.uid).length}</p>
+                         </div>
+                       </>
+                     )}
+                   </div>
+
+                   {isGroupChat(activeChatData || activeChat) && (
+                     <div className="mt-4 bg-neutral-900 border border-neutral-800 p-4 rounded-xl">
+                       <p className="text-xs text-neutral-500 uppercase tracking-widest mb-3">Mitglieder</p>
+                       <div className="max-h-48 overflow-y-auto space-y-2">
+                         {getChatParticipants(activeChatData || activeChat).map(uid => {
+                           const p = getProfile(uid);
+                           const pr = getPresence(uid);
+                           const me = uid === user.uid;
+                           return (
+                             <div key={uid} className="flex items-center gap-3 p-2 rounded-lg bg-black/40 border border-neutral-800">
+                               <div className="w-9 h-9 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase overflow-hidden shrink-0">
+                                 {p?.avatarBase64 ? <img src={p.avatarThumbBase64 || p.avatarBase64} className="w-full h-full object-cover"/> : (p?.username || '?').substring(0,2)}
+                               </div>
+                               <div className="flex-1">
+                                 <div className="text-sm text-white font-medium truncate">{me ? 'Du' : (p?.username || 'Unbekannt')}</div>
+                                 <div className="text-[11px] text-neutral-500">{pr.online ? 'online' : (pr.lastSeen ? `zuletzt ${formatTime(pr.lastSeen)}` : 'offline')}</div>
+                               </div>
+                               {isChatAdmin(activeChatData || activeChat) && !me && (
+                                 <div className="flex items-center gap-1">
+                                   <button onClick={() => toggleAdmin(activeChatData || activeChat, uid)} className="text-[11px] px-2 py-1 rounded-md bg-neutral-900 border border-neutral-700 text-neutral-200 hover:border-neutral-500">{(activeChatData || activeChat)?.admins?.includes(uid) ? 'Admin' : 'Admin?'}</button>
+                                   <button onClick={() => removeMemberFromGroup(activeChatData || activeChat, uid)} className="text-[11px] px-2 py-1 rounded-md bg-red-500/10 border border-red-900/50 text-red-400 hover:bg-red-500/20">Entfernen</button>
+                                 </div>
+                               )}
+                             </div>
+                           );
+                         })}
+                       </div>
+                       {isChatAdmin(activeChatData || activeChat) && (
+                         <div className="mt-4">
+                           <label className="text-xs text-neutral-400">Gruppenname</label>
+                           <div className="flex gap-2 mt-2">
+                             <input defaultValue={(activeChatData || activeChat)?.title || ''} id="groupTitleInput" className="flex-1 bg-black border border-neutral-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-neutral-500" />
+                             <button onClick={() => updateGroupTitle(activeChatData || activeChat, document.getElementById('groupTitleInput')?.value)} className="px-4 py-2 rounded-lg bg-white text-black text-sm font-semibold hover:bg-gray-200">Speichern</button>
+                           </div>
+                           <div className="mt-3">
+                             <div className="relative">
+                               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                               <input value={groupEditSearch} onChange={(e) => setGroupEditSearch(e.target.value)} placeholder="Mitglied hinzufügen…" className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
+                             </div>
+                             {(groupEditSearch || '').trim() !== '' && (
+                               <div className="mt-2 max-h-40 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-xl">
+                                 {allProfiles
+                                   .filter(p => p.id !== user.uid)
+                                   .filter(p => (p.username || '').toLowerCase().includes(groupEditSearch.toLowerCase()))
+                                   .filter(p => !getChatParticipants(activeChatData || activeChat).includes(p.id))
+                                   .slice(0, 15)
+                                   .map(p => (
+                                     <div key={p.id} onClick={() => { addMemberToGroup(activeChatData || activeChat, p.id); setGroupEditSearch(''); }} className="p-3 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
+                                       <div className="w-9 h-9 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
+                                         {p.avatarBase64 ? (
+                                 <img
+                                   src={p.avatarThumbBase64 || p.avatarBase64}
+                                   className="w-full h-full object-cover cursor-zoom-in"
+                                   alt="Profilbild"
+                                   onClick={(e) => { e.stopPropagation(); openImageViewer(p.avatarFullBase64 || p.avatarBase64 || p.avatarThumbBase64); }}
+                                 />
+                               ) : (p.username || '?').substring(0,2)}
+                                       </div>
+                                       <span className="font-medium text-white text-sm">{p.username}</span>
+                                       <Plus className="w-4 h-4 text-neutral-400 ml-auto" />
+                                     </div>
+                                   ))}
+                                 {allProfiles.filter(p => p.id !== user.uid).filter(p => (p.username || '').toLowerCase().includes(groupEditSearch.toLowerCase())).filter(p => !getChatParticipants(activeChatData || activeChat).includes(p.id)).length === 0 && (
+                                   <div className="p-3 text-neutral-500 text-sm text-center">Kein Treffer</div>
+                                 )}
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                       )}
+                       <div className="mt-4 flex gap-2">
+                         <button onClick={() => leaveGroup(activeChatData || activeChat)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-neutral-900 border border-neutral-800 text-white hover:bg-neutral-800">Gruppe verlassen</button>
+                       </div>
+                     </div>
+                   )}
+
+                   <div className="mt-4 bg-neutral-900 border border-neutral-800 p-4 rounded-xl text-center flex items-center justify-center gap-3">
+                     <Activity className="w-5 h-5 text-neutral-400" />
+                     <p className="text-sm text-neutral-300">Total <strong className="text-white ml-1">{chatMessages.length}</strong> Nachrichten</p>
+                   </div>
+                </div>
+             </div>
+          )}
+
+          {isShareEventModalOpen && (
+            <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+               <div className="bg-neutral-950 border border-neutral-800 w-full max-w-sm rounded-xl p-6 shadow-2xl animate-fade-in">
+                  <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2"><CalendarPlus className="w-5 h-5"/> Termin teilen</h3>
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.target);
+                    const ev = { title: fd.get('title'), date: fd.get('date'), time: fd.get('time'), type: 'Chat-Einladung' };
+                    sendMessage(null, null, null, ev);
+                    setIsShareEventModalOpen(false);
+                  }} className="space-y-4">
+                    <input type="text" name="title" required placeholder="Titel (z.B. Kino heute?)" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
+                    <div className="flex gap-2">
+                      <input type="date" name="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
+                      <input type="time" name="time" required defaultValue="18:00" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <button type="button" onClick={() => setIsShareEventModalOpen(false)} className="flex-1 py-3 rounded-lg text-sm text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 transition-colors">Abbrechen</button>
+                      <button type="submit" className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">In Chat senden</button>
+                    </div>
+                  </form>
+               </div>
+            </div>
+          )}
+
+          {/* IMAGE VIEWER (Vollbild) */}
+          {isImageViewerOpen && imageViewerSrc && (
+            <div
+              className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={closeImageViewer}
+            >
+              <button
+                onClick={(e) => { e.stopPropagation(); closeImageViewer(); }}
+                className="absolute top-4 right-4 p-2 rounded-full bg-neutral-900/70 border border-neutral-700 text-white hover:bg-neutral-800 transition-colors"
+                aria-label="Schließen"
+                title="Schließen"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <img
+                src={imageViewerSrc}
+                alt="Bild"
+                className="max-h-[90vh] max-w-[95vw] object-contain rounded-2xl border border-neutral-800 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+
+export default AmoledCalendarApp;

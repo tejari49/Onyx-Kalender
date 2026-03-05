@@ -735,6 +735,17 @@ const persistAliasUsername = async (rawAlias) => {
     }
 
     await setDoc(profileRef, patch, { merge: true });
+    // Also persist in private user doc (more permissive rules). This makes alias sync across devices.
+    try {
+      const privateUserRef = doc(db, 'artifacts', APP_ID, 'users', user.uid);
+      await setDoc(privateUserRef, { username: nextAlias, usernameLower: nextAlias.toLowerCase(), aliasUpdatedAt: Date.now() }, { merge: true });
+    } catch (e) {
+      // ignore (rules might block)
+    }
+
+    // Best-effort: also reflect in Firebase Auth profile (optional, improves offline continuity)
+    try { await updateProfile(auth.currentUser, { displayName: patch.displayName || auth.currentUser?.displayName || '' }); } catch (_) {}
+
 
     // Update local state + fallback storage
     try { setUserProfile(prev => ({ ...(prev || {}), ...patch })); } catch (_) {}
@@ -2063,6 +2074,16 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           if (docSnap.exists()) setUserProfile({ id: docSnap.id, ...docSnap.data() });
         });
 
+        // Private user doc (fallback for fields that may be blocked in public profiles by rules)
+        const privateUserRef = doc(db, 'artifacts', APP_ID, 'users', user.uid);
+        const unsubscribePrivateUser = onSnapshot(privateUserRef, (snap) => {
+          if (!snap.exists()) return;
+          const data = snap.data() || {};
+          // Merge into userProfile without nuking existing profile fields
+          setUserProfile((prev) => ({ ...(prev || {}), ...data }));
+        });
+
+
         const allProfilesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
         const unsubscribeAllProfiles = onSnapshot(query(allProfilesRef), (snapshot) => {
           const loaded = [];
@@ -2144,7 +2165,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           recomputeCals();
         });
 
-        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeShares(); unsubscribeAudit(); unsubscribeOwnerCals(); unsubscribeSharedCals(); };
+        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribePrivateUser(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeShares(); unsubscribeAudit(); unsubscribeOwnerCals(); unsubscribeSharedCals(); };
       }, [user]);
 
       // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---
@@ -5163,6 +5184,48 @@ setSelfDestruct(false);
                     <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-xl md:text-2xl font-semibold text-neutral-100 leading-snug">“{dailyFact}”</p></div>
                   </div>
                 </div>
+
+                {/* Global Chat Anzeige (gilt für alle Chats) */}
+                <div className="mb-8 md:mb-10 p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Chat Anzeige</h3>
+                      <p className="mt-1 text-sm text-neutral-400">Gilt global: Lesestatus (zugestellt/gesehen) & Zeitstempel.</p>
+                    </div>
+                    <button
+                      onClick={() => { setCurrentView('settings'); setSettingsTab('notifications'); setSettingsQuery('chat'); }}
+                      className="shrink-0 px-3 py-2 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-200 hover:bg-neutral-800 hover:border-neutral-500 text-xs"
+                      title="In Einstellungen öffnen"
+                    >
+                      Einstellungen
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-neutral-800 bg-black/40">
+                      <div>
+                        <div className="text-sm text-neutral-200">Zeit anzeigen</div>
+                        <div className="text-xs text-neutral-500">Zeit unter Nachrichten ein-/ausblenden.</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={chatMetaPrefs.showTime}
+                        onChange={(e) => setChatMetaPrefs(p => ({ ...p, showTime: !!e.target.checked }))}
+                      />
+                    </label>
+
+                    <div className="p-3 rounded-xl border border-neutral-800 bg-black/40">
+                      <div className="text-sm text-neutral-200">Lesestatus</div>
+                      <div className="text-xs text-neutral-500 mb-2">Aus / Status / Mit Zeit</div>
+                      <div className="flex gap-2">
+                        <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'off' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'off' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Aus</button>
+                        <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'compact' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'compact' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Status</button>
+                        <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'full' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'full' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Mit Zeit</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda für heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
                   {hasUnreadMessages && (
@@ -6503,30 +6566,7 @@ setSelfDestruct(false);
                         <Search className="w-5 h-5" />
                       </button>
                     )}
-                    {secretView === 'chat' && activeChat && (
-                      <div className="relative" ref={chatMetaMenuRef}>
-                        <button onClick={() => setIsChatMetaMenuOpen(v => !v)} className="text-neutral-500 hover:text-white transition-colors p-2" title="Anzeige">
-                          <AlignLeft className="w-5 h-5" />
-                        </button>
-                        {isChatMetaMenuOpen && (
-                          <div className="absolute right-0 mt-2 w-64 bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl p-3 z-50">
-                            <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Anzeige</div>
-                            <label className="flex items-center justify-between gap-3 py-2">
-                              <span className="text-sm text-neutral-200">Zeit anzeigen</span>
-                              <input type="checkbox" checked={chatMetaPrefs.showTime} onChange={(e) => setChatMetaPrefs(p => ({ ...p, showTime: !!e.target.checked }))} />
-                            </label>
-                            <div className="mt-2">
-                              <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Lesestatus</div>
-                              <div className="flex gap-2">
-                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'off' }))} className={"flex-1 px-2 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'off' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Aus</button>
-                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'compact' }))} className={"flex-1 px-2 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'compact' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Status</button>
-                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'full' }))} className={"flex-1 px-2 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'full' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Mit Zeit</button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {/* Chat Anzeige/Lesestatus ist jetzt global im Dashboard/Einstellungen konfigurierbar */}
                     {secretView === 'chat' && activeChat && userProfile && (
                       <button
                         onClick={() => toggleMuteChat(activeChat.id)}

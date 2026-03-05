@@ -5280,8 +5280,6 @@ setSelfDestruct(false);
                       </div>
                     );
                   })()}
-                </div>
-
               {/* KALENDER FEED (unter dem Kalender): Abstimmungen & Kommentare */}
                 {(() => {
                   const feedEvents = (allEvents || []).filter(e => e && e.type !== 'shift');

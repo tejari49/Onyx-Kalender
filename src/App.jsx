@@ -331,6 +331,8 @@ const [newCommentText, setNewCommentText] = useState('');
 const eventCommentsUnsubRef = useRef(null);
 const autoFinalizedPollsRef = useRef({});
 
+const eventModalScrollRef = useRef(null);
+
 const [pollDraft, setPollDraft] = useState([
   { date: '', time: '' },
   { date: '', time: '' },
@@ -349,6 +351,19 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [calendarSearchQuery, setCalendarSearchQuery] = useState('');
       const [agendaRange, setAgendaRange] = useState('7'); // '7' | '30' | 'month'
       const [eventEditScope, setEventEditScope] = useState('series'); // 'series' | 'single'
+
+      // Ensure event modal starts at top on open (mobile: content can exceed viewport)
+      useEffect(() => {
+        if (!isModalOpen) return;
+        const t = setTimeout(() => {
+          try {
+            if (eventModalScrollRef.current) {
+              eventModalScrollRef.current.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+            }
+          } catch (e) {}
+        }, 0);
+        return () => clearTimeout(t);
+      }, [isModalOpen, eventModalMode, eventToEdit]);
 
 
       const [eventForm, setEventForm] = useState({
@@ -6443,7 +6458,7 @@ setSelfDestruct(false);
           {/* WETTER MODAL */}
           {isWeatherModalOpen && (
             <div className="fixed inset-0 z-[75] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }}>
-              <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+              <div ref={eventModalScrollRef} className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up max-h-[92dvh] overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }} onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</p>
@@ -6541,7 +6556,7 @@ setSelfDestruct(false);
           {/* EVENT MODAL */}
           {isModalOpen && (
             <div className="fixed inset-0 z-[85] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={closeEventModal}>
-              <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+              <div ref={eventModalScrollRef} className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up max-h-[92dvh] overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }} onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500">{eventToEdit ? (eventModalMode === 'view' ? 'Ansicht' : 'Bearbeiten') : 'Neu'}</p>

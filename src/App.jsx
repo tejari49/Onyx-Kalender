@@ -2169,15 +2169,17 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       }, [user]);
 
       // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---
-      // Input darf "frei" sein (User sieht beim Tippen Zeichen). Wir extrahieren nur Ziffern für die Suche,
-      // ohne den Input-Text automatisch zu überschreiben (sonst wirkt es wie "ich kann nichts schreiben").
       useEffect(() => {
         if (!user) return;
-        const raw = String(chatSearchQuery || '');
-        const code = normalizeChatId(raw);
+        const code = normalizeChatId(chatSearchQuery);
+        // nur Ziffern + max 5
+        if (code !== (chatSearchQuery || '')) {
+          setChatSearchQuery(code);
+          return;
+        }
         if (!/^\d{5}$/.test(code)) {
           setChatFriendResult(null);
-          setChatFriendError(code.length > 0 && code.length < 5 ? 'Bitte 5 Ziffern eingeben' : '');
+          setChatFriendError('');
           setChatFriendLoading(false);
           return;
         }
@@ -5181,11 +5183,288 @@ setSelfDestruct(false);
                     <Info className="w-5 h-5 md:w-6 md:h-6 text-neutral-400 shrink-0 mt-1" />
                     <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-xl md:text-2xl font-semibold text-neutral-100 leading-snug">“{dailyFact}”</p></div>
                   </div>
-	                </div>
-	              </div>
-	            )}
+                </div>
 
-	            {currentView === 'calendar' && (
+                {/* Global Chat Anzeige (gilt für alle Chats) */}
+                <div className="mb-8 md:mb-10 p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Chat Anzeige</h3>
+                      <p className="mt-1 text-sm text-neutral-400">Gilt global: Lesestatus (zugestellt/gesehen) & Zeitstempel.</p>
+                    </div>
+                    <button
+                      onClick={() => { setCurrentView('settings'); setSettingsTab('notifications'); setSettingsQuery('chat'); }}
+                      className="shrink-0 px-3 py-2 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-200 hover:bg-neutral-800 hover:border-neutral-500 text-xs"
+                      title="In Einstellungen öffnen"
+                    >
+                      Einstellungen
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-neutral-800 bg-black/40">
+                      <div>
+                        <div className="text-sm text-neutral-200">Zeit anzeigen</div>
+                        <div className="text-xs text-neutral-500">Zeit unter Nachrichten ein-/ausblenden.</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={chatMetaPrefs.showTime}
+                        onChange={(e) => setChatMetaPrefs(p => ({ ...p, showTime: !!e.target.checked }))}
+                      />
+                    </label>
+
+                    <div className="p-3 rounded-xl border border-neutral-800 bg-black/40">
+                      <div className="text-sm text-neutral-200">Lesestatus</div>
+                      <div className="text-xs text-neutral-500 mb-2">Aus / Status / Mit Zeit</div>
+                      <div className="flex gap-2">
+                        <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'off' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'off' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Aus</button>
+                        <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'compact' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'compact' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Status</button>
+                        <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'full' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'full' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Mit Zeit</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda für heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
+                  {hasUnreadMessages && (
+                    <div className="mb-4 p-4 border border-neutral-700 bg-neutral-900 rounded-xl flex items-center justify-center transition-colors animate-fade-in">
+                      <div className="flex items-center gap-3"><div className="w-2 h-2 bg-white rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]"></div><span className="font-medium text-white uppercase tracking-widest text-sm">Kalender Aktuell</span></div>
+                    </div>
+                  )}
+                  <div className="space-y-3 md:space-y-4">
+                    {getEventsForDate(new Date().toISOString().split('T')[0]).length > 0 ? (
+                      getEventsForDate(new Date().toISOString().split('T')[0]).sort((a,b) => (a.time||'').localeCompare(b.time||'')).map(event => (
+                        <div key={event.id} onClick={() => openEditEventModal(event)} className="flex items-center gap-4 md:gap-6 p-4 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-lg bg-black cursor-pointer group">
+                          {event.type === 'shift' ? (
+                            <div className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: event.color }}>
+                               <Clock className="w-5 h-5 text-black opacity-60" />
+                            </div>
+                          ) : (
+                            <div className="text-neutral-400 font-mono text-sm md:text-base w-12 text-right">{event.time}</div>
+                          )}
+                          <div className="w-px h-10 bg-neutral-800 group-hover:bg-neutral-600 transition-colors"></div>
+                          <div className="flex-1 overflow-hidden">
+                             <p className="font-medium text-white truncate flex items-center gap-2">
+                               <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
+                               <span className="truncate">{event.title}</span>
+                             </p>
+                             <p className="text-xs text-neutral-500 mt-0.5 truncate">{event.type === 'shift' ? getCalendarById(event.calendarId)?.name : event.type} {event.desc && `• ${event.desc}`}</p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (<p className="text-neutral-500 text-sm italic p-4 text-center border border-dashed border-neutral-800 rounded-lg">Keine Termine für heute.</p>)}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentView === 'calendar' && (
+              <div className="flex-1 flex flex-col h-full w-full max-w-7xl mx-auto animate-fade-in select-none">
+                
+                {/* Mobile Calendar Multi-Select (sichtbar) + Active Calendar */}
+                <div className="md:hidden px-4 py-2 border-b border-neutral-800 bg-neutral-950 shrink-0">
+                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                    <span className="text-[10px] text-neutral-500 uppercase font-semibold mr-1 shrink-0">Sichtbar:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allIds = ['default', ...(customCalendars || []).map(c => c.id)];
+                        setVisibleCalendars(allIds);
+                      }}
+                      className="shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-neutral-900 text-neutral-300 border border-neutral-800 hover:border-neutral-500"
+                    >
+                      Alle
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleCalendarVisibility('default')}
+                      className={`shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold border transition-colors ${visibleCalendars.includes('default') ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
+                    >
+                      <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: calendarTint('default') }} />
+                      Privat
+                    </button>
+                    {customCalendars.map(cal => (
+                      <button
+                        key={cal.id}
+                        type="button"
+                        onClick={() => toggleCalendarVisibility(cal.id)}
+                        className={`shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold border transition-colors ${visibleCalendars.includes(cal.id) ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
+                      >
+                        <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: calendarTint(cal.id) }} />
+                        {cal.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar mt-2">
+                    <span className="text-[10px] text-neutral-500 uppercase font-semibold mr-1 shrink-0">Aktiv:</span>
+                    <button onClick={() => setActiveCalendarId('default')} className={`shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${activeCalendarId === 'default' ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'}`}>Privat</button>
+                    {customCalendars.map(cal => (
+                      <button key={cal.id} onClick={() => setActiveCalendarId(cal.id)} className={`shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${activeCalendarId === cal.id ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'}`}>{cal.name}</button>
+                    ))}
+                  </div>
+                </div>
+
+                <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center justify-between px-4 md:px-8 shrink-0">
+                  <div className="flex items-center gap-2 md:gap-6">
+                    <h2 className="text-lg md:text-2xl font-light w-32 md:w-48">{MONATE[currentDate.getMonth()]} {currentDate.getFullYear()}</h2>
+                    <div className="flex items-center gap-1 md:gap-2">
+                      <button onClick={prevMonth} className="p-1.5 md:p-2 hover:bg-neutral-900 rounded-full transition-colors border border-transparent hover:border-neutral-800"><ChevronLeft className="w-5 h-5 md:w-6 md:h-6" /></button>
+                      <button onClick={goToToday} className="px-3 py-1.5 text-xs md:text-sm border border-neutral-800 hover:bg-neutral-900 rounded-md transition-colors">Heute</button>
+                      <button onClick={nextMonth} className="p-1.5 md:p-2 hover:bg-neutral-900 rounded-full transition-colors border border-transparent hover:border-neutral-800"><ChevronRight className="w-5 h-5 md:w-6 md:h-6" /></button>
+                    </div>
+                  </div>
+                </header>
+
+                {/* VIEW TOGGLE & SUCHE */}
+                <div className="border-b border-neutral-800 bg-neutral-950 px-4 md:px-8 py-2 flex flex-wrap items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { setCalendarViewMode('month'); setCalendarSearchQuery(''); }} className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${calendarViewMode === 'month' ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}>
+                      <CalendarIcon className="w-4 h-4 inline-block mr-1" /> Monat
+                    </button>
+                    <button onClick={() => setCalendarViewMode('agenda')} className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${calendarViewMode === 'agenda' ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}>
+                      <AlignLeft className="w-4 h-4 inline-block mr-1" /> Agenda
+                    </button>
+                  </div>
+
+                  {calendarViewMode === 'agenda' ? (
+                    <div className="flex items-center gap-2 flex-1 justify-end min-w-[220px]">
+                      <select value={agendaRange} onChange={(e) => setAgendaRange(e.target.value)} className="bg-black border border-neutral-800 text-white text-xs rounded-md px-2 py-2 focus:outline-none">
+                        <option value="7">Nächste 7 Tage</option>
+                        <option value="30">Nächste 30 Tage</option>
+                        <option value="month">Dieser Monat</option>
+                      </select>
+                      <div className="relative flex-1 max-w-xs">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                        <input value={calendarSearchQuery} onChange={(e) => setCalendarSearchQuery(e.target.value)} placeholder="Suche Termine..." className="w-full bg-black border border-neutral-800 text-white text-xs rounded-md pl-9 pr-3 py-2 focus:outline-none focus:border-neutral-500" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="ml-auto">
+                      <button onClick={() => { setCalendarViewMode('agenda'); setAgendaRange('30'); }} className="text-xs text-neutral-400 hover:text-white transition-colors flex items-center gap-2 px-3 py-1.5 rounded-md border border-neutral-800 hover:border-neutral-500 bg-neutral-900">
+                        <Search className="w-4 h-4" /> Suchen
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+
+                {/* ACTIVE CALENDAR BAR & PINSEL */}
+                {calendarViewMode === 'month' && activeCalForView && activeCalForView.type === 'shift' && (
+                  <div className="bg-neutral-950 border-b border-neutral-800 px-4 py-2 flex items-center justify-between shrink-0">
+                     <div className="flex items-center gap-3">
+                        <button 
+                            onClick={() => {
+                                const nextState = !isPaintbrushActive;
+                                setIsPaintbrushActive(nextState);
+                                if (nextState && activeCalForView.shifts?.length > 0) setSelectedPaintShift(activeCalForView.shifts[0]);
+                            }} 
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${isPaintbrushActive ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-white'}`}
+                        >
+                           <Paintbrush className="w-4 h-4" /> Pinsel
+                        </button>
+                        {isPaintbrushActive && selectedPaintShift && (
+                           <select 
+                              value={selectedPaintShift.id} 
+                              onChange={e => {
+                                 if (e.target.value === 'delete') setSelectedPaintShift({ id: 'delete', name: 'Löschen' });
+                                 else setSelectedPaintShift(activeCalForView.shifts.find(s => s.id === e.target.value));
+                              }}
+                              className="bg-black border border-neutral-700 text-white text-xs rounded-md px-2 py-1.5 focus:outline-none"
+                           >
+                              {activeCalForView.shifts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                              <option value="delete">Frei / Löschen</option>
+                           </select>
+                        )}
+                     </div>
+                     {isPaintbrushActive && <span className="text-[10px] text-neutral-500 uppercase tracking-widest animate-pulse hidden sm:inline-block">Streichen zum Malen</span>}
+                  </div>
+                )}
+
+                <div className="flex-1 flex flex-col bg-neutral-900 gap-px p-px" style={{ display: calendarViewMode === 'month' ? 'flex' : 'none' }}>
+                  <div className="grid grid-cols-7 gap-px shrink-0">{WOCHENTAGE.map(tag => <div key={tag} className="bg-black py-2 md:py-3 text-center text-[10px] md:text-xs font-semibold uppercase tracking-wider text-neutral-500">{tag}</div>)}</div>
+                  <div 
+                    className={`flex-1 grid grid-cols-7 gap-px overflow-y-auto ${isPaintbrushActive ? 'touch-none' : ''}`}
+                    onMouseLeave={handlePaintEnd}
+                  >
+                    {Array.from({ length: getFirstDayOfMonth(currentDate) }).map((_, i) => (<div key={`empty-${i}`} className="bg-black/40 p-1 md:p-2 min-h-[80px] md:min-h-[120px]"></div>))}
+                    {Array.from({ length: getDaysInMonth(currentDate) }).map((_, i) => {
+                      const day = i + 1; const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                      const dayEvents = getEventsForDate(dateStr);
+                      const isToday = new Date().toISOString().split('T')[0] === dateStr;
+                      return (
+                        <div 
+                           key={day} 
+                           data-date={dateStr}
+                           onContextMenu={(e) => handleDayContextMenu(e, dateStr)}
+                           onMouseDown={(e) => {
+                              handleTouchStart(dateStr);
+                              if (isPaintbrushActive) handlePaintStart(e, dateStr);
+                           }}
+                           onMouseEnter={(e) => { if (isPaintbrushActive) handlePaintMove(e, dateStr); }}
+                           onMouseUp={(e) => { handleTouchEnd(); if (isPaintbrushActive) handlePaintEnd(); }}
+                           onTouchStart={(e) => {
+                              handleTouchStart(dateStr);
+                              if (isPaintbrushActive) handlePaintStart(e, dateStr);
+                           }}
+                           onTouchMove={(e) => {
+                              if (isPaintbrushActive) handlePaintMove(e, dateStr);
+                           }}
+                           onTouchEnd={(e) => { handleTouchEnd(); if (isPaintbrushActive) handlePaintEnd(); }}
+                           onClick={() => {
+                              if (!isPaintbrushActive) handleDayClick(dateStr);
+                           }}
+                           className={`bg-black p-1 md:p-2 min-h-[80px] md:min-h-[120px] transition-colors cursor-pointer group relative flex flex-col ${isPaintbrushActive ? 'hover:bg-neutral-900' : 'hover:bg-neutral-950'}`}
+                        >
+                          <div
+                            className={`text-xs md:text-sm font-medium w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-white text-black' : 'text-neutral-400 group-hover:text-white'}`}
+                            onMouseDown={(e) => {
+                              if (day === 5) { e.stopPropagation(); startSecretGate(); }
+                            }}
+                            onMouseUp={() => { if (day === 5) endSecretGate(); }}
+                            onMouseLeave={() => { if (day === 5) endSecretGate(); }}
+                            onTouchStart={(e) => {
+                              if (day === 5) { e.stopPropagation(); startSecretGate(); }
+                            }}
+                            onTouchEnd={() => { if (day === 5) endSecretGate(); }}
+                            onTouchCancel={() => { if (day === 5) endSecretGate(); }}
+                            onClick={(e) => {
+                              if (day === 5 && secretGateTriggered.current) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                secretGateTriggered.current = false;
+                              }
+                            }}
+                          >
+                            {day}
+                          </div>
+                          <div className="flex-1 space-y-1 overflow-y-auto no-scrollbar pointer-events-none">
+                            {dayEvents.map(event => (
+                              event.type === 'shift' ? (
+                                 <div key={event.id} className="text-[10px] md:text-xs px-1.5 py-1 rounded text-black font-semibold truncate text-center shadow-sm" style={{ backgroundColor: event.color }}>
+                                    {event.title}
+                                 </div>
+                              ) : (
+                                 <div
+                                   key={event.id}
+                                   className="text-[9px] md:text-xs px-1.5 py-0.5 md:px-2 md:py-1 bg-neutral-900 border border-neutral-800 rounded text-neutral-200 truncate flex items-center gap-1"
+                                   style={{ borderLeft: `3px solid ${calendarTint(event.calendarId || 'default')}` }}
+                                 >
+                                   <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
+                                   <span className="text-neutral-500 mr-1">{event.time}</span>
+                                   {event.poll && event.poll.status === 'open' && <span className="mr-1">🗳️</span>}
+                                   <span className="truncate">{event.title}</span>
+                                 </div>
+                              )
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
                 <div className="flex-1 overflow-y-auto bg-black" style={{ display: calendarViewMode === 'agenda' ? 'block' : 'none' }}>
                   {(() => {
                     const today = new Date().toISOString().split('T')[0];
@@ -5280,6 +5559,8 @@ setSelfDestruct(false);
                       </div>
                     );
                   })()}
+                </div>
+
               {/* KALENDER FEED (unter dem Kalender): Abstimmungen & Kommentare */}
                 {(() => {
                   const feedEvents = (allEvents || []).filter(e => e && e.type !== 'shift');
@@ -6239,7 +6520,7 @@ setSelfDestruct(false);
               <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up" style={{ height: 'var(--app-height, 100vh)' }}>
                 
                 {/* Geheimer Chat Header */}
-                <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950 relative">
+                <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
                   {secretView === 'chat' && activeChat ? (
                     <div className="flex items-center gap-3">
                       <button onClick={() => { setActiveChat(null); setSecretView('list'); }} className="text-neutral-400 hover:text-white transition-colors mr-2">
@@ -6285,52 +6566,7 @@ setSelfDestruct(false);
                         <Search className="w-5 h-5" />
                       </button>
                     )}
-
-                    {/* Anzeige (Zeit / Lesestatus) im Secret Chat Header */}
-                    {secretView === 'chat' && activeChat && (
-                      <div className="relative" ref={chatMetaMenuRef}>
-                        <button
-                          onClick={() => setIsChatMetaMenuOpen(v => !v)}
-                          className={`text-neutral-500 hover:text-white transition-colors p-2 ${isChatMetaMenuOpen ? 'bg-neutral-900 rounded-lg' : ''}`}
-                          title="Anzeige"
-                        >
-                          <Settings className="w-5 h-5" />
-                        </button>
-
-                        {isChatMetaMenuOpen && (
-                          <div className="absolute right-0 top-full mt-2 w-72 rounded-2xl border border-neutral-800 bg-neutral-950/95 backdrop-blur p-3 shadow-2xl z-50">
-                            <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-2">Chat Anzeige</div>
-
-                            <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-neutral-800 bg-black/40">
-                              <div>
-                                <div className="text-sm text-neutral-200">Zeit anzeigen</div>
-                                <div className="text-xs text-neutral-500">Zeit unter Nachrichten.</div>
-                              </div>
-                              <input
-                                type="checkbox"
-                                checked={chatMetaPrefs.showTime}
-                                onChange={(e) => setChatMetaPrefs(p => ({ ...p, showTime: !!e.target.checked }))}
-                              />
-                            </label>
-
-                            <div className="mt-3 p-3 rounded-xl border border-neutral-800 bg-black/40">
-                              <div className="text-sm text-neutral-200">Lesestatus</div>
-                              <div className="text-xs text-neutral-500 mb-2">Aus / Status / Mit Zeit</div>
-                              <div className="flex gap-2">
-                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'off' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'off' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Aus</button>
-                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'compact' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'compact' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Status</button>
-                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'full' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'full' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Mit Zeit</button>
-                              </div>
-                            </div>
-
-                            <button onClick={() => setIsChatMetaMenuOpen(false)} className="mt-3 w-full px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-sm text-neutral-200 hover:bg-neutral-800 transition-colors">
-                              Schliessen
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {/* Chat Anzeige/Lesestatus konfigurierbar im Chat Profil */}
+                    {/* Chat Anzeige/Lesestatus ist jetzt global im Dashboard/Einstellungen konfigurierbar */}
                     {secretView === 'chat' && activeChat && userProfile && (
                       <button
                         onClick={() => toggleMuteChat(activeChat.id)}
@@ -6411,13 +6647,12 @@ setSelfDestruct(false);
                           <p className="text-2xl font-light text-white">{chatStats.total}</p>
                         </div>
                       </div>
-
                     </div>
 
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
-                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
-                        <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein (nur Ziffern). Andere Zeichen werden ignoriert.</div>
+                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
+                        <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
                         
                         {chatFriendLoading && (
                           <div className="mt-3 px-4 text-xs text-neutral-500">Suche...</div>

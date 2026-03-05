@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin,
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin,
       Copy, Link2, History, UserMinus
     } from 'lucide-react';
 
@@ -255,6 +255,8 @@ function AmoledCalendarApp() {
       
       const [weather, setWeather] = useState(null);
       const [dailyForecast, setDailyForecast] = useState(null);
+      const [hourlyForecast, setHourlyForecast] = useState(null);
+      const [selectedForecastDay, setSelectedForecastDay] = useState(null);
       const [location, setLocation] = useState({ name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 });
       const [dailyFact, setDailyFact] = useState('');
       const [quotes, setQuotes] = useState([]);
@@ -465,6 +467,12 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const typingTimeoutRef = useRef(null);
       const messagesEndRef = useRef(null);
       const chatScrollRef = useRef(null);
+
+      // --- Chat scroll UX ---
+      // Keep the viewport stable when prepending older messages and avoid auto-jumping to bottom
+      const chatIsPrependingRef = useRef(false);
+      const chatStickToBottomRef = useRef(true);
+      const chatScrollRestoreRef = useRef({ prevHeight: 0, prevTop: 0 });
       const chatOldestCursorRef = useRef(null);
       const chatLoadedMoreRef = useRef(false);
       const chatAutoLoadLockRef = useRef(false);
@@ -2350,6 +2358,9 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           setChatLoadingMore(true);
           chatLoadedMoreRef.current = true;
 
+          // Mark as prepending so the "scroll-to-bottom" effect does not fire
+          chatIsPrependingRef.current = true;
+
           const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
           const nextQ = query(messagesRef, orderBy('timestamp', 'desc'), startAfter(cursor), limit(CHAT_PAGE_SIZE));
 
@@ -2369,6 +2380,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           const scroller = chatScrollRef.current;
           const prevScrollHeight = scroller ? scroller.scrollHeight : 0;
           const prevScrollTop = scroller ? scroller.scrollTop : 0;
+          chatScrollRestoreRef.current = { prevHeight: prevScrollHeight, prevTop: prevScrollTop };
 
           setChatMessages(prev => {
             const prevList = Array.isArray(prev) ? prev : [];
@@ -2384,11 +2396,14 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             try {
               const s = chatScrollRef.current;
               if (!s) return;
+              const { prevHeight, prevTop } = chatScrollRestoreRef.current || { prevHeight: 0, prevTop: 0 };
               const newHeight = s.scrollHeight;
-              const delta = newHeight - prevScrollHeight;
-              s.scrollTop = prevScrollTop + delta;
+              const delta = newHeight - prevHeight;
+              // Keep the same message at the top of the viewport
+              s.scrollTop = prevTop + delta;
             } catch (_) {}
             chatAutoLoadLockRef.current = false;
+            chatIsPrependingRef.current = false;
           }, 0);
 
         } catch (e) {
@@ -2398,8 +2413,14 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         }
       };
 
+      // Auto-scroll to bottom ONLY when the user is already near bottom and we are not prepending
       useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        try {
+          if (secretView !== 'chat') return;
+          if (chatIsPrependingRef.current) return;
+          if (!chatStickToBottomRef.current) return;
+          messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+        } catch (_) {}
       }, [chatMessages, secretView]);
 
       useEffect(() => {
@@ -2580,16 +2601,29 @@ const requestNotificationPermission = async (currentUser) => {
 
       const fetchWeather = async () => {
         try {
-          const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto`);
+          // Open-Meteo: add richer daily details + hourly for nicer UI
+          const res = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}` +
+            `&current_weather=true` +
+            `&hourly=temperature_2m,precipitation_probability,weathercode` +
+            `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,windspeed_10m_max,sunrise,sunset` +
+            `&timezone=auto`
+          );
           const data = await res.json();
           setWeather(data.current_weather);
           setDailyForecast(data.daily);
+          setHourlyForecast(data.hourly);
         } catch (error) {}
       };
 
       useEffect(() => {
         if (isLoggedIn) fetchWeather();
       }, [location, isLoggedIn]);
+
+      useEffect(() => {
+        // reset expanded forecast when location changes
+        setSelectedForecastDay(null);
+      }, [location?.lat, location?.lon]);
 
       const showToast = (message) => {
         const id = Date.now();
@@ -4635,6 +4669,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           createdAt: serverTimestamp(),
           read: false
         };
+
+        // When sending, always stick to bottom
+        try { chatStickToBottomRef.current = true; } catch (_) {}
 
         // Optimistic UI (erscheint sofort)
         const optimistic = { id: `local_${clientMsgId}`, ...payload, pending: true };
@@ -6727,6 +6764,13 @@ setSelfDestruct(false);
                         onScroll={(e) => {
                           const el = e.currentTarget;
                           if (!el) return;
+
+                          // Track whether user is close to bottom (used to decide auto-scroll on new messages)
+                          try {
+                            const distToBottom = el.scrollHeight - (el.scrollTop + el.clientHeight);
+                            chatStickToBottomRef.current = distToBottom < 120;
+                          } catch (_) {}
+
                           if (chatAutoLoadLockRef.current) return;
                           if (chatLoadingMore) return;
                           if (!chatHasMore) return;
@@ -7021,19 +7065,80 @@ setSelfDestruct(false);
                   <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Vorhersage</h4>
                   <div className="space-y-2">
                     {(dailyForecast?.time || []).slice(0, 7).map((d, i) => (
-                      <div key={d} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-3 py-2">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 text-[11px] font-semibold text-neutral-300">{formatDayName(d)}</div>
-                          <div className="flex items-center gap-2">
-                            {getWeatherIcon(dailyForecast?.weathercode?.[i], "w-5 h-5 text-white")}
-                            <span className="text-xs text-neutral-400">{new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</span>
+                      <div key={d} className="bg-black border border-neutral-800 rounded-xl overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedForecastDay((prev) => (prev === i ? null : i))}
+                          className="w-full flex items-center justify-between px-3 py-2 hover:bg-neutral-900 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 text-[11px] font-semibold text-neutral-300">{formatDayName(d)}</div>
+                            <div className="flex items-center gap-2">
+                              {getWeatherIcon(dailyForecast?.weathercode?.[i], "w-5 h-5 text-white")}
+                              <span className="text-xs text-neutral-400">{new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-sm tabular-nums">
-                          <span className="text-white">{Math.round(dailyForecast?.temperature_2m_max?.[i] ?? 0)}°</span>
-                          <span className="text-neutral-600 mx-1">/</span>
-                          <span className="text-neutral-400">{Math.round(dailyForecast?.temperature_2m_min?.[i] ?? 0)}°</span>
-                        </div>
+                          <div className="flex items-center gap-3">
+                            <div className="hidden sm:flex items-center gap-2 text-[11px] text-neutral-400">
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">💧 {Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}%</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">🌬️ {Math.round(dailyForecast?.windspeed_10m_max?.[i] ?? 0)} km/h</span>
+                            </div>
+                            <div className="text-sm tabular-nums">
+                              <span className="text-white">{Math.round(dailyForecast?.temperature_2m_max?.[i] ?? 0)}°</span>
+                              <span className="text-neutral-600 mx-1">/</span>
+                              <span className="text-neutral-400">{Math.round(dailyForecast?.temperature_2m_min?.[i] ?? 0)}°</span>
+                            </div>
+                            <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform ${selectedForecastDay === i ? 'rotate-180' : ''}`} />
+                          </div>
+                        </button>
+
+                        {selectedForecastDay === i && (
+                          <div className="px-3 pb-3 pt-2 border-t border-neutral-900 text-sm text-neutral-300">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-neutral-500">Regen</div>
+                                <div className="mt-1 text-sm">{Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}% • {Math.round(dailyForecast?.precipitation_sum?.[i] ?? 0)} mm</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-neutral-500">Wind</div>
+                                <div className="mt-1 text-sm">bis {Math.round(dailyForecast?.windspeed_10m_max?.[i] ?? 0)} km/h</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-neutral-500">Sonnenaufgang</div>
+                                <div className="mt-1 text-sm">{dailyForecast?.sunrise?.[i] ? new Date(dailyForecast.sunrise[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '—'}</div>
+                              </div>
+                              <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-neutral-500">Sonnenuntergang</div>
+                                <div className="mt-1 text-sm">{dailyForecast?.sunset?.[i] ? new Date(dailyForecast.sunset[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '—'}</div>
+                              </div>
+                            </div>
+
+                            {/* Optional: mini hourly for this day (first ~8 hours) */}
+                            {Array.isArray(hourlyForecast?.time) && (
+                              <div className="mt-3">
+                                <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Stündlich</div>
+                                <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                                  {(() => {
+                                    try {
+                                      const dayStr = String(d).slice(0, 10);
+                                      const idxs = [];
+                                      for (let k = 0; k < hourlyForecast.time.length; k++) {
+                                        if (String(hourlyForecast.time[k]).slice(0, 10) === dayStr) idxs.push(k);
+                                      }
+                                      return idxs.slice(0, 8).map((k) => (
+                                        <div key={hourlyForecast.time[k]} className="min-w-[64px] rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-2 text-center">
+                                          <div className="text-[11px] text-neutral-400">{new Date(hourlyForecast.time[k]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}</div>
+                                          <div className="mt-1 text-sm font-medium text-white tabular-nums">{Math.round(hourlyForecast?.temperature_2m?.[k] ?? 0)}°</div>
+                                          <div className="mt-1 text-[11px] text-neutral-400">💧 {Math.round(hourlyForecast?.precipitation_probability?.[k] ?? 0)}%</div>
+                                        </div>
+                                      ));
+                                    } catch (_) { return null; }
+                                  })()}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

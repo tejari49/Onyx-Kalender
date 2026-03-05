@@ -255,7 +255,6 @@ function AmoledCalendarApp() {
       
       const [weather, setWeather] = useState(null);
       const [dailyForecast, setDailyForecast] = useState(null);
-      const [hourlyForecast, setHourlyForecast] = useState(null);
       const [location, setLocation] = useState({ name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 });
       const [dailyFact, setDailyFact] = useState('');
       const [quotes, setQuotes] = useState([]);
@@ -465,15 +464,14 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 
       const typingTimeoutRef = useRef(null);
       const messagesEndRef = useRef(null);
-
       const chatScrollRef = useRef(null);
-      const CHAT_PAGE_SIZE = 25;
-      const [chatOlderMessages, setChatOlderMessages] = useState([]); // older (already loaded) messages in ascending order
-      const [chatHasMore, setChatHasMore] = useState(true);
-      const [chatLoadingMore, setChatLoadingMore] = useState(false);
-      const chatCursorRef = useRef(null); // Firestore doc snapshot of the oldest loaded message (for pagination)
+      const chatOldestCursorRef = useRef(null);
+      const chatLoadedMoreRef = useRef(false);
       const chatAutoLoadLockRef = useRef(false);
-      const chatLastAutoLoadAtRef = useRef(0);
+      const CHAT_PAGE_SIZE = 25;
+      const [chatHasMore, setChatHasMore] = useState(false);
+      const [chatLoadingMore, setChatLoadingMore] = useState(false);
+
 
       // --- IN-APP CHAT PING (SOUND / VIBRATION) ---
       const audioCtxRef = useRef(null);
@@ -2227,83 +2225,70 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         return () => { try { unsub(); } catch (_) {} };
       }, [auditCalId, user, customCalendars]);
 
-
-
-      // --- CHAT PAGINATION RESET ---
-      useEffect(() => {
-        // Reset paging state whenever the active chat changes.
-        setChatOlderMessages([]);
-        setChatHasMore(true);
-        chatCursorRef.current = null;
-      }, [activeChat?.id]);
-
-      // --- CHAT MESSAGES SYNC ---
+      // --- CHAT MESSAGES SYNC (Pagination: letzte 25 + Infinite Scroll nach oben) ---
       useEffect(() => {
         if (!activeChat || !user) return;
 
+        // Reset pagination state when switching chats
+        chatOldestCursorRef.current = null;
+        chatLoadedMoreRef.current = false;
+        chatAutoLoadLockRef.current = false;
+        setChatHasMore(false);
+        setChatLoadingMore(false);
+
         const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+        const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
 
-        // Live: keep the newest N messages in sync (descending query -> reverse for UI)
-        const qLatest = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
+        const unsubscribeMessages = onSnapshot(latestQ, (snapshot) => {
+          const loadedDesc = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          const loaded = [...loadedDesc].reverse(); // ascending
 
-        const unsubscribeMessages = onSnapshot(qLatest, (snapshot) => {
-          const loadedDesc = [];
+          // Cursor (oldest doc among currently listened page)
+          const lastDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
+          if (!chatLoadedMoreRef.current) {
+            chatOldestCursorRef.current = lastDoc;
+          }
+
+          // HasMore: only meaningful when we have a full page
+          const couldHaveMore = snapshot.docs.length >= CHAT_PAGE_SIZE;
+          // If user already loaded more, we keep hasMore as-is unless we know it is false
+          if (!chatLoadedMoreRef.current) setChatHasMore(couldHaveMore);
+
           const unreadToUpdate = [];
           const deliveredToUpdate = [];
 
-          snapshot.forEach(docSnap => {
-            const data = docSnap.data();
-            loadedDesc.push({ id: docSnap.id, ...data });
-
-            // Read receipts (1:1): mark as read when currently viewing the conversation.
-            if (
-              data.senderId !== user.uid &&
-              !data.read &&
-              currentView === 'secret_chat' &&
-              secretView === 'chat' &&
-              (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)
-            ) {
+          // Read/delivered marking only for messages in latest window
+          for (const docSnap of snapshot.docs) {
+            const data = docSnap.data() || {};
+            if (data.senderId !== user.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
               unreadToUpdate.push(docSnap.id);
             }
-
-            // Delivered marker (1:1): mark as delivered when the message reaches the recipient.
-            if (
-              data.senderId !== user.uid &&
-              !data.deliveredAt &&
-              (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)
-            ) {
+            if (data.senderId !== user.uid && !data.deliveredAt && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
               deliveredToUpdate.push(docSnap.id);
             }
-          });
-
-          // Cursor for pagination: only initialize from the newest page if we have not loaded any older messages yet.
-          if ((chatOlderMessages?.length || 0) === 0) {
-            chatCursorRef.current = snapshot.docs && snapshot.docs.length ? snapshot.docs[snapshot.docs.length - 1] : null;
-            setChatHasMore((snapshot.docs?.length || 0) >= CHAT_PAGE_SIZE);
           }
 
-          const latestAsc = loadedDesc.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).reverse();
-
-          const serverClientIds = new Set(latestAsc.map(m => m.clientMsgId).filter(Boolean));
+          // Merge with older-loaded + pending
           setChatMessages(prev => {
-            const pending = (prev || []).filter(m => m && m.pending && m.clientMsgId && !serverClientIds.has(m.clientMsgId));
+            const prevList = Array.isArray(prev) ? prev : [];
+            const pending = prevList.filter(m => m && m.pending && m.clientMsgId);
 
-            // Merge: older (already loaded) + latest (live) + still-pending locals; unique by id
-            const byId = new Map();
-            const push = (m) => { if (m && m.id) byId.set(String(m.id), m); };
+            // Keep older messages that are not in the latest page
+            const latestIds = new Set(loaded.map(m => m.id));
+            const older = prevList.filter(m => m && !m.pending && !latestIds.has(m.id));
 
-            chatOlderMessages.forEach(push);
-            latestAsc.forEach(push);
-            pending.forEach(push);
+            // Remove pending that already got server version
+            const serverClientIds = new Set(loaded.map(m => m.clientMsgId).filter(Boolean));
+            const pendingFiltered = pending.filter(m => m.clientMsgId && !serverClientIds.has(m.clientMsgId));
 
-            const merged = Array.from(byId.values());
+            const merged = [...older, ...loaded, ...pendingFiltered];
             merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
             return merged;
           });
 
-          // System-Notification for new incoming messages (when chat not in foreground)
+          // System-Notification für neue eingehende Nachrichten (wenn App nicht im Vordergrund ist)
           try {
-            const lastMsg = latestAsc.length > 0 ? latestAsc[latestAsc.length - 1] : null;
+            const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user.uid) {
               const mutedChatIds = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
               const isMuted = mutedChatIds.includes(activeChat.id);
@@ -2312,14 +2297,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
               if (!isMuted && canNotify && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
-                // Privacy: OS notification should not show preview/body.
                 showSystemNotification('Kalender Aktuell 🔏', null, `onyx_chat_${activeChat.id}`);
                 localStorage.setItem(key, String(lastMsg.timestamp || Date.now()));
               }
             }
           } catch (e) {}
 
-          // lastRead (group read receipts)
+          // lastRead (für Gruppen-Read-Receipts)
           if (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible') {
             const nowMs = Date.now();
             if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
@@ -2352,9 +2336,67 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         return () => unsubscribeMessages();
-      // IMPORTANT: chatOlderMessages is intentionally part of deps so the merge stays consistent.
-      }, [activeChat, user, currentView, secretView, userProfile, chatOlderMessages]);
+      }, [activeChat, user, currentView, secretView, userProfile]);
 
+      const loadMoreChatMessages = async () => {
+        try {
+          if (!activeChat || !user) return;
+          if (chatLoadingMore) return;
+          if (!chatHasMore) return;
+
+          const cursor = chatOldestCursorRef.current;
+          if (!cursor) return;
+
+          setChatLoadingMore(true);
+          chatLoadedMoreRef.current = true;
+
+          const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+          const nextQ = query(messagesRef, orderBy('timestamp', 'desc'), startAfter(cursor), limit(CHAT_PAGE_SIZE));
+
+          const snap = await getDocs(nextQ);
+          const docs = snap.docs || [];
+          const pageDesc = docs.map(d => ({ id: d.id, ...d.data() }));
+          const page = [...pageDesc].reverse();
+
+          // Update cursor to the new oldest doc
+          const newCursor = docs.length > 0 ? docs[docs.length - 1] : cursor;
+          chatOldestCursorRef.current = newCursor;
+
+          // If we received fewer than page size, no more
+          if (docs.length < CHAT_PAGE_SIZE) setChatHasMore(false);
+
+          // Preserve scroll position while prepending
+          const scroller = chatScrollRef.current;
+          const prevScrollHeight = scroller ? scroller.scrollHeight : 0;
+          const prevScrollTop = scroller ? scroller.scrollTop : 0;
+
+          setChatMessages(prev => {
+            const prevList = Array.isArray(prev) ? prev : [];
+            const existingIds = new Set(prevList.map(m => m.id));
+            const toAdd = page.filter(m => !existingIds.has(m.id));
+            const merged = [...toAdd, ...prevList];
+            merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            return merged;
+          });
+
+          // Wait a tick, then restore position
+          setTimeout(() => {
+            try {
+              const s = chatScrollRef.current;
+              if (!s) return;
+              const newHeight = s.scrollHeight;
+              const delta = newHeight - prevScrollHeight;
+              s.scrollTop = prevScrollTop + delta;
+            } catch (_) {}
+            chatAutoLoadLockRef.current = false;
+          }, 0);
+
+        } catch (e) {
+          console.warn('CHAT_LOAD_MORE_ERROR', e);
+        } finally {
+          setChatLoadingMore(false);
+        }
+      };
 
       useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -2378,83 +2420,6 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           });
         }
         setChatStats({ sent, received, total: sent + received });
-      };
-
-      const loadOlderChatMessages = async () => {
-        try {
-          if (!activeChat || !user) return;
-          if (chatLoadingMore) return;
-          if (!chatHasMore) return;
-          if (!chatCursorRef.current) { setChatHasMore(false); return; }
-
-          setChatLoadingMore(true);
-
-          const sc = chatScrollRef.current;
-          const prevScrollHeight = sc ? sc.scrollHeight : 0;
-          const prevScrollTop = sc ? sc.scrollTop : 0;
-
-          const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
-          const qOlder = query(messagesRef, orderBy('timestamp', 'desc'), startAfter(chatCursorRef.current), limit(CHAT_PAGE_SIZE));
-          const snap = await getDocs(qOlder);
-
-          const loadedDesc = [];
-          snap.forEach(d => loadedDesc.push({ id: d.id, ...d.data() }));
-
-          // Update cursor to the oldest document of this page (desc list -> last doc)
-          chatCursorRef.current = (snap.docs && snap.docs.length) ? snap.docs[snap.docs.length - 1] : chatCursorRef.current;
-
-          const olderAsc = loadedDesc.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).reverse();
-
-          setChatOlderMessages(prev => {
-            const byId = new Map();
-            const push = (m) => { if (m && m.id) byId.set(String(m.id), m); };
-            (prev || []).forEach(push);
-            olderAsc.forEach(push);
-            const merged = Array.from(byId.values());
-            merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-            return merged;
-          });
-
-          if ((snap.docs?.length || 0) < CHAT_PAGE_SIZE) setChatHasMore(false);
-
-          // Keep scroll position stable after prepending older messages.
-          requestAnimationFrame(() => {
-            try {
-              const sc2 = chatScrollRef.current;
-              if (!sc2) return;
-              const newScrollHeight = sc2.scrollHeight;
-              const delta = newScrollHeight - prevScrollHeight;
-              sc2.scrollTop = prevScrollTop + (delta > 0 ? delta : 0);
-            } catch (_) {}
-          });
-        } catch (e) {
-          console.warn('[Chat] loadOlderChatMessages failed', e);
-          showToast('Konnte ältere Nachrichten nicht laden');
-        } finally {
-          setChatLoadingMore(false);
-        }
-      };
-
-      const handleChatScroll = () => {
-        try {
-          const sc = chatScrollRef.current;
-          if (!sc) return;
-          // Auto-load older messages when the user scrolls close to the top.
-          const TOP_THRESHOLD_PX = 90;
-          if (sc.scrollTop > TOP_THRESHOLD_PX) return;
-          if (!chatHasMore || chatLoadingMore) return;
-
-          const now = Date.now();
-          // Throttle + lock to avoid repeated triggers during momentum scrolling.
-          if (chatAutoLoadLockRef.current) return;
-          if (now - (chatLastAutoLoadAtRef.current || 0) < 600) return;
-
-          chatAutoLoadLockRef.current = true;
-          chatLastAutoLoadAtRef.current = now;
-          Promise.resolve(loadOlderChatMessages()).finally(() => {
-            setTimeout(() => { chatAutoLoadLockRef.current = false; }, 250);
-          });
-        } catch (_) {}
       };
 
       const ensureWebPushToken = async (currentUser, opts = {}) => {
@@ -2615,28 +2580,11 @@ const requestNotificationPermission = async (currentUser) => {
 
       const fetchWeather = async () => {
         try {
-          // Open-Meteo: current + daily + hourly (für schönes Dashboard)
-          const url = `https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min&hourly=temperature_2m,weathercode,precipitation_probability&timezone=auto`;
-          const res = await fetch(url);
+          const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto`);
           const data = await res.json();
-
-          setWeather(data.current_weather || null);
-          setDailyForecast(data.daily || null);
-
-          if (data.hourly && Array.isArray(data.hourly.time)) {
-            setHourlyForecast({
-              time: data.hourly.time || [],
-              temperature_2m: data.hourly.temperature_2m || [],
-              weathercode: data.hourly.weathercode || [],
-              precipitation_probability: data.hourly.precipitation_probability || []
-            });
-          } else {
-            setHourlyForecast(null);
-          }
-        } catch (error) {
-          // keep silent; UI shows placeholders
-          setHourlyForecast(null);
-        }
+          setWeather(data.current_weather);
+          setDailyForecast(data.daily);
+        } catch (error) {}
       };
 
       useEffect(() => {
@@ -5104,85 +5052,6 @@ setSelfDestruct(false);
 
       const activeCalForView = getCalendarById(activeCalendarId);
 
-      // --- Dashboard derived data ---
-      const todayStr = new Date().toISOString().split('T')[0];
-      const todayEvents = (getEventsForDate(todayStr) || []).slice().sort((a,b) => (a.time||'').localeCompare(b.time||''));
-      const now = new Date();
-      const startOfWeek = new Date(now);
-      // Monday start (DE/CH)
-      const dow = startOfWeek.getDay(); // 0=Sun
-      const diffToMon = (dow === 0) ? -6 : (1 - dow);
-      startOfWeek.setDate(startOfWeek.getDate() + diffToMon);
-      startOfWeek.setHours(0,0,0,0);
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(endOfWeek.getDate() + 7);
-
-      const weekEventCount = (() => {
-        let c = 0;
-        for (let i=0;i<7;i++){
-          const d = new Date(startOfWeek);
-          d.setDate(startOfWeek.getDate()+i);
-          const ds = d.toISOString().split('T')[0];
-          c += (getEventsForDate(ds) || []).length;
-        }
-        return c;
-      })();
-
-      const nextUp = (() => {
-        const out = [];
-        const maxDays = 14;
-        for (let i=0; i<maxDays && out.length<5; i++) {
-          const d = new Date(now);
-          d.setDate(now.getDate() + i);
-          const ds = d.toISOString().split('T')[0];
-          const dayList = (getEventsForDate(ds) || []).slice().sort((a,b)=>(a.time||'').localeCompare(b.time||''));
-          for (const ev of dayList) {
-            out.push({ ...ev, __date: ds });
-            if (out.length >= 5) break;
-          }
-        }
-        return out;
-      })();
-
-      const nextEventLabel = (() => {
-        if (!nextUp || nextUp.length === 0) return null;
-        const ev = nextUp[0];
-        const when = ev.__date === todayStr ? "heute" : new Date(ev.__date).toLocaleDateString('de-CH', { weekday:'short', day:'2-digit', month:'2-digit' });
-        const t = ev.time ? `${ev.time} • ` : '';
-        return `${when} • ${t}${ev.title || 'Termin'}`;
-      })();
-
-      const weatherSummary = (() => {
-        if (!weather) return { label: 'Lädt…', rain: '—', wind: '—', temp: null };
-        const label = (typeof weather.weathercode === 'number')
-          ? (weather.weathercode <= 3 ? 'Sonnig' : (weather.weathercode >= 50 && weather.weathercode <= 69 ? 'Regen' : 'Bewölkt'))
-          : 'Wetter';
-        const wind = (weather.windspeed != null) ? `${Math.round(weather.windspeed)}` : '—';
-        return { label, rain: '—', wind, temp: (weather.temperature != null ? weather.temperature : null) };
-      })();
-
-      const hourlySlice = (() => {
-        try {
-          if (!hourlyForecast || !Array.isArray(hourlyForecast.time)) return [];
-          const nowTs = Date.now();
-          const idx = hourlyForecast.time.findIndex(t => (new Date(t)).getTime() >= nowTs - 30*60*1000);
-          const start = (idx >= 0) ? idx : 0;
-          const out = [];
-          for (let i = start; i < Math.min(start + 12, hourlyForecast.time.length); i++) {
-            const t = hourlyForecast.time[i];
-            const dt = new Date(t);
-            const hh = dt.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
-            out.push({
-              t: hh,
-              c: hourlyForecast.temperature_2m?.[i],
-              code: hourlyForecast.weathercode?.[i],
-              p: hourlyForecast.precipitation_probability?.[i],
-            });
-          }
-          return out;
-        } catch (_) { return []; }
-      })();
-
       return (
         <div 
           className="flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative" style={{ height: 'var(--app-height, 100vh)' }}
@@ -5243,281 +5112,28 @@ setSelfDestruct(false);
 
           <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative">
             {currentView === 'dashboard' && (
-              <div className="p-4 md:p-10 max-w-6xl w-full mx-auto animate-fade-in">
-                {/* Sticky header (micro-UX) */}
-                <div className="sticky top-0 z-20 -mx-4 md:-mx-10 px-4 md:px-10 py-4 bg-black/70 backdrop-blur border-b border-neutral-800/60">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Dashboard</div>
-                      <h2 className="text-3xl md:text-4xl font-light truncate">
-                        Guten Morgen{dashboardName ? `, ${dashboardName}` : ''}.
-                      </h2>
-                      <div className="mt-1 text-sm text-neutral-500">
-                        {new Date().toLocaleDateString('de-CH', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-                      </div>
-                    </div>
-
-                    <div className="shrink-0 flex items-center gap-2">
-                      <button
-                        onClick={() => openNewEventModal()}
-                        className="px-3 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors"
-                        title="Neuer Termin"
-                      >
-                        <Plus className="w-4 h-4 inline-block mr-1" /> Neu
-                      </button>
-                      <button
-                        onClick={() => setCurrentView('calendar')}
-                        className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm hover:border-neutral-500 transition-colors"
-                        title="Zum Kalender"
-                      >
-                        <CalendarIcon className="w-4 h-4 inline-block mr-1" /> Kalender
-                      </button>
-                    </div>
+              <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
+                <header className="flex justify-between items-center mb-8 md:mb-10">
+                  <h2 className="text-3xl md:text-4xl font-light">Guten Morgen{dashboardName ? `, ${dashboardName}` : ''}.</h2>
+                </header>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
+                  <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between cursor-pointer hover:border-neutral-600 transition-colors group">
+                    <div><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider mb-1 flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {location.name}</h3><p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p></div>
+                    <div>{getWeatherIcon(weather?.weathercode, "w-10 h-10 md:w-12 md:h-12 text-white")}</div>
+                  </div>
+                  <div className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-start gap-4">
+                    <Info className="w-5 h-5 md:w-6 md:h-6 text-neutral-400 shrink-0 mt-1" />
+                    <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-xl md:text-2xl font-semibold text-neutral-100 leading-snug">“{dailyFact}”</p></div>
                   </div>
                 </div>
-
-                {/* HERO: Wetter + Spruch */}
-                <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  {/* Wetter Hero */}
-                  <div
-                    onClick={() => setIsWeatherModalOpen(true)}
-                    className="lg:col-span-2 rounded-2xl border border-neutral-800 bg-neutral-950/40 backdrop-blur p-4 md:p-5 cursor-pointer hover:border-neutral-600 transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 flex items-center gap-2">
-                          <MapPin className="w-3.5 h-3.5" />
-                          <span className="truncate">{location?.name || 'Standort'}</span>
-                        </div>
-                        <div className="mt-2 flex items-end gap-3">
-                          <div className="text-5xl md:text-6xl font-light tabular-nums text-white">
-                            {weather?.temperature != null ? `${Math.round(weather.temperature)}°` : '—'}
-                          </div>
-                          <div className="pb-2 text-sm text-neutral-400">
-                            <div className="text-neutral-200 font-medium">{weatherSummary.label}</div>
-                            <div className="mt-0.5">Nächster Termin: <span className="text-neutral-200">{nextEventLabel || '—'}</span></div>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="text-[11px] px-2 py-1 rounded-full bg-black/40 border border-neutral-800 text-neutral-300">
-                            🌬️ {weatherSummary.wind} km/h
-                          </span>
-                          <span className="text-[11px] px-2 py-1 rounded-full bg-black/40 border border-neutral-800 text-neutral-300">
-                            📅 {weekEventCount} Termine / Woche
-                          </span>
-                          {hasUnreadMessages && (
-                            <span className="text-[11px] px-2 py-1 rounded-full bg-white text-black font-semibold">
-                              🔔 Kalender Aktuell
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="shrink-0">
-                        <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl border border-neutral-800 bg-black/40 flex items-center justify-center">
-                          {getWeatherIcon(weather?.weathercode, "w-10 h-10 md:w-12 md:h-12 text-white")}
-                        </div>
-                        <div className="mt-2 text-[11px] text-neutral-500 text-center">
-                          Tippen für Details
-                        </div>
-                      </div>
+                <div>
+                  <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda für heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
+                  {hasUnreadMessages && (
+                    <div className="mb-4 p-4 border border-neutral-700 bg-neutral-900 rounded-xl flex items-center justify-center transition-colors animate-fade-in">
+                      <div className="flex items-center gap-3"><div className="w-2 h-2 bg-white rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]"></div><span className="font-medium text-white uppercase tracking-widest text-sm">Kalender Aktuell</span></div>
                     </div>
-
-                    {/* Hourly Strip */}
-                    <div className="mt-4 overflow-x-auto no-scrollbar">
-                      <div className="flex gap-2 min-w-max">
-                        {hourlySlice && hourlySlice.length > 0 ? (
-                          hourlySlice.map((h, idx) => (
-                            <div key={idx} className="w-16 rounded-2xl border border-neutral-800 bg-black/30 p-2 text-center">
-                              <div className="text-[11px] text-neutral-500">{h.t}</div>
-                              <div className="mt-1 flex items-center justify-center">
-                                {getWeatherIcon(h.code, "w-5 h-5 text-white")}
-                              </div>
-                              <div className="mt-1 text-sm text-neutral-100 font-medium tabular-nums">
-                                {h.c != null ? `${Math.round(h.c)}°` : '—'}
-                              </div>
-                              <div className="mt-0.5 text-[10px] text-neutral-500 tabular-nums">
-                                {h.p != null ? `${Math.round(h.p)}%` : ''}
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="text-xs text-neutral-600 py-3">Wetter wird geladen…</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Spruch */}
-                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950/40 backdrop-blur p-4 md:p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Spruch des Tages</div>
-                      <button
-                        onClick={refreshDailyFact}
-                        title="Neuer Spruch"
-                        className="p-2 rounded-xl border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="mt-3 text-xl md:text-2xl font-semibold leading-snug text-white">
-                      “{dailyFact || '—'}”
-                    </div>
-                    <div className="mt-4 text-xs text-neutral-500">
-                      Tipp: Der Spruch ist bewusst groß gesetzt (besserer Fokus ✍️)
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quick stats + Mini Month */}
-                <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  {/* Stats */}
-                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950/30 p-4 md:p-5">
-                    <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 mb-3">Übersicht</div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-2xl border border-neutral-800 bg-black/30 p-3">
-                        <div className="text-[11px] text-neutral-500">Heute</div>
-                        <div className="mt-1 text-2xl font-light tabular-nums">{todayEvents.length}</div>
-                        <div className="text-[11px] text-neutral-500">Termine</div>
-                      </div>
-                      <div className="rounded-2xl border border-neutral-800 bg-black/30 p-3">
-                        <div className="text-[11px] text-neutral-500">Diese Woche</div>
-                        <div className="mt-1 text-2xl font-light tabular-nums">{weekEventCount}</div>
-                        <div className="text-[11px] text-neutral-500">Termine</div>
-                      </div>
-                      <button
-                        onClick={() => setCurrentView('secret_chat')}
-                        className="col-span-2 rounded-2xl border border-neutral-800 bg-black/30 p-3 text-left hover:border-neutral-500 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="text-[11px] text-neutral-500">Chat</div>
-                            <div className="mt-1 text-sm text-neutral-100 font-medium">Öffnen</div>
-                          </div>
-                          <div className={`w-2.5 h-2.5 rounded-full ${hasUnreadMessages ? 'bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]' : 'bg-neutral-700'}`} />
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Mini Month */}
-                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950/30 p-4 md:p-5">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Monat</div>
-                      <button
-                        onClick={() => setCurrentView('calendar')}
-                        className="text-xs text-neutral-300 px-2 py-1 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900"
-                      >
-                        Öffnen
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-7 gap-1">
-                      {WOCHENTAGE.map((d) => (
-                        <div key={d} className="text-[10px] text-neutral-600 text-center">{d}</div>
-                      ))}
-                      {Array.from({ length: getFirstDayOfMonth(currentDate) }).map((_, i) => (
-                        <div key={`m-empty-${i}`} className="h-8" />
-                      ))}
-                      {Array.from({ length: getDaysInMonth(currentDate) }).map((_, i) => {
-                        const day = i + 1;
-                        const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                        const isToday = todayStr === dateStr;
-                        const count = (getEventsForDate(dateStr) || []).length;
-                        return (
-                          <button
-                            key={`m-${day}`}
-                            onClick={() => { setCurrentView('calendar'); setCurrentDate(new Date(dateStr)); }}
-                            className={`h-8 rounded-lg text-[11px] border transition-colors relative
-                              ${isToday ? 'bg-white text-black border-white' : 'bg-black/30 text-neutral-200 border-neutral-800 hover:border-neutral-500'}`}
-                            title={count ? `${count} Termine` : 'Keine Termine'}
-                          >
-                            {day}
-                            {count > 0 && (
-                              <span className={`absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full ${isToday ? 'bg-black' : 'bg-white'}`} />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Next Up */}
-                  <div className="rounded-2xl border border-neutral-800 bg-neutral-950/30 p-4 md:p-5">
-                    <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 mb-3">Nächste Termine</div>
-                    <div className="space-y-2">
-                      {nextUp && nextUp.length > 0 ? (
-                        nextUp.slice(0, 5).map((event) => (
-                          <button
-                            key={`${event.id}-${event.__date}`}
-                            onClick={() => { setCurrentView('calendar'); setCurrentDate(new Date(event.__date)); }}
-                            className="w-full text-left rounded-2xl border border-neutral-800 bg-black/30 hover:border-neutral-500 transition-colors p-3"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="text-sm text-white font-medium truncate flex items-center gap-2">
-                                  <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
-                                  {event.title || 'Termin'}
-                                </div>
-                                <div className="mt-0.5 text-[11px] text-neutral-500 truncate">
-                                  {event.__date === todayStr ? 'Heute' : new Date(event.__date).toLocaleDateString('de-CH', { weekday:'short', day:'2-digit', month:'2-digit' })}
-                                  {event.time ? ` • ${event.time}` : ''}
-                                  {event.location ? ` • ${event.location}` : ''}
-                                </div>
-                              </div>
-                              <ChevronRight className="w-4 h-4 text-neutral-500" />
-                            </div>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="text-sm text-neutral-600 italic p-3 text-center border border-dashed border-neutral-800 rounded-2xl">
-                          Keine anstehenden Termine.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Agenda heute (bleibt, aber aufgeräumt) */}
-                <div className="mt-5">
-                  <div className="flex items-end justify-between gap-4 mb-3">
-                    <h3 className="text-lg md:text-xl font-medium">Agenda für heute</h3>
-                    <div className="text-xs text-neutral-500 tabular-nums">{new Date().toLocaleDateString('de-CH')}</div>
-                  </div>
-
+                  )}
                   <div className="space-y-3 md:space-y-4">
-                    {todayEvents.length > 0 ? (
-                      todayEvents.map(event => (
-                        <div key={event.id} onClick={() => openEditEventModal(event)} className="flex items-center gap-4 md:gap-6 p-4 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-2xl bg-black cursor-pointer group">
-                          {event.type === 'shift' ? (
-                            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: event.color }}>
-                              <Clock className="w-5 h-5 text-black opacity-60" />
-                            </div>
-                          ) : (
-                            <div className="text-neutral-400 font-mono text-sm md:text-base w-14 text-right tabular-nums">{event.time || '—'}</div>
-                          )}
-                          <div className="w-px h-10 bg-neutral-800 group-hover:bg-neutral-600 transition-colors"></div>
-                          <div className="flex-1 overflow-hidden">
-                            <p className="font-medium text-white truncate flex items-center gap-2">
-                              <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
-                              <span className="truncate">{event.title}</span>
-                            </p>
-                            <p className="text-xs text-neutral-500 mt-0.5 truncate">
-                              {event.location ? `📍 ${event.location}` : (event.desc ? event.desc : '')}
-                            </p>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-neutral-600 text-sm italic p-4 text-center border border-dashed border-neutral-800 rounded-2xl">
-                        Heute ist frei 🎉
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}                  <div className="space-y-3 md:space-y-4">
                     {getEventsForDate(new Date().toISOString().split('T')[0]).length > 0 ? (
                       getEventsForDate(new Date().toISOString().split('T')[0]).sort((a,b) => (a.time||'').localeCompare(b.time||'')).map(event => (
                         <div key={event.id} onClick={() => openEditEventModal(event)} className="flex items-center gap-4 md:gap-6 p-4 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-lg bg-black cursor-pointer group">
@@ -7106,20 +6722,29 @@ setSelfDestruct(false);
                       )}
 
                       
-                      <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 flex flex-col">
-                        {(chatHasMore || chatLoadingMore) && (
-                          <div className="flex justify-center pb-2">
-                            {chatLoadingMore ? (
-                              <div className="px-4 py-2 rounded-full text-xs font-semibold border bg-neutral-900 text-neutral-300 border-neutral-800">
-                                Lade ältere Nachrichten…
-                              </div>
-                            ) : (
-                              <div className="px-3 py-1 rounded-full text-[11px] border bg-neutral-950 text-neutral-400 border-neutral-900">
-                                Nach oben scrollen für mehr
-                              </div>
-                            )}
+                      <div
+                        ref={chatScrollRef}
+                        onScroll={(e) => {
+                          const el = e.currentTarget;
+                          if (!el) return;
+                          if (chatAutoLoadLockRef.current) return;
+                          if (chatLoadingMore) return;
+                          if (!chatHasMore) return;
+                          if (el.scrollTop < 90) {
+                            chatAutoLoadLockRef.current = true;
+                            loadMoreChatMessages();
+                          }
+                        }}
+                        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 flex flex-col"
+                      >
+                        {chatHasMore && (
+                          <div className="-mt-2 mb-2 flex items-center justify-center">
+                            <div className="px-3 py-1.5 rounded-full border border-neutral-800 bg-neutral-950 text-[11px] text-neutral-400">
+                              {chatLoadingMore ? "Lade ältere Nachrichten…" : "Scroll nach oben für mehr"}
+                            </div>
                           </div>
                         )}
+
                         {visibleChatMessages.map((msg) => {
                           const isMe = msg.senderId === user.uid;
                           const showActions = selectedMessageId === msg.id;

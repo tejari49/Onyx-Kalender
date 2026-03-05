@@ -14,8 +14,7 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // PWA Offline Caching
-// IMPORTANT: bump this when you change caching strategy/assets.
-const CACHE_NAME = 'onyx-v36';
+const CACHE_NAME = 'onyx-v35';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -53,7 +52,7 @@ self.addEventListener('activate', (event) => {
 });
 
 // Fetch strategy:
-// - Navigation requests (SPA routes): NETWORK ONLY (prevents stale UI on GitHub Pages)
+// - Navigation requests (index.html / SPA routes): network-first, cache fallback
 // - Static assets: cache-first
 self.addEventListener('fetch', (event) => {
   const req = event.request;
@@ -66,10 +65,20 @@ self.addEventListener('fetch', (event) => {
   }
 
   // SPA navigations
-  // We intentionally do NOT cache index.html here.
-  // Reason: GitHub Pages + SW caching can keep an old UI alive even after deploy.
   if (req.mode === 'navigate') {
-    event.respondWith(fetch(req));
+    event.respondWith(
+      (async () => {
+        try {
+          const fresh = await fetch(req);
+          const cache = await caches.open(CACHE_NAME);
+          cache.put('./index.html', fresh.clone());
+          return fresh;
+        } catch (e) {
+          const cached = await caches.match('./index.html');
+          return cached || new Response('Offline', { status: 503, statusText: 'Offline' });
+        }
+      })()
+    );
     return;
   }
 

@@ -24,9 +24,12 @@
 
   <!-- Firebase Messaging Service Worker -->
   <script>
+    // Version the SW URL so GitHub Pages / PWA shells don't keep serving a stale UI.
+    // Bump this number whenever you ship UI changes.
+    const __SW_VER__ = 36;
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('%BASE_URL%firebase-messaging-sw.js')
+        navigator.serviceWorker.register(`%BASE_URL%firebase-messaging-sw.js?v=${__SW_VER__}`)
           .then(reg => console.log('ServiceWorker registriert:', reg.scope))
           .catch(err => console.log('ServiceWorker Registrierung fehlgeschlagen:', err));
       });

@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction } from "firebase/firestore";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter } from "firebase/firestore";
     import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
     import heic2any from 'heic2any';
 
@@ -464,6 +464,15 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 
       const typingTimeoutRef = useRef(null);
       const messagesEndRef = useRef(null);
+
+      const chatScrollRef = useRef(null);
+      const CHAT_PAGE_SIZE = 25;
+      const [chatOlderMessages, setChatOlderMessages] = useState([]); // older (already loaded) messages in ascending order
+      const [chatHasMore, setChatHasMore] = useState(true);
+      const [chatLoadingMore, setChatLoadingMore] = useState(false);
+      const chatCursorRef = useRef(null); // Firestore doc snapshot of the oldest loaded message (for pagination)
+      const chatAutoLoadLockRef = useRef(false);
+      const chatLastAutoLoadAtRef = useRef(0);
 
       // --- IN-APP CHAT PING (SOUND / VIBRATION) ---
       const audioCtxRef = useRef(null);
@@ -2218,37 +2227,82 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       }, [auditCalId, user, customCalendars]);
 
 
+
+      // --- CHAT PAGINATION RESET ---
+      useEffect(() => {
+        // Reset paging state whenever the active chat changes.
+        setChatOlderMessages([]);
+        setChatHasMore(true);
+        chatCursorRef.current = null;
+      }, [activeChat?.id]);
+
       // --- CHAT MESSAGES SYNC ---
       useEffect(() => {
         if (!activeChat || !user) return;
+
         const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
-        const unsubscribeMessages = onSnapshot(query(messagesRef, orderBy('timestamp')), (snapshot) => {
-          const loaded = [];
+
+        // Live: keep the newest N messages in sync (descending query -> reverse for UI)
+        const qLatest = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
+
+        const unsubscribeMessages = onSnapshot(qLatest, (snapshot) => {
+          const loadedDesc = [];
           const unreadToUpdate = [];
           const deliveredToUpdate = [];
-          snapshot.forEach(doc => {
-            const data = doc.data();
-            loaded.push({ id: doc.id, ...data });
-            if (data.senderId !== user.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
-              unreadToUpdate.push(doc.id);
+
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            loadedDesc.push({ id: docSnap.id, ...data });
+
+            // Read receipts (1:1): mark as read when currently viewing the conversation.
+            if (
+              data.senderId !== user.uid &&
+              !data.read &&
+              currentView === 'secret_chat' &&
+              secretView === 'chat' &&
+              (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)
+            ) {
+              unreadToUpdate.push(docSnap.id);
             }
-            // Zustellung markieren (1:1 Chats): sobald die Nachricht beim Empfänger ankommt
-            if (data.senderId !== user.uid && !data.deliveredAt && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
-              deliveredToUpdate.push(doc.id);
+
+            // Delivered marker (1:1): mark as delivered when the message reaches the recipient.
+            if (
+              data.senderId !== user.uid &&
+              !data.deliveredAt &&
+              (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)
+            ) {
+              deliveredToUpdate.push(docSnap.id);
             }
           });
-          loaded.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-          const serverIds = new Set(loaded.map(m => m.clientMsgId).filter(Boolean));
+
+          // Cursor for pagination: only initialize from the newest page if we have not loaded any older messages yet.
+          if ((chatOlderMessages?.length || 0) === 0) {
+            chatCursorRef.current = snapshot.docs && snapshot.docs.length ? snapshot.docs[snapshot.docs.length - 1] : null;
+            setChatHasMore((snapshot.docs?.length || 0) >= CHAT_PAGE_SIZE);
+          }
+
+          const latestAsc = loadedDesc.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).reverse();
+
+          const serverClientIds = new Set(latestAsc.map(m => m.clientMsgId).filter(Boolean));
           setChatMessages(prev => {
-            const pending = (prev || []).filter(m => m && m.pending && m.clientMsgId && !serverIds.has(m.clientMsgId));
-            const merged = [...loaded, ...pending];
+            const pending = (prev || []).filter(m => m && m.pending && m.clientMsgId && !serverClientIds.has(m.clientMsgId));
+
+            // Merge: older (already loaded) + latest (live) + still-pending locals; unique by id
+            const byId = new Map();
+            const push = (m) => { if (m && m.id) byId.set(String(m.id), m); };
+
+            chatOlderMessages.forEach(push);
+            latestAsc.forEach(push);
+            pending.forEach(push);
+
+            const merged = Array.from(byId.values());
             merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
             return merged;
           });
 
-          // System-Notification für neue eingehende Nachrichten (wenn App nicht im Vordergrund ist)
+          // System-Notification for new incoming messages (when chat not in foreground)
           try {
-            const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
+            const lastMsg = latestAsc.length > 0 ? latestAsc[latestAsc.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user.uid) {
               const mutedChatIds = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
               const isMuted = mutedChatIds.includes(activeChat.id);
@@ -2257,17 +2311,14 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
               if (!isMuted && canNotify && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
-                const preview = lastMsg.deleted ? 'Nachricht gelöscht' : (lastMsg.image ? '📷 Bild' : (lastMsg.audio ? '🎙️ Audio' : (lastMsg.event ? '📅 Termin' : (String(lastMsg.text || '').slice(0, 120) || 'Neue Nachricht'))));
-                const sp = getProfile(lastMsg.senderId);
-                const senderName = (sp && (sp.displayName || sp.username)) ? (sp.displayName || sp.username) : 'Jemand';
-                // Privacy: Chat OS notification should not show preview/body
+                // Privacy: OS notification should not show preview/body.
                 showSystemNotification('Kalender Aktuell 🔏', null, `onyx_chat_${activeChat.id}`);
                 localStorage.setItem(key, String(lastMsg.timestamp || Date.now()));
               }
             }
           } catch (e) {}
 
-          // lastRead (für Gruppen-Read-Receipts)
+          // lastRead (group read receipts)
           if (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible') {
             const nowMs = Date.now();
             if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
@@ -2298,8 +2349,11 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           console.error('CHAT_MESSAGES_SNAPSHOT_ERROR', err);
           showToast('Chat Live-Sync Fehler');
         });
+
         return () => unsubscribeMessages();
-      }, [activeChat, user, currentView, secretView, userProfile]);
+      // IMPORTANT: chatOlderMessages is intentionally part of deps so the merge stays consistent.
+      }, [activeChat, user, currentView, secretView, userProfile, chatOlderMessages]);
+
 
       useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -2325,7 +2379,85 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setChatStats({ sent, received, total: sent + received });
       };
 
+      const loadOlderChatMessages = async () => {
+        try {
+          if (!activeChat || !user) return;
+          if (chatLoadingMore) return;
+          if (!chatHasMore) return;
+          if (!chatCursorRef.current) { setChatHasMore(false); return; }
+
+          setChatLoadingMore(true);
+
+          const sc = chatScrollRef.current;
+          const prevScrollHeight = sc ? sc.scrollHeight : 0;
+          const prevScrollTop = sc ? sc.scrollTop : 0;
+
+          const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+          const qOlder = query(messagesRef, orderBy('timestamp', 'desc'), startAfter(chatCursorRef.current), limit(CHAT_PAGE_SIZE));
+          const snap = await getDocs(qOlder);
+
+          const loadedDesc = [];
+          snap.forEach(d => loadedDesc.push({ id: d.id, ...d.data() }));
+
+          // Update cursor to the oldest document of this page (desc list -> last doc)
+          chatCursorRef.current = (snap.docs && snap.docs.length) ? snap.docs[snap.docs.length - 1] : chatCursorRef.current;
+
+          const olderAsc = loadedDesc.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).reverse();
+
+          setChatOlderMessages(prev => {
+            const byId = new Map();
+            const push = (m) => { if (m && m.id) byId.set(String(m.id), m); };
+            (prev || []).forEach(push);
+            olderAsc.forEach(push);
+            const merged = Array.from(byId.values());
+            merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            return merged;
+          });
+
+          if ((snap.docs?.length || 0) < CHAT_PAGE_SIZE) setChatHasMore(false);
+
+          // Keep scroll position stable after prepending older messages.
+          requestAnimationFrame(() => {
+            try {
+              const sc2 = chatScrollRef.current;
+              if (!sc2) return;
+              const newScrollHeight = sc2.scrollHeight;
+              const delta = newScrollHeight - prevScrollHeight;
+              sc2.scrollTop = prevScrollTop + (delta > 0 ? delta : 0);
+            } catch (_) {}
+          });
+        } catch (e) {
+          console.warn('[Chat] loadOlderChatMessages failed', e);
+          showToast('Konnte ältere Nachrichten nicht laden');
+        } finally {
+          setChatLoadingMore(false);
+        }
+      };
+
+      const handleChatScroll = () => {
+        try {
+          const sc = chatScrollRef.current;
+          if (!sc) return;
+          // Auto-load older messages when the user scrolls close to the top.
+          const TOP_THRESHOLD_PX = 90;
+          if (sc.scrollTop > TOP_THRESHOLD_PX) return;
+          if (!chatHasMore || chatLoadingMore) return;
+
+          const now = Date.now();
+          // Throttle + lock to avoid repeated triggers during momentum scrolling.
+          if (chatAutoLoadLockRef.current) return;
+          if (now - (chatLastAutoLoadAtRef.current || 0) < 600) return;
+
+          chatAutoLoadLockRef.current = true;
+          chatLastAutoLoadAtRef.current = now;
+          Promise.resolve(loadOlderChatMessages()).finally(() => {
+            setTimeout(() => { chatAutoLoadLockRef.current = false; }, 250);
+          });
+        } catch (_) {}
+      };
+
       const ensureWebPushToken = async (currentUser, opts = {}) => {
+ = async (currentUser, opts = {}) => {
   if (!currentUser) return;
   const forcePrompt = !!opts.forcePrompt;
 
@@ -6625,7 +6757,20 @@ setSelfDestruct(false);
                       )}
 
                       
-                      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 flex flex-col">
+                      <div ref={chatScrollRef} onScroll={handleChatScroll} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 flex flex-col">
+                        {(chatHasMore || chatLoadingMore) && (
+                          <div className="flex justify-center pb-2">
+                            {chatLoadingMore ? (
+                              <div className="px-4 py-2 rounded-full text-xs font-semibold border bg-neutral-900 text-neutral-300 border-neutral-800">
+                                Lade ältere Nachrichten…
+                              </div>
+                            ) : (
+                              <div className="px-3 py-1 rounded-full text-[11px] border bg-neutral-950 text-neutral-400 border-neutral-900">
+                                Nach oben scrollen für mehr
+                              </div>
+                            )}
+                          </div>
+                        )}
                         {visibleChatMessages.map((msg) => {
                           const isMe = msg.senderId === user.uid;
                           const showActions = selectedMessageId === msg.id;

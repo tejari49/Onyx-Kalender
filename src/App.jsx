@@ -182,7 +182,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v25 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v26 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -486,6 +486,26 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
       const [messageSearchQuery, setMessageSearchQuery] = useState('');
       const [messageMatchIndex, setMessageMatchIndex] = useState(0);
+      const [messageSearchFilter, setMessageSearchFilter] = useState('all');
+
+      const [chatMetaPrefs, setChatMetaPrefs] = useState(() => {
+        try {
+          const raw = localStorage.getItem('onyx_msg_meta');
+          if (raw) {
+            const j = JSON.parse(raw);
+            if (j && typeof j === 'object') {
+              return {
+                showTime: j.showTime !== false,
+                receipts: ['off','compact','full'].includes(j.receipts) ? j.receipts : 'compact'
+              };
+            }
+          }
+        } catch (_) {}
+        return { showTime: true, receipts: 'compact' };
+      });
+      const [isChatMetaMenuOpen, setIsChatMetaMenuOpen] = useState(false);
+      const chatMetaMenuRef = useRef(null);
+
 
 
       const [lastChatVisit, setLastChatVisit] = useState(() => {
@@ -1693,9 +1713,38 @@ const handleTouchEnd = () => {
         return (b.updatedAt || 0) - (a.updatedAt || 0);
       });
 
-      const messageMatches = (isMessageSearchOpen && (messageSearchQuery || '').trim())
-        ? chatMessages.filter(m => (m.text || '').toLowerCase().includes((messageSearchQuery || '').trim().toLowerCase()))
+      const messageHasLink = (m) => {
+        const t = String(m?.text || '');
+        return /(https?:\/\/|www\.)\S+/i.test(t);
+      };
+
+      const messageTypeMatchesFilter = (m, filter) => {
+        if (!m) return false;
+        const f = String(filter || 'all');
+        if (f === 'all') return true;
+        if (f === 'media') return !!(m.image || m.eventId || m.eventRef || m.event);
+        if (f === 'audio') return !!m.audio;
+        if (f === 'links') return messageHasLink(m);
+        return true;
+      };
+
+      const _qMsg = String(messageSearchQuery || '').trim().toLowerCase();
+      const baseByType = (isMessageSearchOpen && messageSearchFilter !== 'all')
+        ? chatMessages.filter(m => messageTypeMatchesFilter(m, messageSearchFilter))
+        : chatMessages;
+
+      const messageMatches = (isMessageSearchOpen && (_qMsg || messageSearchFilter !== 'all'))
+        ? baseByType.filter(m => {
+            if (!_qMsg) return true;
+            return String(m?.text || '').toLowerCase().includes(_qMsg);
+          })
         : [];
+
+      const currentMatchId = (isMessageSearchOpen && messageMatches.length > 0)
+        ? messageMatches[Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1))].id
+        : null;
+
+      const visibleChatMessages = (isMessageSearchOpen && messageSearchFilter !== 'all') ? baseByType : chatMessages;
 
 
       useEffect(() => {
@@ -1783,25 +1832,68 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setIsMessageSearchOpen(false);
         setMessageSearchQuery('');
         setMessageMatchIndex(0);
+        setMessageSearchFilter('all');
+        setIsChatMetaMenuOpen(false);
       }, [activeChat?.id, secretView]);
+
+      // Chat meta prefs: load/save (per user)
+      useEffect(() => {
+        if (!user?.uid) return;
+        try {
+          const key = `onyx_msg_meta_${user.uid}`;
+          const raw = localStorage.getItem(key) || localStorage.getItem('onyx_msg_meta');
+          if (raw) {
+            const j = JSON.parse(raw);
+            if (j && typeof j === 'object') {
+              setChatMetaPrefs({
+                showTime: j.showTime !== false,
+                receipts: ['off','compact','full'].includes(j.receipts) ? j.receipts : 'compact'
+              });
+            }
+          }
+        } catch (_) {}
+      }, [user?.uid]);
+
+      useEffect(() => {
+        if (!user?.uid) return;
+        try {
+          const key = `onyx_msg_meta_${user.uid}`;
+          localStorage.setItem(key, JSON.stringify(chatMetaPrefs));
+          localStorage.setItem('onyx_msg_meta', JSON.stringify(chatMetaPrefs));
+        } catch (_) {}
+      }, [chatMetaPrefs, user?.uid]);
+
+      useEffect(() => {
+        if (!isChatMetaMenuOpen) return;
+        const onDown = (e) => {
+          try {
+            if (chatMetaMenuRef.current && !chatMetaMenuRef.current.contains(e.target)) {
+              setIsChatMetaMenuOpen(false);
+            }
+          } catch (_) {}
+        };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('touchstart', onDown, { passive: true });
+        return () => {
+          document.removeEventListener('mousedown', onDown);
+          document.removeEventListener('touchstart', onDown);
+        };
+      }, [isChatMetaMenuOpen]);
 
       useEffect(() => {
         setMessageMatchIndex(0);
-      }, [messageSearchQuery]);
+      }, [messageSearchQuery, messageSearchFilter]);
 
       useEffect(() => {
         if (!isMessageSearchOpen) return;
-        const q = (messageSearchQuery || '').trim().toLowerCase();
-        if (!q) return;
-        const matches = chatMessages.filter(m => (m.text || '').toLowerCase().includes(q));
-        if (matches.length === 0) return;
-        const idx = Math.max(0, Math.min(messageMatchIndex, matches.length - 1));
-        const id = matches[idx].id;
+        if (!messageMatches || messageMatches.length === 0) return;
+        const idx = Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1));
+        const id = messageMatches[idx].id;
         setTimeout(() => {
           const el = document.getElementById(`msg-${id}`);
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 0);
-      }, [messageMatchIndex, messageSearchQuery, isMessageSearchOpen, chatMessages]);
+      }, [messageMatchIndex, messageSearchQuery, messageSearchFilter, isMessageSearchOpen, messageMatches]);
 
 
       useEffect(() => {
@@ -5471,6 +5563,33 @@ setSelfDestruct(false);
 
     const filteredTabs = q ? TABS.filter(t => match(t.keys)) : TABS;
 
+
+              const AccordionItem = ({ id, label, icon: Icon, keys, children }) => {
+                const visible = !q || match(keys);
+                if (!visible) return null;
+                const open = q ? true : (settingsTab === id);
+                const toggle = () => {
+                  if (q) return;
+                  setSettingsTab(prev => (prev === id ? '' : id));
+                };
+                return (
+                  <div className="border border-neutral-800 rounded-2xl overflow-hidden bg-neutral-950/50">
+                    <button type="button" onClick={toggle} className="w-full flex items-center justify-between px-4 py-3 bg-neutral-950 hover:bg-neutral-900 transition-colors">
+                      <div className="flex items-center gap-3">
+                        {Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}
+                        <span className="text-sm font-medium text-white">{label}</span>
+                      </div>
+                      <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform " + (open ? 'rotate-90' : '')} />
+                    </button>
+                    {open && (
+                      <div className="px-4 pb-4 pt-3">
+                        {children}
+                      </div>
+                    )}
+                  </div>
+                );
+              };
+
     return (
       <div className="p-6 md:p-10 max-w-6xl mx-auto w-full animate-fade-in">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
@@ -5503,7 +5622,7 @@ setSelfDestruct(false);
             </div>
 
             {/* Mobile tab row */}
-            <div className="mt-3 md:hidden flex gap-2 overflow-x-auto no-scrollbar">
+            <div className="hidden">
               {(q ? filteredTabs : TABS).map(t => {
                 const Icon = t.icon;
                 const active = (!q && settingsTab === t.id);
@@ -5524,7 +5643,7 @@ setSelfDestruct(false);
 
         <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6">
           {/* Desktop sidebar */}
-          <aside className="hidden md:block self-start sticky top-6">
+          <aside className="hidden">
             <div className="bg-neutral-950/50 border border-neutral-800 rounded-2xl p-2">
               {TABS.map(t => {
                 const Icon = t.icon;
@@ -5556,9 +5675,9 @@ setSelfDestruct(false);
             </div>
           </aside>
 
-          <main className="space-y-8 min-w-0">
+          <main className="space-y-3 min-w-0">
             {/* KALENDER VERWALTUNG */}
-            {(show('calendars', ['kalender', 'schicht', 'farbe', 'privat', 'freigabe', 'teilen', 'share', 'busy']) ) && (
+            <AccordionItem id="calendars" label="Kalender" icon={CalendarIcon} keys={['kalender','schicht','farbe','privat','freigabe','teilen','share','busy']} >
               <section id="settings-calendars">
                 <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-4">
                   <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-2">
@@ -5624,10 +5743,10 @@ setSelfDestruct(false);
                   ))}
                 </div>
               </section>
-            )}
+            </AccordionItem>
 
             {/* BENACHRICHTIGUNGEN */}
-            {(show('notifications', ['benachr', 'push', 'erinnerung', 'reminder', 'pwa', 'token', 'test']) ) && (
+            <AccordionItem id="notifications" label="Benachrichtigungen" icon={Bell} keys={['benachr','push','erinnerung','reminder','pwa','token','test']} >
               <section id="settings-notifications">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <Bell className="w-4 h-4" /> Benachrichtigungen
@@ -5784,10 +5903,10 @@ setSelfDestruct(false);
                   </details>
                 </div>
               </section>
-            )}
+            </AccordionItem>
 
             {/* PUBLIC LINKS */}
-            {(show('links', ['public', 'link', 'busy', 'passcode', 'magic', 'ablauf']) ) && (
+            <AccordionItem id="links" label="Public Links" icon={Link2} keys={['public','link','busy','passcode','magic','ablauf']} >
               <section id="settings-links">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <Link2 className="w-4 h-4" /> Public Links
@@ -5901,10 +6020,10 @@ setSelfDestruct(false);
   );
 })()}</div>
               </section>
-            )}
+            </AccordionItem>
 
             {/* AUDIT LOG */}
-            {(show('audit', ['audit', 'log', 'verlauf', 'änderung', 'wer']) ) && (
+            <AccordionItem id="audit" label="Audit" icon={History} keys={['audit','log','verlauf','änderung','wer']} >
               <section id="settings-audit">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <History className="w-4 h-4" /> Audit Log
@@ -5966,10 +6085,10 @@ setSelfDestruct(false);
                   ))()}
                 </div>
               </section>
-            )}
+            </AccordionItem>
 
             {/* ACCOUNT */}
-            {(show('account', ['account', 'datenschutz', 'abmelden', 'email']) ) && (
+            <AccordionItem id="account" label="Account" icon={User} keys={['account','datenschutz','abmelden','email']} >
               <section id="settings-account">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <User className="w-4 h-4" /> Datenschutz & Account
@@ -6126,10 +6245,10 @@ setSelfDestruct(false);
                 </div>
 
 </section>
-            )}
+            </AccordionItem>
 
             {/* ICS */}
-            {(show('ics', ['ics', 'import', 'export', 'download', 'upload']) ) && (
+            <AccordionItem id="ics" label="Import/Export" icon={Download} keys={['ics','import','export','download','upload']} >
               <section id="settings-ics">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <Download className="w-4 h-4" /> Import / Export (.ics)
@@ -6155,7 +6274,7 @@ setSelfDestruct(false);
                   </div>
                 </div>
               </section>
-            )}
+            </AccordionItem>
 
             {/* If search yields nothing */}
             {q && filteredTabs.length === 0 && (
@@ -6219,6 +6338,30 @@ setSelfDestruct(false);
                       <button onClick={() => { setIsMessageSearchOpen(v => !v); setTimeout(() => document.getElementById('msgSearchInput')?.focus(), 0); }} className={`text-neutral-500 hover:text-white transition-colors p-2 ${isMessageSearchOpen ? 'bg-neutral-900 rounded-lg' : ''}`} title="Chat durchsuchen">
                         <Search className="w-5 h-5" />
                       </button>
+                    )}
+                    {secretView === 'chat' && activeChat && (
+                      <div className="relative" ref={chatMetaMenuRef}>
+                        <button onClick={() => setIsChatMetaMenuOpen(v => !v)} className="text-neutral-500 hover:text-white transition-colors p-2" title="Anzeige">
+                          <AlignLeft className="w-5 h-5" />
+                        </button>
+                        {isChatMetaMenuOpen && (
+                          <div className="absolute right-0 mt-2 w-64 bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl p-3 z-50">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Anzeige</div>
+                            <label className="flex items-center justify-between gap-3 py-2">
+                              <span className="text-sm text-neutral-200">Zeit anzeigen</span>
+                              <input type="checkbox" checked={chatMetaPrefs.showTime} onChange={(e) => setChatMetaPrefs(p => ({ ...p, showTime: !!e.target.checked }))} />
+                            </label>
+                            <div className="mt-2">
+                              <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Lesestatus</div>
+                              <div className="flex gap-2">
+                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'off' }))} className={"flex-1 px-2 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'off' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Aus</button>
+                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'compact' }))} className={"flex-1 px-2 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'compact' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Status</button>
+                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'full' }))} className={"flex-1 px-2 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'full' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Mit Zeit</button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
                     {secretView === 'chat' && activeChat && userProfile && (
                       <button
@@ -6395,35 +6538,68 @@ setSelfDestruct(false);
                   ) : (
                     <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => setSelectedMessageId(null)}>
                       {isMessageSearchOpen && (
-                        <div className="px-4 py-2 bg-neutral-950 border-b border-neutral-900 flex items-center gap-2 shrink-0">
-                          <Search className="w-4 h-4 text-neutral-500" />
-                          <input
-                            id="msgSearchInput"
-                            value={messageSearchQuery}
-                            onChange={(e) => setMessageSearchQuery(e.target.value)}
-                            placeholder="Nachrichten durchsuchen..."
-                            className="flex-1 bg-black border border-neutral-800 text-white text-xs rounded-md px-3 py-2 focus:outline-none focus:border-neutral-500"
-                          />
-                          <button onClick={() => { setMessageSearchQuery(''); setMessageMatchIndex(0); }} className="p-2 text-neutral-400 hover:text-white" title="Leeren">
-                            <X className="w-4 h-4" />
-                          </button>
-                          {(messageSearchQuery || '').trim() !== '' && (
-                            <div className="flex items-center gap-1 text-xs text-neutral-500">
-                              <button type="button" onClick={() => { if (messageMatches.length === 0) return; setMessageMatchIndex(i => (i - 1 + messageMatches.length) % messageMatches.length); }} className="p-2 hover:text-white" title="Vorheriger Treffer">
-                                <ChevronLeft className="w-4 h-4" />
-                              </button>
-                              <span className="min-w-[64px] text-center">{messageMatches.length === 0 ? '0/0' : `${Math.min(messageMatchIndex + 1, messageMatches.length)}/${messageMatches.length}`}</span>
-                              <button type="button" onClick={() => { if (messageMatches.length === 0) return; setMessageMatchIndex(i => (i + 1) % messageMatches.length); }} className="p-2 hover:text-white" title="Nächster Treffer">
-                                <ChevronRight className="w-4 h-4" />
-                              </button>
-                            </div>
-                          )}
+
+                        <div className="px-4 py-2 bg-neutral-950 border-b border-neutral-900 flex flex-col gap-2 shrink-0">
+
+                          <div className="flex items-center gap-2">
+
+                            <Search className="w-4 h-4 text-neutral-500" />
+
+                            <input
+
+                              id="msgSearchInput"
+
+                              value={messageSearchQuery}
+
+                              onChange={(e) => setMessageSearchQuery(e.target.value)}
+
+                              placeholder="Nachrichten durchsuchen..."
+
+                              className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
+
+                            />
+
+                            <button onClick={() => { setMessageSearchQuery(''); setMessageMatchIndex(0); }} className="text-neutral-500 hover:text-white transition-colors" title="Leeren"><X className="w-4 h-4" /></button>
+
+
+                            {(((messageSearchQuery || '').trim()) || messageSearchFilter !== 'all') && (
+
+                              <div className="flex items-center gap-2 ml-2 text-xs text-neutral-500">
+
+                                <span>{messageMatches.length > 0 ? (Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1)) + 1) : 0}/{messageMatches.length}</span>
+
+                                <button onClick={() => { if (messageMatches.length > 0) setMessageMatchIndex(i => (i - 1 + messageMatches.length) % messageMatches.length); }} disabled={messageMatches.length <= 1} className="p-1 rounded hover:bg-neutral-800 disabled:opacity-40"><ChevronLeft className="w-4 h-4" /></button>
+
+                                <button onClick={() => { if (messageMatches.length > 0) setMessageMatchIndex(i => (i + 1) % messageMatches.length); }} disabled={messageMatches.length <= 1} className="p-1 rounded hover:bg-neutral-800 disabled:opacity-40"><ChevronRight className="w-4 h-4" /></button>
+
+                              </div>
+
+                            )}
+
+                          </div>
+
+
+                          <div className="flex flex-wrap items-center gap-2">
+
+                            <button onClick={() => { setMessageSearchFilter('all'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'all' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Alle</button>
+
+                            <button onClick={() => { setMessageSearchFilter('media'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'media' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Medien</button>
+
+                            <button onClick={() => { setMessageSearchFilter('audio'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'audio' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Audio</button>
+
+                            <button onClick={() => { setMessageSearchFilter('links'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'links' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Links</button>
+
+                          </div>
+
+                        </div>
+
+                       )}
                         </div>
                       )}
 
                       
                       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 flex flex-col">
-                        {chatMessages.map((msg) => {
+                        {visibleChatMessages.map((msg) => {
                           const isMe = msg.senderId === user.uid;
                           const showActions = selectedMessageId === msg.id;
                           
@@ -6431,7 +6607,7 @@ setSelfDestruct(false);
                             <div key={msg.id} id={`msg-${msg.id}`} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                               <div 
                                 onClick={(e) => { e.stopPropagation(); setSelectedMessageId(showActions ? null : msg.id); }}
-                                className={`max-w-[85%] rounded-2xl p-3 cursor-pointer transition-colors relative ${isMe ? 'bg-white text-black rounded-tr-sm hover:bg-gray-200' : 'bg-neutral-900 border border-neutral-800 text-white rounded-tl-sm hover:bg-neutral-800'}${isMessageSearchOpen && (messageSearchQuery || '').trim() && (msg.text || '').toLowerCase().includes((messageSearchQuery || '').trim().toLowerCase()) ? ' ring-2 ring-white/70' : ''}`}
+                                className={`max-w-[85%] rounded-2xl p-3 cursor-pointer transition-colors relative ${isMe ? 'bg-white text-black rounded-tr-sm hover:bg-gray-200' : 'bg-neutral-900 border border-neutral-800 text-white rounded-tl-sm hover:bg-neutral-800'}${isMessageSearchOpen && currentMatchId && String(currentMatchId) === String(msg.id) ? ' ring-2 ring-white/70' : ''}`}
                               >
                                 {/* Selbstzerstörungs-Indikator */}
                                 {msg.selfDestruct && (
@@ -6504,12 +6680,15 @@ setSelfDestruct(false);
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
                                   {msg.deleted && <span className="text-[9px] mr-1">(gelöscht)</span>}
                                   {!msg.deleted && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
-                                  <span className="text-[10px] block text-right">
-                                    {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                  </span>
-                                  {isMe && (
+                                  {chatMetaPrefs.showTime && (
+                                    <span className="text-[10px] block text-right">
+                                      {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                    </span>
+                                  )}
+                                  {isMe && chatMetaPrefs.receipts !== 'off' && (
                                     <span className="text-[10px] ml-1">
                                       {(() => {
+                                        const mode = chatMetaPrefs.receipts;
                                         const chat = activeChatData || activeChat;
                                         const group = isGroupChat(chat);
                                         if (group) {
@@ -6517,12 +6696,13 @@ setSelfDestruct(false);
                                           const lastRead = (activeChatData && activeChatData.lastRead) ? activeChatData.lastRead : (chat && chat.lastRead) ? chat.lastRead : {};
                                           const denom = Math.max(0, ids.length - 1);
                                           const seenCount = ids.filter(id => id !== user.uid && (lastRead?.[id] || 0) >= (msg.timestamp || 0)).length;
-                                          if (seenCount > 0) return `gesehen von ${seenCount}/${denom}`;
+                                          if (seenCount > 0) return (mode === 'compact') ? `gesehen ${seenCount}/${denom}` : `gesehen von ${seenCount}/${denom}`;
+                                          if (msg.deliveredAt || msg.delivered) return 'zugestellt';
                                           return 'gesendet';
                                         }
-                                        if (msg.readAt) return `gesehen um ${formatTime(msg.readAt)}`;
+                                        if (msg.readAt) return mode === 'full' ? `gesehen ${formatTime(msg.readAt)}`.trim() : 'gesehen';
                                         if (msg.read) return 'gesehen';
-                                        if (msg.deliveredAt) return `zugestellt um ${formatTime(msg.deliveredAt)}`;
+                                        if (msg.deliveredAt) return mode === 'full' ? `zugestellt ${formatTime(msg.deliveredAt)}`.trim() : 'zugestellt';
                                         if (msg.delivered) return 'zugestellt';
                                         return 'gesendet';
                                       })()}

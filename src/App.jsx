@@ -2169,17 +2169,15 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       }, [user]);
 
       // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---
+      // Input darf "frei" sein (User sieht beim Tippen Zeichen). Wir extrahieren nur Ziffern für die Suche,
+      // ohne den Input-Text automatisch zu überschreiben (sonst wirkt es wie "ich kann nichts schreiben").
       useEffect(() => {
         if (!user) return;
-        const code = normalizeChatId(chatSearchQuery);
-        // nur Ziffern + max 5
-        if (code !== (chatSearchQuery || '')) {
-          setChatSearchQuery(code);
-          return;
-        }
+        const raw = String(chatSearchQuery || '');
+        const code = normalizeChatId(raw);
         if (!/^\d{5}$/.test(code)) {
           setChatFriendResult(null);
-          setChatFriendError('');
+          setChatFriendError(code.length > 0 && code.length < 5 ? 'Bitte 5 Ziffern eingeben' : '');
           setChatFriendLoading(false);
           return;
         }
@@ -5183,9 +5181,11 @@ setSelfDestruct(false);
                     <Info className="w-5 h-5 md:w-6 md:h-6 text-neutral-400 shrink-0 mt-1" />
                     <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-xl md:text-2xl font-semibold text-neutral-100 leading-snug">“{dailyFact}”</p></div>
                   </div>
-                </div>
-                  </div>
-                </div>
+	                </div>
+	              </div>
+	            )}
+
+	            {currentView === 'calendar' && (
                 <div className="flex-1 overflow-y-auto bg-black" style={{ display: calendarViewMode === 'agenda' ? 'block' : 'none' }}>
                   {(() => {
                     const today = new Date().toISOString().split('T')[0];
@@ -6407,8 +6407,8 @@ setSelfDestruct(false);
 
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
-                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
-                        <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
+                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(e.target.value)} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
+                        <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein (nur Ziffern). Andere Zeichen werden ignoriert.</div>
                         
                         {chatFriendLoading && (
                           <div className="mt-3 px-4 text-xs text-neutral-500">Suche...</div>

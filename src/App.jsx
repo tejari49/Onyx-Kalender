@@ -6367,15 +6367,6 @@ setSelfDestruct(false);
                         </div>
                       </div>
 
-                      {/* Chat Anzeige (global, konfigurierbar hier im Secret Chat) */}
-                      <div className="border border-neutral-800 rounded-xl p-6 bg-neutral-950/50">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Chat Anzeige</h3>
-                            <p className="mt-1 text-sm text-neutral-400">Gilt für alle Chats: Lesestatus (zugestellt/gesehen) & Zeitstempel.</p>
-                          </div>
-                        </div>
-
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                           <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-neutral-800 bg-black/40">
                             <div>

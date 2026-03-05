@@ -6239,7 +6239,7 @@ setSelfDestruct(false);
               <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up" style={{ height: 'var(--app-height, 100vh)' }}>
                 
                 {/* Geheimer Chat Header */}
-                <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
+                <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950 relative">
                   {secretView === 'chat' && activeChat ? (
                     <div className="flex items-center gap-3">
                       <button onClick={() => { setActiveChat(null); setSecretView('list'); }} className="text-neutral-400 hover:text-white transition-colors mr-2">
@@ -6284,6 +6284,51 @@ setSelfDestruct(false);
                       <button onClick={() => { setIsMessageSearchOpen(v => !v); setTimeout(() => document.getElementById('msgSearchInput')?.focus(), 0); }} className={`text-neutral-500 hover:text-white transition-colors p-2 ${isMessageSearchOpen ? 'bg-neutral-900 rounded-lg' : ''}`} title="Chat durchsuchen">
                         <Search className="w-5 h-5" />
                       </button>
+                    )}
+
+                    {/* Anzeige (Zeit / Lesestatus) im Secret Chat Header */}
+                    {secretView === 'chat' && activeChat && (
+                      <div className="relative" ref={chatMetaMenuRef}>
+                        <button
+                          onClick={() => setIsChatMetaMenuOpen(v => !v)}
+                          className={`text-neutral-500 hover:text-white transition-colors p-2 ${isChatMetaMenuOpen ? 'bg-neutral-900 rounded-lg' : ''}`}
+                          title="Anzeige"
+                        >
+                          <Settings className="w-5 h-5" />
+                        </button>
+
+                        {isChatMetaMenuOpen && (
+                          <div className="absolute right-0 top-full mt-2 w-72 rounded-2xl border border-neutral-800 bg-neutral-950/95 backdrop-blur p-3 shadow-2xl z-50">
+                            <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-2">Chat Anzeige</div>
+
+                            <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-neutral-800 bg-black/40">
+                              <div>
+                                <div className="text-sm text-neutral-200">Zeit anzeigen</div>
+                                <div className="text-xs text-neutral-500">Zeit unter Nachrichten.</div>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={chatMetaPrefs.showTime}
+                                onChange={(e) => setChatMetaPrefs(p => ({ ...p, showTime: !!e.target.checked }))}
+                              />
+                            </label>
+
+                            <div className="mt-3 p-3 rounded-xl border border-neutral-800 bg-black/40">
+                              <div className="text-sm text-neutral-200">Lesestatus</div>
+                              <div className="text-xs text-neutral-500 mb-2">Aus / Status / Mit Zeit</div>
+                              <div className="flex gap-2">
+                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'off' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'off' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Aus</button>
+                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'compact' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'compact' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Status</button>
+                                <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'full' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'full' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Mit Zeit</button>
+                              </div>
+                            </div>
+
+                            <button onClick={() => setIsChatMetaMenuOpen(false)} className="mt-3 w-full px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-sm text-neutral-200 hover:bg-neutral-800 transition-colors">
+                              Schliessen
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )}
                     {/* Chat Anzeige/Lesestatus konfigurierbar im Chat Profil */}
                     {secretView === 'chat' && activeChat && userProfile && (
@@ -6364,31 +6409,6 @@ setSelfDestruct(false);
                         <div className="border border-neutral-800 rounded-xl p-4 bg-neutral-950/50">
                           <p className="text-xs text-neutral-500 uppercase tracking-widest mb-1">Total</p>
                           <p className="text-2xl font-light text-white">{chatStats.total}</p>
-                        </div>
-                      </div>
-
-                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <label className="flex items-center justify-between gap-3 p-3 rounded-xl border border-neutral-800 bg-black/40">
-                            <div>
-                              <div className="text-sm text-neutral-200">Zeit anzeigen</div>
-                              <div className="text-xs text-neutral-500">Zeit unter Nachrichten ein-/ausblenden.</div>
-                            </div>
-                            <input
-                              type="checkbox"
-                              checked={chatMetaPrefs.showTime}
-                              onChange={(e) => setChatMetaPrefs(p => ({ ...p, showTime: !!e.target.checked }))}
-                            />
-                          </label>
-
-                          <div className="p-3 rounded-xl border border-neutral-800 bg-black/40">
-                            <div className="text-sm text-neutral-200">Lesestatus</div>
-                            <div className="text-xs text-neutral-500 mb-2">Aus / Status / Mit Zeit</div>
-                            <div className="flex gap-2">
-                              <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'off' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'off' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Aus</button>
-                              <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'compact' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'compact' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Status</button>
-                              <button onClick={() => setChatMetaPrefs(p => ({ ...p, receipts: 'full' }))} className={"flex-1 px-3 py-2 rounded-lg text-xs border transition-colors " + (chatMetaPrefs.receipts === 'full' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Mit Zeit</button>
-                            </div>
-                          </div>
                         </div>
                       </div>
 

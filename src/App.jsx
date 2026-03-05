@@ -182,7 +182,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v26 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v27 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -1722,10 +1722,40 @@ const handleTouchEnd = () => {
         if (!m) return false;
         const f = String(filter || 'all');
         if (f === 'all') return true;
-        if (f === 'media') return !!(m.image || m.eventId || m.eventRef || m.event);
+        if (f === 'media') return !!(m.image);
         if (f === 'audio') return !!m.audio;
         if (f === 'links') return messageHasLink(m);
         return true;
+      };
+
+      const escapeRegExp = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      const renderHighlightedText = (text, query, opts = {}) => {
+        const q = String(query || '').trim();
+        if (!q) return text;
+        const src = String(text || '');
+        if (!src) return src;
+        const re = new RegExp(escapeRegExp(q), 'ig');
+        const out = [];
+        let last = 0;
+        let m;
+        let k = 0;
+        while ((m = re.exec(src)) !== null) {
+          const start = m.index ?? 0;
+          const end = start + (m[0] || '').length;
+          if (start > last) out.push(src.slice(last, start));
+          const matchText = src.slice(start, end);
+          const isMe = !!opts.isMe;
+          const isActive = !!opts.active;
+          const cls = isActive
+            ? (isMe ? 'bg-black text-white' : 'bg-white text-black') + ' rounded px-0.5'
+            : (isMe ? 'bg-black/20 text-black' : 'bg-white/25 text-white') + ' rounded px-0.5';
+          out.push(<span key={`hl_${k++}`} className={cls}>{matchText}</span>);
+          last = end;
+          if (re.lastIndex === start) re.lastIndex++; // safety
+        }
+        if (last < src.length) out.push(src.slice(last));
+        return out;
       };
 
       const _qMsg = String(messageSearchQuery || '').trim().toLowerCase();
@@ -2636,7 +2666,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=35`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=36`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -6674,7 +6704,7 @@ setSelfDestruct(false);
                                     Nachricht gelöscht
                                   </p>
                                 ) : (
-                                  msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                                  msg.text && <p className="text-sm whitespace-pre-wrap">{(isMessageSearchOpen && String(messageSearchQuery || '').trim()) ? renderHighlightedText(msg.text, messageSearchQuery, { isMe, active: String(currentMatchId) === String(msg.id) }) : msg.text}</p>
                                 )}
                                 
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>

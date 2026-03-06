@@ -534,6 +534,14 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const isLongPressAction = useRef(false);
       const secretPressTimer = useRef(null);
       const secretGateTriggered = useRef(false);
+      const [secretPinModalOpen, setSecretPinModalOpen] = useState(false);
+      const [secretPinInput, setSecretPinInput] = useState('');
+      const [secretPinError, setSecretPinError] = useState('');
+      const [secretPinBusy, setSecretPinBusy] = useState(false);
+      const [secretPinSetupCurrent, setSecretPinSetupCurrent] = useState('');
+      const [secretPinSetupNew, setSecretPinSetupNew] = useState('');
+      const [secretPinSetupConfirm, setSecretPinSetupConfirm] = useState('');
+      const [secretPinActionBusy, setSecretPinActionBusy] = useState(false);
 
       const [isRefreshing, setIsRefreshing] = useState(false);
       const [pullDistance, setPullDistance] = useState(0);
@@ -1662,14 +1670,143 @@ const openShiftPicker = (dateStr) => {
 };
 
 // --- GEHEIMER CHAT (Long Press auf Tag-Zahl 5 für 3s) ---
+const revealSecretChat = () => {
+  setSelectedMessageId(null);
+  setIsMessageSearchOpen(false);
+  setIsChatMetaMenuOpen(false);
+  setSecretPinError('');
+  setSecretPinInput('');
+  setActiveChat(null);
+  setSecretView('list');
+  setCurrentView('secret_chat');
+};
+
+const hideSecretChatNow = (toast = 'Secret Chat versteckt') => {
+  setSelectedMessageId(null);
+  setIsMessageSearchOpen(false);
+  setIsChatMetaMenuOpen(false);
+  setActiveChat(null);
+  setSecretView('list');
+  setCurrentView('calendar');
+  if (toast) showToast(toast);
+};
+
+const requestSecretEntry = () => {
+  const pinEnabled = !!(userProfile?.secretPinEnabled && userProfile?.secretPinHash);
+  if (pinEnabled) {
+    setSecretPinError('');
+    setSecretPinInput('');
+    setSecretPinModalOpen(true);
+    return;
+  }
+  revealSecretChat();
+};
+
+const verifySecretPinAndEnter = async () => {
+  const raw = String(secretPinInput || '').trim();
+  if (!/^\d{4,8}$/.test(raw)) {
+    setSecretPinError('PIN muss 4 bis 8 Ziffern haben');
+    return;
+  }
+  try {
+    setSecretPinBusy(true);
+    setSecretPinError('');
+    const candidate = await sha256Hex(raw);
+    if (candidate !== userProfile?.secretPinHash) {
+      setSecretPinError('PIN falsch');
+      return;
+    }
+    setSecretPinModalOpen(false);
+    setSecretPinInput('');
+    revealSecretChat();
+  } catch (e) {
+    console.warn('verifySecretPinAndEnter failed', e);
+    setSecretPinError('PIN konnte nicht geprüft werden');
+  } finally {
+    setSecretPinBusy(false);
+  }
+};
+
+const saveSecretPinSettings = async () => {
+  if (!user?.uid) return;
+  const nextPin = String(secretPinSetupNew || '').trim();
+  const confirmPin = String(secretPinSetupConfirm || '').trim();
+  const currentPin = String(secretPinSetupCurrent || '').trim();
+  const hasExistingPin = !!(userProfile?.secretPinEnabled && userProfile?.secretPinHash);
+
+  if (!/^\d{4,8}$/.test(nextPin)) return showToast('PIN muss 4 bis 8 Ziffern haben');
+  if (nextPin !== confirmPin) return showToast('PIN-Bestätigung stimmt nicht überein');
+  if (hasExistingPin) {
+    if (!/^\d{4,8}$/.test(currentPin)) return showToast('Aktuelle PIN eingeben');
+    const currentHash = await sha256Hex(currentPin);
+    if (currentHash !== userProfile?.secretPinHash) return showToast('Aktuelle PIN ist falsch');
+  }
+
+  try {
+    setSecretPinActionBusy(true);
+    const nextHash = await sha256Hex(nextPin);
+    const patch = { secretPinEnabled: true, secretPinHash: nextHash, updatedAt: Date.now() };
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), patch, { merge: true });
+    setUserProfile(prev => ({ ...(prev || {}), ...patch }));
+    setSecretPinSetupCurrent('');
+    setSecretPinSetupNew('');
+    setSecretPinSetupConfirm('');
+    showToast(hasExistingPin ? 'Secret PIN geändert' : 'Secret PIN aktiviert');
+  } catch (e) {
+    console.warn('saveSecretPinSettings failed', e);
+    showToast('PIN konnte nicht gespeichert werden');
+  } finally {
+    setSecretPinActionBusy(false);
+  }
+};
+
+const disableSecretPin = async () => {
+  if (!user?.uid) return;
+  const currentPin = String(secretPinSetupCurrent || '').trim();
+  if (!(userProfile?.secretPinEnabled && userProfile?.secretPinHash)) return;
+  if (!/^\d{4,8}$/.test(currentPin)) return showToast('Aktuelle PIN eingeben');
+  try {
+    setSecretPinActionBusy(true);
+    const currentHash = await sha256Hex(currentPin);
+    if (currentHash !== userProfile?.secretPinHash) {
+      showToast('Aktuelle PIN ist falsch');
+      return;
+    }
+    const patch = { secretPinEnabled: false, secretPinHash: '' , updatedAt: Date.now() };
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), patch, { merge: true });
+    setUserProfile(prev => ({ ...(prev || {}), ...patch }));
+    setSecretPinSetupCurrent('');
+    setSecretPinSetupNew('');
+    setSecretPinSetupConfirm('');
+    showToast('Secret PIN deaktiviert');
+  } catch (e) {
+    console.warn('disableSecretPin failed', e);
+    showToast('PIN konnte nicht deaktiviert werden');
+  } finally {
+    setSecretPinActionBusy(false);
+  }
+};
+
+const toggleSecretAutoHide = async () => {
+  if (!user?.uid) return;
+  const nextValue = !(userProfile?.secretPanicOnHide !== false);
+  const patch = { secretPanicOnHide: nextValue, updatedAt: Date.now() };
+  try {
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), patch, { merge: true });
+    setUserProfile(prev => ({ ...(prev || {}), ...patch }));
+    showToast(nextValue ? 'Auto-Panic aktiv' : 'Auto-Panic aus');
+  } catch (e) {
+    console.warn('toggleSecretAutoHide failed', e);
+    showToast('Einstellung konnte nicht gespeichert werden');
+  }
+};
+
 const startSecretGate = () => {
   secretGateTriggered.current = false;
   if (secretPressTimer.current) clearTimeout(secretPressTimer.current);
   secretPressTimer.current = setTimeout(() => {
     secretGateTriggered.current = true;
-    setActiveChat(null);
-    setSecretView('list');
-    setCurrentView('secret_chat');
+    requestSecretEntry();
   }, 3000);
 };
 
@@ -3803,6 +3940,16 @@ useEffect(() => {
         };
       }, [user, userProfile]);
 
+      useEffect(() => {
+        if (currentView !== 'secret_chat') return;
+        const panicOnHide = (userProfile?.secretPanicOnHide !== false);
+        if (!panicOnHide) return;
+        const onSecretVisibility = () => {
+          if (document.visibilityState === 'hidden') hideSecretChatNow('Secret Chat automatisch versteckt');
+        };
+        document.addEventListener('visibilitychange', onSecretVisibility);
+        return () => document.removeEventListener('visibilitychange', onSecretVisibility);
+      }, [currentView, userProfile?.secretPanicOnHide]);
 
 
       // --- NEU: PINSEL & LANGES DRÜCKEN LOGIK ---
@@ -6672,7 +6819,10 @@ setSelfDestruct(false);
                         {(Array.isArray(userProfile?.mutedChatIds) && userProfile.mutedChatIds.includes(activeChat.id)) ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
                       </button>
                     )}
-                    <button onClick={() => { setActiveChat(null); setCurrentView('calendar'); }} className="text-neutral-500 hover:text-white text-2xl leading-none p-2">&times;</button>
+                    <button onClick={() => hideSecretChatNow()} className="text-red-400 hover:text-red-300 transition-colors p-2" title="Panic Mode">
+                      <Bomb className="w-5 h-5" />
+                    </button>
+                    <button onClick={() => hideSecretChatNow('Secret Chat geschlossen')} className="text-neutral-500 hover:text-white text-2xl leading-none p-2">&times;</button>
                   </div>
                 </header>
 
@@ -6727,6 +6877,74 @@ setSelfDestruct(false);
 
                           <button type="submit" className="w-full bg-neutral-800 text-white font-medium py-3 rounded-lg hover:bg-neutral-700 transition-colors">Profil speichern</button>
                         </form>
+                      </div>
+
+                      <div className="border border-neutral-800 rounded-xl p-6 bg-neutral-950/50 space-y-5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <h4 className="text-sm font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Secret PIN</h4>
+                            <p className="text-xs text-neutral-500 mt-1">Der Secret Chat verlangt nach dem Long-Press eine PIN mit 4 bis 8 Ziffern.</p>
+                          </div>
+                          <div className={"px-2 py-1 rounded-full text-[10px] uppercase tracking-widest border " + ((userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'border-emerald-700 text-emerald-300 bg-emerald-950/40' : 'border-neutral-800 text-neutral-500 bg-black')}>
+                            {(userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'aktiv' : 'aus'}
+                          </div>
+                        </div>
+                        {(userProfile?.secretPinEnabled && userProfile?.secretPinHash) && (
+                          <input
+                            type="password"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={8}
+                            value={secretPinSetupCurrent}
+                            onChange={(e) => setSecretPinSetupCurrent(String(e.target.value || '').replace(/\D/g, '').slice(0, 8))}
+                            placeholder="Aktuelle PIN"
+                            className="w-full bg-black border border-neutral-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-neutral-600"
+                          />
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <input
+                            type="password"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={8}
+                            value={secretPinSetupNew}
+                            onChange={(e) => setSecretPinSetupNew(String(e.target.value || '').replace(/\D/g, '').slice(0, 8))}
+                            placeholder={(userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'Neue PIN' : 'PIN festlegen'}
+                            className="w-full bg-black border border-neutral-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-neutral-600"
+                          />
+                          <input
+                            type="password"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={8}
+                            value={secretPinSetupConfirm}
+                            onChange={(e) => setSecretPinSetupConfirm(String(e.target.value || '').replace(/\D/g, '').slice(0, 8))}
+                            placeholder="PIN bestätigen"
+                            className="w-full bg-black border border-neutral-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-neutral-600"
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          <button type="button" onClick={saveSecretPinSettings} disabled={secretPinActionBusy} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">
+                            {secretPinActionBusy ? 'Speichern…' : ((userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'PIN ändern' : 'PIN aktivieren')}
+                          </button>
+                          {(userProfile?.secretPinEnabled && userProfile?.secretPinHash) && (
+                            <button type="button" onClick={disableSecretPin} disabled={secretPinActionBusy} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-300 text-sm font-semibold hover:bg-red-950/60 transition-colors disabled:opacity-60">
+                              PIN deaktivieren
+                            </button>
+                          )}
+                        </div>
+                        <div className="border-t border-neutral-900 pt-4 flex items-center justify-between gap-4">
+                          <div>
+                            <h4 className="text-sm font-semibold text-white flex items-center gap-2"><Bomb className="w-4 h-4" /> Panic Mode</h4>
+                            <p className="text-xs text-neutral-500 mt-1">Blendet den Secret Chat sofort aus. Optional auch automatisch beim App-Wechsel.</p>
+                          </div>
+                          <button type="button" onClick={toggleSecretAutoHide} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + ((userProfile?.secretPanicOnHide !== false) ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
+                            {(userProfile?.secretPanicOnHide !== false) ? 'Auto-Panic an' : 'Auto-Panic aus'}
+                          </button>
+                        </div>
+                        <button type="button" onClick={() => hideSecretChatNow()} className="w-full px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-300 text-sm font-semibold hover:bg-red-950/60 transition-colors">
+                          Secret Chat jetzt verstecken
+                        </button>
                       </div>
 
                       <div className="grid grid-cols-3 gap-4 text-center">
@@ -7171,6 +7389,37 @@ setSelfDestruct(false);
           </main>
 
           
+          {secretPinModalOpen && (
+            <div className="fixed inset-0 z-[90] bg-black/90 backdrop-blur-sm flex items-center justify-center p-6">
+              <div className="w-full max-w-sm border border-neutral-800 rounded-2xl bg-neutral-950 p-6 shadow-2xl">
+                <div className="flex items-center gap-3 mb-4">
+                  <Lock className="w-5 h-5 text-white" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Secret PIN</h3>
+                    <p className="text-xs text-neutral-500">Gib deine PIN ein, um den Secret Chat zu öffnen.</p>
+                  </div>
+                </div>
+                <input
+                  autoFocus
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={8}
+                  value={secretPinInput}
+                  onChange={(e) => { setSecretPinInput(String(e.target.value || '').replace(/\D/g, '').slice(0, 8)); setSecretPinError(''); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') verifySecretPinAndEnter(); if (e.key === 'Escape') { setSecretPinModalOpen(false); setSecretPinInput(''); setSecretPinError(''); } }}
+                  placeholder="PIN eingeben"
+                  className="w-full bg-black border border-neutral-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-neutral-600"
+                />
+                {secretPinError ? <div className="mt-3 text-sm text-red-400">{secretPinError}</div> : <div className="mt-3 text-xs text-neutral-500">4 bis 8 Ziffern.</div>}
+                <div className="mt-5 flex gap-3">
+                  <button type="button" onClick={() => { setSecretPinModalOpen(false); setSecretPinInput(''); setSecretPinError(''); }} className="flex-1 px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-800 transition-colors">Abbrechen</button>
+                  <button type="button" onClick={verifySecretPinAndEnter} disabled={secretPinBusy} className="flex-1 px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">{secretPinBusy ? 'Prüfe…' : 'Öffnen'}</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* WETTER MODAL */}
           {isWeatherModalOpen && (
             <div className="fixed inset-0 z-[75] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }}>

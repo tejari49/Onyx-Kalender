@@ -3198,49 +3198,6 @@ const requestNotificationPermission = async (currentUser) => {
         }
       };
 
-      const todayDateStr = new Date().toISOString().split('T')[0];
-      const todaysEvents = getEventsForDate(todayDateStr);
-      const nowMs = Date.now();
-      const timedEventsToday = todaysEvents
-        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
-        .filter((entry) => Number.isFinite(entry.startMs))
-        .sort((a, b) => a.startMs - b.startMs);
-      const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
-      const remainingTodayCount = todaysEvents.filter((event) => {
-        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
-        if (Number.isFinite(startMs)) return startMs >= nowMs;
-        return true;
-      }).length;
-      const freeUntilLabel = nextTimedEvent ? formatHourLabel(todayDateStr + 'T' + nextTimedEvent.event.time) : null;
-      const nextEventCountdownText = (() => {
-        if (!nextTimedEvent) return 'Kein weiterer fixer Termin heute';
-        const diffMin = Math.max(0, Math.round((nextTimedEvent.startMs - nowMs) / 60000));
-        if (diffMin < 1) return 'Startet jetzt';
-        if (diffMin < 60) return `In ${diffMin} Min.`;
-        const hours = Math.floor(diffMin / 60);
-        const mins = diffMin % 60;
-        return mins ? `In ${hours}h ${mins} Min.` : `In ${hours}h`;
-      })();
-      const freeWindowText = (() => {
-        if (remainingTodayCount === 0) return 'Rest des Tages frei';
-        if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
-        return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
-      })();
-      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
-      const weatherBadgeMeta = getWeatherBadgeMeta();
-
-      const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
-      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const weekStartMs = startOfWeekMs();
-      const monthStartMs = startOfMonthMs();
-      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
-      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
-      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
-      const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
-      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
-
       const fetchWeather = async () => {
         try {
           // Open-Meteo: add richer daily details + hourly for nicer UI
@@ -4185,6 +4142,50 @@ useEffect(() => {
           return null;
         }
       }
+      const todayDateStr = new Date().toISOString().split('T')[0];
+      const todaysEvents = getEventsForDate(todayDateStr);
+      const nowMs = Date.now();
+      const timedEventsToday = todaysEvents
+        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
+        .filter((entry) => Number.isFinite(entry.startMs))
+        .sort((a, b) => a.startMs - b.startMs);
+      const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
+      const remainingTodayCount = todaysEvents.filter((event) => {
+        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
+        if (Number.isFinite(startMs)) return startMs >= nowMs;
+        return true;
+      }).length;
+      const freeUntilLabel = nextTimedEvent ? formatHourLabel(todayDateStr + 'T' + nextTimedEvent.event.time) : null;
+      const nextEventCountdownText = (() => {
+        if (!nextTimedEvent) return 'Kein weiterer fixer Termin heute';
+        const diffMin = Math.max(0, Math.round((nextTimedEvent.startMs - nowMs) / 60000));
+        if (diffMin < 1) return 'Startet jetzt';
+        if (diffMin < 60) return `In ${diffMin} Min.`;
+        const hours = Math.floor(diffMin / 60);
+        const mins = diffMin % 60;
+        return mins ? `In ${hours}h ${mins} Min.` : `In ${hours}h`;
+      })();
+      const freeWindowText = (() => {
+        if (remainingTodayCount === 0) return 'Rest des Tages frei';
+        if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
+        return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
+      })();
+      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
+      const weatherBadgeMeta = getWeatherBadgeMeta();
+
+      const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
+      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekStartMs = startOfWeekMs();
+      const monthStartMs = startOfMonthMs();
+      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
+      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
+      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
+
+
 
       const effectiveReminderMinutes = (occ) => {
         try {

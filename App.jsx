@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle,
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, ChevronDown, CheckSquare, ListTodo, NotebookText,
       Copy, Link2, History, UserMinus
     } from 'lucide-react';
 
@@ -27,6 +27,43 @@ import React, { useState, useEffect, useRef } from 'react';
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+
+    const DEFAULT_EXTRAS_ORDER = ['smartday','workclock','focus','week','freewindows','goals','sollist','notes','weather'];
+
+    function normalizeDailyGoals(input) {
+      const arr = Array.isArray(input) ? input : [];
+      const out = arr.slice(0, 6).map((item, idx) => ({
+        id: String(item?.id || `goal_${idx + 1}`),
+        text: String(item?.text || ''),
+        done: item?.done === true,
+      }));
+      while (out.length < 3) out.push({ id: `goal_${out.length + 1}`, text: '', done: false });
+      return out;
+    }
+
+    function normalizeExtrasOrder(input) {
+      const raw = Array.isArray(input) ? input.map((x) => String(x || '').trim().toLowerCase()).filter(Boolean) : [];
+      const seen = new Set();
+      const ordered = [];
+      for (const key of [...raw, ...DEFAULT_EXTRAS_ORDER]) {
+        if (!DEFAULT_EXTRAS_ORDER.includes(key)) continue;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        ordered.push(key);
+      }
+      return ordered;
+    }
+
+    function reorderExtraKeys(list, draggedKey, targetKey) {
+      const src = normalizeExtrasOrder(list);
+      const from = src.indexOf(String(draggedKey || ''));
+      const to = src.indexOf(String(targetKey || ''));
+      if (from < 0 || to < 0 || from === to) return src;
+      const next = src.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    }
 
 
     // --- Auth hardening: if the browser keeps a stale Firebase auth cache after project reset,
@@ -282,6 +319,11 @@ function AmoledCalendarApp() {
       const [focusTick, setFocusTick] = useState(Date.now());
       const [focusHistory, setFocusHistory] = useState([]);
       const [quickNotes, setQuickNotes] = useState('');
+      const [dailyGoals, setDailyGoals] = useState(() => normalizeDailyGoals([]));
+      const [weeklyTargetHours, setWeeklyTargetHours] = useState('42');
+      const [extrasSlotOrder, setExtrasSlotOrder] = useState(() => normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER));
+      const [extrasUpdatedAt, setExtrasUpdatedAt] = useState(0);
+      const [draggedExtraSlot, setDraggedExtraSlot] = useState('');
       const [isStandalone, setIsStandalone] = useState(false);
       const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
       const [canInstallPwa, setCanInstallPwa] = useState(false);
@@ -506,6 +548,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       // --- IN-APP CHAT PING (SOUND / VIBRATION) ---
       const audioCtxRef = useRef(null);
       const userProfileRef = useRef(null);
+      const extrasCloudReadyRef = useRef(false);
+      const extrasCloudTimerRef = useRef(null);
       const activeChatIdRef = useRef(null);
       const currentViewRef = useRef(null);
       const lastChatPingRef = useRef({});
@@ -5830,164 +5874,6 @@ setSelfDestruct(false);
         }
       };
 
-
-
-      const todayDateStr = new Date().toISOString().split('T')[0];
-      const todaysEvents = getEventsForDate(todayDateStr);
-      const nowMs = Date.now();
-      const timedEventsToday = todaysEvents
-        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
-        .filter((entry) => Number.isFinite(entry.startMs))
-        .sort((a, b) => a.startMs - b.startMs);
-      const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
-      const remainingTodayCount = todaysEvents.filter((event) => {
-        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
-        if (Number.isFinite(startMs)) return startMs >= nowMs;
-        return true;
-      }).length;
-      const freeUntilLabel = nextTimedEvent ? formatHourLabel(todayDateStr + 'T' + nextTimedEvent.event.time) : null;
-      const nextEventCountdownText = (() => {
-        if (!nextTimedEvent) return 'Kein weiterer fixer Termin heute';
-        const diffMin = Math.max(0, Math.round((nextTimedEvent.startMs - nowMs) / 60000));
-        if (diffMin < 1) return 'Startet jetzt';
-        if (diffMin < 60) return `In ${diffMin} Min.`;
-        const hours = Math.floor(diffMin / 60);
-        const mins = diffMin % 60;
-        return mins ? `In ${hours}h ${mins} Min.` : `In ${hours}h`;
-      })();
-      const freeWindowText = (() => {
-        if (remainingTodayCount === 0) return 'Rest des Tages frei';
-        if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
-        return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
-      })();
-      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
-      const weatherBadgeMeta = getWeatherBadgeMeta();
-
-      const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
-      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const weekStartMs = startOfWeekMs();
-      const monthStartMs = startOfMonthMs();
-      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
-      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
-      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
-      const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
-      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
-
-      const getStorageKey = (suffix) => `onyx_${APP_ID}_${user?.uid || 'guest'}_${suffix}`;
-      useEffect(() => {
-        const id = setInterval(() => setFocusTick(Date.now()), 1000);
-        return () => clearInterval(id);
-      }, []);
-      useEffect(() => {
-        try {
-          const rawState = localStorage.getItem(getStorageKey('focusState'));
-          const rawHistory = localStorage.getItem(getStorageKey('focusHistory'));
-          const rawNotes = localStorage.getItem(getStorageKey('quickNotes'));
-          if (rawState) setFocusState(JSON.parse(rawState));
-          if (rawHistory) setFocusHistory(JSON.parse(rawHistory));
-          if (typeof rawNotes === 'string') setQuickNotes(rawNotes);
-        } catch (_) {}
-      }, [user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('focusState'), JSON.stringify(focusState || null)); } catch (_) {}
-      }, [focusState, user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('focusHistory'), JSON.stringify(focusHistory || [])); } catch (_) {}
-      }, [focusHistory, user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('quickNotes'), quickNotes || ''); } catch (_) {}
-      }, [quickNotes, user?.uid]);
-      const getFocusElapsedMs = (state, now = Date.now()) => {
-        if (!state?.startedAt) return 0;
-        const base = Math.max(0, now - Number(state.startedAt || now));
-        const paused = Number(state?.pausedAccumulatedMs || 0) + ((state?.isPaused && state?.pauseStartedAt) ? Math.max(0, now - Number(state.pauseStartedAt || now)) : 0);
-        return Math.max(0, base - paused);
-      };
-      const focusRemainingMs = focusState?.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
-      const startFocusMode = () => {
-        const now = Date.now();
-        setFocusState({ startedAt: now, durationMin: Number(focusDurationMin || 25), isPaused: false, pausedAccumulatedMs: 0, pauseStartedAt: null });
-        showToast('Fokus gestartet');
-      };
-      const toggleFocusPause = () => {
-        if (!focusState?.startedAt) return;
-        const now = Date.now();
-        if (focusState?.isPaused) {
-          setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev?.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev?.pauseStartedAt || now)), pauseStartedAt: null }));
-          showToast('Fokus weitergeführt');
-        } else {
-          setFocusState(prev => ({ ...(prev || {}), isPaused: true, pauseStartedAt: now }));
-          showToast('Fokus pausiert');
-        }
-      };
-      const stopFocusMode = (markDone = false) => {
-        try {
-          if (markDone && focusState?.startedAt) {
-            const finishedAt = Date.now();
-            const elapsedMs = getFocusElapsedMs(focusState, finishedAt);
-            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
-          }
-        } catch (_) {}
-        setFocusState(null);
-        if (markDone) showToast('Fokusblock gespeichert');
-      };
-      useEffect(() => {
-        if (focusState?.startedAt && !focusState?.isPaused && focusRemainingMs === 0) {
-          stopFocusMode(true);
-        }
-      }, [focusRemainingMs, focusState?.startedAt, focusState?.isPaused]);
-      const weekEventDates = Array.from({ length: 7 }, (_, idx) => {
-        const d = new Date(weekStartMs + idx * 86400000);
-        return d.toISOString().slice(0, 10);
-      });
-      const weekCalendarEvents = weekEventDates.flatMap((dateStr) => {
-        try { return (getEventsForDate(dateStr) || []).map(ev => ({ ...ev, __date: dateStr })); } catch (_) { return []; }
-      });
-      const weekEventCount = weekCalendarEvents.length;
-      const todayEventCount = todaysEvents.length;
-      const nextFreeBlock = (() => {
-        if (!timedEventsToday.length) return 'Ganzer Tag frei';
-        const first = timedEventsToday[0];
-        if (Number.isFinite(first?.startMs) && first.startMs > nowMs + 45 * 60000) return `Aktuell frei bis ${first.event?.time || 'später'}`;
-        for (let i = 0; i < timedEventsToday.length - 1; i += 1) {
-          const a = timedEventsToday[i];
-          const b = timedEventsToday[i + 1];
-          if (Number.isFinite(a?.startMs) && Number.isFinite(b?.startMs)) {
-            const gapMin = Math.round((b.startMs - a.startMs) / 60000) - 60;
-            if (gapMin >= 45) return `${a.event?.time || ''}–${b.event?.time || ''} frei`;
-          }
-        }
-        return freeWindowText;
-      })();
-      const focusTodayMs = (focusHistory || []).filter((x) => localDateKey(x?.startedAt || Date.now()) === todayDateStr).reduce((sum, x) => sum + Number(x?.elapsedMs || 0), 0) + (focusState?.startedAt ? getFocusElapsedMs(focusState, focusTick) : 0);
-      const bestWeatherWindow = (() => {
-        try {
-          const times = hourlyForecast?.time || [];
-          const rain = hourlyForecast?.precipitation_probability || [];
-          const temps = hourlyForecast?.temperature_2m || [];
-          if (!times.length) return 'Aktuell keine 4h-Tendenz verfügbar';
-          const now = Date.now();
-          const next = times.map((t, i) => ({ t, idx: i, ms: Date.parse(t), rain: Number(rain?.[i] || 0), temp: Number(temps?.[i] || 0) })).filter(x => Number.isFinite(x.ms) && x.ms >= now).slice(0, 8);
-          const dry = next.filter(x => x.rain < 35);
-          if (dry.length >= 2) return `Eher trocken bis ${new Date(dry[dry.length - 1].ms).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })}`;
-          const wet = next.find(x => x.rain >= 55);
-          if (wet) return `Ab ${new Date(wet.ms).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })} eher nass`; 
-          return todayWeatherAdvice;
-        } catch (_) { return todayWeatherAdvice; }
-      })();
-      const compactHomeSmartDay = (userProfile?.smartDayEnabled !== false) && (userProfile?.smartDayHomeEnabled !== false);
-      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled === true);
-      const extrasEnabled = userProfile?.extrasEnabled !== false;
-      const showExtrasSmartDay = extrasEnabled && (userProfile?.smartDayEnabled !== false);
-      const showExtrasWorkClock = extrasEnabled && (userProfile?.workClockEnabled === true);
-      const showExtrasFocus = extrasEnabled && (userProfile?.focusModeEnabled !== false);
-      const showExtrasWeek = extrasEnabled && (userProfile?.weeklyOverviewEnabled !== false);
-      const showExtrasNotes = extrasEnabled && (userProfile?.quickNotesEnabled !== false);
-      const showExtrasWeather = extrasEnabled && (userProfile?.weatherPlannerEnabled !== false);
-      const activeCalForView = getCalendarById(activeCalendarId);
-
       if (!isAppReady) {
         return (
           <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4" style={{ height: 'var(--app-height, 100vh)' }}>
@@ -6166,6 +6052,240 @@ setSelfDestruct(false);
       }
 
 
+      const todayDateStr = new Date().toISOString().split('T')[0];
+      const todaysEvents = getEventsForDate(todayDateStr);
+      const nowMs = Date.now();
+      const timedEventsToday = todaysEvents
+        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
+        .filter((entry) => Number.isFinite(entry.startMs))
+        .sort((a, b) => a.startMs - b.startMs);
+      const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
+      const remainingTodayCount = todaysEvents.filter((event) => {
+        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
+        if (Number.isFinite(startMs)) return startMs >= nowMs;
+        return true;
+      }).length;
+      const freeUntilLabel = nextTimedEvent ? formatHourLabel(todayDateStr + 'T' + nextTimedEvent.event.time) : null;
+      const nextEventCountdownText = (() => {
+        if (!nextTimedEvent) return 'Kein weiterer fixer Termin heute';
+        const diffMin = Math.max(0, Math.round((nextTimedEvent.startMs - nowMs) / 60000));
+        if (diffMin < 1) return 'Startet jetzt';
+        if (diffMin < 60) return `In ${diffMin} Min.`;
+        const hours = Math.floor(diffMin / 60);
+        const mins = diffMin % 60;
+        return mins ? `In ${hours}h ${mins} Min.` : `In ${hours}h`;
+      })();
+      const freeWindowText = (() => {
+        if (remainingTodayCount === 0) return 'Rest des Tages frei';
+        if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
+        return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
+      })();
+      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
+      const weatherBadgeMeta = getWeatherBadgeMeta();
+
+      const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
+      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekStartMs = startOfWeekMs();
+      const monthStartMs = startOfMonthMs();
+      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
+      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
+      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
+
+
+      const getStorageKey = (suffix) => `onyx_${APP_ID}_${user?.uid || 'guest'}_${suffix}`;
+      useEffect(() => {
+        const id = setInterval(() => setFocusTick(Date.now()), 1000);
+        return () => clearInterval(id);
+      }, []);
+      useEffect(() => {
+        extrasCloudReadyRef.current = false;
+        try {
+          const rawState = localStorage.getItem(getStorageKey('focusState'));
+          const rawHistory = localStorage.getItem(getStorageKey('focusHistory'));
+          const rawNotes = localStorage.getItem(getStorageKey('quickNotes'));
+          const rawGoals = localStorage.getItem(getStorageKey('dailyGoals'));
+          const rawTarget = localStorage.getItem(getStorageKey('weeklyTargetHours'));
+          const rawOrder = localStorage.getItem(getStorageKey('extrasSlotOrder'));
+          const rawUpdatedAt = localStorage.getItem(getStorageKey('extrasUpdatedAt'));
+          if (rawState) setFocusState(JSON.parse(rawState));
+          if (rawHistory) setFocusHistory(JSON.parse(rawHistory));
+          if (typeof rawNotes === 'string') setQuickNotes(rawNotes);
+          if (rawGoals) setDailyGoals(normalizeDailyGoals(JSON.parse(rawGoals)));
+          if (typeof rawTarget === 'string' && rawTarget.length) setWeeklyTargetHours(rawTarget);
+          if (rawOrder) setExtrasSlotOrder(normalizeExtrasOrder(JSON.parse(rawOrder)));
+          if (rawUpdatedAt) setExtrasUpdatedAt(Number(rawUpdatedAt || 0));
+        } catch (_) {}
+      }, [user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('focusState'), JSON.stringify(focusState || null)); } catch (_) {}
+      }, [focusState, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('focusHistory'), JSON.stringify(focusHistory || [])); } catch (_) {}
+      }, [focusHistory, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('quickNotes'), quickNotes || ''); } catch (_) {}
+      }, [quickNotes, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('dailyGoals'), JSON.stringify(normalizeDailyGoals(dailyGoals))); } catch (_) {}
+      }, [dailyGoals, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('weeklyTargetHours'), String(weeklyTargetHours || '')); } catch (_) {}
+      }, [weeklyTargetHours, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('extrasSlotOrder'), JSON.stringify(normalizeExtrasOrder(extrasSlotOrder))); } catch (_) {}
+      }, [extrasSlotOrder, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('extrasUpdatedAt'), String(extrasUpdatedAt || 0)); } catch (_) {}
+      }, [extrasUpdatedAt, user?.uid]);
+      useEffect(() => {
+        if (!user) return;
+        const remoteTs = Number(userProfile?.extrasUpdatedAt || 0);
+        if (!remoteTs || remoteTs <= Number(extrasUpdatedAt || 0)) return;
+        try {
+          if (typeof userProfile?.quickNotesCloud === 'string') setQuickNotes(String(userProfile.quickNotesCloud || ''));
+          if (Array.isArray(userProfile?.dailyGoals)) setDailyGoals(normalizeDailyGoals(userProfile.dailyGoals));
+          if (userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) setWeeklyTargetHours(String(userProfile.weeklyTargetHours));
+          if (Array.isArray(userProfile?.extrasSlotOrder)) setExtrasSlotOrder(normalizeExtrasOrder(userProfile.extrasSlotOrder));
+          setExtrasUpdatedAt(remoteTs);
+          extrasCloudReadyRef.current = true;
+        } catch (_) {}
+      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder]);
+      useEffect(() => {
+        if (!user) return;
+        if (!extrasCloudReadyRef.current) { extrasCloudReadyRef.current = true; return; }
+        try { if (extrasCloudTimerRef.current) clearTimeout(extrasCloudTimerRef.current); } catch (_) {}
+        extrasCloudTimerRef.current = setTimeout(async () => {
+          try {
+            const ts = Date.now();
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+              quickNotesCloud: String(quickNotes || ''),
+              dailyGoals: normalizeDailyGoals(dailyGoals),
+              weeklyTargetHours: Number(String(weeklyTargetHours || '0').replace(',', '.')) || 0,
+              extrasSlotOrder: normalizeExtrasOrder(extrasSlotOrder),
+              extrasUpdatedAt: ts,
+              updatedAt: ts,
+            }, { merge: true });
+            setExtrasUpdatedAt(ts);
+          } catch (err) {
+            console.warn('extras cloud sync failed', err);
+          }
+        }, 700);
+        return () => { try { if (extrasCloudTimerRef.current) clearTimeout(extrasCloudTimerRef.current); } catch (_) {} };
+      }, [quickNotes, dailyGoals, weeklyTargetHours, extrasSlotOrder, user?.uid]);
+      const getFocusElapsedMs = (state, now = Date.now()) => {
+        if (!state?.startedAt) return 0;
+        const base = Math.max(0, now - Number(state.startedAt || now));
+        const paused = Number(state?.pausedAccumulatedMs || 0) + ((state?.isPaused && state?.pauseStartedAt) ? Math.max(0, now - Number(state.pauseStartedAt || now)) : 0);
+        return Math.max(0, base - paused);
+      };
+      const focusRemainingMs = focusState?.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
+      const startFocusMode = () => {
+        const now = Date.now();
+        setFocusState({ startedAt: now, durationMin: Number(focusDurationMin || 25), isPaused: false, pausedAccumulatedMs: 0, pauseStartedAt: null });
+        showToast('Fokus gestartet');
+      };
+      const toggleFocusPause = () => {
+        if (!focusState?.startedAt) return;
+        const now = Date.now();
+        if (focusState?.isPaused) {
+          setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev?.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev?.pauseStartedAt || now)), pauseStartedAt: null }));
+          showToast('Fokus weitergeführt');
+        } else {
+          setFocusState(prev => ({ ...(prev || {}), isPaused: true, pauseStartedAt: now }));
+          showToast('Fokus pausiert');
+        }
+      };
+      const stopFocusMode = (markDone = false) => {
+        try {
+          if (markDone && focusState?.startedAt) {
+            const finishedAt = Date.now();
+            const elapsedMs = getFocusElapsedMs(focusState, finishedAt);
+            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
+          }
+        } catch (_) {}
+        setFocusState(null);
+        if (markDone) showToast('Fokusblock gespeichert');
+      };
+      useEffect(() => {
+        if (focusState?.startedAt && !focusState?.isPaused && focusRemainingMs === 0) {
+          stopFocusMode(true);
+        }
+      }, [focusRemainingMs, focusState?.startedAt, focusState?.isPaused]);
+      const weekEventDates = Array.from({ length: 7 }, (_, idx) => {
+        const d = new Date(weekStartMs + idx * 86400000);
+        return d.toISOString().slice(0, 10);
+      });
+      const weekCalendarEvents = weekEventDates.flatMap((dateStr) => {
+        try { return (getEventsForDate(dateStr) || []).map(ev => ({ ...ev, __date: dateStr })); } catch (_) { return []; }
+      });
+      const weekEventCount = weekCalendarEvents.length;
+      const todayEventCount = todaysEvents.length;
+      const nextFreeBlock = (() => {
+        if (!timedEventsToday.length) return 'Ganzer Tag frei';
+        const first = timedEventsToday[0];
+        if (Number.isFinite(first?.startMs) && first.startMs > nowMs + 45 * 60000) return `Aktuell frei bis ${first.event?.time || 'später'}`;
+        for (let i = 0; i < timedEventsToday.length - 1; i += 1) {
+          const a = timedEventsToday[i];
+          const b = timedEventsToday[i + 1];
+          if (Number.isFinite(a?.startMs) && Number.isFinite(b?.startMs)) {
+            const gapMin = Math.round((b.startMs - a.startMs) / 60000) - 60;
+            if (gapMin >= 45) return `${a.event?.time || ''}–${b.event?.time || ''} frei`;
+          }
+        }
+        return freeWindowText;
+      })();
+      const focusTodayMs = (focusHistory || []).filter((x) => localDateKey(x?.startedAt || Date.now()) === todayDateStr).reduce((sum, x) => sum + Number(x?.elapsedMs || 0), 0) + (focusState?.startedAt ? getFocusElapsedMs(focusState, focusTick) : 0);
+      const bestWeatherWindow = (() => {
+        try {
+          const times = hourlyForecast?.time || [];
+          const rain = hourlyForecast?.precipitation_probability || [];
+          const temps = hourlyForecast?.temperature_2m || [];
+          if (!times.length) return 'Aktuell keine 4h-Tendenz verfügbar';
+          const now = Date.now();
+          const next = times.map((t, i) => ({ t, idx: i, ms: Date.parse(t), rain: Number(rain?.[i] || 0), temp: Number(temps?.[i] || 0) })).filter(x => Number.isFinite(x.ms) && x.ms >= now).slice(0, 8);
+          const dry = next.filter(x => x.rain < 35);
+          if (dry.length >= 2) return `Eher trocken bis ${new Date(dry[dry.length - 1].ms).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })}`;
+          const wet = next.find(x => x.rain >= 55);
+          if (wet) return `Ab ${new Date(wet.ms).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })} eher nass`; 
+          return todayWeatherAdvice;
+        } catch (_) { return todayWeatherAdvice; }
+      })();
+      const compactHomeSmartDay = (userProfile?.smartDayEnabled !== false) && (userProfile?.smartDayHomeEnabled !== false);
+      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled === true);
+      const extrasEnabled = userProfile?.extrasEnabled !== false;
+      const showExtrasSmartDay = extrasEnabled && (userProfile?.smartDayEnabled !== false);
+      const showExtrasWorkClock = extrasEnabled && (userProfile?.workClockEnabled === true);
+      const showExtrasFocus = extrasEnabled && (userProfile?.focusModeEnabled !== false);
+      const showExtrasWeek = extrasEnabled && (userProfile?.weeklyOverviewEnabled !== false);
+      const showExtrasNotes = extrasEnabled && (userProfile?.quickNotesEnabled !== false);
+      const showExtrasWeather = extrasEnabled && (userProfile?.weatherPlannerEnabled !== false);
+      const showExtrasTimeBalance = extrasEnabled && (userProfile?.timeBalanceEnabled !== false);
+      const showExtrasFreeWindows = extrasEnabled && (userProfile?.freeWindowsEnabled !== false);
+      const showExtrasGoals = extrasEnabled && (userProfile?.dailyGoalsEnabled !== false);
+      const weeklyTargetMs = Math.max(0, (Number(String(weeklyTargetHours || '0').replace(',', '.')) || 0) * 3600000);
+      const weekDeltaMs = weekWorkMs - weeklyTargetMs;
+      const weekTargetPct = weeklyTargetMs > 0 ? Math.max(0, Math.min(100, Math.round((weekWorkMs / weeklyTargetMs) * 100))) : 0;
+      const freeWindowsToday = (() => {
+        const items = [];
+        const endOfDayMs = parseDateTimeLocalMs(todayDateStr, '23:59');
+        let cursor = nowMs;
+        const blocks = timedEventsToday.map((entry) => ({ startMs: entry.startMs, endMs: entry.startMs + 60 * 60000, label: entry.event?.time || 'Termin' })).filter((x) => Number.isFinite(x.startMs)).sort((a,b) => a.startMs - b.startMs);
+        if (!blocks.length) return ['Ganzer Tag frei'];
+        for (const block of blocks) {
+          if (block.startMs - cursor >= 30 * 60000) {
+            items.push(`${new Date(cursor).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}–${new Date(block.startMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}`);
+          }
+          cursor = Math.max(cursor, block.endMs);
+        }
+        if (endOfDayMs - cursor >= 30 * 60000) items.push(`${new Date(cursor).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}–23:59`);
+        return items.length ? items.slice(0, 4) : ['Keine längeren Fenster'];
+      })();
+      const completedGoals = normalizeDailyGoals(dailyGoals).filter((g) => g.done && String(g.text || '').trim()).length;
+      const activeCalForView = getCalendarById(activeCalendarId);
 
       return (
         <div 
@@ -6819,41 +6939,58 @@ setSelfDestruct(false);
 </div>
             )}
 
-            {currentView === 'extras' && (
-              <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
-                <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-                  <div>
-                    <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
-                    <p className="text-sm text-neutral-500 mt-2">Nützliche Werkzeuge getrennt von der Startseite – sauberer, schneller, skalierbar.</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button onClick={() => setCurrentView('dashboard')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Zur Startseite</button>
-                    <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200 transition-colors">Extras einstellen</button>
-                  </div>
-                </header>
 
-                {showExtrasSmartDay && (
-                  <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
-                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Smart Day</div>
-                        <div className="text-xl md:text-2xl font-semibold text-white">{nextEventLabel}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
-                      </div>
-                      <div className="flex flex-wrap gap-2 md:justify-end">
-                        <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black min-w-[10rem]"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Nächster Termin</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextTimedEvent ? (nextTimedEvent.event.time || 'Heute') : 'Keiner mehr'}</div></div>
-                        <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black min-w-[10rem]"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Freies Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
-                        <div className={`px-3 py-2 rounded-xl border min-w-[11rem] ${weatherBadgeMeta.tone}`}><div className="text-[10px] uppercase tracking-widest text-current/70">Wetter-Hinweis</div><div className="mt-1 text-sm font-medium flex items-center gap-2"><span>{weatherBadgeMeta.icon}</span><span>{weatherBadgeMeta.text}</span></div></div>
-                      </div>
+
+            {currentView === 'extras' && (() => {
+              const extraCards = [];
+              const slotChrome = (key, title, subtitle, body, spanClass = '') => (
+                <section
+                  key={key}
+                  draggable
+                  onDragStart={() => setDraggedExtraSlot(key)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (!draggedExtraSlot || draggedExtraSlot === key) return;
+                    setExtrasSlotOrder(prev => reorderExtraKeys(prev, draggedExtraSlot, key));
+                    setDraggedExtraSlot('');
+                    showToast('Reihenfolge gespeichert');
+                  }}
+                  onDragEnd={() => setDraggedExtraSlot('')}
+                  className={`border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4 ${spanClass} ${draggedExtraSlot === key ? 'ring-1 ring-white/20' : ''}`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">{title}</div>
+                      <div className="text-sm text-neutral-400">{subtitle}</div>
+                    </div>
+                    <div className="flex items-center gap-2 text-neutral-500 shrink-0">
+                      <span className="text-[11px] hidden md:inline">ziehen zum Sortieren</span>
+                      <GripVertical className="w-4 h-4" />
                     </div>
                   </div>
-                )}
+                  {body}
+                </section>
+              );
 
-                {showExtrasWorkClock && (
-                  <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
+              if (showExtrasSmartDay) {
+                extraCards.push({ key: 'smartday', node: slotChrome('smartday', 'Smart Day', 'Tageskarte mit Termin, Wetter und freiem Fenster.', (
+                  <>
+                    <div className="text-xl md:text-2xl font-semibold text-white">{nextEventLabel}</div>
+                    <div className="mt-1 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Nächster Termin</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextTimedEvent ? (nextTimedEvent.event.time || 'Heute') : 'Keiner mehr'}</div></div>
+                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Freies Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
+                      <div className={`px-3 py-2 rounded-xl border ${weatherBadgeMeta.tone}`}><div className="text-[10px] uppercase tracking-widest text-current/70">Wetter-Hinweis</div><div className="mt-1 text-sm font-medium flex items-center gap-2"><span>{weatherBadgeMeta.icon}</span><span>{weatherBadgeMeta.text}</span></div></div>
+                    </div>
+                  </>
+                ), 'xl:col-span-2')});
+              }
+
+              if (showExtrasWorkClock) {
+                extraCards.push({ key: 'workclock', node: slotChrome('workclock', 'Stempeluhr', 'Start, Pause, Stopp, Rapport und letzte Sessions.', (
+                  <>
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       <div>
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
                         <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
                         <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv – Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
                       </div>
@@ -6877,86 +7014,130 @@ setSelfDestruct(false);
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
                     </div>
                     {(workClockSessions || []).length > 0 && (
-                      <div className="border-t border-neutral-800 pt-3">
-                        <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Letzte Sessions</div>
-                        <div className="space-y-2">
-                          {(workClockSessions || []).slice(0, 5).map((s) => (
-                            <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
-                              <div className="min-w-0 flex-1">
-                                <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
-                                <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
-                                <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
-                                <button type="button" onClick={() => deleteWorkClockSession(s)} disabled={workClockDeletingId === String(s.localId || s.id || '')} className="p-2 rounded-lg border border-red-900/40 text-red-200 hover:bg-red-950/60 transition-colors disabled:opacity-50" title="Löschen"><Trash2 className="w-4 h-4" /></button>
-                              </div>
+                      <div className="space-y-2">
+                        {(workClockSessions || []).slice(0, 4).map((s) => (
+                          <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
+                              <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
                             </div>
-                          ))}
-                        </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
+                              <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
-                  </div>
-                )}
+                  </>
+                ), 'xl:col-span-2')});
+              }
 
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                  {showExtrasFocus && (
-                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
-                      <div className="flex items-start justify-between gap-4">
+              if (showExtrasFocus) {
+                extraCards.push({ key: 'focus', node: slotChrome('focus', 'Fokusmodus', '25/50/90-Minuten Fokusblöcke mit Verlauf.', (
+                  <>
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-xl font-semibold text-white">{focusState?.startedAt ? formatDurationCompact(focusRemainingMs) : `${focusDurationMin} Min.`}</div>
+                        <div className="mt-2 text-sm text-neutral-400">{focusState?.startedAt ? (focusState?.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block läuft') : 'Starte einen Fokusblock für ruhiges Arbeiten.'}</div>
+                      </div>
+                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-sm text-neutral-300">Heute {formatDurationVerbose(focusTodayMs)}</div>
+                    </div>
+                    <select value={String(focusDurationMin)} onChange={(e) => setFocusDurationMin(parseInt(e.target.value, 10) || 25)} className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500">
+                      <option value="25">25 Minuten</option>
+                      <option value="50">50 Minuten</option>
+                      <option value="90">90 Minuten</option>
+                    </select>
+                    <div className="flex flex-wrap gap-2">
+                      {!focusState?.startedAt ? (
+                        <button onClick={startFocusMode} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Fokus starten</button>
+                      ) : (
+                        <>
+                          <button onClick={toggleFocusPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{focusState?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{focusState?.isPaused ? 'Weiter' : 'Pause'}</button>
+                          <button onClick={() => stopFocusMode(true)} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">Als Fokusblock speichern</button>
+                        </>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-neutral-500">Letzte Fokusblöcke: {(focusHistory || []).slice(0, 3).map((x) => `${formatDurationCompact(x.elapsedMs || 0)} am ${new Date(x.startedAt).toLocaleDateString('de-CH')}`).join(' · ') || 'Noch keine'}</div>
+                  </>
+                ))});
+              }
+
+              if (showExtrasWeek) {
+                extraCards.push({ key: 'week', node: slotChrome('week', 'Wochenübersicht', 'Termine, Arbeit und nächste Freiflächen in einer Karte.', (
+                  <>
+                    <div className="text-xl font-semibold text-white">{weekEventCount} Termine · {formatDurationVerbose(weekWorkMs)} Arbeit</div>
+                    <div className="mt-2 text-sm text-neutral-400">{nextFreeBlock} · {workLevelSummary.map(x => `${x.level}: ${x.count}`).join(' · ')}</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute Termine</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayEventCount}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Frei-Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</div><div className="mt-1 text-sm font-medium text-neutral-100">{weatherBadgeMeta.text}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ø pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
+                    </div>
+                  </>
+                ))});
+              }
+
+              if (showExtrasFreeWindows) {
+                extraCards.push({ key: 'freewindows', node: slotChrome('freewindows', 'Freie Zeitfenster', 'Zeigt die nächsten freien Blöcke des heutigen Tages.', (
+                  <div className="space-y-2">
+                    {freeWindowsToday.map((slot, idx) => (
+                      <div key={`${slot}_${idx}`} className="px-3 py-3 rounded-xl border border-neutral-800 bg-black flex items-center justify-between gap-3">
                         <div>
-                          <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Fokusmodus</div>
-                          <div className="text-xl font-semibold text-white">{focusState?.startedAt ? formatDurationCompact(focusRemainingMs) : `${focusDurationMin} Min.`}</div>
-                          <div className="mt-2 text-sm text-neutral-400">{focusState?.startedAt ? (focusState?.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block läuft') : 'Starte einen Fokusblock für ruhiges Arbeiten.'}</div>
+                          <div className="text-sm font-medium text-neutral-100">{slot}</div>
+                          <div className="text-[11px] text-neutral-500">Ideal für Fokus, Aufgaben oder Pause</div>
                         </div>
-                        <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-sm text-neutral-300">Heute {formatDurationVerbose(focusTodayMs)}</div>
+                        <Clock className="w-4 h-4 text-neutral-500" />
                       </div>
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Dauer</label>
-                        <select value={String(focusDurationMin)} onChange={(e) => setFocusDurationMin(parseInt(e.target.value, 10) || 25)} className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500">
-                          <option value="25">25 Minuten</option>
-                          <option value="50">50 Minuten</option>
-                          <option value="90">90 Minuten</option>
-                        </select>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {!focusState?.startedAt ? (
-                          <button onClick={startFocusMode} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Fokus starten</button>
-                        ) : (
-                          <>
-                            <button onClick={toggleFocusPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{focusState?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{focusState?.isPaused ? 'Weiter' : 'Pause'}</button>
-                            <button onClick={() => stopFocusMode(true)} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">Als Fokusblock speichern</button>
-                            <button onClick={() => stopFocusMode(false)} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Zurücksetzen</button>
-                          </>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-neutral-500">Letzte Fokusblöcke: {(focusHistory || []).slice(0, 3).map((x) => `${formatDurationCompact(x.elapsedMs || 0)} am ${new Date(x.startedAt).toLocaleDateString('de-CH')}`).join(' · ') || 'Noch keine'}</div>
-                    </div>
-                  )}
+                    ))}
+                  </div>
+                ))});
+              }
 
-                  {showExtrasWeek && (
-                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Wochenübersicht</div>
-                        <div className="text-xl font-semibold text-white">{weekEventCount} Termine · {formatDurationVerbose(weekWorkMs)} Arbeit</div>
-                        <div className="mt-2 text-sm text-neutral-400">{nextFreeBlock} · {workLevelSummary.map(x => `${x.level}: ${x.count}`).join(' · ')}</div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute Termine</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayEventCount}</div></div>
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Frei-Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</div><div className="mt-1 text-sm font-medium text-neutral-100">{weatherBadgeMeta.text}</div></div>
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ø pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
-                      </div>
+              if (showExtrasGoals) {
+                extraCards.push({ key: 'goals', node: slotChrome('goals', 'Tagesziele', 'Drei wichtige Ziele für heute – mit Cloud-Sync.', (
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xl font-semibold text-white">{completedGoals}/3 erledigt</div>
+                      <button onClick={() => setDailyGoals(normalizeDailyGoals([]))} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Zurücksetzen</button>
                     </div>
-                  )}
+                    <div className="space-y-3">
+                      {normalizeDailyGoals(dailyGoals).slice(0, 3).map((goal, idx) => (
+                        <div key={goal.id} className="flex items-center gap-3">
+                          <button type="button" onClick={() => setDailyGoals(prev => normalizeDailyGoals(prev).map((item, i) => i === idx ? { ...item, done: !item.done } : item))} className={`p-2 rounded-lg border transition-colors ${goal.done ? 'bg-white text-black border-white' : 'border-neutral-800 text-neutral-400 hover:border-neutral-600'}`}><CheckSquare className="w-4 h-4" /></button>
+                          <input value={goal.text} onChange={(e) => setDailyGoals(prev => normalizeDailyGoals(prev).map((item, i) => i === idx ? { ...item, text: e.target.value } : item))} placeholder={`Ziel ${idx + 1}`} className="flex-1 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ))});
+              }
 
-                  {showExtrasNotes && (
-                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Schnellnotizen</div>
-                        <div className="text-xl font-semibold text-white">Heute · Morgen · Später</div>
-                        <div className="mt-2 text-sm text-neutral-400">Lokal gespeichert – schnell, bewusst simpel.</div>
-                      </div>
-                      <textarea value={quickNotes} onChange={(e) => setQuickNotes(e.target.value)} rows={10} placeholder={`Heute
+              if (showExtrasTimeBalance) {
+                extraCards.push({ key: 'sollist', node: slotChrome('sollist', 'Soll-/Ist-Stunden', 'Wochenziel, Fortschritt und Differenz aus der Stempeluhr.', (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Soll</div><div className="mt-1 text-sm font-medium text-neutral-100">{weeklyTargetHours || '0'} h</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ist</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div></div>
+                      <div className={`px-3 py-3 rounded-xl border bg-black ${weekDeltaMs >= 0 ? 'border-emerald-900/40 text-emerald-300' : 'border-amber-900/40 text-amber-300'}`}><div className="text-[10px] uppercase tracking-widest text-current/70">Differenz</div><div className="mt-1 text-sm font-medium">{`${weekDeltaMs >= 0 ? '+' : '-'}${formatDurationVerbose(Math.abs(weekDeltaMs))}`}</div></div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] text-neutral-500 mb-2"><span>Wochenziel</span><span>{weekTargetPct}% erreicht</span></div>
+                      <div className="h-2 rounded-full bg-black border border-neutral-800 overflow-hidden"><div className="h-full bg-white" style={{ width: `${weekTargetPct}%` }} /></div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input value={weeklyTargetHours} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="w-28 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                      <span className="text-sm text-neutral-500">Stunden pro Woche</span>
+                    </div>
+                  </>
+                ))});
+              }
+
+              if (showExtrasNotes) {
+                extraCards.push({ key: 'notes', node: slotChrome('notes', 'Schnellnotizen', 'Mit Firebase-Sync – dieselben Notizen auf allen Geräten.', (
+                  <>
+                    <div className="text-sm text-neutral-400">Cloud-Sync aktiv. Änderungen werden automatisch übernommen.</div>
+                    <textarea value={quickNotes} onChange={(e) => setQuickNotes(e.target.value)} rows={10} placeholder={`Heute
 - ...
 
 Morgen
@@ -6964,25 +7145,47 @@ Morgen
 
 Später
 - ...`} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                    </div>
-                  )}
+                  </>
+                ))});
+              }
 
-                  {showExtrasWeather && (
-                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Wetter-Planer</div>
-                        <div className="text-xl font-semibold text-white">{weatherBadgeMeta.icon} {weatherBadgeMeta.text}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{todayWeatherAdvice}</div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Beste Phase</div><div className="mt-1 text-sm font-medium text-neutral-100">{bestWeatherWindow}</div></div>
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Kleidung</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayWeatherAdvice.includes('Jacke') ? 'Jacke sinnvoll' : (todayWeatherAdvice.includes('Schirm') ? 'Schirm sinnvoll' : 'Leicht und trocken')}</div></div>
-                      </div>
+              if (showExtrasWeather) {
+                extraCards.push({ key: 'weather', node: slotChrome('weather', 'Wetter-Planer', 'Wetter, Kleidung und bestes Zeitfenster im Blick.', (
+                  <>
+                    <div className="text-xl font-semibold text-white">{weatherBadgeMeta.icon} {weatherBadgeMeta.text}</div>
+                    <div className="mt-2 text-sm text-neutral-400">{todayWeatherAdvice}</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Beste Phase</div><div className="mt-1 text-sm font-medium text-neutral-100">{bestWeatherWindow}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Kleidung</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayWeatherAdvice.includes('Jacke') ? 'Jacke sinnvoll' : (todayWeatherAdvice.includes('Schirm') ? 'Schirm sinnvoll' : 'Leicht und trocken')}</div></div>
                     </div>
-                  )}
+                  </>
+                ))});
+              }
+
+              const cardMap = Object.fromEntries(extraCards.map((item) => [item.key, item.node]));
+              const orderedKeys = normalizeExtrasOrder(extrasSlotOrder).filter((key) => cardMap[key]);
+              const extraKeys = Object.keys(cardMap).filter((key) => !orderedKeys.includes(key));
+              const finalKeys = [...orderedKeys, ...extraKeys];
+
+              return (
+                <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
+                  <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                    <div>
+                      <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
+                      <p className="text-sm text-neutral-500 mt-2">Nützliche Werkzeuge getrennt von der Startseite – jetzt zusätzlich frei sortierbar per Drag & Drop.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => setCurrentView('dashboard')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Zur Startseite</button>
+                      <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200 transition-colors">Extras einstellen</button>
+                    </div>
+                  </header>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    {finalKeys.map((key) => cardMap[key])}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {currentView === 'settings' && (() => {
     const q = (settingsQuery || '').trim().toLowerCase();
@@ -7016,7 +7219,7 @@ Später
                   setSettingsTab(prev => (prev === id ? '' : id));
                 };
                 return (
-                  <div className="border border-neutral-800 rounded-2xl overflow-hidden bg-neutral-950/50">
+                  <div className="border border-neutral-800 rounded-2xl overflow-hidden bg-neutral-950/50 lg:hidden">
                     <button type="button" onClick={toggle} className="w-full flex items-center justify-between px-4 py-3 bg-neutral-950 hover:bg-neutral-900 transition-colors">
                       <div className="flex items-center gap-3">
                         {Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}
@@ -7034,7 +7237,7 @@ Später
               };
 
     return (
-      <div className="p-6 md:p-10 max-w-6xl mx-auto w-full animate-fade-in">
+      <div className="p-5 md:p-8 xl:p-10 max-w-7xl mx-auto w-full animate-fade-in">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
           <div className="min-w-0">
             <h2 className="text-3xl md:text-4xl font-light">Einstellungen</h2>
@@ -7084,9 +7287,9 @@ Später
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
           {/* Desktop sidebar */}
-          <aside className="hidden">
+          <aside className="hidden lg:block sticky top-6 self-start">
             <div className="bg-neutral-950/50 border border-neutral-800 rounded-2xl p-2">
               {TABS.map(t => {
                 const Icon = t.icon;
@@ -7189,7 +7392,7 @@ Später
             </AccordionItem>
 
             {/* EXTRAS */}
-            <AccordionItem id="notifications" label="Extras" icon={Activity} keys={['extras','smart day','stempelung','fokus','notiz','push','benachr','erinnerung','pwa','token','test']} >
+            <AccordionItem id="notifications" label="Extras" icon={Activity} keys={['extras','smart day','stempelung','fokus','notiz','tagesziel','soll ist','freie zeitfenster','push','benachr','erinnerung','pwa','token','test']} >
               <section id="settings-notifications">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <Activity className="w-4 h-4" /> Extras
@@ -7205,7 +7408,10 @@ Später
                       ['workClockHomeEnabled','Stempeluhr auf Home','Nur kompakte Stempeluhr-Zeile auf Home.'],
                       ['focusModeEnabled','Fokusmodus','25/50/90-Minuten Fokusblöcke in Extras.'],
                       ['weeklyOverviewEnabled','Wochenübersicht','Arbeitszeit, Termine und freie Fenster bündeln.'],
-                      ['quickNotesEnabled','Schnellnotizen','Lokale Notizfläche in Extras.'],
+                      ['freeWindowsEnabled','Freie Zeitfenster','Eigene Karte mit freien Blöcken des Tages.'],
+                      ['dailyGoalsEnabled','Tagesziele','Drei Tagesziele mit Häkchen und Cloud-Sync.'],
+                      ['timeBalanceEnabled','Soll-/Ist-Stunden','Wochenziel gegen echte Arbeitszeit vergleichen.'],
+                      ['quickNotesEnabled','Schnellnotizen','Mit Firebase-Sync auf allen Geräten verfügbar.'],
                       ['weatherPlannerEnabled','Wetter-Planer','Zusätzliche Wetter-/Kleidungs-Hinweise in Extras.']
                     ].map(([field,label,desc]) => (
                       <div key={field} className="border border-neutral-800 rounded-xl bg-black p-4 flex items-start justify-between gap-4">
@@ -7233,7 +7439,7 @@ Später
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="font-medium text-white">Push & Erinnerungen</p>
-                        <p className="text-xs text-neutral-500 mt-1">Ehemaliger Benachrichtigungsbereich – liegt jetzt gesammelt unter Extras.</p>
+                        <p className="text-xs text-neutral-500 mt-1">Ehemaliger Benachrichtigungsbereich – liegt jetzt gesammelt unter Extras. Notizen, Tagesziele und Reihenfolge der Karten werden ebenfalls synchronisiert.</p>
                       </div>
                     </div>
                   </div>
@@ -7389,6 +7595,24 @@ Später
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  <div className="border border-neutral-800 rounded-xl bg-black p-4 space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-white flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Wochenziel & Extras-Reihenfolge</p>
+                        <p className="text-xs text-neutral-500 mt-1">Definiert dein Soll pro Woche. Im Extras-Bereich kannst du die Karten direkt per Drag & Drop verschieben.</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wochenziel in Stunden</label>
+                        <input value={weeklyTargetHours} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                      </div>
+                      <div className="flex items-end">
+                        <button type="button" onClick={() => { setExtrasSlotOrder(normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER)); showToast('Extras-Reihenfolge zurückgesetzt'); }} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Reihenfolge zurücksetzen</button>
+                      </div>
+                    </div>
                   </div>
 
                   <details className="border border-neutral-800 rounded-xl bg-black p-4">

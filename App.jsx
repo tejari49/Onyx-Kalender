@@ -2793,6 +2793,100 @@ const requestNotificationPermission = async (currentUser) => {
         } catch (_) { return ''; }
       };
 
+      const getWeatherBadgeForDay = (dayIndex = 0) => {
+        try {
+          const dayStr = dailyForecast?.time?.[dayIndex];
+          if (!dayStr) return { icon: '⏳', label: 'Lade Wetter', tone: 'neutral' };
+
+          const maxTemp = Math.round(dailyForecast?.temperature_2m_max?.[dayIndex] ?? weather?.temperature ?? 0);
+          const minTemp = Math.round(dailyForecast?.temperature_2m_min?.[dayIndex] ?? weather?.temperature ?? 0);
+          const rainProb = Math.round(dailyForecast?.precipitation_probability_max?.[dayIndex] ?? 0);
+          const rainSum = Number(dailyForecast?.precipitation_sum?.[dayIndex] ?? 0);
+          const windMax = Math.round(dailyForecast?.windspeed_10m_max?.[dayIndex] ?? weather?.windspeed ?? 0);
+          const dayCode = Number(dailyForecast?.weathercode?.[dayIndex] ?? weather?.weathercode ?? 0);
+
+          const isMostlySunnyCode = (code) => [0, 1, 2].includes(Number(code ?? -1));
+          const toneForWind = (speed) => speed >= 55 ? 'danger' : 'warn';
+          const toneForRain = (prob) => prob >= 75 ? 'danger' : 'warn';
+
+          if (dayIndex === 0 && Array.isArray(hourlyForecast?.time)) {
+            const now = new Date();
+            const end = new Date(now.getTime() + (4 * 60 * 60 * 1000));
+            const todayIdxs = getHourlyIndexesForDay(dayStr);
+            const windowIdxs = todayIdxs.filter((idx) => {
+              const ts = new Date(hourlyForecast?.time?.[idx] || 0).getTime();
+              return Number.isFinite(ts) && ts >= (now.getTime() - 60 * 1000) && ts <= end.getTime();
+            });
+
+            if (windowIdxs.length > 0) {
+              const firstIdx = windowIdxs[0];
+              const lastIdx = windowIdxs[windowIdxs.length - 1];
+              const untilLabel = formatHourLabel(hourlyForecast?.time?.[lastIdx]);
+              const temps = windowIdxs.map((idx) => Number(hourlyForecast?.temperature_2m?.[idx] ?? weather?.temperature ?? 0));
+              const codes = windowIdxs.map((idx) => Number(hourlyForecast?.weathercode?.[idx] ?? weather?.weathercode ?? 0));
+              const winds = windowIdxs.map((idx) => Number(hourlyForecast?.windspeed_10m?.[idx] ?? weather?.windspeed ?? 0));
+              const tempMin4h = Math.round(Math.min(...temps));
+              const tempMax4h = Math.round(Math.max(...temps));
+              const maxWind4h = Math.round(Math.max(...winds));
+              const firstRainIdx4h = windowIdxs.find((idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 45);
+              const firstWindIdx4h = windowIdxs.find((idx) => Number(hourlyForecast?.windspeed_10m?.[idx] ?? weather?.windspeed ?? 0) >= 30);
+              const mostlySunny = codes.filter((code) => isMostlySunnyCode(code)).length >= Math.ceil(windowIdxs.length * 0.6);
+
+              if (firstRainIdx4h != null) {
+                const rainProbAtStart = Math.round(Number(hourlyForecast?.precipitation_probability?.[firstRainIdx4h] ?? 0));
+                const rainTimeLabel = formatHourLabel(hourlyForecast?.time?.[firstRainIdx4h]);
+                const startsLater = firstRainIdx4h !== firstIdx;
+                return { icon: '☔', label: startsLater ? `Regen ab ${rainTimeLabel}` : `Regen bis ${untilLabel}`, tone: toneForRain(rainProbAtStart || rainProb) };
+              }
+
+              if (firstWindIdx4h != null && maxWind4h >= 30) {
+                return { icon: '🌬️', label: `Windig bis ${untilLabel}`, tone: toneForWind(maxWind4h) };
+              }
+
+              if (tempMin4h <= 8 && tempMax4h <= 13) {
+                return { icon: '🧥', label: `Jacke bis ${untilLabel}`, tone: 'info' };
+              }
+
+              if (tempMin4h <= 10 && tempMax4h - tempMin4h >= 5) {
+                return { icon: '🌓', label: `Später milder bis ${untilLabel}`, tone: 'good' };
+              }
+
+              if (mostlySunny) {
+                return { icon: '☀️', label: `Trocken bis ${untilLabel}`, tone: 'good' };
+              }
+
+              return { icon: '🌤️', label: `Ruhig bis ${untilLabel}`, tone: 'neutral' };
+            }
+          }
+
+          const firstRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 55);
+          const firstStrongRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 75);
+          if (firstStrongRainIdx != null || rainProb >= 75 || rainSum >= 4) {
+            const idx = firstStrongRainIdx != null ? firstStrongRainIdx : firstRainIdx;
+            return { icon: '⛈️', label: idx != null ? `Kräftiger Regen ab ${formatHourLabel(hourlyForecast?.time?.[idx])}` : 'Kräftiger Regen möglich', tone: 'danger' };
+          }
+          if (firstRainIdx != null || rainProb >= 55 || rainSum >= 1.2) {
+            const idx = firstRainIdx != null ? firstRainIdx : firstStrongRainIdx;
+            return { icon: '☔', label: idx != null ? `Regen ab ${formatHourLabel(hourlyForecast?.time?.[idx])}` : 'Regen möglich', tone: 'warn' };
+          }
+          if (windMax >= 35) {
+            return { icon: '🌬️', label: 'Windig heute', tone: toneForWind(windMax) };
+          }
+          if (minTemp <= 8) {
+            return { icon: '🧥', label: 'Jacke sinnvoll', tone: 'info' };
+          }
+          if (isMostlySunnyCode(dayCode)) {
+            return { icon: '☀️', label: 'Freundlich und trocken', tone: 'good' };
+          }
+          if (maxTemp >= 24) {
+            return { icon: '🌡️', label: 'Eher warm heute', tone: 'good' };
+          }
+          return { icon: '🌤️', label: 'Ruhiges Wetter', tone: 'neutral' };
+        } catch (_) {
+          return { icon: '🌤️', label: 'Wetter', tone: 'neutral' };
+        }
+      };
+
       const getWeatherAdviceForDay = (dayIndex = 0) => {
         try {
           const dayStr = dailyForecast?.time?.[dayIndex];
@@ -2952,6 +3046,14 @@ const requestNotificationPermission = async (currentUser) => {
       };
 
       const todayWeatherAdvice = getWeatherAdviceForDay(0);
+      const todayWeatherBadge = getWeatherBadgeForDay(0);
+      const weatherBadgeToneClass = (tone) => ({
+        danger: 'border-red-500/30 bg-red-500/10 text-red-200',
+        warn: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+        good: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
+        info: 'border-sky-500/30 bg-sky-500/10 text-sky-200',
+        neutral: 'border-neutral-700 bg-neutral-900 text-neutral-200',
+      }[tone] || 'border-neutral-700 bg-neutral-900 text-neutral-200');
 
       const fetchWeather = async () => {
         try {
@@ -5521,7 +5623,13 @@ setSelfDestruct(false);
                   <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between gap-4 cursor-pointer hover:border-neutral-600 transition-colors group">
                     <div className="min-w-0 flex-1">
                       <h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider mb-1 flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {location.name}</h3>
-                      <p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
+                      <div className="flex flex-wrap items-center gap-3 mt-1">
+                        <p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
+                        <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[11px] md:text-xs ${weatherBadgeToneClass(todayWeatherBadge?.tone)}`}>
+                          <span>{todayWeatherBadge?.icon || '🌤️'}</span>
+                          <span>{todayWeatherBadge?.label || 'Wetter'}</span>
+                        </span>
+                      </div>
                       <p className="mt-2 text-sm text-neutral-400 leading-relaxed max-w-[32rem]">{todayWeatherAdvice}</p>
                     </div>
                     <div className="shrink-0">{getWeatherIcon(weather?.weathercode, "w-10 h-10 md:w-12 md:h-12 text-white")}</div>
@@ -7521,7 +7629,13 @@ setSelfDestruct(false);
 
                 <div className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <p className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
+                      <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[11px] ${weatherBadgeToneClass(todayWeatherBadge?.tone)}`}>
+                        <span>{todayWeatherBadge?.icon || '🌤️'}</span>
+                        <span>{todayWeatherBadge?.label || 'Wetter'}</span>
+                      </span>
+                    </div>
                     <p className="text-xs text-neutral-500 mt-1">
                       {weather ? `Wind ${Math.round(weather.windspeed || 0)} km/h` : 'Lade Daten…'}
                     </p>

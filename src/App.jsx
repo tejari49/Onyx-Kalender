@@ -3089,8 +3089,8 @@ const requestNotificationPermission = async (currentUser) => {
         setWorkClockEditUsePreset(usePreset);
         setWorkClockEditTitle(rawTitle || presets[0] || 'Arbeit');
         setWorkClockEditLevel(String(session?.level || 'mittel'));
-        setWorkClockEditStartValue(toDateTimeLocalValue(session?.startedAt || Date.now()));
-        setWorkClockEditEndValue(toDateTimeLocalValue(session?.endedAt || session?.startedAt || Date.now()));
+        setWorkClockEditStartValue(formatDateTimeInputValue(session?.startedAt || Date.now()));
+        setWorkClockEditEndValue(formatDateTimeInputValue(session?.endedAt || session?.startedAt || Date.now()));
         setWorkClockEditOpen(true);
       };
 
@@ -3191,12 +3191,42 @@ const requestNotificationPermission = async (currentUser) => {
           });
           body.push([]);
           body.push(['Summe','','','', '', Math.round(weekWorkMs / 60000), '', '']);
-          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('\"','\"\"')}"`).join(';')).join('\n');
+          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"','""')}"`).join(';')).join('
+');
           const stamp = new Date().toISOString().slice(0,10);
           downloadTextFile(`rapport-woche-${stamp}.csv`, csv, 'text/csv;charset=utf-8');
           showToast('Wochenrapport exportiert');
         } catch (err) {
           console.error('exportWeekWorkClockCsv failed', err);
+          showToast('Export fehlgeschlagen');
+        }
+      };
+
+      const exportMonthWorkClockCsv = () => {
+        try {
+          const rows = [...monthSessions].sort((a, b) => Number(a?.startedAt || 0) - Number(b?.startedAt || 0));
+          if (!rows.length) {
+            showToast('Keine Sessions für diesen Monat');
+            return;
+          }
+          const header = ['Datum','Start','Ende','Arbeit','Level','Arbeitszeit Minuten','Pausenzeit Minuten','Total Minuten'];
+          const body = rows.map((s) => {
+            const started = s?.startedAt ? new Date(Number(s.startedAt)) : null;
+            const ended = s?.endedAt ? new Date(Number(s.endedAt)) : null;
+            const date = started ? started.toLocaleDateString('de-CH') : '';
+            const start = started ? started.toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' }) : '';
+            const end = ended ? ended.toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' }) : '';
+            return [date, start, end, String(s?.title || 'Arbeit'), String(s?.level || 'mittel'), Math.round(Number(s?.workMs || 0) / 60000), Math.round(Number(s?.pauseMs || 0) / 60000), Math.round(Number(s?.totalMs || 0) / 60000)];
+          });
+          body.push([]);
+          body.push(['Summe','','','', '', Math.round(monthWorkMs / 60000), '', '']);
+          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"','""')}"`).join(';')).join('
+');
+          const stamp = new Date().toISOString().slice(0,7);
+          downloadTextFile(`rapport-monat-${stamp}.csv`, csv, 'text/csv;charset=utf-8');
+          showToast('Monatsrapport exportiert');
+        } catch (err) {
+          console.error('exportMonthWorkClockCsv failed', err);
           showToast('Export fehlgeschlagen');
         }
       };

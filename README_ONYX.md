@@ -1,235 +1,101 @@
-# Onyx Kalender (PWA) 🗓️⚡
+# Onyx Kalender
 
-Onyx ist ein **AMOLED‑optimierter Kalender als PWA** (Vite + React + Firebase). Das Repo ist so ausgelegt, dass es **auf GitHub Pages** sauber als Single‑Page‑App läuft – inkl. **Service Worker** und **Firebase Cloud Messaging**.
+Onyx Kalender ist eine dunkle Kalender- und Organisations-App mit Fokus auf Alltag, Arbeit, Wetter, Privatsphäre und schneller Bedienung.
 
-> **Wichtig (Deployment‑Namespace):** Alle Daten liegen unter `artifacts/{APP_ID}/…` in Firestore. Default: `APP_ID = onyx-pwa-live`.
+## Hauptfunktionen
 
----
-
-## Features (Kurzüberblick)
+### Konto & Profil
+- Registrierung mit Name, E-Mail und Passwort
+- persönlicher Alias / Anzeigename
+- 5-stellige Chat-/Kontakt-ID
+- Profildaten mit lokaler Absicherung
+- Alias bleibt nach Reload erhalten
 
 ### Kalender
-- Private Events pro User (`users/{uid}/events`)
-- Geteilte Kalender (Owner + `sharedWith` Rollen `read|write`)
-- Mehrfach‑Auswahl: mehrere Kalender gleichzeitig „overlay“ anzeigen
-- Wiederholungen (daily/weekly/monthly) + Overrides + ExDates
-- Kommentare pro Event (privat + shared)
+- privater Standardkalender
+- eigene benutzerdefinierte Kalender
+- geteilter Kalender-Support
+- Tages-, Wochen- und Monatslogik
+- wiederkehrende Termine
+- Erinnerungen mit Standard- oder benutzerdefiniertem Vorlauf
+- Agenda für heute
+- schneller Termin-Export
 
-### Abstimmungen / Terminfindung
-- Polls im Event (Abstimmung) inkl. Auto‑Finalize (serverseitig via **oxynoti**)
+### Dashboard / Startseite
+- Smart-Day-Karte mit nächstem Termin
+- Anzeige „heute noch frei“
+- kompakte Termin-Vorschau
+- Wetter-Badge direkt auf der Startseite
+- Spruch des Tages
+- Tageszusammenfassung mit freien Zeitfenstern
 
-### Privacy‑Sharing 🔒
-- Öffentliche **Busy‑Only** Links (extern nur Zeitblöcke, keine Titel/Orte)
-- Temporäre Links (Expiry)
-- Optionaler Passcode
-- Audit Log („wer hat wann was geändert?“)
+### Wetter
+- aktuelle Wetterdaten über Open-Meteo
+- Tagesprognose
+- 4-Stunden-Wetterlogik für praktische Hinweise
+- kontextbezogene Hinweise wie:
+  - Schirm mitnehmen
+  - Jacke sinnvoll
+  - trocken bis Uhrzeit X
+  - Regen ab Uhrzeit X
+  - windig bis Uhrzeit X
+- natürlichere Texte wie morgens, über Mittag, am Nachmittag, am Abend
+- Wetter-Badge auf Dashboard und im Wetter-Modal
 
-### Profil / Account
-- Anzeige‑Name + Alias (Username)
-- Passwort ändern (Firebase Email/Password; Reauth wird abgefangen)
+### Secret Chat
+- separater Secret Chat
+- Secret-Chat-PIN
+- Panic Mode zum sofortigen Verstecken
+- optionales Auto-Hide / Auto-Panic beim Verlassen
+- reduzierte Sichtbarkeit von Secret-Chat-Benachrichtigungen
 
-### Notifications
-- Lokaler Test (OS Notification)
-- Server Test (via `pushTests` → oxynoti sendet)
-- Chat/Inbox‑Push kann „stealth“ sein (z.B. nur Titel)
+### Arbeit / Stempelung
+- in Einstellungen aktivierbar/deaktivierbar
+- Start / Pause / Weiter / Stopp auf der Startseite
+- Abschlussdialog beim Stoppen
+- Tätigkeit über Dropdown oder freie Eingabe
+- Belastungslevel: leicht / mittel / schwer
+- laufender Timer
+- Pausenzeit getrennt von Arbeitszeit
+- Heute-, Wochen- und Monatsübersicht
+- letzte Sessions direkt im Dashboard
+- Sessions bleiben lokal gespeichert
+- lokale Daten werden mit Remote-Daten zusammengeführt
+- Wiederaufnahme einer laufenden Stempelung nach Reload
 
----
+### Stempelungs-Reports
+- Wochenrapport als CSV-Export
+- Monatsrapport als CSV-Export
+- Summen und Session-Anzahl im Dashboard
+- Belastungsübersicht nach Level
 
-## Tech Stack
-- **React 18** + **Vite 5**
-- **Firebase Web SDK** (Auth, Firestore, Messaging)
-- **TailwindCSS** lokal (PostCSS)
-- Optional: HEIC Support (`heic2any`)
+### Stempelungs-Verwaltung
+- Session bearbeiten
+- Session löschen
+- manuelle Korrektur von Start- und Endzeit
+- nachträgliches Ändern von Tätigkeit und Level
 
----
+### Einstellungen
+- Workclock / Stempelung aktivieren
+- Tätigkeitsliste für Dropdown pflegen
+- optionale Privatsphäre-Funktionen für Secret Chat
+- diverse App- und Profiloptionen
 
-## Projektstruktur
+### Technik
+- React + Vite
+- Firebase Auth
+- Firestore
+- lokale Fallback-Speicherung via LocalStorage
+- PWA / Service Worker Unterstützung
+- dunkles UI für Mobile und Desktop
 
-- `src/App.jsx` – Hauptlogik (UI + Firestore + Messaging)
-- `src/main.jsx` – React Entry
-- `public/manifest.json` – PWA Manifest
-- `public/firebase-messaging-sw.js` – **Service Worker** (Caching + FCM Background)
-- `vite.config.js` – GitHub Pages Base‑Path
-- `FIRESTORE_RULES_*.txt` – Rules‑Snippets (Sharing / Event Threads)
+## Hinweise
+- Einige Funktionen speichern lokal und spiegeln zusätzlich nach Firestore.
+- Wenn Firestore-Regeln oder Netzwerke kurzfristig blockieren, bleiben lokale Daten erhalten.
+- Browser-Fehler aus Erweiterungen wie `webpage_content_reporter.js` stammen normalerweise nicht aus der App selbst.
 
-> **Hinweis:** Für den Build ist **immer** die Datei in `public/firebase-messaging-sw.js` relevant.
-
----
-
-## Voraussetzungen
-- Node.js **>= 18** (empfohlen 20)
-
----
-
-## Lokal starten
-
-```bash
-npm ci
-npm run dev
-```
-
-- Dev Server: `http://localhost:5173`
-
----
-
-## Production Build
-
-```bash
-npm run build
-npm run preview
-```
-
-- Output: `dist/`
-
----
-
-## Firebase Setup (Pflicht)
-
-### 1) Firebase Projekt
-1. Firebase Console → Projekt erstellen
-2. **Authentication** aktivieren (mindestens Email/Password)
-3. **Firestore** aktivieren
-
-### 2) Web App anlegen
-Firebase Console → Project settings → “Your apps” → Web App
-- Die Web‑Config wird im Code genutzt (`src/App.jsx` → `customFirebaseConfig`).
-
-> Optional: Du kannst auch eine globale Variable `__firebase_config` (JSON‑String) injecten.
-
-### 3) Cloud Messaging (Web Push)
-- FCM ist Teil von Firebase.
-- Für Web Push brauchst du eine VAPID‑Key Konfiguration im Frontend (falls ihr sie nutzt).
-
-**Token Storage:**
-- Onyx speichert den Web‑Token im Profil:
-  - `artifacts/{APP_ID}/public/data/profiles/{uid}.fcmTokenWeb`
-
----
-
-## APP_ID / Multi‑Environment
-
-Default:
-- `APP_ID = onyx-pwa-live`
-
-Wenn du pro Umgebung trennen willst (dev/stage/prod), kannst du `__app_id` global setzen.
-Beispiel (in `index.html`, **vor** dem Vite module script):
-
-```html
-<script>
-  window.__app_id = 'onyx-prod';
-</script>
-```
-
----
-
-## GitHub Pages Deployment
-
-### 1) Base Path
-In `vite.config.js` steht:
-- `base: '/Onyx-Kalender/'`
-
-Wenn dein Repo anders heißt, musst du anpassen:
-- `vite.config.js` → `base`
-- `manifest.json` → `start_url` + `scope` (falls gesetzt)
-
-### 2) Pages aktivieren
-Repo → Settings → Pages
-- Source: **GitHub Actions**
-
-### 3) Deploy
-- Push auf `main` → Actions Workflow baut + deployed.
-
----
-
-## Firestore Datenmodell (wichtig)
-
-### Profiles
-`artifacts/{APP_ID}/public/data/profiles/{uid}`
-- `displayName` (sichtbarer Name)
-- `username` / `usernameLower` (Alias)
-- `fcmTokenWeb` (PWA Push Token)
-- `defaultReminderMinutes`
-- `defaultCalendarColor`
-- `notificationSoundMode` (z.B. `silent`)
-- `mutedChatIds` (Array von chatIds, die keinen Push bekommen)
-
-### Private Events
-`artifacts/{APP_ID}/users/{uid}/events/{eventId}`
-
-### Shared Calendars
-`artifacts/{APP_ID}/public/data/calendars/{calId}`
-- `ownerId`
-- `name`
-- `color`
-- `sharedWith`: Map `{ uid: 'read'|'write' }`
-
-Events:
-`artifacts/{APP_ID}/public/data/calendars/{calId}/events/{eventId}`
-- `title`, `date` (`YYYY-MM-DD`), `time` (`HH:MM` oder Range)
-- `durationMinutes`, `location`, `desc`
-- `recurrence`, `exDates`, `overrides`
-- `poll` (Abstimmung)
-
-### Public Links (Busy‑Only / Event Sharing)
-`artifacts/{APP_ID}/public/data/shares/{token}`
-- `kind`: `calendar|event`
-- `mode`: z.B. `busy` (busy-only) oder `full`
-- `calId`, `calName`
-- `expiresAtMs`, `revokedAtMs`
-- Passcode: `passcodeSalt`, `passcodeHash`
-- Calendar busy-only: `busyBlocks: [{startMs,endMs}]` + Range
-
-### Audit Logs
-- User‑Audit: `artifacts/{APP_ID}/users/{uid}/auditLogs/{id}`
-- Calendar‑Audit: `artifacts/{APP_ID}/public/data/calendars/{calId}/auditLogs/{id}`
-
-### Push Tests (Server Test)
-`artifacts/{APP_ID}/public/data/pushTests/{id}`
-- `uid`, `status: pending|sending|sent|error`, `lastError`, `createdAtMs`
-
----
-
-## Notifications (Praxis)
-
-### Wie Push technisch funktioniert
-- Onyx (Client) speichert den Token in `profiles/{uid}.fcmTokenWeb`.
-- **oxynoti** liest Profile & sendet FCM‑Pushes (data‑only) an diese Tokens.
-- Der Service Worker (`public/firebase-messaging-sw.js`) rendert die OS‑Notification.
-
-### Sound / Ton
-- PWA kann keinen Custom‑Sound setzen.
-- Ton kommt über das **System** (Android Notification Channel / iOS system settings).
-
-### Debug Checkliste
-1. In Onyx: Permission = `granted`
-2. In Firestore: Profil hat `fcmTokenWeb`
-3. oxynoti `/status`: `appId` passt, `lastTickAt` aktualisiert
-4. Firestore Rules erlauben `pushTests:create` (für Server‑Test)
-
----
-
-## Troubleshooting
-
-### “Nur Toast, keine OS‑Notification”
-- Permission nicht granted → Token fehlt
-- Service Worker nicht „controlling“ → PWA neu starten / SW unregister
-- Android: Benachrichtigungen für die PWA/Chrome App stumm
-
-### “Server Test bleibt pending”
-- Firestore Rules blocken `public/data/pushTests` (permission‑denied)
-- oxynoti hört auf falschem `APP_ID`
-- Render schläft → Keep‑Alive Ping auf `/healthz`
-
----
-
-## Security Notes
-- Public Links: in Rules **nur `get` erlauben**, kein `list`.
-- Tokens dürfen nur vom jeweiligen User geschrieben werden.
-- Service Account Secrets **niemals** im Frontend.
-
----
-
-## Lizenz / Betrieb
-Interne App. Für produktiven Betrieb empfiehlt sich:
-- Monitoring auf `oxynoti /healthz`
-- Backups / Exporte (Firestore)
+## Empfohlene nächste Ausbauten
+- PDF-Export für Rapporte
+- Fingerprint / Face-ID für Secret Chat
+- Selbstlöschende Secret-Chat-Nachrichten
+- noch feinere Arbeitsauswertungen nach Tätigkeit

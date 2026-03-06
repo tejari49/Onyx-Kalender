@@ -272,6 +272,8 @@ function AmoledCalendarApp() {
       const [workClockEditTitle, setWorkClockEditTitle] = useState('');
       const [workClockEditUsePreset, setWorkClockEditUsePreset] = useState(true);
       const [workClockEditLevel, setWorkClockEditLevel] = useState('mittel');
+      const [workClockEditStartValue, setWorkClockEditStartValue] = useState('');
+      const [workClockEditEndValue, setWorkClockEditEndValue] = useState('');
       const [workClockDeletingId, setWorkClockDeletingId] = useState('');
       const [dailyFact, setDailyFact] = useState('');
       const [quotes, setQuotes] = useState([]);
@@ -3087,6 +3089,8 @@ const requestNotificationPermission = async (currentUser) => {
         setWorkClockEditUsePreset(usePreset);
         setWorkClockEditTitle(rawTitle || presets[0] || 'Arbeit');
         setWorkClockEditLevel(String(session?.level || 'mittel'));
+        setWorkClockEditStartValue(toDateTimeLocalValue(session?.startedAt || Date.now()));
+        setWorkClockEditEndValue(toDateTimeLocalValue(session?.endedAt || session?.startedAt || Date.now()));
         setWorkClockEditOpen(true);
       };
 
@@ -3094,8 +3098,23 @@ const requestNotificationPermission = async (currentUser) => {
         if (!user?.uid || !workClockEditingSession) return;
         try {
           const nextTitle = String(workClockEditTitle || '').trim() || 'Arbeit';
+          const nextStart = parseDateTimeInputValue(workClockEditStartValue);
+          const nextEnd = parseDateTimeInputValue(workClockEditEndValue);
+          if (!Number.isFinite(nextStart) || !Number.isFinite(nextEnd) || nextEnd <= nextStart) {
+            showToast('Start und Ende prüfen');
+            return;
+          }
+          const previousPauseMs = Math.max(0, Number(workClockEditingSession?.pauseMs || 0));
+          const totalMs = Math.max(0, nextEnd - nextStart);
+          const workMs = Math.max(0, totalMs - Math.min(previousPauseMs, totalMs));
           const patch = {
             ...workClockEditingSession,
+            startedAt: nextStart,
+            endedAt: nextEnd,
+            totalMs,
+            pauseMs: Math.min(previousPauseMs, totalMs),
+            workMs,
+            dateKey: localDateKey(nextStart),
             title: nextTitle,
             level: String(workClockEditLevel || 'mittel'),
             updatedAt: Date.now(),
@@ -3105,6 +3124,12 @@ const requestNotificationPermission = async (currentUser) => {
           try {
             if (workClockEditingSession?.id && !String(workClockEditingSession.id).startsWith('wc_')) {
               await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions', workClockEditingSession.id), {
+                startedAt: nextStart,
+                endedAt: nextEnd,
+                totalMs,
+                pauseMs: Math.min(previousPauseMs, totalMs),
+                workMs,
+                dateKey: localDateKey(nextStart),
                 title: nextTitle,
                 level: String(workClockEditLevel || 'mittel'),
                 updatedAt: Date.now(),
@@ -3449,49 +3474,6 @@ const requestNotificationPermission = async (currentUser) => {
           return { icon: '☀️', tone: 'border-neutral-800 bg-neutral-950 text-neutral-200', text: 'Ruhiges Wetter' };
         }
       };
-
-      const todayDateStr = new Date().toISOString().split('T')[0];
-      const todaysEvents = getEventsForDate(todayDateStr);
-      const nowMs = Date.now();
-      const timedEventsToday = todaysEvents
-        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
-        .filter((entry) => Number.isFinite(entry.startMs))
-        .sort((a, b) => a.startMs - b.startMs);
-      const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
-      const remainingTodayCount = todaysEvents.filter((event) => {
-        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
-        if (Number.isFinite(startMs)) return startMs >= nowMs;
-        return true;
-      }).length;
-      const freeUntilLabel = nextTimedEvent ? formatHourLabel(todayDateStr + 'T' + nextTimedEvent.event.time) : null;
-      const nextEventCountdownText = (() => {
-        if (!nextTimedEvent) return 'Kein weiterer fixer Termin heute';
-        const diffMin = Math.max(0, Math.round((nextTimedEvent.startMs - nowMs) / 60000));
-        if (diffMin < 1) return 'Startet jetzt';
-        if (diffMin < 60) return `In ${diffMin} Min.`;
-        const hours = Math.floor(diffMin / 60);
-        const mins = diffMin % 60;
-        return mins ? `In ${hours}h ${mins} Min.` : `In ${hours}h`;
-      })();
-      const freeWindowText = (() => {
-        if (remainingTodayCount === 0) return 'Rest des Tages frei';
-        if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
-        return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
-      })();
-      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
-      const weatherBadgeMeta = getWeatherBadgeMeta();
-
-      const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
-      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const weekStartMs = startOfWeekMs();
-      const monthStartMs = startOfMonthMs();
-      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
-      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
-      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
-      const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
-      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
 
       const fetchWeather = async () => {
         try {
@@ -5991,6 +5973,50 @@ setSelfDestruct(false);
         );
       }
 
+
+      const todayDateStr = new Date().toISOString().split('T')[0];
+      const todaysEvents = getEventsForDate(todayDateStr);
+      const nowMs = Date.now();
+      const timedEventsToday = todaysEvents
+        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
+        .filter((entry) => Number.isFinite(entry.startMs))
+        .sort((a, b) => a.startMs - b.startMs);
+      const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
+      const remainingTodayCount = todaysEvents.filter((event) => {
+        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
+        if (Number.isFinite(startMs)) return startMs >= nowMs;
+        return true;
+      }).length;
+      const freeUntilLabel = nextTimedEvent ? formatHourLabel(todayDateStr + 'T' + nextTimedEvent.event.time) : null;
+      const nextEventCountdownText = (() => {
+        if (!nextTimedEvent) return 'Kein weiterer fixer Termin heute';
+        const diffMin = Math.max(0, Math.round((nextTimedEvent.startMs - nowMs) / 60000));
+        if (diffMin < 1) return 'Startet jetzt';
+        if (diffMin < 60) return `In ${diffMin} Min.`;
+        const hours = Math.floor(diffMin / 60);
+        const mins = diffMin % 60;
+        return mins ? `In ${hours}h ${mins} Min.` : `In ${hours}h`;
+      })();
+      const freeWindowText = (() => {
+        if (remainingTodayCount === 0) return 'Rest des Tages frei';
+        if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
+        return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
+      })();
+      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
+      const weatherBadgeMeta = getWeatherBadgeMeta();
+
+      const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
+      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekStartMs = startOfWeekMs();
+      const monthStartMs = startOfMonthMs();
+      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
+      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
+      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
+
       const activeCalForView = getCalendarById(activeCalendarId);
 
       return (
@@ -6113,6 +6139,7 @@ setSelfDestruct(false);
                             </>
                           )}
                           <button onClick={exportWeekWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Wochenrapport</button>
+                          <button onClick={exportMonthWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Monatsrapport</button>
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -8209,8 +8236,18 @@ setSelfDestruct(false);
                       ))}
                     </div>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Start</label>
+                      <input type="datetime-local" value={workClockEditStartValue} onChange={(e) => setWorkClockEditStartValue(e.target.value)} className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Ende</label>
+                      <input type="datetime-local" value={workClockEditEndValue} onChange={(e) => setWorkClockEditEndValue(e.target.value)} className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                    </div>
+                  </div>
                   <div className="rounded-xl border border-neutral-800 bg-black px-4 py-3 text-sm text-neutral-300">
-                    {workClockEditingSession?.startedAt ? new Date(workClockEditingSession.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · <span className="text-white font-medium">{formatDurationVerbose(workClockEditingSession?.workMs || 0)}</span>
+                    {workClockEditingSession?.startedAt ? new Date(workClockEditingSession.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · <span className="text-white font-medium">Pausen: {formatDurationVerbose(workClockEditingSession?.pauseMs || 0)}</span>
                   </div>
                 </div>
                 <div className="mt-5 flex flex-wrap gap-2">

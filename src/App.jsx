@@ -6053,6 +6053,126 @@ setSelfDestruct(false);
         }
       };
 
+      const getStorageKey = (suffix) => `onyx_${APP_ID}_${user?.uid || 'guest'}_${suffix}`;
+      useEffect(() => {
+        const id = setInterval(() => setFocusTick(Date.now()), 1000);
+        return () => clearInterval(id);
+      }, []);
+      useEffect(() => {
+        extrasCloudReadyRef.current = false;
+        try {
+          const rawState = localStorage.getItem(getStorageKey('focusState'));
+          const rawHistory = localStorage.getItem(getStorageKey('focusHistory'));
+          const rawNotes = localStorage.getItem(getStorageKey('quickNotes'));
+          const rawGoals = localStorage.getItem(getStorageKey('dailyGoals'));
+          const rawTarget = localStorage.getItem(getStorageKey('weeklyTargetHours'));
+          const rawOrder = localStorage.getItem(getStorageKey('extrasSlotOrder'));
+          const rawUpdatedAt = localStorage.getItem(getStorageKey('extrasUpdatedAt'));
+          if (rawState) setFocusState(JSON.parse(rawState));
+          if (rawHistory) setFocusHistory(JSON.parse(rawHistory));
+          if (typeof rawNotes === 'string') setQuickNotes(rawNotes);
+          if (rawGoals) setDailyGoals(normalizeDailyGoals(JSON.parse(rawGoals)));
+          if (typeof rawTarget === 'string' && rawTarget.length) setWeeklyTargetHours(rawTarget);
+          if (rawOrder) setExtrasSlotOrder(normalizeExtrasOrder(JSON.parse(rawOrder)));
+          if (rawUpdatedAt) setExtrasUpdatedAt(Number(rawUpdatedAt || 0));
+        } catch (_) {}
+      }, [user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('focusState'), JSON.stringify(focusState || null)); } catch (_) {}
+      }, [focusState, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('focusHistory'), JSON.stringify(focusHistory || [])); } catch (_) {}
+      }, [focusHistory, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('quickNotes'), quickNotes || ''); } catch (_) {}
+      }, [quickNotes, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('dailyGoals'), JSON.stringify(normalizeDailyGoals(dailyGoals))); } catch (_) {}
+      }, [dailyGoals, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('weeklyTargetHours'), String(weeklyTargetHours || '')); } catch (_) {}
+      }, [weeklyTargetHours, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('extrasSlotOrder'), JSON.stringify(normalizeExtrasOrder(extrasSlotOrder))); } catch (_) {}
+      }, [extrasSlotOrder, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('extrasUpdatedAt'), String(extrasUpdatedAt || 0)); } catch (_) {}
+      }, [extrasUpdatedAt, user?.uid]);
+      useEffect(() => {
+        if (!user) return;
+        const remoteTs = Number(userProfile?.extrasUpdatedAt || 0);
+        if (!remoteTs || remoteTs <= Number(extrasUpdatedAt || 0)) return;
+        try {
+          if (typeof userProfile?.quickNotesCloud === 'string') setQuickNotes(String(userProfile.quickNotesCloud || ''));
+          if (Array.isArray(userProfile?.dailyGoals)) setDailyGoals(normalizeDailyGoals(userProfile.dailyGoals));
+          if (userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) setWeeklyTargetHours(String(userProfile.weeklyTargetHours));
+          if (Array.isArray(userProfile?.extrasSlotOrder)) setExtrasSlotOrder(normalizeExtrasOrder(userProfile.extrasSlotOrder));
+          setExtrasUpdatedAt(remoteTs);
+          extrasCloudReadyRef.current = true;
+        } catch (_) {}
+      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder]);
+      useEffect(() => {
+        if (!user) return;
+        if (!extrasCloudReadyRef.current) { extrasCloudReadyRef.current = true; return; }
+        try { if (extrasCloudTimerRef.current) clearTimeout(extrasCloudTimerRef.current); } catch (_) {}
+        extrasCloudTimerRef.current = setTimeout(async () => {
+          try {
+            const ts = Date.now();
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+              quickNotesCloud: String(quickNotes || ''),
+              dailyGoals: normalizeDailyGoals(dailyGoals),
+              weeklyTargetHours: Number(String(weeklyTargetHours || '0').replace(',', '.')) || 0,
+              extrasSlotOrder: normalizeExtrasOrder(extrasSlotOrder),
+              extrasUpdatedAt: ts,
+              updatedAt: ts,
+            }, { merge: true });
+            setExtrasUpdatedAt(ts);
+          } catch (err) {
+            console.warn('extras cloud sync failed', err);
+          }
+        }, 700);
+        return () => { try { if (extrasCloudTimerRef.current) clearTimeout(extrasCloudTimerRef.current); } catch (_) {} };
+      }, [quickNotes, dailyGoals, weeklyTargetHours, extrasSlotOrder, user?.uid]);
+      const getFocusElapsedMs = (state, now = Date.now()) => {
+        if (!state?.startedAt) return 0;
+        const base = Math.max(0, now - Number(state.startedAt || now));
+        const paused = Number(state?.pausedAccumulatedMs || 0) + ((state?.isPaused && state?.pauseStartedAt) ? Math.max(0, now - Number(state.pauseStartedAt || now)) : 0);
+        return Math.max(0, base - paused);
+      };
+      const focusRemainingMs = focusState?.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
+      const startFocusMode = () => {
+        const now = Date.now();
+        setFocusState({ startedAt: now, durationMin: Number(focusDurationMin || 25), isPaused: false, pausedAccumulatedMs: 0, pauseStartedAt: null });
+        showToast('Fokus gestartet');
+      };
+      const toggleFocusPause = () => {
+        if (!focusState?.startedAt) return;
+        const now = Date.now();
+        if (focusState?.isPaused) {
+          setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev?.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev?.pauseStartedAt || now)), pauseStartedAt: null }));
+          showToast('Fokus weitergeführt');
+        } else {
+          setFocusState(prev => ({ ...(prev || {}), isPaused: true, pauseStartedAt: now }));
+          showToast('Fokus pausiert');
+        }
+      };
+      const stopFocusMode = (markDone = false) => {
+        try {
+          if (markDone && focusState?.startedAt) {
+            const finishedAt = Date.now();
+            const elapsedMs = getFocusElapsedMs(focusState, finishedAt);
+            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
+          }
+        } catch (_) {}
+        setFocusState(null);
+        if (markDone) showToast('Fokusblock gespeichert');
+      };
+      useEffect(() => {
+        if (focusState?.startedAt && !focusState?.isPaused && focusRemainingMs === 0) {
+          stopFocusMode(true);
+        }
+      }, [focusRemainingMs, focusState?.startedAt, focusState?.isPaused]);
+
       if (!isAppReady) {
         return (
           <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4" style={{ height: 'var(--app-height, 100vh)' }}>
@@ -6275,125 +6395,7 @@ setSelfDestruct(false);
       const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
 
 
-      const getStorageKey = (suffix) => `onyx_${APP_ID}_${user?.uid || 'guest'}_${suffix}`;
-      useEffect(() => {
-        const id = setInterval(() => setFocusTick(Date.now()), 1000);
-        return () => clearInterval(id);
-      }, []);
-      useEffect(() => {
-        extrasCloudReadyRef.current = false;
-        try {
-          const rawState = localStorage.getItem(getStorageKey('focusState'));
-          const rawHistory = localStorage.getItem(getStorageKey('focusHistory'));
-          const rawNotes = localStorage.getItem(getStorageKey('quickNotes'));
-          const rawGoals = localStorage.getItem(getStorageKey('dailyGoals'));
-          const rawTarget = localStorage.getItem(getStorageKey('weeklyTargetHours'));
-          const rawOrder = localStorage.getItem(getStorageKey('extrasSlotOrder'));
-          const rawUpdatedAt = localStorage.getItem(getStorageKey('extrasUpdatedAt'));
-          if (rawState) setFocusState(JSON.parse(rawState));
-          if (rawHistory) setFocusHistory(JSON.parse(rawHistory));
-          if (typeof rawNotes === 'string') setQuickNotes(rawNotes);
-          if (rawGoals) setDailyGoals(normalizeDailyGoals(JSON.parse(rawGoals)));
-          if (typeof rawTarget === 'string' && rawTarget.length) setWeeklyTargetHours(rawTarget);
-          if (rawOrder) setExtrasSlotOrder(normalizeExtrasOrder(JSON.parse(rawOrder)));
-          if (rawUpdatedAt) setExtrasUpdatedAt(Number(rawUpdatedAt || 0));
-        } catch (_) {}
-      }, [user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('focusState'), JSON.stringify(focusState || null)); } catch (_) {}
-      }, [focusState, user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('focusHistory'), JSON.stringify(focusHistory || [])); } catch (_) {}
-      }, [focusHistory, user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('quickNotes'), quickNotes || ''); } catch (_) {}
-      }, [quickNotes, user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('dailyGoals'), JSON.stringify(normalizeDailyGoals(dailyGoals))); } catch (_) {}
-      }, [dailyGoals, user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('weeklyTargetHours'), String(weeklyTargetHours || '')); } catch (_) {}
-      }, [weeklyTargetHours, user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('extrasSlotOrder'), JSON.stringify(normalizeExtrasOrder(extrasSlotOrder))); } catch (_) {}
-      }, [extrasSlotOrder, user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('extrasUpdatedAt'), String(extrasUpdatedAt || 0)); } catch (_) {}
-      }, [extrasUpdatedAt, user?.uid]);
-      useEffect(() => {
-        if (!user) return;
-        const remoteTs = Number(userProfile?.extrasUpdatedAt || 0);
-        if (!remoteTs || remoteTs <= Number(extrasUpdatedAt || 0)) return;
-        try {
-          if (typeof userProfile?.quickNotesCloud === 'string') setQuickNotes(String(userProfile.quickNotesCloud || ''));
-          if (Array.isArray(userProfile?.dailyGoals)) setDailyGoals(normalizeDailyGoals(userProfile.dailyGoals));
-          if (userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) setWeeklyTargetHours(String(userProfile.weeklyTargetHours));
-          if (Array.isArray(userProfile?.extrasSlotOrder)) setExtrasSlotOrder(normalizeExtrasOrder(userProfile.extrasSlotOrder));
-          setExtrasUpdatedAt(remoteTs);
-          extrasCloudReadyRef.current = true;
-        } catch (_) {}
-      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder]);
-      useEffect(() => {
-        if (!user) return;
-        if (!extrasCloudReadyRef.current) { extrasCloudReadyRef.current = true; return; }
-        try { if (extrasCloudTimerRef.current) clearTimeout(extrasCloudTimerRef.current); } catch (_) {}
-        extrasCloudTimerRef.current = setTimeout(async () => {
-          try {
-            const ts = Date.now();
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
-              quickNotesCloud: String(quickNotes || ''),
-              dailyGoals: normalizeDailyGoals(dailyGoals),
-              weeklyTargetHours: Number(String(weeklyTargetHours || '0').replace(',', '.')) || 0,
-              extrasSlotOrder: normalizeExtrasOrder(extrasSlotOrder),
-              extrasUpdatedAt: ts,
-              updatedAt: ts,
-            }, { merge: true });
-            setExtrasUpdatedAt(ts);
-          } catch (err) {
-            console.warn('extras cloud sync failed', err);
-          }
-        }, 700);
-        return () => { try { if (extrasCloudTimerRef.current) clearTimeout(extrasCloudTimerRef.current); } catch (_) {} };
-      }, [quickNotes, dailyGoals, weeklyTargetHours, extrasSlotOrder, user?.uid]);
-      const getFocusElapsedMs = (state, now = Date.now()) => {
-        if (!state?.startedAt) return 0;
-        const base = Math.max(0, now - Number(state.startedAt || now));
-        const paused = Number(state?.pausedAccumulatedMs || 0) + ((state?.isPaused && state?.pauseStartedAt) ? Math.max(0, now - Number(state.pauseStartedAt || now)) : 0);
-        return Math.max(0, base - paused);
-      };
-      const focusRemainingMs = focusState?.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
-      const startFocusMode = () => {
-        const now = Date.now();
-        setFocusState({ startedAt: now, durationMin: Number(focusDurationMin || 25), isPaused: false, pausedAccumulatedMs: 0, pauseStartedAt: null });
-        showToast('Fokus gestartet');
-      };
-      const toggleFocusPause = () => {
-        if (!focusState?.startedAt) return;
-        const now = Date.now();
-        if (focusState?.isPaused) {
-          setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev?.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev?.pauseStartedAt || now)), pauseStartedAt: null }));
-          showToast('Fokus weitergeführt');
-        } else {
-          setFocusState(prev => ({ ...(prev || {}), isPaused: true, pauseStartedAt: now }));
-          showToast('Fokus pausiert');
-        }
-      };
-      const stopFocusMode = (markDone = false) => {
-        try {
-          if (markDone && focusState?.startedAt) {
-            const finishedAt = Date.now();
-            const elapsedMs = getFocusElapsedMs(focusState, finishedAt);
-            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
-          }
-        } catch (_) {}
-        setFocusState(null);
-        if (markDone) showToast('Fokusblock gespeichert');
-      };
-      useEffect(() => {
-        if (focusState?.startedAt && !focusState?.isPaused && focusRemainingMs === 0) {
-          stopFocusMode(true);
-        }
-      }, [focusRemainingMs, focusState?.startedAt, focusState?.isPaused]);
+
       const weekEventDates = Array.from({ length: 7 }, (_, idx) => {
         const d = new Date(weekStartMs + idx * 86400000);
         return d.toISOString().slice(0, 10);

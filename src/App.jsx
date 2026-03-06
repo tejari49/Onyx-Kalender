@@ -4097,15 +4097,15 @@ useEffect(() => {
       };
 
       // --- WIEDERHOLUNGEN (Recurrence) ---
-      const pad2 = (n) => String(n).padStart(2, '0');
-      const formatDateStr = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-      const parseDateStr = (s) => {
+      function pad2(n) { return String(n).padStart(2, '0'); }
+      function formatDateStr(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+      function parseDateStr(s) {
         const parts = String(s || '').split('-');
         const y = parseInt(parts[0] || '1970', 10);
         const m = parseInt(parts[1] || '1', 10);
         const dd = parseInt(parts[2] || '1', 10);
         return new Date(y, (m || 1) - 1, dd || 1);
-      };
+      }
 
       // --- NATÜRLICHE SPRACHE: Parse Text -> Event Felder ---
       const toIsoDate = (d) => {
@@ -4301,21 +4301,21 @@ useEffect(() => {
         showToast('Übernommen');
       };
 
-      const addDaysStr = (s, days) => {
+      function addDaysStr(s, days) {
         const d = parseDateStr(s);
         d.setDate(d.getDate() + days);
         return formatDateStr(d);
-      };
-      const daysBetween = (a, b) => Math.floor((parseDateStr(b) - parseDateStr(a)) / 86400000);
-      const monthsBetween = (a, b) => {
+      }
+      function daysBetween(a, b) { return Math.floor((parseDateStr(b) - parseDateStr(a)) / 86400000); }
+      function monthsBetween(a, b) {
         const da = parseDateStr(a);
         const db = parseDateStr(b);
         return (db.getFullYear() * 12 + db.getMonth()) - (da.getFullYear() * 12 + da.getMonth());
-      };
-      const weekdayIndexMon0 = (s) => {
+      }
+      function weekdayIndexMon0(s) {
         const js = parseDateStr(s).getDay(); // So=0..Sa=6
         return (js + 6) % 7; // Mo=0..So=6
-      };
+      }
 
       function buildRecurrenceFromForm(form) {
         const freq = (form.recurrenceFreq || 'NONE').toUpperCase();
@@ -4332,7 +4332,7 @@ useEffect(() => {
         return { freq, interval, byWeekdays, until };
       };
 
-      const eventOccursOn = (ev, dateStr) => {
+      function eventOccursOn(ev, dateStr) {
         if (!ev || !dateStr) return false;
         if (ev.type === 'shift') return ev.date === dateStr;
         const rec = ev.recurrence || null;
@@ -4362,9 +4362,9 @@ useEffect(() => {
           return parseDateStr(start).getDate() === parseDateStr(dateStr).getDate();
         }
         return false;
-      };
+      }
 
-      const getEffectiveOccurrence = (ev, dateStr) => {
+      function getEffectiveOccurrence(ev, dateStr) {
         const ov = (ev && ev.overrides && dateStr) ? ev.overrides[dateStr] : null;
         const merged = ov ? { ...ev, ...ov, date: dateStr } : { ...ev, date: dateStr };
         const hasRec = merged.recurrence && merged.recurrence.freq && merged.recurrence.freq !== 'NONE';
@@ -4383,7 +4383,7 @@ useEffect(() => {
           merged._isInstance = false;
         }
         return merged;
-      };
+      }
 
       function getEventsForDate(dateStr) {
         if (!dateStr) return [];

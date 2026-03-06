@@ -3191,8 +3191,7 @@ const requestNotificationPermission = async (currentUser) => {
           });
           body.push([]);
           body.push(['Summe','','','', '', Math.round(weekWorkMs / 60000), '', '']);
-          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"','""')}"`).join(';')).join('
-');
+          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('\"','\"\"')}"`).join(';')).join('\n');
           const stamp = new Date().toISOString().slice(0,10);
           downloadTextFile(`rapport-woche-${stamp}.csv`, csv, 'text/csv;charset=utf-8');
           showToast('Wochenrapport exportiert');
@@ -3219,17 +3218,17 @@ const requestNotificationPermission = async (currentUser) => {
             return [date, start, end, String(s?.title || 'Arbeit'), String(s?.level || 'mittel'), Math.round(Number(s?.workMs || 0) / 60000), Math.round(Number(s?.pauseMs || 0) / 60000), Math.round(Number(s?.totalMs || 0) / 60000)];
           });
           body.push([]);
-          body.push(['Summe','','','', '', Math.round(monthWorkMs / 60000), '', '']);
-          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"','""')}"`).join(';')).join('
-');
+          body.push(['Summe','','','', '', Math.round(monthWorkMs / 60000), Math.round(monthPauseMs / 60000), '']);
+          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"','""')}"`).join(';')).join('\n');
           const stamp = new Date().toISOString().slice(0,7);
           downloadTextFile(`rapport-monat-${stamp}.csv`, csv, 'text/csv;charset=utf-8');
           showToast('Monatsrapport exportiert');
         } catch (err) {
           console.error('exportMonthWorkClockCsv failed', err);
-          showToast('Export fehlgeschlagen');
+          showToast('Monatsrapport fehlgeschlagen');
         }
       };
+
 
       useEffect(() => {
         const t = setInterval(() => setWorkClockTick(Date.now()), 1000);

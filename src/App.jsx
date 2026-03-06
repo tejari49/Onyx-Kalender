@@ -1096,7 +1096,7 @@ const computePollTally = (poll, fallbackVoterIds = []) => {
     canFinalizeNow: allResponded || deadlinePassed,
     winnerOptionId,
   };
-};
+}
 
 const formatDeadlineShort = (deadlineAt) => {
   if (!deadlineAt) return '';
@@ -1157,7 +1157,7 @@ const sendEventComment = async () => {
   } catch (e) {
     showToast("Kommentar konnte nicht gesendet werden");
   }
-};
+}
 
 useEffect(() => {
   // Live comments only while modal open and panel visible
@@ -1421,7 +1421,7 @@ const eventCollectionRefFor = (calId) => {
   return collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events');
 };
 
-const eventDocRefFor = (calId, eventId) => {
+function eventDocRefFor(calId, eventId) {
   if (!user) return null;
   if (calId === 'default') {
     return doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventId);
@@ -2782,7 +2782,7 @@ const requestNotificationPermission = async (currentUser) => {
         };
       }, [userProfile]);
 
-      const localDateKey = (ts = Date.now()) => {
+      function localDateKey(ts = Date.now()) {
         try {
           const d = new Date(ts);
           const y = d.getFullYear();
@@ -2792,7 +2792,7 @@ const requestNotificationPermission = async (currentUser) => {
         } catch (_) { return ''; }
       };
 
-      const startOfWeekMs = (ts = Date.now()) => {
+      function startOfWeekMs(ts = Date.now()) {
         try {
           const d = new Date(ts);
           const day = d.getDay();
@@ -2803,7 +2803,7 @@ const requestNotificationPermission = async (currentUser) => {
         } catch (_) { return ts; }
       };
 
-      const startOfMonthMs = (ts = Date.now()) => {
+      function startOfMonthMs(ts = Date.now()) {
         try {
           const d = new Date(ts);
           d.setHours(0,0,0,0);
@@ -2812,7 +2812,7 @@ const requestNotificationPermission = async (currentUser) => {
         } catch (_) { return ts; }
       };
 
-      const formatDurationCompact = (ms = 0) => {
+      function formatDurationCompact(ms = 0) {
         const totalSec = Math.max(0, Math.round(Number(ms || 0) / 1000));
         const hours = Math.floor(totalSec / 3600);
         const minutes = Math.floor((totalSec % 3600) / 60);
@@ -2822,7 +2822,7 @@ const requestNotificationPermission = async (currentUser) => {
         return `${seconds}s`;
       };
 
-      const formatDurationVerbose = (ms = 0) => {
+      function formatDurationVerbose(ms = 0) {
         const totalMin = Math.max(0, Math.round(Number(ms || 0) / 60000));
         const hours = Math.floor(totalMin / 60);
         const minutes = totalMin % 60;
@@ -2831,14 +2831,14 @@ const requestNotificationPermission = async (currentUser) => {
         return `${minutes} Min.`;
       };
 
-      const getActiveWorkedMs = (session, nowTs = Date.now()) => {
+      function getActiveWorkedMs(session, nowTs = Date.now()) {
         try {
           if (!session?.startedAt) return 0;
           const pauseMs = Number(session?.pausedAccumulatedMs || 0);
           const segmentPause = (session?.isPaused && session?.pauseStartedAt) ? Math.max(0, nowTs - Number(session.pauseStartedAt || nowTs)) : 0;
           return Math.max(0, nowTs - Number(session.startedAt || nowTs) - pauseMs - segmentPause);
         } catch (_) { return 0; }
-      };
+      }
 
       const persistWorkClockActiveLocal = (payload) => {
         try {
@@ -2966,7 +2966,7 @@ const requestNotificationPermission = async (currentUser) => {
         return () => { try { unsub(); } catch (_) {} };
       }, [user]);
 
-      const getHourlyIndexesForDay = (dayStr) => {
+      function getHourlyIndexesForDay(dayStr) {
         try {
           if (!Array.isArray(hourlyForecast?.time)) return [];
           const key = String(dayStr || '').slice(0, 10);
@@ -2976,9 +2976,9 @@ const requestNotificationPermission = async (currentUser) => {
           }
           return idxs;
         } catch (_) { return []; }
-      };
+      }
 
-      const findFirstHourMatch = (dayStr, predicate) => {
+      function findFirstHourMatch(dayStr, predicate) {
         try {
           const idxs = getHourlyIndexesForDay(dayStr);
           for (const idx of idxs) {
@@ -2986,15 +2986,15 @@ const requestNotificationPermission = async (currentUser) => {
           }
           return null;
         } catch (_) { return null; }
-      };
+      }
 
-      const formatHourLabel = (timeStr) => {
+      function formatHourLabel(timeStr) {
         try {
           return new Date(timeStr).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
         } catch (_) { return ''; }
-      };
+      }
 
-      const getWeatherAdviceForDay = (dayIndex = 0) => {
+      function getWeatherAdviceForDay(dayIndex = 0) {
         try {
           const dayStr = dailyForecast?.time?.[dayIndex];
           if (!dayStr) return 'Wetterdaten werden geladen…';
@@ -3150,11 +3150,11 @@ const requestNotificationPermission = async (currentUser) => {
         } catch (_) {
           return 'Wetterdaten werden geladen…';
         }
-      };
+      }
 
       const todayWeatherAdvice = getWeatherAdviceForDay(0);
 
-      const getWeatherBadgeMeta = () => {
+      function getWeatherBadgeMeta() {
         try {
           const advice = String(todayWeatherAdvice || '').trim();
           const lower = advice.toLowerCase();
@@ -3450,7 +3450,7 @@ const registerPushServiceWorker = async () => {
     setPushDiag(prev => ({ ...prev, sw: 'error', controlling: !!navigator.serviceWorker?.controller, lastError: (e?.message || String(e)) }));
     return null;
   }
-};
+}
 
 useEffect(() => {
   const computeStandalone = () => {
@@ -3810,10 +3810,10 @@ useEffect(() => {
 }, [user?.uid, events, sharedEventsMap, customCalendars]);
 
 
-      const getCalendarById = (id) => {
+      function getCalendarById(id) {
          if (id === 'default') return { id: 'default', name: 'Privat', type: 'normal', ownerId: user?.uid };
          return customCalendars.find(c => c.id === id);
-      };
+      }
 
       const calendarTint = (calId) => {
         try {
@@ -4065,7 +4065,7 @@ useEffect(() => {
         return (js + 6) % 7; // Mo=0..So=6
       };
 
-      const buildRecurrenceFromForm = (form) => {
+      function buildRecurrenceFromForm(form) {
         const freq = (form.recurrenceFreq || 'NONE').toUpperCase();
         if (freq === 'NONE') return null;
         const interval = Math.max(1, parseInt(form.recurrenceInterval || 1, 10) || 1);
@@ -4996,11 +4996,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
-      const getProfile = (uid) => allProfiles.find(p => p.id === uid) || null;
+      function getProfile(uid) { return allProfiles.find(p => p.id === uid) || null; }
 
       function normalizeChatId(raw) { return String(raw || '').replace(/\D/g, '').slice(0, 5); }
 
-      const findProfileByFriendCode = async (code5) => {
+      async function findProfileByFriendCode(code5) {
         const code = normalizeChatId(code5);
         if (!/^\d{5}$/.test(code)) return null;
         try {
@@ -5022,7 +5022,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
-      const findProfileByEmailLower = async (emailRaw) => {
+      async function findProfileByEmailLower(emailRaw) {
         const email = String(emailRaw || '').trim().toLowerCase();
         if (!email || !email.includes('@')) return null;
         try {

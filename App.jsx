@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin,
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle,
       Copy, Link2, History, UserMinus
     } from 'lucide-react';
 
@@ -258,6 +258,13 @@ function AmoledCalendarApp() {
       const [hourlyForecast, setHourlyForecast] = useState(null);
       const [selectedForecastDay, setSelectedForecastDay] = useState(null);
       const [location, setLocation] = useState({ name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 });
+      const [workClockActive, setWorkClockActive] = useState(null);
+      const [workClockSessions, setWorkClockSessions] = useState([]);
+      const [workClockTick, setWorkClockTick] = useState(Date.now());
+      const [workClockModalOpen, setWorkClockModalOpen] = useState(false);
+      const [workClockDraftTitle, setWorkClockDraftTitle] = useState('');
+      const [workClockDraftLevel, setWorkClockDraftLevel] = useState('mittel');
+      const [workClockSaving, setWorkClockSaving] = useState(false);
       const [dailyFact, setDailyFact] = useState('');
       const [quotes, setQuotes] = useState([]);
       const [isStandalone, setIsStandalone] = useState(false);
@@ -2222,6 +2229,16 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
               if (localDisplayName && !merged.displayName) {
                 merged.displayName = localDisplayName;
               }
+              try {
+                const localClockRaw = localStorage.getItem(`onyx_work_clock_active_${user.uid}`);
+                if (localClockRaw) {
+                  const localClock = JSON.parse(localClockRaw);
+                  const incomingClock = incoming?.workClockActive || null;
+                  if (localClock?.startedAt && (!incomingClock?.startedAt || Number(localClock.startedAt) >= Number(incomingClock.startedAt || 0))) {
+                    merged.workClockActive = localClock;
+                  }
+                }
+              } catch (_) {}
               return merged;
             } catch (_) {
               return incoming;
@@ -2765,6 +2782,190 @@ const requestNotificationPermission = async (currentUser) => {
         };
       }, [userProfile]);
 
+      const localDateKey = (ts = Date.now()) => {
+        try {
+          const d = new Date(ts);
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        } catch (_) { return ''; }
+      };
+
+      const startOfWeekMs = (ts = Date.now()) => {
+        try {
+          const d = new Date(ts);
+          const day = d.getDay();
+          const diff = day === 0 ? -6 : 1 - day;
+          d.setHours(0,0,0,0);
+          d.setDate(d.getDate() + diff);
+          return d.getTime();
+        } catch (_) { return ts; }
+      };
+
+      const startOfMonthMs = (ts = Date.now()) => {
+        try {
+          const d = new Date(ts);
+          d.setHours(0,0,0,0);
+          d.setDate(1);
+          return d.getTime();
+        } catch (_) { return ts; }
+      };
+
+      const formatDurationCompact = (ms = 0) => {
+        const totalSec = Math.max(0, Math.round(Number(ms || 0) / 1000));
+        const hours = Math.floor(totalSec / 3600);
+        const minutes = Math.floor((totalSec % 3600) / 60);
+        const seconds = totalSec % 60;
+        if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+        if (minutes > 0) return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+        return `${seconds}s`;
+      };
+
+      const formatDurationVerbose = (ms = 0) => {
+        const totalMin = Math.max(0, Math.round(Number(ms || 0) / 60000));
+        const hours = Math.floor(totalMin / 60);
+        const minutes = totalMin % 60;
+        if (hours > 0 && minutes > 0) return `${hours}h ${minutes} Min.`;
+        if (hours > 0) return `${hours}h`;
+        return `${minutes} Min.`;
+      };
+
+      const getActiveWorkedMs = (session, nowTs = Date.now()) => {
+        try {
+          if (!session?.startedAt) return 0;
+          const pauseMs = Number(session?.pausedAccumulatedMs || 0);
+          const segmentPause = (session?.isPaused && session?.pauseStartedAt) ? Math.max(0, nowTs - Number(session.pauseStartedAt || nowTs)) : 0;
+          return Math.max(0, nowTs - Number(session.startedAt || nowTs) - pauseMs - segmentPause);
+        } catch (_) { return 0; }
+      };
+
+      const persistWorkClockActiveLocal = (payload) => {
+        try {
+          if (!user?.uid) return;
+          const key = `onyx_work_clock_active_${user.uid}`;
+          if (payload) localStorage.setItem(key, JSON.stringify(payload));
+          else localStorage.removeItem(key);
+        } catch (_) {}
+      };
+
+      const saveWorkClockProfilePatch = async (patch) => {
+        try {
+          if (!user) return;
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), patch, { merge: true });
+          setUserProfile(prev => ({ ...(prev || {}), ...patch }));
+        } catch (_) {}
+      };
+
+      const startWorkClock = async () => {
+        if (!user) return;
+        const now = Date.now();
+        const payload = {
+          startedAt: now,
+          pausedAccumulatedMs: 0,
+          pauseStartedAt: null,
+          isPaused: false,
+          source: 'manual',
+        };
+        setWorkClockActive(payload);
+        persistWorkClockActiveLocal(payload);
+        await saveWorkClockProfilePatch({ workClockActive: payload, updatedAt: now });
+        showToast('Stempelung gestartet');
+      };
+
+      const toggleWorkClockPause = async () => {
+        if (!user || !workClockActive?.startedAt) return;
+        const now = Date.now();
+        let next = { ...(workClockActive || {}) };
+        if (next.isPaused) {
+          next.pausedAccumulatedMs = Number(next.pausedAccumulatedMs || 0) + Math.max(0, now - Number(next.pauseStartedAt || now));
+          next.pauseStartedAt = null;
+          next.isPaused = false;
+          showToast('Arbeitszeit läuft weiter');
+        } else {
+          next.isPaused = true;
+          next.pauseStartedAt = now;
+          showToast('Pause aktiviert');
+        }
+        setWorkClockActive(next);
+        persistWorkClockActiveLocal(next);
+        await saveWorkClockProfilePatch({ workClockActive: next, updatedAt: now });
+      };
+
+      const requestStopWorkClock = () => {
+        if (!workClockActive?.startedAt) return;
+        setWorkClockDraftTitle('');
+        setWorkClockDraftLevel('mittel');
+        setWorkClockModalOpen(true);
+      };
+
+      const cancelWorkClock = async () => {
+        setWorkClockActive(null);
+        persistWorkClockActiveLocal(null);
+        await saveWorkClockProfilePatch({ workClockActive: null, updatedAt: Date.now() });
+        showToast('Stempelung verworfen');
+      };
+
+      const finishWorkClock = async () => {
+        if (!user || !workClockActive?.startedAt) return;
+        try {
+          setWorkClockSaving(true);
+          const now = Date.now();
+          const workedMs = getActiveWorkedMs(workClockActive, now);
+          const pauseMs = Number(workClockActive?.pausedAccumulatedMs || 0) + ((workClockActive?.isPaused && workClockActive?.pauseStartedAt) ? Math.max(0, now - Number(workClockActive.pauseStartedAt || now)) : 0);
+          const payload = {
+            startedAt: Number(workClockActive.startedAt || now),
+            endedAt: now,
+            workMs: workedMs,
+            pauseMs,
+            totalMs: Math.max(0, now - Number(workClockActive.startedAt || now)),
+            title: String(workClockDraftTitle || '').trim() || 'Arbeit',
+            level: String(workClockDraftLevel || 'mittel'),
+            dateKey: localDateKey(workClockActive.startedAt || now),
+            createdAt: serverTimestamp(),
+            updatedAt: now,
+          };
+          await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions'), payload);
+          setWorkClockActive(null);
+          persistWorkClockActiveLocal(null);
+          await saveWorkClockProfilePatch({ workClockActive: null, updatedAt: now });
+          setWorkClockModalOpen(false);
+          showToast('Arbeitszeit gespeichert');
+        } catch (err) {
+          console.error('finishWorkClock failed', err);
+          showToast('Speichern fehlgeschlagen');
+        } finally {
+          setWorkClockSaving(false);
+        }
+      };
+
+      useEffect(() => {
+        const t = setInterval(() => setWorkClockTick(Date.now()), 1000);
+        return () => clearInterval(t);
+      }, []);
+
+      useEffect(() => {
+        if (!user?.uid) return;
+        try {
+          const raw = localStorage.getItem(`onyx_work_clock_active_${user.uid}`);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.startedAt) setWorkClockActive(parsed);
+          }
+        } catch (_) {}
+      }, [user?.uid]);
+
+      useEffect(() => {
+        if (!user) return;
+        const ref = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions');
+        const unsub = onSnapshot(query(ref, orderBy('startedAt', 'desc'), limit(120)), (snap) => {
+          const rows = [];
+          snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+          setWorkClockSessions(rows);
+        });
+        return () => { try { unsub(); } catch (_) {} };
+      }, [user]);
+
       const getHourlyIndexesForDay = (dayStr) => {
         try {
           if (!Array.isArray(hourlyForecast?.time)) return [];
@@ -2791,100 +2992,6 @@ const requestNotificationPermission = async (currentUser) => {
         try {
           return new Date(timeStr).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
         } catch (_) { return ''; }
-      };
-
-      const getWeatherBadgeForDay = (dayIndex = 0) => {
-        try {
-          const dayStr = dailyForecast?.time?.[dayIndex];
-          if (!dayStr) return { icon: '⏳', label: 'Lade Wetter', tone: 'neutral' };
-
-          const maxTemp = Math.round(dailyForecast?.temperature_2m_max?.[dayIndex] ?? weather?.temperature ?? 0);
-          const minTemp = Math.round(dailyForecast?.temperature_2m_min?.[dayIndex] ?? weather?.temperature ?? 0);
-          const rainProb = Math.round(dailyForecast?.precipitation_probability_max?.[dayIndex] ?? 0);
-          const rainSum = Number(dailyForecast?.precipitation_sum?.[dayIndex] ?? 0);
-          const windMax = Math.round(dailyForecast?.windspeed_10m_max?.[dayIndex] ?? weather?.windspeed ?? 0);
-          const dayCode = Number(dailyForecast?.weathercode?.[dayIndex] ?? weather?.weathercode ?? 0);
-
-          const isMostlySunnyCode = (code) => [0, 1, 2].includes(Number(code ?? -1));
-          const toneForWind = (speed) => speed >= 55 ? 'danger' : 'warn';
-          const toneForRain = (prob) => prob >= 75 ? 'danger' : 'warn';
-
-          if (dayIndex === 0 && Array.isArray(hourlyForecast?.time)) {
-            const now = new Date();
-            const end = new Date(now.getTime() + (4 * 60 * 60 * 1000));
-            const todayIdxs = getHourlyIndexesForDay(dayStr);
-            const windowIdxs = todayIdxs.filter((idx) => {
-              const ts = new Date(hourlyForecast?.time?.[idx] || 0).getTime();
-              return Number.isFinite(ts) && ts >= (now.getTime() - 60 * 1000) && ts <= end.getTime();
-            });
-
-            if (windowIdxs.length > 0) {
-              const firstIdx = windowIdxs[0];
-              const lastIdx = windowIdxs[windowIdxs.length - 1];
-              const untilLabel = formatHourLabel(hourlyForecast?.time?.[lastIdx]);
-              const temps = windowIdxs.map((idx) => Number(hourlyForecast?.temperature_2m?.[idx] ?? weather?.temperature ?? 0));
-              const codes = windowIdxs.map((idx) => Number(hourlyForecast?.weathercode?.[idx] ?? weather?.weathercode ?? 0));
-              const winds = windowIdxs.map((idx) => Number(hourlyForecast?.windspeed_10m?.[idx] ?? weather?.windspeed ?? 0));
-              const tempMin4h = Math.round(Math.min(...temps));
-              const tempMax4h = Math.round(Math.max(...temps));
-              const maxWind4h = Math.round(Math.max(...winds));
-              const firstRainIdx4h = windowIdxs.find((idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 45);
-              const firstWindIdx4h = windowIdxs.find((idx) => Number(hourlyForecast?.windspeed_10m?.[idx] ?? weather?.windspeed ?? 0) >= 30);
-              const mostlySunny = codes.filter((code) => isMostlySunnyCode(code)).length >= Math.ceil(windowIdxs.length * 0.6);
-
-              if (firstRainIdx4h != null) {
-                const rainProbAtStart = Math.round(Number(hourlyForecast?.precipitation_probability?.[firstRainIdx4h] ?? 0));
-                const rainTimeLabel = formatHourLabel(hourlyForecast?.time?.[firstRainIdx4h]);
-                const startsLater = firstRainIdx4h !== firstIdx;
-                return { icon: '☔', label: startsLater ? `Regen ab ${rainTimeLabel}` : `Regen bis ${untilLabel}`, tone: toneForRain(rainProbAtStart || rainProb) };
-              }
-
-              if (firstWindIdx4h != null && maxWind4h >= 30) {
-                return { icon: '🌬️', label: `Windig bis ${untilLabel}`, tone: toneForWind(maxWind4h) };
-              }
-
-              if (tempMin4h <= 8 && tempMax4h <= 13) {
-                return { icon: '🧥', label: `Jacke bis ${untilLabel}`, tone: 'info' };
-              }
-
-              if (tempMin4h <= 10 && tempMax4h - tempMin4h >= 5) {
-                return { icon: '🌓', label: `Später milder bis ${untilLabel}`, tone: 'good' };
-              }
-
-              if (mostlySunny) {
-                return { icon: '☀️', label: `Trocken bis ${untilLabel}`, tone: 'good' };
-              }
-
-              return { icon: '🌤️', label: `Ruhig bis ${untilLabel}`, tone: 'neutral' };
-            }
-          }
-
-          const firstRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 55);
-          const firstStrongRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 75);
-          if (firstStrongRainIdx != null || rainProb >= 75 || rainSum >= 4) {
-            const idx = firstStrongRainIdx != null ? firstStrongRainIdx : firstRainIdx;
-            return { icon: '⛈️', label: idx != null ? `Kräftiger Regen ab ${formatHourLabel(hourlyForecast?.time?.[idx])}` : 'Kräftiger Regen möglich', tone: 'danger' };
-          }
-          if (firstRainIdx != null || rainProb >= 55 || rainSum >= 1.2) {
-            const idx = firstRainIdx != null ? firstRainIdx : firstStrongRainIdx;
-            return { icon: '☔', label: idx != null ? `Regen ab ${formatHourLabel(hourlyForecast?.time?.[idx])}` : 'Regen möglich', tone: 'warn' };
-          }
-          if (windMax >= 35) {
-            return { icon: '🌬️', label: 'Windig heute', tone: toneForWind(windMax) };
-          }
-          if (minTemp <= 8) {
-            return { icon: '🧥', label: 'Jacke sinnvoll', tone: 'info' };
-          }
-          if (isMostlySunnyCode(dayCode)) {
-            return { icon: '☀️', label: 'Freundlich und trocken', tone: 'good' };
-          }
-          if (maxTemp >= 24) {
-            return { icon: '🌡️', label: 'Eher warm heute', tone: 'good' };
-          }
-          return { icon: '🌤️', label: 'Ruhiges Wetter', tone: 'neutral' };
-        } catch (_) {
-          return { icon: '🌤️', label: 'Wetter', tone: 'neutral' };
-        }
       };
 
       const getWeatherAdviceForDay = (dayIndex = 0) => {
@@ -3046,14 +3153,93 @@ const requestNotificationPermission = async (currentUser) => {
       };
 
       const todayWeatherAdvice = getWeatherAdviceForDay(0);
-      const todayWeatherBadge = getWeatherBadgeForDay(0);
-      const weatherBadgeToneClass = (tone) => ({
-        danger: 'border-red-500/30 bg-red-500/10 text-red-200',
-        warn: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
-        good: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
-        info: 'border-sky-500/30 bg-sky-500/10 text-sky-200',
-        neutral: 'border-neutral-700 bg-neutral-900 text-neutral-200',
-      }[tone] || 'border-neutral-700 bg-neutral-900 text-neutral-200');
+
+      const getWeatherBadgeMeta = () => {
+        try {
+          const advice = String(todayWeatherAdvice || '').trim();
+          const lower = advice.toLowerCase();
+          const hourMatch = advice.match(/(?:ab|bis)\s(\d{1,2}:\d{2})/i);
+          const timeLabel = hourMatch ? hourMatch[1] : null;
+          if (lower.includes('regen') || lower.includes('schirm')) {
+            return {
+              icon: '☔',
+              tone: 'border-amber-700/50 bg-amber-950/30 text-amber-200',
+              text: timeLabel ? (lower.includes('bis') ? `Trocken bis ${timeLabel}` : `Regen ab ${timeLabel}`) : 'Regenschirm sinnvoll'
+            };
+          }
+          if (lower.includes('windig') || lower.includes('stürmisch')) {
+            return {
+              icon: '🌬️',
+              tone: 'border-neutral-700 bg-slate-950/40 text-slate-200',
+              text: timeLabel ? `Windig bis ${timeLabel}` : 'Windiger Abschnitt'
+            };
+          }
+          if (lower.includes('jacke') || lower.includes('kühl') || lower.includes('frisch')) {
+            return {
+              icon: '🧥',
+              tone: 'border-sky-800/50 bg-sky-950/30 text-sky-200',
+              text: timeLabel ? `Jacke bis ${timeLabel}` : 'Jacke sinnvoll'
+            };
+          }
+          if (lower.includes('milder') || lower.includes('angenehm')) {
+            return {
+              icon: '🌓',
+              tone: 'border-emerald-800/50 bg-emerald-950/30 text-emerald-200',
+              text: timeLabel ? `Später milder bis ${timeLabel}` : 'Später angenehmer'
+            };
+          }
+          return {
+            icon: '☀️',
+            tone: 'border-emerald-800/50 bg-emerald-950/30 text-emerald-200',
+            text: timeLabel ? `Trocken bis ${timeLabel}` : 'Ruhiges Wetter'
+          };
+        } catch (_) {
+          return { icon: '☀️', tone: 'border-neutral-800 bg-neutral-950 text-neutral-200', text: 'Ruhiges Wetter' };
+        }
+      };
+
+      const todayDateStr = new Date().toISOString().split('T')[0];
+      const todaysEvents = getEventsForDate(todayDateStr);
+      const nowMs = Date.now();
+      const timedEventsToday = todaysEvents
+        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
+        .filter((entry) => Number.isFinite(entry.startMs))
+        .sort((a, b) => a.startMs - b.startMs);
+      const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
+      const remainingTodayCount = todaysEvents.filter((event) => {
+        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
+        if (Number.isFinite(startMs)) return startMs >= nowMs;
+        return true;
+      }).length;
+      const freeUntilLabel = nextTimedEvent ? formatHourLabel(todayDateStr + 'T' + nextTimedEvent.event.time) : null;
+      const nextEventCountdownText = (() => {
+        if (!nextTimedEvent) return 'Kein weiterer fixer Termin heute';
+        const diffMin = Math.max(0, Math.round((nextTimedEvent.startMs - nowMs) / 60000));
+        if (diffMin < 1) return 'Startet jetzt';
+        if (diffMin < 60) return `In ${diffMin} Min.`;
+        const hours = Math.floor(diffMin / 60);
+        const mins = diffMin % 60;
+        return mins ? `In ${hours}h ${mins} Min.` : `In ${hours}h`;
+      })();
+      const freeWindowText = (() => {
+        if (remainingTodayCount === 0) return 'Rest des Tages frei';
+        if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
+        return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
+      })();
+      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
+      const weatherBadgeMeta = getWeatherBadgeMeta();
+
+      const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
+      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekStartMs = startOfWeekMs();
+      const monthStartMs = startOfMonthMs();
+      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
+      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
+      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
 
       const fetchWeather = async () => {
         try {
@@ -5623,13 +5809,7 @@ setSelfDestruct(false);
                   <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between gap-4 cursor-pointer hover:border-neutral-600 transition-colors group">
                     <div className="min-w-0 flex-1">
                       <h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider mb-1 flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {location.name}</h3>
-                      <div className="flex flex-wrap items-center gap-3 mt-1">
-                        <p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
-                        <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[11px] md:text-xs ${weatherBadgeToneClass(todayWeatherBadge?.tone)}`}>
-                          <span>{todayWeatherBadge?.icon || '🌤️'}</span>
-                          <span>{todayWeatherBadge?.label || 'Wetter'}</span>
-                        </span>
-                      </div>
+                      <p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
                       <p className="mt-2 text-sm text-neutral-400 leading-relaxed max-w-[32rem]">{todayWeatherAdvice}</p>
                     </div>
                     <div className="shrink-0">{getWeatherIcon(weather?.weathercode, "w-10 h-10 md:w-12 md:h-12 text-white")}</div>
@@ -5639,6 +5819,74 @@ setSelfDestruct(false);
                     <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-xl md:text-2xl font-semibold text-neutral-100 leading-snug">“{dailyFact}”</p></div>
                   </div>
                 </div>
+                <div className="mb-6 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Smart Day</div>
+                      <div className="text-xl md:text-2xl font-semibold text-white">{nextEventLabel}</div>
+                      <div className="mt-2 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 md:justify-end">
+                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black min-w-[10rem]">
+                        <div className="text-[10px] uppercase tracking-widest text-neutral-500">Nächster Termin</div>
+                        <div className="mt-1 text-sm font-medium text-neutral-100">{nextTimedEvent ? (nextTimedEvent.event.time || 'Heute') : 'Keiner mehr'}</div>
+                      </div>
+                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black min-w-[10rem]">
+                        <div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute noch frei</div>
+                        <div className="mt-1 text-sm font-medium text-neutral-100">{freeWindowText}</div>
+                      </div>
+                      <div className={`px-3 py-2 rounded-xl border min-w-[11rem] ${weatherBadgeMeta.tone}`}>
+                        <div className="text-[10px] uppercase tracking-widest text-current/70">Wetter-Hinweis</div>
+                        <div className="mt-1 text-sm font-medium flex items-center gap-2"><span>{weatherBadgeMeta.icon}</span><span>{weatherBadgeMeta.text}</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {(userProfile?.workClockEnabled) && (
+                  <div className="mb-6 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempelung</div>
+                          <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
+                          <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv – Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte deine Arbeitszeit direkt von der Startseite.'}</div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {!workClockActive?.startedAt ? (
+                            <button onClick={startWorkClock} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
+                          ) : (
+                            <>
+                              <button onClick={toggleWorkClockPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Weiter' : 'Pause'}</button>
+                              <button onClick={requestStopWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div></div>
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ø {formatDurationVerbose(weekAvgMs)}</div></div>
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
+                      </div>
+                      {(workClockSessions || []).length > 0 && (
+                        <div className="border-t border-neutral-800 pt-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Letzte Sessions</div>
+                          <div className="space-y-2">
+                            {(workClockSessions || []).slice(0, 3).map((s) => (
+                              <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
+                                <div className="min-w-0">
+                                  <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
+                                  <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
+                                </div>
+                                <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda für heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
                   {hasUnreadMessages && (
@@ -6476,6 +6724,46 @@ setSelfDestruct(false);
                       </select>
                       <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – du kannst nur Systemton nutzen oder stumm schalten.</p>
                     </div>
+                  </div>
+
+                  <div className="border border-neutral-800 rounded-xl bg-black p-4 space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-white flex items-center gap-2"><Briefcase className="w-4 h-4" /> Stempelung</p>
+                        <p className="text-xs text-neutral-500 mt-1">Startet Arbeitszeit auf der Startseite mit Start, Pause und Stopp. Beim Beenden wird Tätigkeit und Belastung gespeichert.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const next = !(userProfile?.workClockEnabled === true);
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { workClockEnabled: next, updatedAt: Date.now() }, { merge: true });
+                            setUserProfile(prev => ({ ...(prev || {}), workClockEnabled: next }));
+                            showToast(next ? 'Stempelung aktiviert' : 'Stempelung deaktiviert');
+                          } catch (_) { showToast('Fehler'); }
+                        }}
+                        className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + ((userProfile?.workClockEnabled === true) ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}
+                      >
+                        {(userProfile?.workClockEnabled === true) ? 'Aktiv' : 'Aus'}
+                      </button>
+                    </div>
+
+                    {(userProfile?.workClockEnabled === true) && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div>
+                          <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div>
+                        </div>
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500">Diese Woche</div>
+                          <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div>
+                        </div>
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500">Dieser Monat</div>
+                          <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <details className="border border-neutral-800 rounded-xl bg-black p-4">
@@ -7582,6 +7870,44 @@ setSelfDestruct(false);
           </main>
 
           
+          {workClockModalOpen && (
+            <div className="fixed inset-0 z-[95] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white"><Briefcase className="w-5 h-5" /></div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Arbeitszeit abschliessen</h3>
+                    <p className="text-xs text-neutral-500">Erfasse kurz die Tätigkeit und die Belastung.</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
+                    <input value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Level</label>
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      {['leicht','mittel','schwer'].map(level => (
+                        <button key={level} type="button" onClick={() => setWorkClockDraftLevel(level)} className={"px-3 py-3 rounded-xl border text-sm font-semibold transition-colors " + (workClockDraftLevel === level ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
+                          {level.charAt(0).toUpperCase() + level.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-neutral-800 bg-black px-4 py-3 text-sm text-neutral-300">
+                    Aktuelle Arbeitszeit: <span className="text-white font-medium">{formatDurationVerbose(activeWorkMs)}</span>
+                  </div>
+                </div>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setWorkClockModalOpen(false)} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Zurück</button>
+                  <button type="button" onClick={cancelWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors">Verwerfen</button>
+                  <button type="button" onClick={finishWorkClock} disabled={workClockSaving} className="ml-auto px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">{workClockSaving ? 'Speichern…' : 'Speichern'}</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {secretPinModalOpen && (
             <div className="fixed inset-0 z-[90] bg-black/90 backdrop-blur-sm flex items-center justify-center p-6">
               <div className="w-full max-w-sm border border-neutral-800 rounded-2xl bg-neutral-950 p-6 shadow-2xl">
@@ -7629,13 +7955,7 @@ setSelfDestruct(false);
 
                 <div className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <p className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
-                      <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[11px] ${weatherBadgeToneClass(todayWeatherBadge?.tone)}`}>
-                        <span>{todayWeatherBadge?.icon || '🌤️'}</span>
-                        <span>{todayWeatherBadge?.label || 'Wetter'}</span>
-                      </span>
-                    </div>
+                    <p className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
                     <p className="text-xs text-neutral-500 mt-1">
                       {weather ? `Wind ${Math.round(weather.windspeed || 0)} km/h` : 'Lade Daten…'}
                     </p>

@@ -2805,6 +2805,91 @@ const requestNotificationPermission = async (currentUser) => {
           const windMax = Math.round(dailyForecast?.windspeed_10m_max?.[dayIndex] ?? weather?.windspeed ?? 0);
           const dayCode = Number(dailyForecast?.weathercode?.[dayIndex] ?? weather?.weathercode ?? 0);
 
+          const getPartOfDayLabel = (hour) => {
+            if (hour >= 5 && hour < 11) return 'am Morgen';
+            if (hour >= 11 && hour < 14) return 'über Mittag';
+            if (hour >= 14 && hour < 18) return 'am Nachmittag';
+            if (hour >= 18 && hour < 23) return 'am Abend';
+            return 'in der Nacht';
+          };
+
+          const isMostlySunnyCode = (code) => [0, 1, 2].includes(Number(code ?? -1));
+          const rainIntensityText = (prob) => {
+            if (prob >= 85) return 'kräftiger Regen';
+            if (prob >= 70) return 'spürbarer Regen';
+            return 'leichter Regen';
+          };
+          const windText = (speed) => {
+            if (speed >= 55) return 'stürmisch';
+            if (speed >= 40) return 'recht windig';
+            if (speed >= 30) return 'spürbar windig';
+            return 'eher ruhig';
+          };
+
+          if (dayIndex === 0 && Array.isArray(hourlyForecast?.time)) {
+            const now = new Date();
+            const end = new Date(now.getTime() + (4 * 60 * 60 * 1000));
+            const todayIdxs = getHourlyIndexesForDay(dayStr);
+            const windowIdxs = todayIdxs.filter((idx) => {
+              const ts = new Date(hourlyForecast?.time?.[idx] || 0).getTime();
+              return Number.isFinite(ts) && ts >= (now.getTime() - 60 * 1000) && ts <= end.getTime();
+            });
+
+            if (windowIdxs.length > 0) {
+              const firstIdx = windowIdxs[0];
+              const lastIdx = windowIdxs[windowIdxs.length - 1];
+              const untilLabel = formatHourLabel(hourlyForecast?.time?.[lastIdx]);
+              const temps = windowIdxs.map((idx) => Number(hourlyForecast?.temperature_2m?.[idx] ?? weather?.temperature ?? 0));
+              const probs = windowIdxs.map((idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0));
+              const codes = windowIdxs.map((idx) => Number(hourlyForecast?.weathercode?.[idx] ?? weather?.weathercode ?? 0));
+              const winds = windowIdxs.map((idx) => Number(hourlyForecast?.windspeed_10m?.[idx] ?? weather?.windspeed ?? 0));
+              const tempMin4h = Math.round(Math.min(...temps));
+              const tempMax4h = Math.round(Math.max(...temps));
+              const maxRain4h = Math.round(Math.max(...probs));
+              const maxWind4h = Math.round(Math.max(...winds));
+              const firstRainIdx4h = windowIdxs.find((idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 45);
+              const firstWindIdx4h = windowIdxs.find((idx) => Number(hourlyForecast?.windspeed_10m?.[idx] ?? weather?.windspeed ?? 0) >= 30);
+              const mostlySunny = codes.filter((code) => isMostlySunnyCode(code)).length >= Math.ceil(windowIdxs.length * 0.6);
+              const nowHour = now.getHours();
+              const laterHour = new Date(hourlyForecast?.time?.[lastIdx] || now).getHours();
+              const nowPhase = getPartOfDayLabel(nowHour);
+              const laterPhase = getPartOfDayLabel(laterHour);
+
+              if (firstRainIdx4h != null) {
+                const rainProbAtStart = Math.round(Number(hourlyForecast?.precipitation_probability?.[firstRainIdx4h] ?? maxRain4h));
+                const rainLabel = rainIntensityText(rainProbAtStart);
+                const rainTimeLabel = formatHourLabel(hourlyForecast?.time?.[firstRainIdx4h]);
+                const startsLater = firstRainIdx4h !== firstIdx;
+                if (startsLater) {
+                  return `Bis ${rainTimeLabel} bleibt es meist trocken, danach ist ${rainLabel} möglich – Regenschirm mitnehmen.`;
+                }
+                return `Ab jetzt bis ${untilLabel} ist ${rainLabel} möglich – Regenschirm sinnvoll.`;
+              }
+
+              if (firstWindIdx4h != null && maxWind4h >= 30) {
+                const windTimeLabel = formatHourLabel(hourlyForecast?.time?.[firstWindIdx4h]);
+                if (tempMin4h <= 11) {
+                  return `Bis ${untilLabel} wird es ${windText(maxWind4h)} – ab ${windTimeLabel} lieber mit Jacke raus.`;
+                }
+                return `Bis ${untilLabel} wird es ${windText(maxWind4h)} – draussen kann es ab ${windTimeLabel} ungemütlich werden.`;
+              }
+
+              if (tempMin4h <= 8 && tempMax4h <= 13) {
+                return `${nowPhase} bleibt es bis ${untilLabel} frisch bei etwa ${tempMin4h}–${tempMax4h}° – Jacke sinnvoll.`;
+              }
+
+              if (tempMin4h <= 10 && tempMax4h - tempMin4h >= 5) {
+                return `${nowPhase} noch eher kühl, bis ${untilLabel} wird es milder – Jacke jetzt sinnvoll, ${laterPhase} eher weniger.`;
+              }
+
+              if (mostlySunny) {
+                return `Bis ${untilLabel} bleibt es trocken mit etwas Sonnenschein – aktuell keine Jacke und kein Schirm nötig.`;
+              }
+
+              return `Bis ${untilLabel} bleibt es überwiegend trocken bei ${tempMin4h}–${tempMax4h}° – insgesamt ruhiges Wetter.`;
+            }
+          }
+
           const firstRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 55);
           const firstStrongRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 75);
           const firstCoolIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.temperature_2m?.[idx] ?? 99) <= 12);
@@ -2822,7 +2907,7 @@ const requestNotificationPermission = async (currentUser) => {
 
           if (firstStrongRainIdx != null || rainProb >= 75 || rainSum >= 4) {
             const idx = firstStrongRainIdx != null ? firstStrongRainIdx : firstRainIdx;
-            const when = idx != null ? ` – ab ${formatHourLabel(hourlyForecast?.time?.[idx])} wird es voraussichtlich nass.` : '.';
+            const when = idx != null ? ` – ab ${formatHourLabel(hourlyForecast?.time?.[idx])} ist kräftiger Regen möglich.` : '.';
             return `Nimm einen Regenschirm mit${when}`;
           }
 
@@ -2845,7 +2930,7 @@ const requestNotificationPermission = async (currentUser) => {
           }
 
           if (windMax >= 35) {
-            return `Heute wird es windig – draussen lieber etwas Wärmeres einplanen.`;
+            return `Heute wird es ${windText(windMax)} – draussen lieber etwas Wärmeres einplanen.`;
           }
 
           if (maxTemp >= 28) {
@@ -2874,7 +2959,7 @@ const requestNotificationPermission = async (currentUser) => {
           const res = await fetch(
             `https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}` +
             `&current_weather=true` +
-            `&hourly=temperature_2m,precipitation_probability,weathercode` +
+            `&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m` +
             `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,windspeed_10m_max,sunrise,sunset` +
             `&timezone=auto`
           );

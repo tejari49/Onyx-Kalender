@@ -2060,7 +2060,36 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
         const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
         const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
-          if (docSnap.exists()) setUserProfile({ id: docSnap.id, ...docSnap.data() });
+          if (!docSnap.exists()) return;
+          const incoming = { id: docSnap.id, ...docSnap.data() };
+          setUserProfile(prev => {
+            try {
+              const localAlias = String(localStorage.getItem(`onyx_username_${user.uid}`) || '').trim();
+              const localDisplayName = String(localStorage.getItem(`onyx_displayName_${user.uid}`) || '').trim();
+              const prevAlias = String(prev?.username || '').trim();
+              const incomingAlias = String(incoming?.username || '').trim();
+              const prevUpdatedAt = Number(prev?.updatedAt || 0);
+              const incomingUpdatedAt = Number(incoming?.updatedAt || 0);
+              const merged = { ...(prev || {}), ...incoming };
+
+              if (prevAlias && incomingAlias && prevAlias !== incomingAlias && prevUpdatedAt > incomingUpdatedAt) {
+                merged.username = prevAlias;
+                merged.usernameLower = String(prevAlias).toLowerCase();
+              }
+
+              if (localAlias && (!merged.username || incomingUpdatedAt < prevUpdatedAt || localAlias !== incomingAlias)) {
+                merged.username = localAlias;
+                merged.usernameLower = String(localAlias).toLowerCase();
+              }
+
+              if (localDisplayName && !merged.displayName) {
+                merged.displayName = localDisplayName;
+              }
+              return merged;
+            } catch (_) {
+              return incoming;
+            }
+          });
         });
 
         const allProfilesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
@@ -2305,7 +2334,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
               if (!isMuted && canNotify && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
-                showSystemNotification('Kalender Aktuell 🔏', null, `onyx_chat_${activeChat.id}`);
+                // Secret chat stays secret -> no OS notification for chat messages.
                 localStorage.setItem(key, String(lastMsg.timestamp || Date.now()));
               }
             }
@@ -2599,6 +2628,109 @@ const requestNotificationPermission = async (currentUser) => {
         };
       }, [userProfile]);
 
+      const getHourlyIndexesForDay = (dayStr) => {
+        try {
+          if (!Array.isArray(hourlyForecast?.time)) return [];
+          const key = String(dayStr || '').slice(0, 10);
+          const idxs = [];
+          for (let i = 0; i < hourlyForecast.time.length; i++) {
+            if (String(hourlyForecast.time[i]).slice(0, 10) === key) idxs.push(i);
+          }
+          return idxs;
+        } catch (_) { return []; }
+      };
+
+      const findFirstHourMatch = (dayStr, predicate) => {
+        try {
+          const idxs = getHourlyIndexesForDay(dayStr);
+          for (const idx of idxs) {
+            if (predicate(idx)) return idx;
+          }
+          return null;
+        } catch (_) { return null; }
+      };
+
+      const formatHourLabel = (timeStr) => {
+        try {
+          return new Date(timeStr).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+        } catch (_) { return ''; }
+      };
+
+      const getWeatherAdviceForDay = (dayIndex = 0) => {
+        try {
+          const dayStr = dailyForecast?.time?.[dayIndex];
+          if (!dayStr) return 'Wetterdaten werden geladen…';
+
+          const maxTemp = Math.round(dailyForecast?.temperature_2m_max?.[dayIndex] ?? weather?.temperature ?? 0);
+          const minTemp = Math.round(dailyForecast?.temperature_2m_min?.[dayIndex] ?? weather?.temperature ?? 0);
+          const rainProb = Math.round(dailyForecast?.precipitation_probability_max?.[dayIndex] ?? 0);
+          const rainSum = Number(dailyForecast?.precipitation_sum?.[dayIndex] ?? 0);
+          const windMax = Math.round(dailyForecast?.windspeed_10m_max?.[dayIndex] ?? weather?.windspeed ?? 0);
+          const dayCode = Number(dailyForecast?.weathercode?.[dayIndex] ?? weather?.weathercode ?? 0);
+
+          const firstRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 55);
+          const firstStrongRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 75);
+          const firstCoolIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.temperature_2m?.[idx] ?? 99) <= 12);
+          const firstWarmIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.temperature_2m?.[idx] ?? -99) >= 22);
+          const morningIdx = findFirstHourMatch(dayStr, (idx) => {
+            const h = new Date(hourlyForecast?.time?.[idx] || 0).getHours();
+            return h >= 6 && h <= 10;
+          });
+          const afternoonIdx = findFirstHourMatch(dayStr, (idx) => {
+            const h = new Date(hourlyForecast?.time?.[idx] || 0).getHours();
+            return h >= 13 && h <= 17;
+          });
+          const morningTemp = morningIdx != null ? Math.round(hourlyForecast?.temperature_2m?.[morningIdx] ?? minTemp) : minTemp;
+          const afternoonTemp = afternoonIdx != null ? Math.round(hourlyForecast?.temperature_2m?.[afternoonIdx] ?? maxTemp) : maxTemp;
+
+          if (firstStrongRainIdx != null || rainProb >= 75 || rainSum >= 4) {
+            const idx = firstStrongRainIdx != null ? firstStrongRainIdx : firstRainIdx;
+            const when = idx != null ? ` – ab ${formatHourLabel(hourlyForecast?.time?.[idx])} wird es voraussichtlich nass.` : '.';
+            return `Nimm einen Regenschirm mit${when}`;
+          }
+
+          if (firstRainIdx != null || rainProb >= 55 || rainSum >= 1.2) {
+            const idx = firstRainIdx != null ? firstRainIdx : firstStrongRainIdx;
+            const when = idx != null ? ` – ab ${formatHourLabel(hourlyForecast?.time?.[idx])} steigt die Regenchance.` : '.';
+            return `Leichte Regengefahr${when}`;
+          }
+
+          if (morningTemp >= 17 && afternoonTemp <= 12) {
+            return `Am Morgen brauchst du eher keine Jacke, später wird es kühler.`;
+          }
+
+          if (morningTemp <= 11 && afternoonTemp >= 18) {
+            return `Morgens frisch, am Nachmittag deutlich angenehmer.`;
+          }
+
+          if (firstCoolIdx != null && maxTemp - minTemp >= 6) {
+            return `Zwiebellook lohnt sich – ab ${formatHourLabel(hourlyForecast?.time?.[firstCoolIdx])} wird es spürbar kühler.`;
+          }
+
+          if (windMax >= 35) {
+            return `Heute wird es windig – draussen lieber etwas Wärmeres einplanen.`;
+          }
+
+          if (maxTemp >= 28) {
+            return `Sehr warm heute – Wasser mitnehmen und eher leichte Kleidung tragen.`;
+          }
+
+          if (minTemp <= 5) {
+            return `Kühler Start in den Tag – Jacke am Morgen sinnvoll.`;
+          }
+
+          if ([0,1].includes(dayCode) && maxTemp >= 20 && firstWarmIdx != null) {
+            return `Freundliches Wetter – ab ${formatHourLabel(hourlyForecast?.time?.[firstWarmIdx])} wird es angenehm mild.`;
+          }
+
+          return `Heute zwischen ${minTemp}° und ${maxTemp}° – insgesamt eher ruhiges Wetter.`;
+        } catch (_) {
+          return 'Wetterdaten werden geladen…';
+        }
+      };
+
+      const todayWeatherAdvice = getWeatherAdviceForDay(0);
+
       const fetchWeather = async () => {
         try {
           // Open-Meteo: add richer daily details + hourly for nicer UI
@@ -2761,8 +2893,8 @@ const requestNotificationPermission = async (currentUser) => {
                       senderName = (sp && (sp.displayName || sp.username)) ? (sp.displayName || sp.username) : (c.displayNames && c.displayNames[sid] ? String(c.displayNames[sid]) : 'Jemand');
                     }
                   } catch (_) {}
-                  // Privacy: Chat OS notification should not show preview/body
-                  showSystemNotification('Kalender Aktuell 🔏', null, `onyx_chat_${c.id}`);
+                  // Privacy: Secret chat stays secret -> no OS notification here
+                  // In-app sound/vibration above remains optional.
                   localStorage.setItem(key, String(updatedAt));
                 }
               }
@@ -5154,9 +5286,13 @@ setSelfDestruct(false);
                   <h2 className="text-3xl md:text-4xl font-light">Guten Morgen{dashboardName ? `, ${dashboardName}` : ''}.</h2>
                 </header>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
-                  <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between cursor-pointer hover:border-neutral-600 transition-colors group">
-                    <div><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider mb-1 flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {location.name}</h3><p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p></div>
-                    <div>{getWeatherIcon(weather?.weathercode, "w-10 h-10 md:w-12 md:h-12 text-white")}</div>
+                  <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between gap-4 cursor-pointer hover:border-neutral-600 transition-colors group">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider mb-1 flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {location.name}</h3>
+                      <p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
+                      <p className="mt-2 text-sm text-neutral-400 leading-relaxed max-w-[32rem]">{todayWeatherAdvice}</p>
+                    </div>
+                    <div className="shrink-0">{getWeatherIcon(weather?.weathercode, "w-10 h-10 md:w-12 md:h-12 text-white")}</div>
                   </div>
                   <div className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-start gap-4">
                     <Info className="w-5 h-5 md:w-6 md:h-6 text-neutral-400 shrink-0 mt-1" />
@@ -7049,12 +7185,13 @@ setSelfDestruct(false);
                   </button>
                 </div>
 
-                <div className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between">
-                  <div>
+                <div className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
                     <p className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
                     <p className="text-xs text-neutral-500 mt-1">
                       {weather ? `Wind ${Math.round(weather.windspeed || 0)} km/h` : 'Lade Daten…'}
                     </p>
+                    <p className="mt-3 text-sm text-neutral-300 leading-relaxed">{todayWeatherAdvice}</p>
                   </div>
                   <div className="shrink-0">
                     {getWeatherIcon(weather?.weathercode, "w-12 h-12 text-white")}

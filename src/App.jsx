@@ -5830,6 +5830,164 @@ setSelfDestruct(false);
         }
       };
 
+
+
+      const todayDateStr = new Date().toISOString().split('T')[0];
+      const todaysEvents = getEventsForDate(todayDateStr);
+      const nowMs = Date.now();
+      const timedEventsToday = todaysEvents
+        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
+        .filter((entry) => Number.isFinite(entry.startMs))
+        .sort((a, b) => a.startMs - b.startMs);
+      const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
+      const remainingTodayCount = todaysEvents.filter((event) => {
+        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
+        if (Number.isFinite(startMs)) return startMs >= nowMs;
+        return true;
+      }).length;
+      const freeUntilLabel = nextTimedEvent ? formatHourLabel(todayDateStr + 'T' + nextTimedEvent.event.time) : null;
+      const nextEventCountdownText = (() => {
+        if (!nextTimedEvent) return 'Kein weiterer fixer Termin heute';
+        const diffMin = Math.max(0, Math.round((nextTimedEvent.startMs - nowMs) / 60000));
+        if (diffMin < 1) return 'Startet jetzt';
+        if (diffMin < 60) return `In ${diffMin} Min.`;
+        const hours = Math.floor(diffMin / 60);
+        const mins = diffMin % 60;
+        return mins ? `In ${hours}h ${mins} Min.` : `In ${hours}h`;
+      })();
+      const freeWindowText = (() => {
+        if (remainingTodayCount === 0) return 'Rest des Tages frei';
+        if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
+        return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
+      })();
+      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
+      const weatherBadgeMeta = getWeatherBadgeMeta();
+
+      const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
+      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekStartMs = startOfWeekMs();
+      const monthStartMs = startOfMonthMs();
+      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
+      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
+      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
+
+      const getStorageKey = (suffix) => `onyx_${APP_ID}_${user?.uid || 'guest'}_${suffix}`;
+      useEffect(() => {
+        const id = setInterval(() => setFocusTick(Date.now()), 1000);
+        return () => clearInterval(id);
+      }, []);
+      useEffect(() => {
+        try {
+          const rawState = localStorage.getItem(getStorageKey('focusState'));
+          const rawHistory = localStorage.getItem(getStorageKey('focusHistory'));
+          const rawNotes = localStorage.getItem(getStorageKey('quickNotes'));
+          if (rawState) setFocusState(JSON.parse(rawState));
+          if (rawHistory) setFocusHistory(JSON.parse(rawHistory));
+          if (typeof rawNotes === 'string') setQuickNotes(rawNotes);
+        } catch (_) {}
+      }, [user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('focusState'), JSON.stringify(focusState || null)); } catch (_) {}
+      }, [focusState, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('focusHistory'), JSON.stringify(focusHistory || [])); } catch (_) {}
+      }, [focusHistory, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('quickNotes'), quickNotes || ''); } catch (_) {}
+      }, [quickNotes, user?.uid]);
+      const getFocusElapsedMs = (state, now = Date.now()) => {
+        if (!state?.startedAt) return 0;
+        const base = Math.max(0, now - Number(state.startedAt || now));
+        const paused = Number(state?.pausedAccumulatedMs || 0) + ((state?.isPaused && state?.pauseStartedAt) ? Math.max(0, now - Number(state.pauseStartedAt || now)) : 0);
+        return Math.max(0, base - paused);
+      };
+      const focusRemainingMs = focusState?.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
+      const startFocusMode = () => {
+        const now = Date.now();
+        setFocusState({ startedAt: now, durationMin: Number(focusDurationMin || 25), isPaused: false, pausedAccumulatedMs: 0, pauseStartedAt: null });
+        showToast('Fokus gestartet');
+      };
+      const toggleFocusPause = () => {
+        if (!focusState?.startedAt) return;
+        const now = Date.now();
+        if (focusState?.isPaused) {
+          setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev?.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev?.pauseStartedAt || now)), pauseStartedAt: null }));
+          showToast('Fokus weitergeführt');
+        } else {
+          setFocusState(prev => ({ ...(prev || {}), isPaused: true, pauseStartedAt: now }));
+          showToast('Fokus pausiert');
+        }
+      };
+      const stopFocusMode = (markDone = false) => {
+        try {
+          if (markDone && focusState?.startedAt) {
+            const finishedAt = Date.now();
+            const elapsedMs = getFocusElapsedMs(focusState, finishedAt);
+            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
+          }
+        } catch (_) {}
+        setFocusState(null);
+        if (markDone) showToast('Fokusblock gespeichert');
+      };
+      useEffect(() => {
+        if (focusState?.startedAt && !focusState?.isPaused && focusRemainingMs === 0) {
+          stopFocusMode(true);
+        }
+      }, [focusRemainingMs, focusState?.startedAt, focusState?.isPaused]);
+      const weekEventDates = Array.from({ length: 7 }, (_, idx) => {
+        const d = new Date(weekStartMs + idx * 86400000);
+        return d.toISOString().slice(0, 10);
+      });
+      const weekCalendarEvents = weekEventDates.flatMap((dateStr) => {
+        try { return (getEventsForDate(dateStr) || []).map(ev => ({ ...ev, __date: dateStr })); } catch (_) { return []; }
+      });
+      const weekEventCount = weekCalendarEvents.length;
+      const todayEventCount = todaysEvents.length;
+      const nextFreeBlock = (() => {
+        if (!timedEventsToday.length) return 'Ganzer Tag frei';
+        const first = timedEventsToday[0];
+        if (Number.isFinite(first?.startMs) && first.startMs > nowMs + 45 * 60000) return `Aktuell frei bis ${first.event?.time || 'später'}`;
+        for (let i = 0; i < timedEventsToday.length - 1; i += 1) {
+          const a = timedEventsToday[i];
+          const b = timedEventsToday[i + 1];
+          if (Number.isFinite(a?.startMs) && Number.isFinite(b?.startMs)) {
+            const gapMin = Math.round((b.startMs - a.startMs) / 60000) - 60;
+            if (gapMin >= 45) return `${a.event?.time || ''}–${b.event?.time || ''} frei`;
+          }
+        }
+        return freeWindowText;
+      })();
+      const focusTodayMs = (focusHistory || []).filter((x) => localDateKey(x?.startedAt || Date.now()) === todayDateStr).reduce((sum, x) => sum + Number(x?.elapsedMs || 0), 0) + (focusState?.startedAt ? getFocusElapsedMs(focusState, focusTick) : 0);
+      const bestWeatherWindow = (() => {
+        try {
+          const times = hourlyForecast?.time || [];
+          const rain = hourlyForecast?.precipitation_probability || [];
+          const temps = hourlyForecast?.temperature_2m || [];
+          if (!times.length) return 'Aktuell keine 4h-Tendenz verfügbar';
+          const now = Date.now();
+          const next = times.map((t, i) => ({ t, idx: i, ms: Date.parse(t), rain: Number(rain?.[i] || 0), temp: Number(temps?.[i] || 0) })).filter(x => Number.isFinite(x.ms) && x.ms >= now).slice(0, 8);
+          const dry = next.filter(x => x.rain < 35);
+          if (dry.length >= 2) return `Eher trocken bis ${new Date(dry[dry.length - 1].ms).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })}`;
+          const wet = next.find(x => x.rain >= 55);
+          if (wet) return `Ab ${new Date(wet.ms).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })} eher nass`; 
+          return todayWeatherAdvice;
+        } catch (_) { return todayWeatherAdvice; }
+      })();
+      const compactHomeSmartDay = (userProfile?.smartDayEnabled !== false) && (userProfile?.smartDayHomeEnabled !== false);
+      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled === true);
+      const extrasEnabled = userProfile?.extrasEnabled !== false;
+      const showExtrasSmartDay = extrasEnabled && (userProfile?.smartDayEnabled !== false);
+      const showExtrasWorkClock = extrasEnabled && (userProfile?.workClockEnabled === true);
+      const showExtrasFocus = extrasEnabled && (userProfile?.focusModeEnabled !== false);
+      const showExtrasWeek = extrasEnabled && (userProfile?.weeklyOverviewEnabled !== false);
+      const showExtrasNotes = extrasEnabled && (userProfile?.quickNotesEnabled !== false);
+      const showExtrasWeather = extrasEnabled && (userProfile?.weatherPlannerEnabled !== false);
+      const activeCalForView = getCalendarById(activeCalendarId);
+
       if (!isAppReady) {
         return (
           <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4" style={{ height: 'var(--app-height, 100vh)' }}>
@@ -6008,162 +6166,6 @@ setSelfDestruct(false);
       }
 
 
-      const todayDateStr = new Date().toISOString().split('T')[0];
-      const todaysEvents = getEventsForDate(todayDateStr);
-      const nowMs = Date.now();
-      const timedEventsToday = todaysEvents
-        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
-        .filter((entry) => Number.isFinite(entry.startMs))
-        .sort((a, b) => a.startMs - b.startMs);
-      const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
-      const remainingTodayCount = todaysEvents.filter((event) => {
-        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
-        if (Number.isFinite(startMs)) return startMs >= nowMs;
-        return true;
-      }).length;
-      const freeUntilLabel = nextTimedEvent ? formatHourLabel(todayDateStr + 'T' + nextTimedEvent.event.time) : null;
-      const nextEventCountdownText = (() => {
-        if (!nextTimedEvent) return 'Kein weiterer fixer Termin heute';
-        const diffMin = Math.max(0, Math.round((nextTimedEvent.startMs - nowMs) / 60000));
-        if (diffMin < 1) return 'Startet jetzt';
-        if (diffMin < 60) return `In ${diffMin} Min.`;
-        const hours = Math.floor(diffMin / 60);
-        const mins = diffMin % 60;
-        return mins ? `In ${hours}h ${mins} Min.` : `In ${hours}h`;
-      })();
-      const freeWindowText = (() => {
-        if (remainingTodayCount === 0) return 'Rest des Tages frei';
-        if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
-        return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
-      })();
-      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
-      const weatherBadgeMeta = getWeatherBadgeMeta();
-
-      const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
-      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const weekStartMs = startOfWeekMs();
-      const monthStartMs = startOfMonthMs();
-      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
-      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
-      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
-      const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
-      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
-
-
-      const getStorageKey = (suffix) => `onyx_${APP_ID}_${user?.uid || 'guest'}_${suffix}`;
-      useEffect(() => {
-        const id = setInterval(() => setFocusTick(Date.now()), 1000);
-        return () => clearInterval(id);
-      }, []);
-      useEffect(() => {
-        try {
-          const rawState = localStorage.getItem(getStorageKey('focusState'));
-          const rawHistory = localStorage.getItem(getStorageKey('focusHistory'));
-          const rawNotes = localStorage.getItem(getStorageKey('quickNotes'));
-          if (rawState) setFocusState(JSON.parse(rawState));
-          if (rawHistory) setFocusHistory(JSON.parse(rawHistory));
-          if (typeof rawNotes === 'string') setQuickNotes(rawNotes);
-        } catch (_) {}
-      }, [user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('focusState'), JSON.stringify(focusState || null)); } catch (_) {}
-      }, [focusState, user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('focusHistory'), JSON.stringify(focusHistory || [])); } catch (_) {}
-      }, [focusHistory, user?.uid]);
-      useEffect(() => {
-        try { localStorage.setItem(getStorageKey('quickNotes'), quickNotes || ''); } catch (_) {}
-      }, [quickNotes, user?.uid]);
-      const getFocusElapsedMs = (state, now = Date.now()) => {
-        if (!state?.startedAt) return 0;
-        const base = Math.max(0, now - Number(state.startedAt || now));
-        const paused = Number(state?.pausedAccumulatedMs || 0) + ((state?.isPaused && state?.pauseStartedAt) ? Math.max(0, now - Number(state.pauseStartedAt || now)) : 0);
-        return Math.max(0, base - paused);
-      };
-      const focusRemainingMs = focusState?.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
-      const startFocusMode = () => {
-        const now = Date.now();
-        setFocusState({ startedAt: now, durationMin: Number(focusDurationMin || 25), isPaused: false, pausedAccumulatedMs: 0, pauseStartedAt: null });
-        showToast('Fokus gestartet');
-      };
-      const toggleFocusPause = () => {
-        if (!focusState?.startedAt) return;
-        const now = Date.now();
-        if (focusState?.isPaused) {
-          setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev?.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev?.pauseStartedAt || now)), pauseStartedAt: null }));
-          showToast('Fokus weitergeführt');
-        } else {
-          setFocusState(prev => ({ ...(prev || {}), isPaused: true, pauseStartedAt: now }));
-          showToast('Fokus pausiert');
-        }
-      };
-      const stopFocusMode = (markDone = false) => {
-        try {
-          if (markDone && focusState?.startedAt) {
-            const finishedAt = Date.now();
-            const elapsedMs = getFocusElapsedMs(focusState, finishedAt);
-            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
-          }
-        } catch (_) {}
-        setFocusState(null);
-        if (markDone) showToast('Fokusblock gespeichert');
-      };
-      useEffect(() => {
-        if (focusState?.startedAt && !focusState?.isPaused && focusRemainingMs === 0) {
-          stopFocusMode(true);
-        }
-      }, [focusRemainingMs, focusState?.startedAt, focusState?.isPaused]);
-      const weekEventDates = Array.from({ length: 7 }, (_, idx) => {
-        const d = new Date(weekStartMs + idx * 86400000);
-        return d.toISOString().slice(0, 10);
-      });
-      const weekCalendarEvents = weekEventDates.flatMap((dateStr) => {
-        try { return (getEventsForDate(dateStr) || []).map(ev => ({ ...ev, __date: dateStr })); } catch (_) { return []; }
-      });
-      const weekEventCount = weekCalendarEvents.length;
-      const todayEventCount = todaysEvents.length;
-      const nextFreeBlock = (() => {
-        if (!timedEventsToday.length) return 'Ganzer Tag frei';
-        const first = timedEventsToday[0];
-        if (Number.isFinite(first?.startMs) && first.startMs > nowMs + 45 * 60000) return `Aktuell frei bis ${first.event?.time || 'später'}`;
-        for (let i = 0; i < timedEventsToday.length - 1; i += 1) {
-          const a = timedEventsToday[i];
-          const b = timedEventsToday[i + 1];
-          if (Number.isFinite(a?.startMs) && Number.isFinite(b?.startMs)) {
-            const gapMin = Math.round((b.startMs - a.startMs) / 60000) - 60;
-            if (gapMin >= 45) return `${a.event?.time || ''}–${b.event?.time || ''} frei`;
-          }
-        }
-        return freeWindowText;
-      })();
-      const focusTodayMs = (focusHistory || []).filter((x) => localDateKey(x?.startedAt || Date.now()) === todayDateStr).reduce((sum, x) => sum + Number(x?.elapsedMs || 0), 0) + (focusState?.startedAt ? getFocusElapsedMs(focusState, focusTick) : 0);
-      const bestWeatherWindow = (() => {
-        try {
-          const times = hourlyForecast?.time || [];
-          const rain = hourlyForecast?.precipitation_probability || [];
-          const temps = hourlyForecast?.temperature_2m || [];
-          if (!times.length) return 'Aktuell keine 4h-Tendenz verfügbar';
-          const now = Date.now();
-          const next = times.map((t, i) => ({ t, idx: i, ms: Date.parse(t), rain: Number(rain?.[i] || 0), temp: Number(temps?.[i] || 0) })).filter(x => Number.isFinite(x.ms) && x.ms >= now).slice(0, 8);
-          const dry = next.filter(x => x.rain < 35);
-          if (dry.length >= 2) return `Eher trocken bis ${new Date(dry[dry.length - 1].ms).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })}`;
-          const wet = next.find(x => x.rain >= 55);
-          if (wet) return `Ab ${new Date(wet.ms).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })} eher nass`; 
-          return todayWeatherAdvice;
-        } catch (_) { return todayWeatherAdvice; }
-      })();
-      const compactHomeSmartDay = (userProfile?.smartDayEnabled !== false) && (userProfile?.smartDayHomeEnabled !== false);
-      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled === true);
-      const extrasEnabled = userProfile?.extrasEnabled !== false;
-      const showExtrasSmartDay = extrasEnabled && (userProfile?.smartDayEnabled !== false);
-      const showExtrasWorkClock = extrasEnabled && (userProfile?.workClockEnabled === true);
-      const showExtrasFocus = extrasEnabled && (userProfile?.focusModeEnabled !== false);
-      const showExtrasWeek = extrasEnabled && (userProfile?.weeklyOverviewEnabled !== false);
-      const showExtrasNotes = extrasEnabled && (userProfile?.quickNotesEnabled !== false);
-      const showExtrasWeather = extrasEnabled && (userProfile?.weatherPlannerEnabled !== false);
-      const activeCalForView = getCalendarById(activeCalendarId);
 
       return (
         <div 

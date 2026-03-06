@@ -263,8 +263,16 @@ function AmoledCalendarApp() {
       const [workClockTick, setWorkClockTick] = useState(Date.now());
       const [workClockModalOpen, setWorkClockModalOpen] = useState(false);
       const [workClockDraftTitle, setWorkClockDraftTitle] = useState('');
+      const [workClockDraftUsePreset, setWorkClockDraftUsePreset] = useState(true);
+      const [workClockPresetInput, setWorkClockPresetInput] = useState('Büro\nBaustelle\nSupport');
       const [workClockDraftLevel, setWorkClockDraftLevel] = useState('mittel');
       const [workClockSaving, setWorkClockSaving] = useState(false);
+      const [workClockEditOpen, setWorkClockEditOpen] = useState(false);
+      const [workClockEditingSession, setWorkClockEditingSession] = useState(null);
+      const [workClockEditTitle, setWorkClockEditTitle] = useState('');
+      const [workClockEditUsePreset, setWorkClockEditUsePreset] = useState(true);
+      const [workClockEditLevel, setWorkClockEditLevel] = useState('mittel');
+      const [workClockDeletingId, setWorkClockDeletingId] = useState('');
       const [dailyFact, setDailyFact] = useState('');
       const [quotes, setQuotes] = useState([]);
       const [isStandalone, setIsStandalone] = useState(false);
@@ -2840,6 +2848,123 @@ const requestNotificationPermission = async (currentUser) => {
         } catch (_) { return 0; }
       }
 
+
+      function getWorkClockStorageKey(uid) {
+        return `onyx_work_sessions_${uid}`;
+      }
+
+      function getDefaultWorkClockPresets() {
+        return ['Büro', 'Baustelle', 'Support'];
+      }
+
+      function normalizeWorkClockPresets(input) {
+        try {
+          const raw = Array.isArray(input)
+            ? input
+            : String(input || '').split(/[\n,;]+/g);
+          const clean = raw
+            .map(v => String(v || '').trim())
+            .filter(Boolean)
+            .filter((value, index, arr) => arr.findIndex(x => x.toLowerCase() === value.toLowerCase()) === index);
+          return clean.length ? clean.slice(0, 24) : getDefaultWorkClockPresets();
+        } catch (_) { return getDefaultWorkClockPresets(); }
+      }
+
+      function readWorkClockSessionsLocal(uid) {
+        try {
+          if (!uid) return [];
+          const raw = localStorage.getItem(getWorkClockStorageKey(uid));
+          const parsed = raw ? JSON.parse(raw) : [];
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (_) { return []; }
+      }
+
+      function writeWorkClockSessionsLocal(uid, sessions) {
+        try {
+          if (!uid) return;
+          localStorage.setItem(getWorkClockStorageKey(uid), JSON.stringify(Array.isArray(sessions) ? sessions.slice(0, 240) : []));
+        } catch (_) {}
+      }
+
+      function mergeWorkClockSessions(localRows = [], remoteRows = []) {
+        try {
+          const map = new Map();
+          [...remoteRows, ...localRows].forEach((row) => {
+            if (!row) return;
+            const key = String(row.id || row.localId || `${row.startedAt || ''}_${row.endedAt || ''}_${row.title || ''}`);
+            const prev = map.get(key) || {};
+            map.set(key, { ...prev, ...row, id: row.id || prev.id || key, localId: row.localId || prev.localId || key });
+          });
+          return Array.from(map.values()).sort((a, b) => Number(b?.startedAt || 0) - Number(a?.startedAt || 0));
+        } catch (_) { return Array.isArray(remoteRows) ? remoteRows : []; }
+      }
+
+      function saveWorkClockSessionLocal(uid, payload) {
+        try {
+          if (!uid || !payload) return payload;
+          const localId = String(payload.localId || `wc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+          const nextRow = { ...payload, localId, id: payload.id || localId, savedLocally: true };
+          const current = readWorkClockSessionsLocal(uid).filter(row => String(row.localId || row.id || '') !== localId);
+          const merged = [nextRow, ...current].sort((a, b) => Number(b?.startedAt || 0) - Number(a?.startedAt || 0));
+          writeWorkClockSessionsLocal(uid, merged);
+          return nextRow;
+        } catch (_) { return payload; }
+      }
+
+      function replaceWorkClockSessionLocal(uid, payload) {
+        try {
+          if (!uid || !payload) return payload;
+          const matchId = String(payload.localId || payload.id || '');
+          const current = readWorkClockSessionsLocal(uid);
+          const updated = current.map(row => String(row.localId || row.id || '') === matchId ? { ...row, ...payload, id: row.id || payload.id || matchId, localId: row.localId || payload.localId || matchId } : row);
+          writeWorkClockSessionsLocal(uid, updated);
+          return updated.find(row => String(row.localId || row.id || '') === matchId) || payload;
+        } catch (_) { return payload; }
+      }
+
+      function removeWorkClockSessionLocal(uid, sessionLike) {
+        try {
+          if (!uid || !sessionLike) return [];
+          const matchIds = new Set([
+            String(sessionLike?.localId || ''),
+            String(sessionLike?.id || ''),
+          ].filter(Boolean));
+          const next = readWorkClockSessionsLocal(uid).filter(row => !matchIds.has(String(row.localId || '')) && !matchIds.has(String(row.id || '')));
+          writeWorkClockSessionsLocal(uid, next);
+          return next;
+        } catch (_) { return readWorkClockSessionsLocal(uid); }
+      }
+
+      function formatDateTimeInputValue(ts) {
+        try {
+          if (!ts) return '';
+          const d = new Date(Number(ts));
+          const pad = (n) => String(n).padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        } catch (_) { return ''; }
+      }
+
+      function parseDateTimeInputValue(value) {
+        try {
+          const ts = new Date(value).getTime();
+          return Number.isFinite(ts) ? ts : Date.now();
+        } catch (_) { return Date.now(); }
+      }
+
+      function downloadTextFile(filename, content, mime = 'text/plain;charset=utf-8') {
+        try {
+          const blob = new Blob([content], { type: mime });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1200);
+        } catch (_) {}
+      }
+
       const persistWorkClockActiveLocal = (payload) => {
         try {
           if (!user?.uid) return;
@@ -2894,7 +3019,9 @@ const requestNotificationPermission = async (currentUser) => {
 
       const requestStopWorkClock = () => {
         if (!workClockActive?.startedAt) return;
-        setWorkClockDraftTitle('');
+        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
+        setWorkClockDraftUsePreset(true);
+        setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
         setWorkClockDraftLevel('mittel');
         setWorkClockModalOpen(true);
       };
@@ -2913,22 +3040,33 @@ const requestNotificationPermission = async (currentUser) => {
           const now = Date.now();
           const workedMs = getActiveWorkedMs(workClockActive, now);
           const pauseMs = Number(workClockActive?.pausedAccumulatedMs || 0) + ((workClockActive?.isPaused && workClockActive?.pauseStartedAt) ? Math.max(0, now - Number(workClockActive.pauseStartedAt || now)) : 0);
+          const finalTitle = String(workClockDraftTitle || '').trim() || 'Arbeit';
           const payload = {
             startedAt: Number(workClockActive.startedAt || now),
             endedAt: now,
             workMs: workedMs,
             pauseMs,
             totalMs: Math.max(0, now - Number(workClockActive.startedAt || now)),
-            title: String(workClockDraftTitle || '').trim() || 'Arbeit',
+            title: finalTitle,
             level: String(workClockDraftLevel || 'mittel'),
             dateKey: localDateKey(workClockActive.startedAt || now),
-            createdAt: serverTimestamp(),
+            createdAt: Date.now(),
             updatedAt: now,
           };
-          await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions'), payload);
+          const localRow = saveWorkClockSessionLocal(user.uid, payload);
+          setWorkClockSessions(prev => mergeWorkClockSessions([localRow], prev || []));
+          try {
+            const ref = await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions'), { ...payload, createdAt: serverTimestamp() });
+            const syncedRow = { ...localRow, id: ref.id, remoteSaved: true };
+            const current = readWorkClockSessionsLocal(user.uid).map(row => String(row.localId || row.id || '') === String(localRow.localId || localRow.id || '') ? syncedRow : row);
+            writeWorkClockSessionsLocal(user.uid, current);
+            setWorkClockSessions(prev => mergeWorkClockSessions(current, prev || []));
+          } catch (remoteErr) {
+            console.warn('finishWorkClock remote save skipped', remoteErr);
+          }
           setWorkClockActive(null);
           persistWorkClockActiveLocal(null);
-          await saveWorkClockProfilePatch({ workClockActive: null, updatedAt: now });
+          await saveWorkClockProfilePatch({ workClockActive: null, updatedAt: now, workClockLastTitle: finalTitle });
           setWorkClockModalOpen(false);
           showToast('Arbeitszeit gespeichert');
         } catch (err) {
@@ -2936,6 +3074,105 @@ const requestNotificationPermission = async (currentUser) => {
           showToast('Speichern fehlgeschlagen');
         } finally {
           setWorkClockSaving(false);
+        }
+      };
+
+
+      const openEditWorkClockSession = (session) => {
+        if (!session) return;
+        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
+        const rawTitle = String(session?.title || 'Arbeit');
+        const usePreset = presets.some(p => String(p).toLowerCase() === rawTitle.toLowerCase());
+        setWorkClockEditingSession(session);
+        setWorkClockEditUsePreset(usePreset);
+        setWorkClockEditTitle(rawTitle || presets[0] || 'Arbeit');
+        setWorkClockEditLevel(String(session?.level || 'mittel'));
+        setWorkClockEditOpen(true);
+      };
+
+      const saveEditedWorkClockSession = async () => {
+        if (!user?.uid || !workClockEditingSession) return;
+        try {
+          const nextTitle = String(workClockEditTitle || '').trim() || 'Arbeit';
+          const patch = {
+            ...workClockEditingSession,
+            title: nextTitle,
+            level: String(workClockEditLevel || 'mittel'),
+            updatedAt: Date.now(),
+          };
+          const localRow = replaceWorkClockSessionLocal(user.uid, patch);
+          setWorkClockSessions(prev => mergeWorkClockSessions([localRow], (prev || []).filter(row => String(row.localId || row.id || '') !== String(localRow.localId || localRow.id || ''))));
+          try {
+            if (workClockEditingSession?.id && !String(workClockEditingSession.id).startsWith('wc_')) {
+              await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions', workClockEditingSession.id), {
+                title: nextTitle,
+                level: String(workClockEditLevel || 'mittel'),
+                updatedAt: Date.now(),
+              });
+            }
+          } catch (remoteErr) {
+            console.warn('saveEditedWorkClockSession remote update skipped', remoteErr);
+          }
+          await saveWorkClockProfilePatch({ workClockLastTitle: nextTitle, updatedAt: Date.now() });
+          setWorkClockEditOpen(false);
+          setWorkClockEditingSession(null);
+          showToast('Session aktualisiert');
+        } catch (err) {
+          console.error('saveEditedWorkClockSession failed', err);
+          showToast('Aktualisieren fehlgeschlagen');
+        }
+      };
+
+      const deleteWorkClockSession = async (session) => {
+        if (!user?.uid || !session) return;
+        const label = String(session?.title || 'Arbeit');
+        if (!window.confirm(`Session „${label}“ löschen?`)) return;
+        const deleteKey = String(session?.localId || session?.id || '');
+        try {
+          setWorkClockDeletingId(deleteKey);
+          const nextLocal = removeWorkClockSessionLocal(user.uid, session);
+          setWorkClockSessions(nextLocal);
+          try {
+            if (session?.id && !String(session.id).startsWith('wc_')) {
+              await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions', session.id));
+            }
+          } catch (remoteErr) {
+            console.warn('deleteWorkClockSession remote delete skipped', remoteErr);
+          }
+          showToast('Session gelöscht');
+        } catch (err) {
+          console.error('deleteWorkClockSession failed', err);
+          showToast('Löschen fehlgeschlagen');
+        } finally {
+          setWorkClockDeletingId('');
+        }
+      };
+
+      const exportWeekWorkClockCsv = () => {
+        try {
+          const rows = [...weekSessions].sort((a, b) => Number(a?.startedAt || 0) - Number(b?.startedAt || 0));
+          if (!rows.length) {
+            showToast('Keine Sessions für diese Woche');
+            return;
+          }
+          const header = ['Datum','Start','Ende','Arbeit','Level','Arbeitszeit Minuten','Pausenzeit Minuten','Total Minuten'];
+          const body = rows.map((s) => {
+            const started = s?.startedAt ? new Date(Number(s.startedAt)) : null;
+            const ended = s?.endedAt ? new Date(Number(s.endedAt)) : null;
+            const date = started ? started.toLocaleDateString('de-CH') : '';
+            const start = started ? started.toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' }) : '';
+            const end = ended ? ended.toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' }) : '';
+            return [date, start, end, String(s?.title || 'Arbeit'), String(s?.level || 'mittel'), Math.round(Number(s?.workMs || 0) / 60000), Math.round(Number(s?.pauseMs || 0) / 60000), Math.round(Number(s?.totalMs || 0) / 60000)];
+          });
+          body.push([]);
+          body.push(['Summe','','','', '', Math.round(weekWorkMs / 60000), '', '']);
+          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('\"','\"\"')}"`).join(';')).join('\n');
+          const stamp = new Date().toISOString().slice(0,10);
+          downloadTextFile(`rapport-woche-${stamp}.csv`, csv, 'text/csv;charset=utf-8');
+          showToast('Wochenrapport exportiert');
+        } catch (err) {
+          console.error('exportWeekWorkClockCsv failed', err);
+          showToast('Export fehlgeschlagen');
         }
       };
 
@@ -2956,15 +3193,30 @@ const requestNotificationPermission = async (currentUser) => {
       }, [user?.uid]);
 
       useEffect(() => {
-        if (!user) return;
+        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
+        setWorkClockPresetInput(presets.join('\n'));
+        setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
+        setWorkClockDraftUsePreset(true);
+      }, [userProfile?.workClockTaskOptions, userProfile?.workClockLastTitle]);
+
+
+      useEffect(() => {
+        if (!user?.uid) return;
+        const localRows = readWorkClockSessionsLocal(user.uid);
+        if (localRows.length) setWorkClockSessions(prev => mergeWorkClockSessions(localRows, prev || []));
         const ref = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions');
         const unsub = onSnapshot(query(ref, orderBy('startedAt', 'desc'), limit(120)), (snap) => {
-          const rows = [];
-          snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
-          setWorkClockSessions(rows);
+          const remoteRows = [];
+          snap.forEach((d) => remoteRows.push({ id: d.id, ...d.data(), remoteSaved: true }));
+          const merged = mergeWorkClockSessions(readWorkClockSessionsLocal(user.uid), remoteRows);
+          setWorkClockSessions(merged);
+          writeWorkClockSessionsLocal(user.uid, merged);
+        }, (err) => {
+          console.warn('workSessions snapshot fallback to local', err);
+          setWorkClockSessions(readWorkClockSessionsLocal(user.uid));
         });
         return () => { try { unsub(); } catch (_) {} };
-      }, [user]);
+      }, [user?.uid]);
 
       function getHourlyIndexesForDay(dayStr) {
         try {
@@ -3197,6 +3449,49 @@ const requestNotificationPermission = async (currentUser) => {
           return { icon: '☀️', tone: 'border-neutral-800 bg-neutral-950 text-neutral-200', text: 'Ruhiges Wetter' };
         }
       };
+
+      const todayDateStr = new Date().toISOString().split('T')[0];
+      const todaysEvents = getEventsForDate(todayDateStr);
+      const nowMs = Date.now();
+      const timedEventsToday = todaysEvents
+        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
+        .filter((entry) => Number.isFinite(entry.startMs))
+        .sort((a, b) => a.startMs - b.startMs);
+      const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
+      const remainingTodayCount = todaysEvents.filter((event) => {
+        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
+        if (Number.isFinite(startMs)) return startMs >= nowMs;
+        return true;
+      }).length;
+      const freeUntilLabel = nextTimedEvent ? formatHourLabel(todayDateStr + 'T' + nextTimedEvent.event.time) : null;
+      const nextEventCountdownText = (() => {
+        if (!nextTimedEvent) return 'Kein weiterer fixer Termin heute';
+        const diffMin = Math.max(0, Math.round((nextTimedEvent.startMs - nowMs) / 60000));
+        if (diffMin < 1) return 'Startet jetzt';
+        if (diffMin < 60) return `In ${diffMin} Min.`;
+        const hours = Math.floor(diffMin / 60);
+        const mins = diffMin % 60;
+        return mins ? `In ${hours}h ${mins} Min.` : `In ${hours}h`;
+      })();
+      const freeWindowText = (() => {
+        if (remainingTodayCount === 0) return 'Rest des Tages frei';
+        if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
+        return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
+      })();
+      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
+      const weatherBadgeMeta = getWeatherBadgeMeta();
+
+      const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
+      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekStartMs = startOfWeekMs();
+      const monthStartMs = startOfMonthMs();
+      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
+      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
+      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
+      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
 
       const fetchWeather = async () => {
         try {
@@ -4142,50 +4437,6 @@ useEffect(() => {
           return null;
         }
       }
-      const todayDateStr = new Date().toISOString().split('T')[0];
-      const todaysEvents = getEventsForDate(todayDateStr);
-      const nowMs = Date.now();
-      const timedEventsToday = todaysEvents
-        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
-        .filter((entry) => Number.isFinite(entry.startMs))
-        .sort((a, b) => a.startMs - b.startMs);
-      const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
-      const remainingTodayCount = todaysEvents.filter((event) => {
-        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
-        if (Number.isFinite(startMs)) return startMs >= nowMs;
-        return true;
-      }).length;
-      const freeUntilLabel = nextTimedEvent ? formatHourLabel(todayDateStr + 'T' + nextTimedEvent.event.time) : null;
-      const nextEventCountdownText = (() => {
-        if (!nextTimedEvent) return 'Kein weiterer fixer Termin heute';
-        const diffMin = Math.max(0, Math.round((nextTimedEvent.startMs - nowMs) / 60000));
-        if (diffMin < 1) return 'Startet jetzt';
-        if (diffMin < 60) return `In ${diffMin} Min.`;
-        const hours = Math.floor(diffMin / 60);
-        const mins = diffMin % 60;
-        return mins ? `In ${hours}h ${mins} Min.` : `In ${hours}h`;
-      })();
-      const freeWindowText = (() => {
-        if (remainingTodayCount === 0) return 'Rest des Tages frei';
-        if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
-        return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
-      })();
-      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
-      const weatherBadgeMeta = getWeatherBadgeMeta();
-
-      const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
-      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const weekStartMs = startOfWeekMs();
-      const monthStartMs = startOfMonthMs();
-      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
-      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
-      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
-      const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
-      const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
-      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
-
-
 
       const effectiveReminderMinutes = (occ) => {
         try {
@@ -5861,6 +6112,7 @@ setSelfDestruct(false);
                               <button onClick={requestStopWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
                             </>
                           )}
+                          <button onClick={exportWeekWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Wochenrapport</button>
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -5873,13 +6125,17 @@ setSelfDestruct(false);
                         <div className="border-t border-neutral-800 pt-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Letzte Sessions</div>
                           <div className="space-y-2">
-                            {(workClockSessions || []).slice(0, 3).map((s) => (
+                            {(workClockSessions || []).slice(0, 5).map((s) => (
                               <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
-                                <div className="min-w-0">
+                                <div className="min-w-0 flex-1">
                                   <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
                                   <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
                                 </div>
-                                <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
+                                  <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
+                                  <button type="button" onClick={() => deleteWorkClockSession(s)} disabled={workClockDeletingId === String(s.localId || s.id || '')} className="p-2 rounded-lg border border-red-900/40 text-red-200 hover:bg-red-950/60 transition-colors disabled:opacity-50" title="Löschen"><Trash2 className="w-4 h-4" /></button>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -6750,18 +7006,48 @@ setSelfDestruct(false);
                     </div>
 
                     {(userProfile?.workClockEnabled === true) && (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                          <div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div>
-                          <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div>
+                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div>
+                          </div>
+                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Diese Woche</div>
+                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div>
+                          </div>
+                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Dieser Monat</div>
+                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div>
+                          </div>
                         </div>
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                          <div className="text-[10px] uppercase tracking-widest text-neutral-500">Diese Woche</div>
-                          <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div>
-                        </div>
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                          <div className="text-[10px] uppercase tracking-widest text-neutral-500">Dieser Monat</div>
-                          <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div>
+                        <div>
+                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Tätigkeiten im Dropdown</label>
+                          <textarea
+                            value={workClockPresetInput}
+                            onChange={(e) => setWorkClockPresetInput(e.target.value)}
+                            rows={4}
+                            placeholder={"Büro\nBaustelle\nSupport"}
+                            className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                          />
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const nextPresets = normalizeWorkClockPresets(workClockPresetInput);
+                                  setWorkClockPresetInput(nextPresets.join('\n'));
+                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { workClockTaskOptions: nextPresets, updatedAt: Date.now() }, { merge: true });
+                                  setUserProfile(prev => ({ ...(prev || {}), workClockTaskOptions: nextPresets }));
+                                  showToast('Dropdown gespeichert');
+                                } catch (_) { showToast('Fehler'); }
+                              }}
+                              className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-neutral-200 transition-colors"
+                            >
+                              Dropdown speichern
+                            </button>
+                            <span className="text-[11px] text-neutral-500">Eine Tätigkeit pro Zeile. Diese Auswahl erscheint beim Stopp der Stempelung.</span>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -7871,6 +8157,70 @@ setSelfDestruct(false);
           </main>
 
           
+          {workClockEditOpen && (
+            <div className="fixed inset-0 z-[95] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white"><Edit2 className="w-5 h-5" /></div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Session bearbeiten</h3>
+                    <p className="text-xs text-neutral-500">Tätigkeit und Belastung lassen sich nachträglich anpassen.</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
+                    {workClockEditUsePreset ? (
+                      <div className="mt-1 space-y-2">
+                        <select
+                          value={workClockEditTitle}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '__other__') {
+                              setWorkClockEditUsePreset(false);
+                              setWorkClockEditTitle('');
+                            } else {
+                              setWorkClockEditTitle(value);
+                            }
+                          }}
+                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                        >
+                          {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
+                            <option key={preset} value={preset}>{preset}</option>
+                          ))}
+                          <option value="__other__">Andere Tätigkeit…</option>
+                        </select>
+                        <button type="button" onClick={() => { setWorkClockEditUsePreset(false); setWorkClockEditTitle(workClockEditingSession?.title || ''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene Tätigkeit eingeben</button>
+                      </div>
+                    ) : (
+                      <div className="mt-1 space-y-2">
+                        <input value={workClockEditTitle} onChange={(e) => setWorkClockEditTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockEditUsePreset(true); setWorkClockEditTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Level</label>
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      {['leicht','mittel','schwer'].map(level => (
+                        <button key={level} type="button" onClick={() => setWorkClockEditLevel(level)} className={"px-3 py-3 rounded-xl border text-sm font-semibold transition-colors " + (workClockEditLevel === level ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
+                          {level.charAt(0).toUpperCase() + level.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-neutral-800 bg-black px-4 py-3 text-sm text-neutral-300">
+                    {workClockEditingSession?.startedAt ? new Date(workClockEditingSession.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · <span className="text-white font-medium">{formatDurationVerbose(workClockEditingSession?.workMs || 0)}</span>
+                  </div>
+                </div>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => { setWorkClockEditOpen(false); setWorkClockEditingSession(null); }} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Schliessen</button>
+                  <button type="button" onClick={saveEditedWorkClockSession} className="ml-auto px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">Speichern</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {workClockModalOpen && (
             <div className="fixed inset-0 z-[95] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
               <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl">
@@ -7884,7 +8234,34 @@ setSelfDestruct(false);
                 <div className="space-y-3">
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
-                    <input value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                    {workClockDraftUsePreset ? (
+                      <div className="mt-1 space-y-2">
+                        <select
+                          value={workClockDraftTitle}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '__other__') {
+                              setWorkClockDraftUsePreset(false);
+                              setWorkClockDraftTitle('');
+                            } else {
+                              setWorkClockDraftTitle(value);
+                            }
+                          }}
+                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                        >
+                          {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
+                            <option key={preset} value={preset}>{preset}</option>
+                          ))}
+                          <option value="__other__">Andere Tätigkeit…</option>
+                        </select>
+                        <button type="button" onClick={() => { setWorkClockDraftUsePreset(false); setWorkClockDraftTitle(''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene Tätigkeit eingeben</button>
+                      </div>
+                    ) : (
+                      <div className="mt-1 space-y-2">
+                        <input value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockDraftUsePreset(true); setWorkClockDraftTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Level</label>

@@ -4133,7 +4133,7 @@ useEffect(() => {
         return merged;
       };
 
-      const getEventsForDate = (dateStr) => {
+      function getEventsForDate(dateStr) {
         if (!dateStr) return [];
         const out = [];
         for (const ev of allEvents) {
@@ -4144,7 +4144,7 @@ useEffect(() => {
         }
         out.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
         return out;
-      };
+      }
 
       const getOccurrencesInRange = (startStr, endStr) => {
         if (!startStr || !endStr) return [];
@@ -4174,7 +4174,7 @@ useEffect(() => {
         return (h >>> 0);
       };
 
-      const parseDateTimeLocalMs = (dateStr, timeStr) => {
+      function parseDateTimeLocalMs(dateStr, timeStr) {
         try {
           if (!dateStr || !timeStr) return null;
           const [y, m, d] = String(dateStr).split('-').map(n => parseInt(n, 10));
@@ -4184,7 +4184,7 @@ useEffect(() => {
         } catch (e) {
           return null;
         }
-      };
+      }
 
       const effectiveReminderMinutes = (occ) => {
         try {

@@ -108,3 +108,40 @@ Die folgenden Extras-Daten werden jetzt im Firebase-Profil mitgespeichert und st
 - Tagesziele
 - Wochenziel für Soll-/Ist-Stunden
 - Reihenfolge der Extras-Karten
+
+
+## Neu in diesem Stand
+
+### Plus-Menü
+- **Neu erstellen** mit Auswahl zwischen **Termin** und **Einkaufsliste**.
+
+### Einkaufslisten
+- eigene Ansicht **Einkauf**
+- mehrere Listen pro Benutzer
+- Artikel können direkt als **gekauft** markiert und dadurch durchgestrichen werden
+- pro Artikel sind **Menge** und **Preis** möglich
+- automatische Summe für bereits gekaufte Positionen
+- Listen werden lokal gespeichert und zusätzlich im Firebase-Profil gespiegelt, damit dieselben Daten auf mehreren Geräten verfügbar sind
+
+### Extras
+- Smart Day
+- Stempeluhr
+- Fokusmodus
+- Wochenübersicht
+- Freie Zeitfenster
+- Tagesziele
+- Soll-/Ist-Stunden
+- Schnellnotizen
+- Wetter-Planer
+- Karten in Extras per Drag & Drop sortierbar
+
+### Benachrichtigungen / PWA
+- überarbeiteter `firebase-messaging-sw.js`
+- **Raw Push Fallback** zusätzlich zu Firebase `onBackgroundMessage`
+- Dedupe-System gegen doppelte Notifications
+- neues `badge-icon.png` für Android-Badge / Statusleisten-Symbol
+- `requireInteraction` für wichtige Erinnerungen
+- Notification Actions: **Öffnen** und **OK**
+- periodisches FCM-Token-Refresh in `App.jsx`
+- Service-Worker-Update-Check mit `SKIP_WAITING`
+- Manifest um monochromes Badge-Icon ergänzt

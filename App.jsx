@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, ChevronDown, CheckSquare, ListTodo, NotebookText,
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, ChevronDown, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
       Copy, Link2, History, UserMinus
     } from 'lucide-react';
 
@@ -29,6 +29,36 @@ import React, { useState, useEffect, useRef } from 'react';
     const db = getFirestore(app);
 
     const DEFAULT_EXTRAS_ORDER = ['smartday','workclock','focus','week','freewindows','goals','sollist','notes','weather'];
+
+    function normalizeShoppingItems(input) {
+      const rows = Array.isArray(input) ? input : [];
+      return rows.map((item, idx) => ({
+        id: String(item?.id || `item_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
+        text: String(item?.text || ''),
+        qty: String(item?.qty || ''),
+        price: item?.price === 0 ? '0' : String(item?.price || ''),
+        done: item?.done === true,
+        checkedAt: Number(item?.checkedAt || 0) || 0,
+      }));
+    }
+
+    function normalizeShoppingLists(input) {
+      const rows = Array.isArray(input) ? input : [];
+      return rows.map((list, idx) => ({
+        id: String(list?.id || `shop_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
+        title: String(list?.title || 'Einkaufsliste'),
+        store: String(list?.store || ''),
+        createdAt: Number(list?.createdAt || Date.now()) || Date.now(),
+        updatedAt: Number(list?.updatedAt || Date.now()) || Date.now(),
+        items: normalizeShoppingItems(list?.items),
+      })).sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+    }
+
+    function formatCurrencyCHF(value) {
+      const num = Number(value || 0);
+      if (!Number.isFinite(num)) return 'CHF 0.00';
+      return new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF' }).format(num);
+    }
 
     function normalizeDailyGoals(input) {
       const arr = Array.isArray(input) ? input : [];
@@ -324,6 +354,15 @@ function AmoledCalendarApp() {
       const [extrasSlotOrder, setExtrasSlotOrder] = useState(() => normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER));
       const [extrasUpdatedAt, setExtrasUpdatedAt] = useState(0);
       const [draggedExtraSlot, setDraggedExtraSlot] = useState('');
+      const [shoppingLists, setShoppingLists] = useState([]);
+      const [shoppingListsUpdatedAt, setShoppingListsUpdatedAt] = useState(0);
+      const [activeShoppingListId, setActiveShoppingListId] = useState('');
+      const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+      const [shoppingListModalOpen, setShoppingListModalOpen] = useState(false);
+      const [shoppingDraftTitle, setShoppingDraftTitle] = useState('Neue Einkaufsliste');
+      const [shoppingDraftStore, setShoppingDraftStore] = useState('');
+      const [shoppingSaving, setShoppingSaving] = useState(false);
+      const [shoppingQuickItem, setShoppingQuickItem] = useState('');
       const [isStandalone, setIsStandalone] = useState(false);
       const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
       const [canInstallPwa, setCanInstallPwa] = useState(false);
@@ -354,6 +393,7 @@ function AmoledCalendarApp() {
       const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
       const [searchQuery, setSearchQuery] = useState('');
       const [searchResults, setSearchResults] = useState([]);
+      const activeShoppingList = shoppingLists.find((row) => row.id === activeShoppingListId) || shoppingLists[0] || null;
 
       // --- BILD-VOLLBILD VIEWER ---
       const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
@@ -2698,12 +2738,10 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
     } catch (_) { return false; }
   };
 
-  // PWA-only
   if (!isStandaloneNow()) return;
 
   const messaging = await getMessagingSafe();
   if (!messaging) return;
-
   if (!('Notification' in window)) return;
 
   if (Notification.permission !== 'granted') {
@@ -2722,9 +2760,23 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
     });
 
     if (token) {
+      const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid);
+      let existingToken = null;
+      try {
+        const profileSnap = await getDoc(profileRef);
+        existingToken = profileSnap.exists() ? profileSnap.data().fcmTokenWeb : null;
+      } catch (_) {}
+      if (token !== existingToken) console.log('[FCM] Token erneuert');
       await setDoc(
-        doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid),
-        { fcmTokenWeb: token, lastWebTokenAt: Date.now(), pushTarget: 'web' },
+        profileRef,
+        {
+          fcmTokenWeb: token,
+          lastWebTokenAt: Date.now(),
+          pushTarget: 'web',
+          pushPlatform: navigator.userAgent.includes('Android') ? 'android' : navigator.userAgent.includes('iPhone') ? 'ios' : 'desktop',
+          pushBrowser: navigator.userAgent.includes('Chrome') ? 'chrome' : navigator.userAgent.includes('Firefox') ? 'firefox' : navigator.userAgent.includes('Safari') ? 'safari' : 'other',
+          lastTokenRefreshAt: Date.now()
+        },
         { merge: true }
       );
       setPushDiag(prev => ({ ...prev, lastTokenAt: Date.now(), lastError: '' }));
@@ -3321,6 +3373,104 @@ const requestNotificationPermission = async (currentUser) => {
         return () => { try { unsub(); } catch (_) {} };
       }, [user?.uid]);
 
+      function getShoppingStorageKey(uid) { return `onyx_shopping_lists_${uid || 'guest'}`; }
+      function readShoppingListsLocal(uid) {
+        try {
+          if (!uid) return [];
+          const raw = localStorage.getItem(getShoppingStorageKey(uid));
+          return normalizeShoppingLists(raw ? JSON.parse(raw) : []);
+        } catch (_) { return []; }
+      }
+      function writeShoppingListsLocal(uid, lists) {
+        try { if (uid) localStorage.setItem(getShoppingStorageKey(uid), JSON.stringify(normalizeShoppingLists(lists).slice(0, 60))); } catch (_) {}
+      }
+      function calcShoppingListTotal(list, doneOnly = false) {
+        try {
+          const items = normalizeShoppingItems(list?.items);
+          return items.reduce((sum, item) => {
+            if (doneOnly && !item.done) return sum;
+            const price = Number(String(item.price || '').replace(',', '.'));
+            return sum + (Number.isFinite(price) ? price : 0);
+          }, 0);
+        } catch (_) { return 0; }
+      }
+      async function persistShoppingLists(nextLists) {
+        if (!user?.uid) return;
+        const normalized = normalizeShoppingLists(nextLists);
+        writeShoppingListsLocal(user.uid, normalized);
+        setShoppingLists(normalized);
+        setShoppingListsUpdatedAt(Date.now());
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+            shoppingListsCloud: normalized,
+            shoppingListsUpdatedAt: Date.now()
+          }, { merge: true });
+        } catch (err) {
+          console.warn('shoppingLists sync fallback to local', err);
+        }
+      }
+      const createShoppingList = async () => {
+        const title = String(shoppingDraftTitle || '').trim() || 'Einkaufsliste';
+        const store = String(shoppingDraftStore || '').trim();
+        const row = { id: `shop_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, title, store, createdAt: Date.now(), updatedAt: Date.now(), items: [] };
+        setShoppingSaving(true);
+        const next = normalizeShoppingLists([row, ...shoppingLists]);
+        await persistShoppingLists(next);
+        setActiveShoppingListId(row.id);
+        setShoppingListModalOpen(false);
+        setPlusMenuOpen(false);
+        setShoppingDraftTitle('Neue Einkaufsliste');
+        setShoppingDraftStore('');
+        setCurrentView('shopping');
+        setShoppingSaving(false);
+      };
+      const addShoppingItem = async (listId, label = '') => {
+        const textValue = String(label || shoppingQuickItem || '').trim();
+        if (!textValue) return;
+        const next = normalizeShoppingLists(shoppingLists).map((list) => list.id === listId ? { ...list, updatedAt: Date.now(), items: [...normalizeShoppingItems(list.items), { id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, text: textValue, qty: '', price: '', done: false, checkedAt: 0 }] } : list);
+        await persistShoppingLists(next);
+        setShoppingQuickItem('');
+      };
+      const updateShoppingItem = async (listId, itemId, patch) => {
+        const next = normalizeShoppingLists(shoppingLists).map((list) => list.id === listId ? { ...list, updatedAt: Date.now(), items: normalizeShoppingItems(list.items).map((item) => item.id === itemId ? { ...item, ...patch } : item) } : list);
+        await persistShoppingLists(next);
+      };
+      const toggleShoppingItem = async (listId, itemId) => {
+        const next = normalizeShoppingLists(shoppingLists).map((list) => list.id === listId ? { ...list, updatedAt: Date.now(), items: normalizeShoppingItems(list.items).map((item) => item.id === itemId ? { ...item, done: !item.done, checkedAt: !item.done ? Date.now() : 0 } : item) } : list);
+        await persistShoppingLists(next);
+      };
+      const deleteShoppingItem = async (listId, itemId) => {
+        const next = normalizeShoppingLists(shoppingLists).map((list) => list.id === listId ? { ...list, updatedAt: Date.now(), items: normalizeShoppingItems(list.items).filter((item) => item.id !== itemId) } : list);
+        await persistShoppingLists(next);
+      };
+      const deleteShoppingList = async (listId) => {
+        const next = normalizeShoppingLists(shoppingLists).filter((list) => list.id !== listId);
+        await persistShoppingLists(next);
+        setActiveShoppingListId((prev) => prev === listId ? (next[0]?.id || '') : prev);
+      };
+
+      useEffect(() => {
+        if (!user?.uid) return;
+        const localLists = readShoppingListsLocal(user.uid);
+        if (localLists.length) setShoppingLists(localLists);
+      }, [user?.uid]);
+
+      useEffect(() => {
+        if (!user?.uid) return;
+        const remoteTs = Number(userProfile?.shoppingListsUpdatedAt || 0);
+        if (remoteTs >= Number(shoppingListsUpdatedAt || 0) && Array.isArray(userProfile?.shoppingListsCloud)) {
+          const normalized = normalizeShoppingLists(userProfile.shoppingListsCloud);
+          setShoppingLists(normalized);
+          writeShoppingListsLocal(user.uid, normalized);
+          if (!activeShoppingListId && normalized[0]?.id) setActiveShoppingListId(normalized[0].id);
+        }
+      }, [user?.uid, userProfile?.shoppingListsUpdatedAt, userProfile?.shoppingListsCloud]);
+
+      useEffect(() => {
+        if (activeShoppingListId) return;
+        if (shoppingLists[0]?.id) setActiveShoppingListId(shoppingLists[0].id);
+      }, [shoppingLists, activeShoppingListId]);
+
       function getHourlyIndexesForDay(dayStr) {
         try {
           if (!Array.isArray(hourlyForecast?.time)) return [];
@@ -3817,6 +3967,35 @@ useEffect(() => {
   };
 }, []);
 
+useEffect(() => {
+  if (!user) return;
+  let refreshTimer = null;
+  const refreshToken = async () => {
+    try { await ensureWebPushToken(user, { forcePrompt: false }); } catch (e) { console.warn('[FCM] Token refresh failed:', e?.message); }
+  };
+  refreshToken();
+  refreshTimer = setInterval(refreshToken, 60 * 60 * 1000);
+  const onVisibilityChange = () => { if (document.visibilityState === 'visible') refreshToken(); };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  return () => { if (refreshTimer) clearInterval(refreshTimer); document.removeEventListener('visibilitychange', onVisibilityChange); };
+}, [user]);
+
+useEffect(() => {
+  if (!('serviceWorker' in navigator)) return;
+  const checkForUpdate = async () => {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        await reg.update();
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+    } catch (_) {}
+  };
+  checkForUpdate();
+  const timer = setInterval(checkForUpdate, 30 * 60 * 1000);
+  return () => clearInterval(timer);
+}, []);
+
 // Diagnostics: receive a ping from the Service Worker when a push arrives
 useEffect(() => {
   try {
@@ -3850,11 +4029,11 @@ useEffect(() => {
 
           const options = {
             icon: './icon-192.png',
-            badge: './icon-192.png',
+            badge: './badge-icon.png',
             tag,
             renotify: true,
             silent: silentMode,
-            ...(silentMode ? {} : { vibrate: [200, 100, 200] })
+            ...(silentMode ? {} : { vibrate: [200, 100, 200, 100, 300] })
           };
 
           // body === null means: do not show any body text (privacy mode)
@@ -6308,10 +6487,11 @@ setSelfDestruct(false);
           <aside className="hidden md:flex w-64 border-r border-neutral-800 flex-col shrink-0 bg-black z-10">
             <div className="p-6 flex-1 overflow-y-auto">
               <h1 className="text-xl font-bold tracking-wider mb-8 flex items-center gap-3"><div className="w-4 h-4 bg-white rounded-sm"></div>ONYX</h1>
-              <button onClick={() => openNewEventModal()} className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 px-4 rounded-md font-medium hover:bg-gray-200 transition-colors mb-8"><Plus className="w-5 h-5" /> Neuer Termin</button>
+              <button onClick={() => setPlusMenuOpen(true)} className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 px-4 rounded-md font-medium hover:bg-gray-200 transition-colors mb-8"><Plus className="w-5 h-5" /> Neuer Termin</button>
               <nav className="space-y-2 mb-8">
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
                 <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
+                <button onClick={() => setCurrentView('shopping')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'shopping' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><ShoppingCart className="w-5 h-5" /> Einkauf</button>
                 <button onClick={() => setCurrentView('extras')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'extras' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Activity className="w-5 h-5" /> Extras</button>
                 <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
               </nav>
@@ -6342,7 +6522,7 @@ setSelfDestruct(false);
           <nav className="md:hidden fixed bottom-0 left-0 w-full h-16 bg-black border-t border-neutral-800 flex items-center justify-around z-40 px-2 pb-safe">
             <button onClick={() => setCurrentView('dashboard')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-6 h-6" /></button>
             <button onClick={() => setCurrentView('calendar')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-6 h-6" /></button>
-            <button onClick={() => openNewEventModal()} className="p-3 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg"><Plus className="w-6 h-6" /></button>
+            <button onClick={() => setPlusMenuOpen(true)} className="p-3 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg"><Plus className="w-6 h-6" /></button>
             <button onClick={() => setCurrentView('extras')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`}><Activity className="w-6 h-6" /></button>
             <button onClick={() => setCurrentView('settings')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-6 h-6" /></button>
           </nav>
@@ -6940,6 +7120,78 @@ setSelfDestruct(false);
             )}
 
 
+
+            {currentView === 'shopping' && (
+              <div className="p-4 md:p-8 max-w-7xl w-full mx-auto animate-fade-in">
+                <div className="flex flex-col lg:flex-row gap-6">
+                  <aside className="w-full lg:w-80 shrink-0 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4">
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-1">Einkauf</div>
+                        <h2 className="text-xl font-semibold text-white">Einkaufslisten</h2>
+                      </div>
+                      <button onClick={() => { setShoppingListModalOpen(true); setPlusMenuOpen(false); }} className="px-3 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200 transition-colors">Neu</button>
+                    </div>
+                    <div className="space-y-2">
+                      {shoppingLists.length === 0 ? (
+                        <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4">Noch keine Einkaufsliste vorhanden.</div>
+                      ) : shoppingLists.map((list) => {
+                        const bought = normalizeShoppingItems(list.items).filter((item) => item.done).length;
+                        const total = normalizeShoppingItems(list.items).length;
+                        return (
+                          <button key={list.id} onClick={() => setActiveShoppingListId(list.id)} className={`w-full text-left rounded-2xl border p-4 transition-colors ${activeShoppingList?.id === list.id ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500 bg-black/40'}`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="font-semibold text-white truncate">{list.title}</div>
+                                <div className="text-xs text-neutral-500 mt-1">{list.store || 'Ohne Ort'} · {bought}/{total} gekauft</div>
+                              </div>
+                              <div className="text-[11px] text-neutral-400">{formatCurrencyCHF(calcShoppingListTotal(list, true))}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </aside>
+                  <section className="flex-1 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-6">
+                    {!activeShoppingList ? (
+                      <div className="h-full min-h-[22rem] flex items-center justify-center text-neutral-500 text-sm">Liste auswählen oder neue Einkaufsliste erstellen.</div>
+                    ) : (
+                      <>
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-1">Aktive Liste</div>
+                            <h3 className="text-2xl font-semibold text-white">{activeShoppingList.title}</h3>
+                            <p className="text-sm text-neutral-500 mt-1">{activeShoppingList.store || 'Ohne Ort'} · {normalizeShoppingItems(activeShoppingList.items).length} Positionen</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <div className="px-3 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300">Offen {normalizeShoppingItems(activeShoppingList.items).filter((item) => !item.done).length}</div>
+                            <div className="px-3 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300">Gekauft {formatCurrencyCHF(calcShoppingListTotal(activeShoppingList, true))}</div>
+                            <button onClick={() => deleteShoppingList(activeShoppingList.id)} className="px-3 py-2 rounded-xl border border-red-900/60 text-sm text-red-300 hover:bg-red-950/40 transition-colors">Liste löschen</button>
+                          </div>
+                        </div>
+                        <div className="flex flex-col md:flex-row gap-3 mb-5">
+                          <input value={shoppingQuickItem} onChange={(e) => setShoppingQuickItem(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addShoppingItem(activeShoppingList.id); }} placeholder="Artikel hinzufügen, z. B. Milch" className="flex-1 bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                          <button onClick={() => addShoppingItem(activeShoppingList.id)} className="px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-neutral-200 transition-colors">Hinzufügen</button>
+                        </div>
+                        <div className="space-y-3">
+                          {normalizeShoppingItems(activeShoppingList.items).length === 0 ? (
+                            <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4">Noch keine Artikel in dieser Liste.</div>
+                          ) : normalizeShoppingItems(activeShoppingList.items).sort((a,b) => Number(a.done) - Number(b.done)).map((item) => (
+                            <div key={item.id} className={`grid grid-cols-1 md:grid-cols-[auto,1fr,110px,120px,auto] gap-3 items-center rounded-2xl border p-3 transition-colors ${item.done ? 'border-neutral-800 bg-neutral-950/70' : 'border-neutral-800 bg-black/60'}`}>
+                              <button onClick={() => toggleShoppingItem(activeShoppingList.id, item.id)} className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors ${item.done ? 'bg-white text-black border-white' : 'border-neutral-700 text-neutral-400 hover:border-neutral-500'}`}><CheckSquare className="w-4 h-4" /></button>
+                              <input value={item.text} onChange={(e) => updateShoppingItem(activeShoppingList.id, item.id, { text: e.target.value })} className={`bg-black border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-neutral-500 ${item.done ? 'line-through text-neutral-500 border-neutral-900' : 'text-white border-neutral-800'}`} />
+                              <input value={item.qty} onChange={(e) => updateShoppingItem(activeShoppingList.id, item.id, { qty: e.target.value })} placeholder="Menge" className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                              <input value={item.price} onChange={(e) => updateShoppingItem(activeShoppingList.id, item.id, { price: e.target.value.replace(/[^0-9.,]/g, '') })} placeholder="Preis CHF" className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                              <button onClick={() => deleteShoppingItem(activeShoppingList.id, item.id)} className="h-10 w-10 rounded-xl border border-neutral-800 text-neutral-400 hover:border-red-700 hover:text-red-300 transition-colors flex items-center justify-center"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </section>
+                </div>
+              </div>
+            )}
 
             {currentView === 'extras' && (() => {
               const extraCards = [];
@@ -8890,7 +9142,47 @@ Später
           )}
 
           {/* WETTER MODAL */}
-          {isWeatherModalOpen && (
+          {plusMenuOpen && (
+        <div className="fixed inset-0 z-[140] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPlusMenuOpen(false)}>
+          <div className="w-full max-w-md rounded-3xl border border-neutral-800 bg-neutral-950 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-semibold text-white">Neu erstellen</h3><button onClick={() => setPlusMenuOpen(false)} className="p-2 rounded-xl border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-500"><X className="w-4 h-4" /></button></div>
+            <div className="grid grid-cols-1 gap-3">
+              <button onClick={() => { setPlusMenuOpen(false); openNewEventModal(); }} className="p-4 rounded-2xl border border-neutral-800 hover:border-neutral-500 transition-colors text-left">
+                <div className="text-sm font-semibold text-white flex items-center gap-2"><CalendarPlus className="w-4 h-4" /> Termin</div>
+                <div className="text-xs text-neutral-500 mt-1">Neuen Kalender-Eintrag erstellen.</div>
+              </button>
+              <button onClick={() => { setShoppingListModalOpen(true); setPlusMenuOpen(false); }} className="p-4 rounded-2xl border border-neutral-800 hover:border-neutral-500 transition-colors text-left">
+                <div className="text-sm font-semibold text-white flex items-center gap-2"><ShoppingCart className="w-4 h-4" /> Einkaufsliste</div>
+                <div className="text-xs text-neutral-500 mt-1">Liste mit Artikeln, Preisen und Durchstreichen anlegen.</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shoppingListModalOpen && (
+        <div className="fixed inset-0 z-[141] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShoppingListModalOpen(false)}>
+          <div className="w-full max-w-lg rounded-3xl border border-neutral-800 bg-neutral-950 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-semibold text-white">Neue Einkaufsliste</h3><button onClick={() => setShoppingListModalOpen(false)} className="p-2 rounded-xl border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-500"><X className="w-4 h-4" /></button></div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-neutral-500 mb-2 uppercase tracking-[0.18em]">Titel</label>
+                <input value={shoppingDraftTitle} onChange={(e) => setShoppingDraftTitle(e.target.value)} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" placeholder="z. B. Wochenendeinkauf" />
+              </div>
+              <div>
+                <label className="block text-xs text-neutral-500 mb-2 uppercase tracking-[0.18em]">Ort / Laden</label>
+                <input value={shoppingDraftStore} onChange={(e) => setShoppingDraftStore(e.target.value)} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" placeholder="z. B. Migros" />
+              </div>
+              <div className="flex justify-end gap-3">
+                <button onClick={() => setShoppingListModalOpen(false)} className="px-4 py-3 rounded-xl border border-neutral-800 text-neutral-300 hover:border-neutral-500 transition-colors">Abbrechen</button>
+                <button onClick={createShoppingList} disabled={shoppingSaving} className="px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-neutral-200 transition-colors disabled:opacity-50">Erstellen</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isWeatherModalOpen && (
             <div className="fixed inset-0 z-[75] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }}>
               <div ref={eventModalScrollRef} className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up max-h-[92dvh] overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }} onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">

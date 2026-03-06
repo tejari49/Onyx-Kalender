@@ -277,6 +277,11 @@ function AmoledCalendarApp() {
       const [workClockDeletingId, setWorkClockDeletingId] = useState('');
       const [dailyFact, setDailyFact] = useState('');
       const [quotes, setQuotes] = useState([]);
+      const [focusDurationMin, setFocusDurationMin] = useState(25);
+      const [focusState, setFocusState] = useState(null);
+      const [focusTick, setFocusTick] = useState(Date.now());
+      const [focusHistory, setFocusHistory] = useState([]);
+      const [quickNotes, setQuickNotes] = useState('');
       const [isStandalone, setIsStandalone] = useState(false);
       const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
       const [canInstallPwa, setCanInstallPwa] = useState(false);
@@ -6046,6 +6051,118 @@ setSelfDestruct(false);
       const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
       const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
 
+
+      const getStorageKey = (suffix) => `onyx_${APP_ID}_${user?.uid || 'guest'}_${suffix}`;
+      useEffect(() => {
+        const id = setInterval(() => setFocusTick(Date.now()), 1000);
+        return () => clearInterval(id);
+      }, []);
+      useEffect(() => {
+        try {
+          const rawState = localStorage.getItem(getStorageKey('focusState'));
+          const rawHistory = localStorage.getItem(getStorageKey('focusHistory'));
+          const rawNotes = localStorage.getItem(getStorageKey('quickNotes'));
+          if (rawState) setFocusState(JSON.parse(rawState));
+          if (rawHistory) setFocusHistory(JSON.parse(rawHistory));
+          if (typeof rawNotes === 'string') setQuickNotes(rawNotes);
+        } catch (_) {}
+      }, [user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('focusState'), JSON.stringify(focusState || null)); } catch (_) {}
+      }, [focusState, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('focusHistory'), JSON.stringify(focusHistory || [])); } catch (_) {}
+      }, [focusHistory, user?.uid]);
+      useEffect(() => {
+        try { localStorage.setItem(getStorageKey('quickNotes'), quickNotes || ''); } catch (_) {}
+      }, [quickNotes, user?.uid]);
+      const getFocusElapsedMs = (state, now = Date.now()) => {
+        if (!state?.startedAt) return 0;
+        const base = Math.max(0, now - Number(state.startedAt || now));
+        const paused = Number(state?.pausedAccumulatedMs || 0) + ((state?.isPaused && state?.pauseStartedAt) ? Math.max(0, now - Number(state.pauseStartedAt || now)) : 0);
+        return Math.max(0, base - paused);
+      };
+      const focusRemainingMs = focusState?.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
+      const startFocusMode = () => {
+        const now = Date.now();
+        setFocusState({ startedAt: now, durationMin: Number(focusDurationMin || 25), isPaused: false, pausedAccumulatedMs: 0, pauseStartedAt: null });
+        showToast('Fokus gestartet');
+      };
+      const toggleFocusPause = () => {
+        if (!focusState?.startedAt) return;
+        const now = Date.now();
+        if (focusState?.isPaused) {
+          setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev?.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev?.pauseStartedAt || now)), pauseStartedAt: null }));
+          showToast('Fokus weitergeführt');
+        } else {
+          setFocusState(prev => ({ ...(prev || {}), isPaused: true, pauseStartedAt: now }));
+          showToast('Fokus pausiert');
+        }
+      };
+      const stopFocusMode = (markDone = false) => {
+        try {
+          if (markDone && focusState?.startedAt) {
+            const finishedAt = Date.now();
+            const elapsedMs = getFocusElapsedMs(focusState, finishedAt);
+            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
+          }
+        } catch (_) {}
+        setFocusState(null);
+        if (markDone) showToast('Fokusblock gespeichert');
+      };
+      useEffect(() => {
+        if (focusState?.startedAt && !focusState?.isPaused && focusRemainingMs === 0) {
+          stopFocusMode(true);
+        }
+      }, [focusRemainingMs, focusState?.startedAt, focusState?.isPaused]);
+      const weekEventDates = Array.from({ length: 7 }, (_, idx) => {
+        const d = new Date(weekStartMs + idx * 86400000);
+        return d.toISOString().slice(0, 10);
+      });
+      const weekCalendarEvents = weekEventDates.flatMap((dateStr) => {
+        try { return (getEventsForDate(dateStr) || []).map(ev => ({ ...ev, __date: dateStr })); } catch (_) { return []; }
+      });
+      const weekEventCount = weekCalendarEvents.length;
+      const todayEventCount = todaysEvents.length;
+      const nextFreeBlock = (() => {
+        if (!timedEventsToday.length) return 'Ganzer Tag frei';
+        const first = timedEventsToday[0];
+        if (Number.isFinite(first?.startMs) && first.startMs > nowMs + 45 * 60000) return `Aktuell frei bis ${first.event?.time || 'später'}`;
+        for (let i = 0; i < timedEventsToday.length - 1; i += 1) {
+          const a = timedEventsToday[i];
+          const b = timedEventsToday[i + 1];
+          if (Number.isFinite(a?.startMs) && Number.isFinite(b?.startMs)) {
+            const gapMin = Math.round((b.startMs - a.startMs) / 60000) - 60;
+            if (gapMin >= 45) return `${a.event?.time || ''}–${b.event?.time || ''} frei`;
+          }
+        }
+        return freeWindowText;
+      })();
+      const focusTodayMs = (focusHistory || []).filter((x) => localDateKey(x?.startedAt || Date.now()) === todayDateStr).reduce((sum, x) => sum + Number(x?.elapsedMs || 0), 0) + (focusState?.startedAt ? getFocusElapsedMs(focusState, focusTick) : 0);
+      const bestWeatherWindow = (() => {
+        try {
+          const times = hourlyForecast?.time || [];
+          const rain = hourlyForecast?.precipitation_probability || [];
+          const temps = hourlyForecast?.temperature_2m || [];
+          if (!times.length) return 'Aktuell keine 4h-Tendenz verfügbar';
+          const now = Date.now();
+          const next = times.map((t, i) => ({ t, idx: i, ms: Date.parse(t), rain: Number(rain?.[i] || 0), temp: Number(temps?.[i] || 0) })).filter(x => Number.isFinite(x.ms) && x.ms >= now).slice(0, 8);
+          const dry = next.filter(x => x.rain < 35);
+          if (dry.length >= 2) return `Eher trocken bis ${new Date(dry[dry.length - 1].ms).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })}`;
+          const wet = next.find(x => x.rain >= 55);
+          if (wet) return `Ab ${new Date(wet.ms).toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' })} eher nass`; 
+          return todayWeatherAdvice;
+        } catch (_) { return todayWeatherAdvice; }
+      })();
+      const compactHomeSmartDay = (userProfile?.smartDayEnabled !== false) && (userProfile?.smartDayHomeEnabled !== false);
+      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled === true);
+      const extrasEnabled = userProfile?.extrasEnabled !== false;
+      const showExtrasSmartDay = extrasEnabled && (userProfile?.smartDayEnabled !== false);
+      const showExtrasWorkClock = extrasEnabled && (userProfile?.workClockEnabled === true);
+      const showExtrasFocus = extrasEnabled && (userProfile?.focusModeEnabled !== false);
+      const showExtrasWeek = extrasEnabled && (userProfile?.weeklyOverviewEnabled !== false);
+      const showExtrasNotes = extrasEnabled && (userProfile?.quickNotesEnabled !== false);
+      const showExtrasWeather = extrasEnabled && (userProfile?.weatherPlannerEnabled !== false);
       const activeCalForView = getCalendarById(activeCalendarId);
 
       return (
@@ -6073,6 +6190,7 @@ setSelfDestruct(false);
               <nav className="space-y-2 mb-8">
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
                 <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
+                <button onClick={() => setCurrentView('extras')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'extras' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Activity className="w-5 h-5" /> Extras</button>
                 <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
               </nav>
 
@@ -6103,6 +6221,7 @@ setSelfDestruct(false);
             <button onClick={() => setCurrentView('dashboard')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-6 h-6" /></button>
             <button onClick={() => setCurrentView('calendar')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-6 h-6" /></button>
             <button onClick={() => openNewEventModal()} className="p-3 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg"><Plus className="w-6 h-6" /></button>
+            <button onClick={() => setCurrentView('extras')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`}><Activity className="w-6 h-6" /></button>
             <button onClick={() => setCurrentView('settings')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-6 h-6" /></button>
           </nav>
 
@@ -6126,78 +6245,33 @@ setSelfDestruct(false);
                     <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-xl md:text-2xl font-semibold text-neutral-100 leading-snug">“{dailyFact}”</p></div>
                   </div>
                 </div>
-                <div className="mb-6 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Smart Day</div>
-                      <div className="text-xl md:text-2xl font-semibold text-white">{nextEventLabel}</div>
-                      <div className="mt-2 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 md:justify-end">
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black min-w-[10rem]">
-                        <div className="text-[10px] uppercase tracking-widest text-neutral-500">Nächster Termin</div>
-                        <div className="mt-1 text-sm font-medium text-neutral-100">{nextTimedEvent ? (nextTimedEvent.event.time || 'Heute') : 'Keiner mehr'}</div>
-                      </div>
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black min-w-[10rem]">
-                        <div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute noch frei</div>
-                        <div className="mt-1 text-sm font-medium text-neutral-100">{freeWindowText}</div>
-                      </div>
-                      <div className={`px-3 py-2 rounded-xl border min-w-[11rem] ${weatherBadgeMeta.tone}`}>
-                        <div className="text-[10px] uppercase tracking-widest text-current/70">Wetter-Hinweis</div>
-                        <div className="mt-1 text-sm font-medium flex items-center gap-2"><span>{weatherBadgeMeta.icon}</span><span>{weatherBadgeMeta.text}</span></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {(userProfile?.workClockEnabled) && (
-                  <div className="mb-6 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
-                    <div className="flex flex-col gap-4">
-                      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                        <div>
-                          <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempelung</div>
-                          <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
-                          <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv – Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte deine Arbeitszeit direkt von der Startseite.'}</div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {!workClockActive?.startedAt ? (
-                            <button onClick={startWorkClock} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
-                          ) : (
-                            <>
-                              <button onClick={toggleWorkClockPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Weiter' : 'Pause'}</button>
-                              <button onClick={requestStopWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
-                            </>
-                          )}
-                          <button onClick={exportWeekWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Wochenrapport</button>
-                          <button onClick={exportMonthWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Monatsrapport</button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div></div>
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ø {formatDurationVerbose(weekAvgMs)}</div></div>
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
-                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
-                      </div>
-                      {(workClockSessions || []).length > 0 && (
-                        <div className="border-t border-neutral-800 pt-3">
-                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Letzte Sessions</div>
-                          <div className="space-y-2">
-                            {(workClockSessions || []).slice(0, 5).map((s) => (
-                              <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
-                                <div className="min-w-0 flex-1">
-                                  <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
-                                  <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
-                                </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
-                                  <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
-                                  <button type="button" onClick={() => deleteWorkClockSession(s)} disabled={workClockDeletingId === String(s.localId || s.id || '')} className="p-2 rounded-lg border border-red-900/40 text-red-200 hover:bg-red-950/60 transition-colors disabled:opacity-50" title="Löschen"><Trash2 className="w-4 h-4" /></button>
-                                </div>
-                              </div>
-                            ))}
+
+                {(compactHomeSmartDay || compactHomeWorkClock) && (
+                  <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {compactHomeSmartDay && (
+                      <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Smart Day</div>
+                            <div className="text-lg md:text-xl font-semibold text-white">{nextEventLabel}</div>
+                            <div className="mt-2 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
                           </div>
+                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
+                    {compactHomeWorkClock && (
+                      <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
+                            <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
+                            <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
+                          </div>
+                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 <div>
@@ -6742,6 +6816,172 @@ setSelfDestruct(false);
 
 </div>
             )}
+
+            {currentView === 'extras' && (
+              <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
+                <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                  <div>
+                    <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
+                    <p className="text-sm text-neutral-500 mt-2">Nützliche Werkzeuge getrennt von der Startseite – sauberer, schneller, skalierbar.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => setCurrentView('dashboard')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Zur Startseite</button>
+                    <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200 transition-colors">Extras einstellen</button>
+                  </div>
+                </header>
+
+                {showExtrasSmartDay && (
+                  <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Smart Day</div>
+                        <div className="text-xl md:text-2xl font-semibold text-white">{nextEventLabel}</div>
+                        <div className="mt-2 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 md:justify-end">
+                        <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black min-w-[10rem]"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Nächster Termin</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextTimedEvent ? (nextTimedEvent.event.time || 'Heute') : 'Keiner mehr'}</div></div>
+                        <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black min-w-[10rem]"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Freies Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
+                        <div className={`px-3 py-2 rounded-xl border min-w-[11rem] ${weatherBadgeMeta.tone}`}><div className="text-[10px] uppercase tracking-widest text-current/70">Wetter-Hinweis</div><div className="mt-1 text-sm font-medium flex items-center gap-2"><span>{weatherBadgeMeta.icon}</span><span>{weatherBadgeMeta.text}</span></div></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {showExtrasWorkClock && (
+                  <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
+                        <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
+                        <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv – Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {!workClockActive?.startedAt ? (
+                          <button onClick={startWorkClock} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
+                        ) : (
+                          <>
+                            <button onClick={toggleWorkClockPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Weiter' : 'Pause'}</button>
+                            <button onClick={requestStopWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
+                          </>
+                        )}
+                        <button onClick={exportWeekWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Woche</button>
+                        <button onClick={exportMonthWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Monat</button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ø {formatDurationVerbose(weekAvgMs)}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
+                    </div>
+                    {(workClockSessions || []).length > 0 && (
+                      <div className="border-t border-neutral-800 pt-3">
+                        <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Letzte Sessions</div>
+                        <div className="space-y-2">
+                          {(workClockSessions || []).slice(0, 5).map((s) => (
+                            <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
+                              <div className="min-w-0 flex-1">
+                                <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
+                                <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
+                                <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
+                                <button type="button" onClick={() => deleteWorkClockSession(s)} disabled={workClockDeletingId === String(s.localId || s.id || '')} className="p-2 rounded-lg border border-red-900/40 text-red-200 hover:bg-red-950/60 transition-colors disabled:opacity-50" title="Löschen"><Trash2 className="w-4 h-4" /></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  {showExtrasFocus && (
+                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Fokusmodus</div>
+                          <div className="text-xl font-semibold text-white">{focusState?.startedAt ? formatDurationCompact(focusRemainingMs) : `${focusDurationMin} Min.`}</div>
+                          <div className="mt-2 text-sm text-neutral-400">{focusState?.startedAt ? (focusState?.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block läuft') : 'Starte einen Fokusblock für ruhiges Arbeiten.'}</div>
+                        </div>
+                        <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-sm text-neutral-300">Heute {formatDurationVerbose(focusTodayMs)}</div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Dauer</label>
+                        <select value={String(focusDurationMin)} onChange={(e) => setFocusDurationMin(parseInt(e.target.value, 10) || 25)} className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500">
+                          <option value="25">25 Minuten</option>
+                          <option value="50">50 Minuten</option>
+                          <option value="90">90 Minuten</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {!focusState?.startedAt ? (
+                          <button onClick={startFocusMode} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Fokus starten</button>
+                        ) : (
+                          <>
+                            <button onClick={toggleFocusPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{focusState?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{focusState?.isPaused ? 'Weiter' : 'Pause'}</button>
+                            <button onClick={() => stopFocusMode(true)} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">Als Fokusblock speichern</button>
+                            <button onClick={() => stopFocusMode(false)} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Zurücksetzen</button>
+                          </>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-neutral-500">Letzte Fokusblöcke: {(focusHistory || []).slice(0, 3).map((x) => `${formatDurationCompact(x.elapsedMs || 0)} am ${new Date(x.startedAt).toLocaleDateString('de-CH')}`).join(' · ') || 'Noch keine'}</div>
+                    </div>
+                  )}
+
+                  {showExtrasWeek && (
+                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Wochenübersicht</div>
+                        <div className="text-xl font-semibold text-white">{weekEventCount} Termine · {formatDurationVerbose(weekWorkMs)} Arbeit</div>
+                        <div className="mt-2 text-sm text-neutral-400">{nextFreeBlock} · {workLevelSummary.map(x => `${x.level}: ${x.count}`).join(' · ')}</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute Termine</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayEventCount}</div></div>
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Frei-Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</div><div className="mt-1 text-sm font-medium text-neutral-100">{weatherBadgeMeta.text}</div></div>
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ø pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {showExtrasNotes && (
+                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Schnellnotizen</div>
+                        <div className="text-xl font-semibold text-white">Heute · Morgen · Später</div>
+                        <div className="mt-2 text-sm text-neutral-400">Lokal gespeichert – schnell, bewusst simpel.</div>
+                      </div>
+                      <textarea value={quickNotes} onChange={(e) => setQuickNotes(e.target.value)} rows={10} placeholder={`Heute
+- ...
+
+Morgen
+- ...
+
+Später
+- ...`} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                    </div>
+                  )}
+
+                  {showExtrasWeather && (
+                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Wetter-Planer</div>
+                        <div className="text-xl font-semibold text-white">{weatherBadgeMeta.icon} {weatherBadgeMeta.text}</div>
+                        <div className="mt-2 text-sm text-neutral-400">{todayWeatherAdvice}</div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Beste Phase</div><div className="mt-1 text-sm font-medium text-neutral-100">{bestWeatherWindow}</div></div>
+                        <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Kleidung</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayWeatherAdvice.includes('Jacke') ? 'Jacke sinnvoll' : (todayWeatherAdvice.includes('Schirm') ? 'Schirm sinnvoll' : 'Leicht und trocken')}</div></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {currentView === 'settings' && (() => {
     const q = (settingsQuery || '').trim().toLowerCase();
     const match = (...keys) => {
@@ -6755,7 +6995,7 @@ setSelfDestruct(false);
     };
     const TABS = [
       { id: 'calendars', label: 'Kalender', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
-      { id: 'notifications', label: 'Benachr.', icon: Bell, keys: ['push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
+      { id: 'notifications', label: 'Extras', icon: Activity, keys: ['extras', 'smart day', 'stempelung', 'fokus', 'notiz', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
       { id: 'links', label: 'Public Links', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
       { id: 'audit', label: 'Audit', icon: History, keys: ['audit', 'verlauf', 'log', 'änderung', 'wer'] },
       { id: 'account', label: 'Account', icon: User, keys: ['account', 'datenschutz', 'abmelden', 'email'] },
@@ -6946,15 +7186,55 @@ setSelfDestruct(false);
               </section>
             </AccordionItem>
 
-            {/* BENACHRICHTIGUNGEN */}
-            <AccordionItem id="notifications" label="Benachrichtigungen" icon={Bell} keys={['benachr','push','erinnerung','reminder','pwa','token','test']} >
+            {/* EXTRAS */}
+            <AccordionItem id="notifications" label="Extras" icon={Activity} keys={['extras','smart day','stempelung','fokus','notiz','push','benachr','erinnerung','pwa','token','test']} >
               <section id="settings-notifications">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Bell className="w-4 h-4" /> Benachrichtigungen
+                  <Activity className="w-4 h-4" /> Extras
                 </h3>
 
                 {/* Core settings */}
                 <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      ['extrasEnabled','Extras-Bereich','Blendet den neuen Extras-Tab ein und aus.'],
+                      ['smartDayEnabled','Smart Day in Extras','Detaillierte Tageskarte im Extras-Bereich.'],
+                      ['smartDayHomeEnabled','Smart Day auf Home','Kompakte Karte auf der Startseite.'],
+                      ['workClockHomeEnabled','Stempeluhr auf Home','Nur kompakte Stempeluhr-Zeile auf Home.'],
+                      ['focusModeEnabled','Fokusmodus','25/50/90-Minuten Fokusblöcke in Extras.'],
+                      ['weeklyOverviewEnabled','Wochenübersicht','Arbeitszeit, Termine und freie Fenster bündeln.'],
+                      ['quickNotesEnabled','Schnellnotizen','Lokale Notizfläche in Extras.'],
+                      ['weatherPlannerEnabled','Wetter-Planer','Zusätzliche Wetter-/Kleidungs-Hinweise in Extras.']
+                    ].map(([field,label,desc]) => (
+                      <div key={field} className="border border-neutral-800 rounded-xl bg-black p-4 flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-white">{label}</p>
+                          <p className="text-xs text-neutral-500 mt-1">{desc}</p>
+                        </div>
+                        <button type="button" onClick={async () => {
+                          try {
+                            const defaultOn = !['workClockHomeEnabled'].includes(field);
+                            const current = (userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn;
+                            const next = !(current === true);
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { [field]: next, updatedAt: Date.now() }, { merge: true });
+                            setUserProfile(prev => ({ ...(prev || {}), [field]: next }));
+                            showToast(next ? 'Aktiviert' : 'Deaktiviert');
+                          } catch (_) { showToast('Fehler'); }
+                        }} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + (((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
+                          {(((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true) ? 'Aktiv' : 'Aus'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="border border-neutral-800 rounded-xl bg-black p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-white">Push & Erinnerungen</p>
+                        <p className="text-xs text-neutral-500 mt-1">Ehemaliger Benachrichtigungsbereich – liegt jetzt gesammelt unter Extras.</p>
+                      </div>
+                    </div>
+                  </div>
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-medium text-white">Kalender-Erinnerungen</p>
@@ -7043,7 +7323,7 @@ setSelfDestruct(false);
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="font-medium text-white flex items-center gap-2"><Briefcase className="w-4 h-4" /> Stempelung</p>
-                        <p className="text-xs text-neutral-500 mt-1">Startet Arbeitszeit auf der Startseite mit Start, Pause und Stopp. Beim Beenden wird Tätigkeit und Belastung gespeichert.</p>
+                        <p className="text-xs text-neutral-500 mt-1">Aktiviert die Stempeluhr im Extras-Bereich. Optional kann sie zusätzlich kompakt auf der Startseite erscheinen.</p>
                       </div>
                       <button
                         type="button"

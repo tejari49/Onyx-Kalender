@@ -1,101 +1,87 @@
 # Onyx Kalender
 
-Onyx Kalender ist eine dunkle Kalender- und Organisations-App mit Fokus auf Alltag, Arbeit, Wetter, Privatsphäre und schneller Bedienung.
+Onyx ist eine dunkle Kalender-PWA mit Fokus auf Terminplanung, geteilte Kalender, Wetter-Hinweise, Secret-Bereich und produktive Extras.
 
 ## Hauptfunktionen
 
-### Konto & Profil
-- Registrierung mit Name, E-Mail und Passwort
-- persönlicher Alias / Anzeigename
-- 5-stellige Chat-/Kontakt-ID
-- Profildaten mit lokaler Absicherung
-- Alias bleibt nach Reload erhalten
-
 ### Kalender
-- privater Standardkalender
-- eigene benutzerdefinierte Kalender
-- geteilter Kalender-Support
-- Tages-, Wochen- und Monatslogik
+- privater Standard-Kalender
+- eigene zusätzliche Kalender
+- Farben, Teilen, Busy-only, Public Links
+- Tagesansicht mit Agenda und Feed
 - wiederkehrende Termine
-- Erinnerungen mit Standard- oder benutzerdefiniertem Vorlauf
-- Agenda für heute
-- schneller Termin-Export
+- Audit / Verlauf
+- ICS Import / Export
 
 ### Dashboard / Startseite
-- Smart-Day-Karte mit nächstem Termin
-- Anzeige „heute noch frei“
-- kompakte Termin-Vorschau
-- Wetter-Badge direkt auf der Startseite
+- Wetterkarte mit 4h-Hinweisen
+- Smartes Wetter-Badge wie `Regen ab xx:xx`, `Windig bis xx:xx`, `Trocken bis xx:xx`
 - Spruch des Tages
-- Tageszusammenfassung mit freien Zeitfenstern
+- Agenda für heute
+- optionale kompakte Smart-Day-Karte
+- optionale kompakte Stempeluhr-Karte
 
-### Wetter
-- aktuelle Wetterdaten über Open-Meteo
-- Tagesprognose
-- 4-Stunden-Wetterlogik für praktische Hinweise
-- kontextbezogene Hinweise wie:
-  - Schirm mitnehmen
-  - Jacke sinnvoll
-  - trocken bis Uhrzeit X
-  - Regen ab Uhrzeit X
-  - windig bis Uhrzeit X
-- natürlichere Texte wie morgens, über Mittag, am Nachmittag, am Abend
-- Wetter-Badge auf Dashboard und im Wetter-Modal
-
-### Secret Chat
-- separater Secret Chat
-- Secret-Chat-PIN
-- Panic Mode zum sofortigen Verstecken
-- optionales Auto-Hide / Auto-Panic beim Verlassen
-- reduzierte Sichtbarkeit von Secret-Chat-Benachrichtigungen
-
-### Arbeit / Stempelung
-- in Einstellungen aktivierbar/deaktivierbar
-- Start / Pause / Weiter / Stopp auf der Startseite
-- Abschlussdialog beim Stoppen
-- Tätigkeit über Dropdown oder freie Eingabe
-- Belastungslevel: leicht / mittel / schwer
-- laufender Timer
-- Pausenzeit getrennt von Arbeitszeit
-- Heute-, Wochen- und Monatsübersicht
-- letzte Sessions direkt im Dashboard
-- Sessions bleiben lokal gespeichert
-- lokale Daten werden mit Remote-Daten zusammengeführt
-- Wiederaufnahme einer laufenden Stempelung nach Reload
-
-### Stempelungs-Reports
-- Wochenrapport als CSV-Export
-- Monatsrapport als CSV-Export
-- Summen und Session-Anzahl im Dashboard
-- Belastungsübersicht nach Level
-
-### Stempelungs-Verwaltung
-- Session bearbeiten
-- Session löschen
-- manuelle Korrektur von Start- und Endzeit
-- nachträgliches Ändern von Tätigkeit und Level
+### Extras
+- eigener Extras-Bereich in Sidebar und Bottom-Bar
+- Smart Day
+  - nächster Termin
+  - Countdown bis zum Termin
+  - freie Zeitfenster
+  - Wetter-Hinweis
+- Stempeluhr
+  - Start / Pause / Weiter / Stopp
+  - Tätigkeits-Dropdown
+  - Belastungslevel leicht / mittel / schwer
+  - Heute / Woche / Monat
+  - Wochenrapport CSV
+  - Monatsrapport CSV
+  - letzte Sessions
+  - Session bearbeiten / löschen
+  - manuelle Zeitkorrektur
+  - lokale Persistenz mit Remote-Fallback
+- Fokusmodus
+  - 25 / 50 / 90 Minuten
+  - Pause / Weiter / Speichern
+  - lokale Historie
+- Wochenübersicht
+  - Termine der Woche
+  - Arbeitszeit
+  - freies Fenster
+  - Belastungsübersicht
+- Schnellnotizen
+  - lokal gespeichert
+- Wetter-Planer
+  - Kleidung / Schirm / Trockenfenster
 
 ### Einstellungen
-- Workclock / Stempelung aktivieren
-- Tätigkeitsliste für Dropdown pflegen
-- optionale Privatsphäre-Funktionen für Secret Chat
-- diverse App- und Profiloptionen
+- Extras ein-/ausblendbar
+- Smart Day in Extras ein-/aus
+- Smart Day auf Home ein-/aus
+- Stempeluhr auf Home ein-/aus
+- Fokusmodus ein-/aus
+- Wochenübersicht ein-/aus
+- Schnellnotizen ein-/aus
+- Wetter-Planer ein-/aus
+- Push & Erinnerungen weiterhin vorhanden, jetzt unter Extras zusammengefasst
 
-### Technik
-- React + Vite
-- Firebase Auth
-- Firestore
-- lokale Fallback-Speicherung via LocalStorage
-- PWA / Service Worker Unterstützung
-- dunkles UI für Mobile und Desktop
+### Secret Bereich
+- Secret Chat mit PIN
+- Panic Mode
+- Auto-Panic bei App-Wechsel optional
+- diskrete Benachrichtigungen für Secret Chat
 
-## Hinweise
-- Einige Funktionen speichern lokal und spiegeln zusätzlich nach Firestore.
-- Wenn Firestore-Regeln oder Netzwerke kurzfristig blockieren, bleiben lokale Daten erhalten.
-- Browser-Fehler aus Erweiterungen wie `webpage_content_reporter.js` stammen normalerweise nicht aus der App selbst.
+### Account
+- Alias dauerhaft speicherbar
+- Passwort ändern / Reset-Mail
+- Datenschutz & Profilbereich
 
-## Empfohlene nächste Ausbauten
-- PDF-Export für Rapporte
-- Fingerprint / Face-ID für Secret Chat
-- Selbstlöschende Secret-Chat-Nachrichten
-- noch feinere Arbeitsauswertungen nach Tätigkeit
+## Technische Hinweise
+- Firebase Auth + Firestore
+- lokale Fallbacks für sensible Bereiche wie Workclock
+- PWA mit Service Worker
+- Vite + React
+
+## Bedienidee
+- Home bleibt bewusst kompakt
+- Extras bündelt produktive Werkzeuge
+- Einstellungen schalten Extras und Home-Karten granular an oder aus

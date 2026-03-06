@@ -1,14 +1,13 @@
 # Onyx Kalender
 
-Onyx ist eine dunkle Kalender-PWA für Termine, Freigaben, Wetter-Hinweise und produktive Werkzeuge. Der Bereich **Extras** bündelt zusätzliche Funktionen, damit die Startseite kompakt bleibt.
+Onyx ist eine dunkle Kalender-PWA mit Fokus auf Terminplanung, geteilte Kalender, Wetter-Hinweise, Secret-Bereich und produktive Extras.
 
 ## Hauptfunktionen
 
 ### Kalender
 - privater Standard-Kalender
 - eigene zusätzliche Kalender
-- Kalender teilen
-- Busy-only Freigaben und Public Links
+- Farben, Teilen, Busy-only, Public Links
 - Tagesansicht mit Agenda und Feed
 - wiederkehrende Termine
 - Audit / Verlauf
@@ -16,59 +15,46 @@ Onyx ist eine dunkle Kalender-PWA für Termine, Freigaben, Wetter-Hinweise und p
 
 ### Dashboard / Startseite
 - Wetterkarte mit 4h-Hinweisen
-- Wetter-Badges wie `☔ Regen ab xx:xx`, `🌬️ Windig bis xx:xx`, `☀️ Trocken bis xx:xx`
+- Smartes Wetter-Badge wie `Regen ab xx:xx`, `Windig bis xx:xx`, `Trocken bis xx:xx`
 - Spruch des Tages
 - Agenda für heute
 - optionale kompakte Smart-Day-Karte
 - optionale kompakte Stempeluhr-Karte
 
 ### Extras
-Der neue Bereich **Extras** ist in Sidebar und Bottom Bar verfügbar.
-
-#### Smart Day
-- nächster Termin
-- Countdown bis zum Termin
-- freie Zeitfenster
-- kompakter Wetter-Hinweis
-- Tagesstatus für heute
-
-#### Stempeluhr
-- aktivierbar / deaktivierbar in den Einstellungen
-- Start / Pause / Weiter / Stopp
-- Tätigkeits-Dropdown
-- Belastungslevel: leicht / mittel / schwer
-- Heute / Woche / Monat
-- Wochenrapport als CSV
-- Monatsrapport als CSV
-- letzte Sessions
-- Session bearbeiten / löschen
-- manuelle Zeitkorrektur für Start und Ende
-- lokale Persistenz mit Firestore-Fallback
-
-#### Fokusmodus
-- 25 / 50 / 90 Minuten
-- Pause / Weiter / Speichern
-- lokale Historie
-- heutige Fokuszeit
-
-#### Wochenübersicht
-- Termine der Woche
-- Arbeitszeit der Woche
-- freie Zeitfenster
-- Belastungsübersicht
-
-#### Schnellnotizen
-- lokale Notizen
-- direkt in Extras nutzbar
-
-#### Wetter-Planer
-- 4h-Tendenz
-- Regenschirm-/Jacken-Hinweise
-- Trockenfenster / Regenfenster
-- einfache Tagesempfehlung
+- eigener Extras-Bereich in Sidebar und Bottom-Bar
+- Smart Day
+  - nächster Termin
+  - Countdown bis zum Termin
+  - freie Zeitfenster
+  - Wetter-Hinweis
+- Stempeluhr
+  - Start / Pause / Weiter / Stopp
+  - Tätigkeits-Dropdown
+  - Belastungslevel leicht / mittel / schwer
+  - Heute / Woche / Monat
+  - Wochenrapport CSV
+  - Monatsrapport CSV
+  - letzte Sessions
+  - Session bearbeiten / löschen
+  - manuelle Zeitkorrektur
+  - lokale Persistenz mit Remote-Fallback
+- Fokusmodus
+  - 25 / 50 / 90 Minuten
+  - Pause / Weiter / Speichern
+  - lokale Historie
+- Wochenübersicht
+  - Termine der Woche
+  - Arbeitszeit
+  - freies Fenster
+  - Belastungsübersicht
+- Schnellnotizen
+  - lokal gespeichert
+- Wetter-Planer
+  - Kleidung / Schirm / Trockenfenster
 
 ### Einstellungen
-- Extras global ein-/ausblendbar
+- Extras ein-/ausblendbar
 - Smart Day in Extras ein-/aus
 - Smart Day auf Home ein-/aus
 - Stempeluhr auf Home ein-/aus
@@ -76,6 +62,7 @@ Der neue Bereich **Extras** ist in Sidebar und Bottom Bar verfügbar.
 - Wochenübersicht ein-/aus
 - Schnellnotizen ein-/aus
 - Wetter-Planer ein-/aus
+- Push & Erinnerungen weiterhin vorhanden, jetzt unter Extras zusammengefasst
 
 ### Secret Bereich
 - Secret Chat mit PIN
@@ -94,7 +81,7 @@ Der neue Bereich **Extras** ist in Sidebar und Bottom Bar verfügbar.
 - PWA mit Service Worker
 - Vite + React
 
-## UX-Konzept
+## Bedienidee
 - Home bleibt bewusst kompakt
 - Extras bündelt produktive Werkzeuge
 - Einstellungen schalten Extras und Home-Karten granular an oder aus

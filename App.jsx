@@ -412,6 +412,10 @@ function getSupportedAudioRecorderConfig() {
       // --- BILD-VOLLBILD VIEWER ---
       const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
       const [imageViewerSrc, setImageViewerSrc] = useState(null);
+      const [chatMediaItems, setChatMediaItems] = useState([]);
+      const [chatMediaLoading, setChatMediaLoading] = useState(false);
+      const [isChatMediaGalleryOpen, setIsChatMediaGalleryOpen] = useState(false);
+      const [chatMediaViewerIndex, setChatMediaViewerIndex] = useState(0);
 
       const openImageViewer = (src) => {
         if (!src) return;
@@ -632,10 +636,6 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [chatHasMore, setChatHasMore] = useState(false);
       const [chatLoadingMore, setChatLoadingMore] = useState(false);
       const [chatTotalCount, setChatTotalCount] = useState(0);
-      const [chatMediaItems, setChatMediaItems] = useState([]);
-      const [chatMediaLoading, setChatMediaLoading] = useState(false);
-      const [isChatMediaGalleryOpen, setIsChatMediaGalleryOpen] = useState(false);
-      const [chatMediaViewerIndex, setChatMediaViewerIndex] = useState(0);
 
 
       // --- IN-APP CHAT PING (SOUND / VIBRATION) ---

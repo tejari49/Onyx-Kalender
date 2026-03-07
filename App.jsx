@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
       Copy, Link2, History, UserMinus
     } from 'lucide-react';
 
@@ -317,6 +317,27 @@ function AmoledCalendarApp() {
       const [settingsTab, setSettingsTab] = useState('calendars');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
+      const [uiTheme, setUiTheme] = useState(() => {
+        try {
+          const stored = localStorage.getItem('onyx_theme');
+          if (stored === 'light' || stored === 'dark') return stored;
+          const prefersDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          return prefersDark ? 'dark' : 'light';
+        } catch (_) { return 'dark'; }
+      });
+      const [extrasSectionsOpen, setExtrasSectionsOpen] = useState({
+        basics: true,
+        home: false,
+        planning: false,
+        notes: false,
+      });
+
+      useEffect(() => {
+        try {
+          document.documentElement.setAttribute('data-theme', uiTheme);
+          localStorage.setItem('onyx_theme', uiTheme);
+        } catch (_) {}
+      }, [uiTheme]);
 
       const [currentDate, setCurrentDate] = useState(new Date());
       
@@ -2030,6 +2051,21 @@ const handleTouchEnd = () => {
         setDailyFact(q);
         try { localStorage.setItem('onyx_quote_override', q); localStorage.setItem('onyx_quote_override_day', todayKey); } catch(e) {}
       };
+
+      const toggleTheme = () => setUiTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+      const isExtraFieldEnabled = (field) => {
+        const defaultOn = !['workClockHomeEnabled'].includes(field);
+        return ((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn) === true;
+      };
+      const saveExtraFieldToggle = async (field) => {
+        try {
+          const next = !isExtraFieldEnabled(field);
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { [field]: next, updatedAt: Date.now() }, { merge: true });
+          setUserProfile(prev => ({ ...(prev || {}), [field]: next }));
+          showToast(next ? 'Aktiviert' : 'Deaktiviert');
+        } catch (_) { showToast('Fehler'); }
+      };
+      const toggleExtrasSection = (key) => setExtrasSectionsOpen((prev) => ({ ...(prev || {}), [key]: !prev?.[key] }));
 
 
       const pinnedChatIds = (userProfile && Array.isArray(userProfile.pinnedChats)) ? userProfile.pinnedChats : [];
@@ -6801,7 +6837,7 @@ setSelfDestruct(false);
 
       return (
         <div 
-          className="flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative" style={{ height: 'var(--app-height, 100vh)' }}
+          className={`flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)' }}
           onTouchStart={handleGlobalTouchStart}
           onTouchMove={handleGlobalTouchMove}
           onTouchEnd={handleGlobalTouchEnd}
@@ -6865,6 +6901,15 @@ setSelfDestruct(false);
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
                 <header className="flex justify-between items-center mb-8 md:mb-10">
                   <h2 className="text-3xl md:text-4xl font-light">Guten Morgen{dashboardName ? `, ${dashboardName}` : ''}.</h2>
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
+                    title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+                  >
+                    {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                    <span>{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
+                  </button>
                 </header>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
                   <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between gap-4 cursor-pointer hover:border-neutral-600 transition-colors group">
@@ -6999,6 +7044,15 @@ setSelfDestruct(false);
                       <button onClick={nextMonth} className="p-1.5 md:p-2 hover:bg-neutral-900 rounded-full transition-colors border border-transparent hover:border-neutral-800"><ChevronRight className="w-5 h-5 md:w-6 md:h-6" /></button>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
+                    title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+                  >
+                    {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                    <span className="hidden sm:inline">{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
+                  </button>
                 </header>
 
                 {/* VIEW TOGGLE & SUCHE */}
@@ -7760,6 +7814,15 @@ SpÃ¤ter
                       <p className="text-sm text-neutral-500 mt-2">NÃ¼tzliche Werkzeuge getrennt von der Startseite â€“ jetzt zusÃ¤tzlich frei sortierbar per Drag & Drop.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={toggleTheme}
+                        className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors flex items-center gap-2"
+                        title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+                      >
+                        {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                        {uiTheme === 'light' ? 'Dunkel' : 'Hell'}
+                      </button>
                       <button onClick={() => setCurrentView('dashboard')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Zur Startseite</button>
                       <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200 transition-colors">Extras einstellen</button>
                     </div>
@@ -7825,7 +7888,18 @@ SpÃ¤ter
       <div className="p-5 md:p-8 xl:p-10 max-w-7xl mx-auto w-full animate-fade-in">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
           <div className="min-w-0">
-            <h2 className="text-3xl md:text-4xl font-light">Einstellungen</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-3xl md:text-4xl font-light">Einstellungen</h2>
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
+                title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+              >
+                {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                <span>{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
+              </button>
+            </div>
             <p className="mt-2 text-sm text-neutral-500">
               Suche nach â€žPushâ€œ, â€žLinkâ€œ, â€žFarbeâ€œâ€¦ oder nutze die Kategorien.
             </p>
@@ -7984,41 +8058,58 @@ SpÃ¤ter
                 </h3>
 
                 {/* Core settings */}
-                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {[
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-3">
+                  {[
+                    ['basics', 'Grundmodule', [
                       ['extrasEnabled','Extras-Bereich','Blendet den neuen Extras-Tab ein und aus.'],
                       ['smartDayEnabled','Smart Day in Extras','Detaillierte Tageskarte im Extras-Bereich.'],
+                      ['focusModeEnabled','Fokusmodus','25/50/90-Minuten Fokusblöcke in Extras.'],
+                      ['weeklyOverviewEnabled','Wochenübersicht','Arbeitszeit, Termine und freie Fenster bündeln.'],
+                      ['freeWindowsEnabled','Freie Zeitfenster','Eigene Karte mit freien Blöcken des Tages.'],
+                    ]],
+                    ['home', 'Startseite', [
                       ['smartDayHomeEnabled','Smart Day auf Home','Kompakte Karte auf der Startseite.'],
                       ['workClockHomeEnabled','Stempeluhr auf Home','Nur kompakte Stempeluhr-Zeile auf Home.'],
-                      ['focusModeEnabled','Fokusmodus','25/50/90-Minuten FokusblÃ¶cke in Extras.'],
-                      ['weeklyOverviewEnabled','WochenÃ¼bersicht','Arbeitszeit, Termine und freie Fenster bÃ¼ndeln.'],
-                      ['freeWindowsEnabled','Freie Zeitfenster','Eigene Karte mit freien BlÃ¶cken des Tages.'],
-                      ['dailyGoalsEnabled','Tagesziele','Drei Tagesziele mit HÃ¤kchen und Cloud-Sync.'],
+                    ]],
+                    ['planning', 'Planung & Ziele', [
+                      ['dailyGoalsEnabled','Tagesziele','Drei Tagesziele mit Häkchen und Cloud-Sync.'],
                       ['timeBalanceEnabled','Soll-/Ist-Stunden','Wochenziel gegen echte Arbeitszeit vergleichen.'],
-                      ['quickNotesEnabled','Schnellnotizen','Mit Firebase-Sync auf allen GerÃ¤ten verfÃ¼gbar.'],
-                      ['weatherPlannerEnabled','Wetter-Planer','ZusÃ¤tzliche Wetter-/Kleidungs-Hinweise in Extras.']
-                    ].map(([field,label,desc]) => (
-                      <div key={field} className="border border-neutral-800 rounded-xl bg-black p-4 flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-medium text-white">{label}</p>
-                          <p className="text-xs text-neutral-500 mt-1">{desc}</p>
+                    ]],
+                    ['notes', 'Notizen & Wetter', [
+                      ['quickNotesEnabled','Schnellnotizen','Mit Firebase-Sync auf allen Geräten verfügbar.'],
+                      ['weatherPlannerEnabled','Wetter-Planer','Zusätzliche Wetter-/Kleidungs-Hinweise in Extras.'],
+                    ]],
+                  ].map(([groupKey, groupLabel, fields]) => (
+                    <div key={groupKey} className="border border-neutral-800 rounded-xl bg-black">
+                      <button
+                        type="button"
+                        onClick={() => toggleExtrasSection(groupKey)}
+                        className="w-full px-4 py-3 flex items-center justify-between text-left"
+                      >
+                        <span className="text-sm font-medium text-white">{groupLabel}</span>
+                        <ChevronDown className={"w-4 h-4 text-neutral-500 transition-transform " + (extrasSectionsOpen?.[groupKey] ? 'rotate-180' : '')} />
+                      </button>
+                      {extrasSectionsOpen?.[groupKey] && (
+                        <div className="px-4 pb-4 space-y-3">
+                          {fields.map(([field, label, desc]) => (
+                            <div key={field} className="border border-neutral-800 rounded-xl bg-neutral-950/60 p-4 flex items-start justify-between gap-4">
+                              <div>
+                                <p className="font-medium text-white">{label}</p>
+                                <p className="text-xs text-neutral-500 mt-1">{desc}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => saveExtraFieldToggle(field)}
+                                className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + (isExtraFieldEnabled(field) ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}
+                              >
+                                {isExtraFieldEnabled(field) ? 'Aktiv' : 'Aus'}
+                              </button>
+                            </div>
+                          ))}
                         </div>
-                        <button type="button" onClick={async () => {
-                          try {
-                            const defaultOn = !['workClockHomeEnabled'].includes(field);
-                            const current = (userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn;
-                            const next = !(current === true);
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { [field]: next, updatedAt: Date.now() }, { merge: true });
-                            setUserProfile(prev => ({ ...(prev || {}), [field]: next }));
-                            showToast(next ? 'Aktiviert' : 'Deaktiviert');
-                          } catch (_) { showToast('Fehler'); }
-                        }} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + (((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
-                          {(((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true) ? 'Aktiv' : 'Aus'}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                      )}
+                    </div>
+                  ))}
 
                   <div className="border border-neutral-800 rounded-xl bg-black p-4">
                     <div className="flex items-start justify-between gap-4">

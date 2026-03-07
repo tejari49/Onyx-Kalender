@@ -7865,8 +7865,8 @@ SpÃ¤ter
         setSettingsTab((prev) => (prev === id ? '' : id));
       };
       return (
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
-          <button type="button" onClick={toggle} className="w-full px-5 py-4 border-b border-neutral-900/80 flex items-center justify-between hover:bg-neutral-900/40 transition-colors">
+        <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+          <button type="button" onClick={toggle} className="settings-section-trigger w-full px-5 py-4 border-b border-neutral-900/80 flex items-center justify-between hover:bg-neutral-900/40 transition-colors">
             <div className="flex items-center gap-3">
               {Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}
               <span className="text-sm font-semibold text-white">{label}</span>
@@ -7874,7 +7874,7 @@ SpÃ¤ter
             <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform " + (open ? 'rotate-90' : '')} />
           </button>
           {open && (
-            <div className="px-5 py-4">
+            <div className="settings-section-body px-5 py-4">
               {children}
             </div>
           )}
@@ -7883,12 +7883,12 @@ SpÃ¤ter
     };
 
     return (
-      <div className="p-5 md:p-8 xl:p-10 max-w-7xl mx-auto w-full animate-fade-in space-y-6">
-        <section className="rounded-3xl border border-neutral-800 bg-gradient-to-br from-neutral-950 via-black to-neutral-950 p-5 md:p-7">
+      <div className="settings-pro p-5 md:p-8 xl:p-10 max-w-7xl mx-auto w-full animate-fade-in space-y-6">
+        <section className="settings-hero rounded-3xl border border-neutral-800 bg-gradient-to-br from-neutral-950 via-black to-neutral-950 p-5 md:p-7">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-3">
-                <h2 className="text-3xl md:text-4xl font-light">Settings Dashboard</h2>
+                <h2 className="text-3xl md:text-4xl font-light">Einstellungen</h2>
                 <button
                   type="button"
                   onClick={toggleTheme}
@@ -7908,14 +7908,14 @@ SpÃ¤ter
               <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Suche</div><div className="text-neutral-200 mt-1">{q ? 'aktiv' : 'aus'}</div></div>
             </div>
           </div>
-          <div className="mt-4 relative max-w-xl">
-            <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              value={settingsQuery}
-              onChange={(e) => setSettingsQuery(e.target.value)}
-              placeholder="Einstellungen suchen..."
-              className="w-full bg-black border border-neutral-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
-            />
+            <div className="mt-4 relative max-w-xl">
+              <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                value={settingsQuery}
+                onChange={(e) => setSettingsQuery(e.target.value)}
+                placeholder="Einstellungen suchen..."
+                className="settings-search-input w-full bg-black border border-neutral-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
+              />
             {!!settingsQuery && (
               <button type="button" onClick={() => setSettingsQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-neutral-500 hover:text-white" title="Zuruecksetzen">
                 <X className="w-4 h-4" />
@@ -7933,7 +7933,7 @@ SpÃ¤ter
                 <button
                   key={t.id}
                   onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                  className={"px-3 py-2 rounded-xl border text-xs flex items-center gap-2 " + (active ? "bg-white text-black border-white" : "bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-600")}
+                  className={"settings-tab-pill px-3 py-2 rounded-xl border text-xs flex items-center gap-2 " + (active ? "bg-white text-black border-white" : "bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-600")}
                 >
                   <Icon className="w-4 h-4" />
                   {t.label}
@@ -7944,8 +7944,8 @@ SpÃ¤ter
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
-          <aside className="hidden lg:block sticky top-6 self-start space-y-3">
-            <div className="bg-neutral-950/60 border border-neutral-800 rounded-2xl p-2">
+          <aside className="settings-nav-wrap hidden lg:block sticky top-6 self-start space-y-3">
+            <div className="settings-nav bg-neutral-950/60 border border-neutral-800 rounded-2xl p-2">
               {TABS.map((t) => {
                 const Icon = t.icon;
                 const active = settingsTab === t.id && !q;
@@ -7955,7 +7955,7 @@ SpÃ¤ter
                     key={t.id}
                     onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
                     className={
-                      "w-full text-left px-3 py-3 rounded-xl transition-colors " +
+                      "settings-nav-item w-full text-left px-3 py-3 rounded-xl transition-colors " +
                       (active ? "bg-white text-black" : "text-neutral-200 hover:bg-neutral-900") +
                       (disabledBySearch ? " opacity-50" : "")
                     }

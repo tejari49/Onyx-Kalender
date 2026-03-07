@@ -2,104 +2,135 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Ensure AMOLED background everywhere (prevents white "bottom" on short pages / overscroll) */
-html, body {
-  background: #000;
-  height: 100%;
-}
-#root {
-  min-height: 100vh;
-  background: #000;
+:root {
+  --onyx-bg: #000000;
+  --onyx-surface: #0a0a0a;
+  --onyx-surface-soft: #111111;
+  --onyx-overlay: rgba(0, 0, 0, 0.82);
+  --onyx-text: #ffffff;
+  --onyx-muted: #737373;
+  --onyx-border: #262626;
+  --onyx-input-bg: #0f0f0f;
+  --onyx-hover-bg: #171717;
+  --onyx-hover-border: #525252;
+  --onyx-accent-bg: #ffffff;
+  --onyx-accent-text: #000000;
+  --onyx-ring: rgba(255, 255, 255, 0.24);
 }
 
-/* Light mode (soft, low-contrast opposite to AMOLED dark mode) */
-html.onyx-theme-light,
-html.onyx-theme-light body {
-  background: #f6f5f2;
+html.onyx-theme-light {
+  --onyx-bg: #f6f5f2;
+  --onyx-surface: #eceae4;
+  --onyx-surface-soft: #f1efe9;
+  --onyx-overlay: rgba(220, 217, 208, 0.82);
+  --onyx-text: #171717;
+  --onyx-muted: #585753;
+  --onyx-border: #d7d3c8;
+  --onyx-input-bg: #f2f0ea;
+  --onyx-hover-bg: #e2dfd6;
+  --onyx-hover-border: #bcb8ab;
+  --onyx-accent-bg: #171717;
+  --onyx-accent-text: #f8f7f4;
+  --onyx-ring: rgba(23, 23, 23, 0.24);
   color-scheme: light;
 }
-html.onyx-theme-light #root {
-  background: #f6f5f2;
+
+/* Ensure full-viewport background */
+html,
+body {
+  background: var(--onyx-bg);
+  height: 100%;
 }
 
-/* Base surfaces */
-html.onyx-theme-light .bg-black,
-html.onyx-theme-light .bg-black\/40,
-html.onyx-theme-light .bg-black\/60 {
-  background-color: #f6f5f2 !important;
-}
-html.onyx-theme-light .bg-neutral-950,
-html.onyx-theme-light .bg-neutral-950\/40,
-html.onyx-theme-light .bg-neutral-950\/50,
-html.onyx-theme-light .bg-neutral-950\/60,
-html.onyx-theme-light .bg-neutral-950\/70,
-html.onyx-theme-light .bg-neutral-900,
-html.onyx-theme-light .bg-neutral-900\/50,
-html.onyx-theme-light .bg-neutral-900\/70 {
-  background-color: #eceae4 !important;
-}
-html.onyx-theme-light .bg-white {
-  background-color: #171717 !important;
+#root {
+  min-height: 100vh;
+  background: var(--onyx-bg);
 }
 
-/* Overlay layers */
-html.onyx-theme-light .bg-black\/80,
-html.onyx-theme-light .bg-black\/90,
-html.onyx-theme-light .bg-black\/95 {
-  background-color: rgba(220, 217, 208, 0.82) !important;
+/* Utility remap via centralized theme variables */
+.bg-black,
+.bg-black\/40,
+.bg-black\/60 {
+  background-color: var(--onyx-bg) !important;
 }
 
-/* Typography */
-html.onyx-theme-light .text-white {
-  color: #171717 !important;
-}
-html.onyx-theme-light .text-black {
-  color: #f8f7f4 !important;
-}
-html.onyx-theme-light .text-neutral-200,
-html.onyx-theme-light .text-neutral-300,
-html.onyx-theme-light .text-neutral-400,
-html.onyx-theme-light .text-neutral-500,
-html.onyx-theme-light .text-neutral-600 {
-  color: #585753 !important;
-}
-html.onyx-theme-light .placeholder-neutral-600::placeholder {
-  color: #87857e !important;
+.bg-neutral-950,
+.bg-neutral-950\/30,
+.bg-neutral-950\/40,
+.bg-neutral-950\/50,
+.bg-neutral-950\/60,
+.bg-neutral-950\/70,
+.bg-neutral-900,
+.bg-neutral-900\/50,
+.bg-neutral-900\/70 {
+  background-color: var(--onyx-surface) !important;
 }
 
-/* Inputs and chips */
-html.onyx-theme-light input,
-html.onyx-theme-light textarea,
-html.onyx-theme-light select {
-  background-color: #f2f0ea !important;
-  color: #171717 !important;
-  border-color: #d5d2c8 !important;
-}
-html.onyx-theme-light .bg-white.text-black {
-  background-color: #171717 !important;
-  color: #f8f7f4 !important;
+.bg-white {
+  background-color: var(--onyx-accent-bg) !important;
 }
 
-/* Borders and rings */
-html.onyx-theme-light .border-neutral-700,
-html.onyx-theme-light .border-neutral-800,
-html.onyx-theme-light .border-neutral-900 {
-  border-color: #d7d3c8 !important;
-}
-html.onyx-theme-light .ring-white\/20,
-html.onyx-theme-light .ring-white\/70 {
-  --tw-ring-color: rgba(23, 23, 23, 0.24) !important;
+.bg-black\/80,
+.bg-black\/90,
+.bg-black\/95 {
+  background-color: var(--onyx-overlay) !important;
 }
 
-/* Hover states */
-html.onyx-theme-light .hover\:bg-neutral-900:hover,
-html.onyx-theme-light .hover\:bg-neutral-800:hover {
-  background-color: #e2dfd6 !important;
+.text-white {
+  color: var(--onyx-text) !important;
 }
-html.onyx-theme-light .hover\:border-neutral-500:hover,
-html.onyx-theme-light .hover\:border-neutral-600:hover {
-  border-color: #bcb8ab !important;
+
+.text-black {
+  color: var(--onyx-accent-text) !important;
 }
-html.onyx-theme-light .hover\:text-white:hover {
-  color: #171717 !important;
+
+.text-neutral-200,
+.text-neutral-300,
+.text-neutral-400,
+.text-neutral-500,
+.text-neutral-600 {
+  color: var(--onyx-muted) !important;
+}
+
+.placeholder-neutral-600::placeholder {
+  color: var(--onyx-muted) !important;
+  opacity: 0.72;
+}
+
+.border-neutral-700,
+.border-neutral-800,
+.border-neutral-900 {
+  border-color: var(--onyx-border) !important;
+}
+
+.ring-white\/20,
+.ring-white\/70 {
+  --tw-ring-color: var(--onyx-ring) !important;
+}
+
+input,
+textarea,
+select {
+  background-color: var(--onyx-input-bg) !important;
+  color: var(--onyx-text) !important;
+  border-color: var(--onyx-border) !important;
+}
+
+.bg-white.text-black {
+  background-color: var(--onyx-accent-bg) !important;
+  color: var(--onyx-accent-text) !important;
+}
+
+.hover\:bg-neutral-900:hover,
+.hover\:bg-neutral-800:hover {
+  background-color: var(--onyx-hover-bg) !important;
+}
+
+.hover\:border-neutral-500:hover,
+.hover\:border-neutral-600:hover {
+  border-color: var(--onyx-hover-border) !important;
+}
+
+.hover\:text-white:hover {
+  color: var(--onyx-text) !important;
 }

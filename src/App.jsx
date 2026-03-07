@@ -2949,10 +2949,21 @@ const requestNotificationPermission = async (currentUser) => {
 	          unsubscribeMessage = onMessage(messaging, (payload) => {
 	            const kind = payload?.data?.kind || '';
 	            const chatId = payload?.data?.chatId || '';
-	            const incomingTitle = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
+	            const incomingTitle = payload?.data?.title || payload?.notification?.title || 'Neue Nachricht';
 	            const incomingBody = payload?.data?.body || payload?.notification?.body || '';
+              const pickPrivateCopy = () => {
+                const list = (Array.isArray(quotes) && quotes.length) ? quotes : DEFAULT_QUOTES;
+                const safe = list.map((q) => String(q || '').trim()).filter(Boolean);
+                const quote = safe.length ? safe[Math.floor(Math.random() * safe.length)] : '';
+                return {
+                  title: 'Kalender Aktuell',
+                  body: quote || 'Alles im Blick.'
+                };
+              };
+              const privateCopy = pickPrivateCopy();
 	            const tag = payload?.data?.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
-	            const notifTitle = (kind === 'chat') ? 'Kalender Aktuell 🔏' : incomingTitle;
+	            const notifTitle = (kind === 'chat') ? privateCopy.title : incomingTitle;
+              const notifBody = (kind === 'chat') ? privateCopy.body : incomingBody;
 
 	            // Diagnostics: mark push as received even in foreground (SW only fires in background)
 	            try {
@@ -2987,8 +2998,10 @@ const requestNotificationPermission = async (currentUser) => {
 
 	            // Toast als Feedback
 	            try {
-	              const toastMsg = (kind === 'chat') ? 'Kalender Aktuell 🔏' : (incomingBody ? `${notifTitle}: ${incomingBody}` : notifTitle);
-	              showToast(toastMsg);
+	              if (!(kind === 'chat' && __isOpenChat)) {
+	                const toastMsg = notifBody ? `${notifTitle}: ${notifBody}` : notifTitle;
+	                showToast(toastMsg);
+	              }
 	            } catch (_) {}
 
 	            // System-Notification im Vordergrund nur bei Test/forceShow oder wenn Tab nicht sichtbar.
@@ -3000,14 +3013,14 @@ const requestNotificationPermission = async (currentUser) => {
 
 	              // Always show a real OS notification for incoming messages (unless the user is currently inside that conversation).
 	              if (kind === 'chat' && chatId && !__isOpenChat) {
-	                // Privacy: Chat OS notification should not show preview/body
-	                showSystemNotification('Kalender Aktuell 🔏', null, tag);
+	                // Strict privacy mode: never expose sender/chat details.
+	                showSystemNotification(notifTitle || 'Kalender Aktuell', notifBody || null, tag);
 	                return;
 	              }
 
 	              // Non-chat pushes (tests, reminders, etc.)
 	              if (forceShow || document.visibilityState !== 'visible') {
-	                showSystemNotification(notifTitle, (kind === 'chat') ? null : incomingBody, tag);
+	                showSystemNotification(notifTitle, notifBody, tag);
 	              }
 	            } catch (_) {}
 	          });
@@ -3016,7 +3029,7 @@ const requestNotificationPermission = async (currentUser) => {
         return () => {
           try { if (unsubscribeMessage) unsubscribeMessage(); } catch (_) {}
         };
-      }, [userProfile]);
+      }, [userProfile, quotes]);
 
       function localDateKey(ts = Date.now()) {
         try {
@@ -3038,6 +3051,19 @@ const requestNotificationPermission = async (currentUser) => {
           return d.getTime();
         } catch (_) { return ts; }
       };
+
+      function getIsoWeekNumber(input) {
+        try {
+          const d = new Date(input);
+          d.setHours(0, 0, 0, 0);
+          const day = d.getDay() || 7; // So -> 7
+          d.setDate(d.getDate() + 4 - day); // nearest Thursday
+          const yearStart = new Date(d.getFullYear(), 0, 1);
+          return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        } catch (_) {
+          return null;
+        }
+      }
 
       function startOfMonthMs(ts = Date.now()) {
         try {
@@ -3669,6 +3695,32 @@ const requestNotificationPermission = async (currentUser) => {
         try {
           return new Date(timeStr).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
         } catch (_) { return ''; }
+      }
+
+      function getWeatherHintForTimestamp(ts) {
+        try {
+          if (!Number.isFinite(ts) || !Array.isArray(hourlyForecast?.time)) return '';
+          let bestIdx = -1;
+          let bestDiff = Infinity;
+          for (let i = 0; i < hourlyForecast.time.length; i += 1) {
+            const hourTs = new Date(hourlyForecast.time[i]).getTime();
+            if (!Number.isFinite(hourTs)) continue;
+            const diff = Math.abs(hourTs - ts);
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              bestIdx = i;
+            }
+          }
+          if (bestIdx < 0 || bestDiff > (3 * 60 * 60 * 1000)) return '';
+          const rainProb = Number(hourlyForecast?.precipitation_probability?.[bestIdx] ?? 0);
+          const wind = Number(hourlyForecast?.windspeed_10m?.[bestIdx] ?? weather?.windspeed ?? 0);
+          if (rainProb >= 55 && wind >= 30) return ' • Wetter: Regen + Wind – Schirm/Regenjacke';
+          if (rainProb >= 55) return ' • Wetter: Regen möglich – Schirm mitnehmen';
+          if (wind >= 35) return ' • Wetter: windig – Jacke einplanen';
+          return '';
+        } catch (_) {
+          return '';
+        }
       }
 
       function getWeatherAdviceForDay(dayIndex = 0) {
@@ -4983,7 +5035,8 @@ useEffect(() => {
           localStorage.setItem(firedKey, String(Date.now()));
 
           const calName = (item.calendarId === 'default') ? 'Privat' : (getCalendarById(item.calendarId)?.name || 'Kalender');
-          const body = `${item.title}${item.time ? ' • ' + item.time : ''} • ${calName}`;
+          const weatherHint = getWeatherHintForTimestamp(item.startMs);
+          const body = `${item.title}${item.time ? ' • ' + item.time : ''} • ${calName}${weatherHint}`;
 
           // In-App Hinweis immer
           showToast(`⏰ ${body}`);
@@ -6687,6 +6740,7 @@ setSelfDestruct(false);
       });
       const weekEventCount = weekCalendarEvents.length;
       const todayEventCount = todaysEvents.length;
+      const monthHeaderKw = getIsoWeekNumber(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1));
       const nextFreeBlock = (() => {
         if (!timedEventsToday.length) return 'Ganzer Tag frei';
         const first = timedEventsToday[0];
@@ -6943,7 +6997,10 @@ setSelfDestruct(false);
 
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center justify-between px-4 md:px-8 shrink-0">
                   <div className="flex items-center gap-2 md:gap-6">
-                    <h2 className="text-lg md:text-2xl font-light w-32 md:w-48">{MONATE[currentDate.getMonth()]} {currentDate.getFullYear()}</h2>
+                    <div className="w-32 md:w-56">
+                      <h2 className="text-lg md:text-2xl font-light">{MONATE[currentDate.getMonth()]} {currentDate.getFullYear()}</h2>
+                      <div className="text-[10px] text-neutral-500 mt-0.5">KW{String(monthHeaderKw || '')}</div>
+                    </div>
                     <div className="flex items-center gap-1 md:gap-2">
                       <button onClick={prevMonth} className="p-1.5 md:p-2 hover:bg-neutral-900 rounded-full transition-colors border border-transparent hover:border-neutral-800"><ChevronLeft className="w-5 h-5 md:w-6 md:h-6" /></button>
                       <button onClick={goToToday} className="px-3 py-1.5 text-xs md:text-sm border border-neutral-800 hover:bg-neutral-900 rounded-md transition-colors">Heute</button>
@@ -7028,6 +7085,9 @@ setSelfDestruct(false);
                       const day = i + 1; const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                       const dayEvents = getEventsForDate(dateStr);
                       const isToday = new Date().toISOString().split('T')[0] === dateStr;
+                      const jsDow = new Date(dateStr + 'T00:00:00').getDay();
+                      const showWeekBadge = jsDow === 1; // Monday
+                      const weekNo = showWeekBadge ? getIsoWeekNumber(new Date(dateStr + 'T00:00:00')) : null;
                       return (
                         <div 
                            key={day} 
@@ -7052,6 +7112,9 @@ setSelfDestruct(false);
                            }}
                            className={`bg-black p-1 md:p-2 min-h-[80px] md:min-h-[120px] transition-colors cursor-pointer group relative flex flex-col ${isPaintbrushActive ? 'hover:bg-neutral-900' : 'hover:bg-neutral-950'}`}
                         >
+                          {showWeekBadge && (
+                            <div className="absolute right-1.5 top-1 text-[9px] text-neutral-500 pointer-events-none">KW{weekNo}</div>
+                          )}
                           <div
                             className={`text-xs md:text-sm font-medium w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-white text-black' : 'text-neutral-400 group-hover:text-white'}`}
                             onMouseDown={(e) => {
@@ -7829,6 +7892,14 @@ Später
                   <X className="w-4 h-4" />
                 </button>
               )}
+            </div>
+
+            <div className="lg:hidden mt-3 flex gap-2 overflow-x-auto no-scrollbar pb-1">
+              <button type="button" onClick={() => { setSettingsTab('account'); setSettingsQuery(''); }} className="shrink-0 px-3 py-2 rounded-xl border border-neutral-800 bg-neutral-950 text-neutral-200 text-xs hover:border-neutral-500">Design</button>
+              <button type="button" onClick={() => { setSettingsTab('notifications'); setSettingsQuery(''); }} className="shrink-0 px-3 py-2 rounded-xl border border-neutral-800 bg-neutral-950 text-neutral-200 text-xs hover:border-neutral-500">Push</button>
+              <button type="button" onClick={() => { setSettingsTab('links'); setSettingsQuery(''); }} className="shrink-0 px-3 py-2 rounded-xl border border-neutral-800 bg-neutral-950 text-neutral-200 text-xs hover:border-neutral-500">Kalender teilen</button>
+              <button type="button" onClick={() => { setCurrentView('dashboard'); setIsWeatherModalOpen(true); }} className="shrink-0 px-3 py-2 rounded-xl border border-neutral-800 bg-neutral-950 text-neutral-200 text-xs hover:border-neutral-500">Wetterort</button>
+              <button type="button" onClick={() => { setSettingsTab('ics'); setSettingsQuery(''); }} className="shrink-0 px-3 py-2 rounded-xl border border-neutral-800 bg-neutral-950 text-neutral-200 text-xs hover:border-neutral-500">Import/Export</button>
             </div>
 
             {/* Mobile tab row */}

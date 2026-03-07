@@ -30,6 +30,7 @@ const STATIC_ASSETS = [
 
 const RECENT_NOTIFICATIONS = new Map();
 const RECENT_TTL_MS = 15000;
+let QUOTES_CACHE = null;
 
 function cleanupRecentNotifications() {
   const now = Date.now();
@@ -49,15 +50,37 @@ function hasSeenNotification(key) {
   return !!ts && ((Date.now() - ts) <= RECENT_TTL_MS);
 }
 
+async function loadQuotes() {
+  if (Array.isArray(QUOTES_CACHE) && QUOTES_CACHE.length) return QUOTES_CACHE;
+  try {
+    const res = await fetch('./quotes.json', { cache: 'no-store' });
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : (Array.isArray(data?.quotes) ? data.quotes : []);
+    QUOTES_CACHE = list.map((q) => String(q || '').trim()).filter(Boolean);
+    return QUOTES_CACHE;
+  } catch (_) {
+    QUOTES_CACHE = [];
+    return QUOTES_CACHE;
+  }
+}
+
+async function pickNeutralQuote() {
+  const quotes = await loadQuotes();
+  if (!Array.isArray(quotes) || quotes.length === 0) return 'Alles im Blick.';
+  return quotes[Math.floor(Math.random() * quotes.length)];
+}
+
 function extractPayload(rawPayload = {}) {
   const data = rawPayload?.data || {};
   const notification = rawPayload?.notification || {};
   const kind = String(data.kind || '');
   const chatId = String(data.chatId || '');
   const title = kind === 'chat'
-    ? 'Kalender Aktuell 🔏'
+    ? 'Kalender Aktuell'
     : String(data.title || notification.title || 'Onyx');
-  const body = String(data.body || notification.body || 'Kalender aktuell');
+  const body = kind === 'chat'
+    ? ''
+    : String(data.body || notification.body || 'Kalender aktuell');
   let tag = String(data.tag || '');
   if (!tag) {
     if (kind === 'chat' && chatId) tag = `chat_${chatId}`;
@@ -92,6 +115,10 @@ async function broadcastPushReceived(meta) {
 
 async function showOnyxNotification(rawPayload = {}, source = 'unknown') {
   const meta = extractPayload(rawPayload);
+  if (meta.kind === 'chat') {
+    meta.title = 'Kalender Aktuell';
+    meta.body = await pickNeutralQuote();
+  }
   if (hasSeenNotification(meta.dedupeKey)) return;
   markNotificationSeen(meta.dedupeKey);
   const options = {

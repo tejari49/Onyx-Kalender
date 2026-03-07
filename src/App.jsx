@@ -7591,24 +7591,24 @@ Später
       const all = keys.flat().filter(Boolean).map(x => String(x).toLowerCase());
       return all.some(k => k.includes(q));
     };
-    const show = (tabId, keys) => {
-      if (q) return match(keys);
-      return settingsTab === tabId;
-    };
-    const TABS = [
-      { id: 'calendars', label: 'Kalender', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
-      { id: 'notifications', label: 'Extras', icon: Activity, keys: ['extras', 'smart day', 'stempelung', 'fokus', 'notiz', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
-      { id: 'links', label: 'Public Links', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
-      { id: 'audit', label: 'Audit', icon: History, keys: ['audit', 'verlauf', 'log', 'änderung', 'wer'] },
+    const SETTINGS_SECTIONS = [
+      { id: 'calendars', label: 'Kalender', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'privat', 'freigabe', 'teilen', 'share', 'busy'] },
+      { id: 'notifications', label: 'Extras', icon: Activity, keys: ['extras', 'smart day', 'stempelung', 'fokus', 'notiz', 'tagesziel', 'soll ist', 'freie zeitfenster', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token', 'test'] },
+      { id: 'links', label: 'Public Links', icon: Link2, keys: ['public', 'link', 'busy', 'passcode', 'magic', 'ablauf'] },
+      { id: 'audit', label: 'Audit', icon: History, keys: ['audit', 'log', 'verlauf', 'änderung', 'wer'] },
       { id: 'account', label: 'Account', icon: User, keys: ['account', 'datenschutz', 'abmelden', 'email'] },
       { id: 'ics', label: 'Import/Export', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
     ];
+    const settingsSectionById = Object.fromEntries(SETTINGS_SECTIONS.map((s) => [s.id, s]));
+    const sectionSearchTerms = (section) => [section?.label, section?.id, ...(section?.keys || [])];
+    const filteredTabs = q ? SETTINGS_SECTIONS.filter((t) => match(sectionSearchTerms(t))) : SETTINGS_SECTIONS;
 
-    const filteredTabs = q ? TABS.filter(t => match(t.keys)) : TABS;
 
-
-              const AccordionItem = ({ id, label, icon: Icon, keys, children }) => {
-                const visible = !q || match(keys);
+              const AccordionItem = ({ id, children }) => {
+                const section = settingsSectionById[id];
+                if (!section) return null;
+                const { label, icon: Icon } = section;
+                const visible = !q || match(sectionSearchTerms(section));
                 if (!visible) return null;
                 const open = q ? true : (settingsTab === id);
                 const toggle = () => {
@@ -7666,7 +7666,7 @@ Später
 
             {/* Mobile tab row */}
             <div className="hidden">
-              {(q ? filteredTabs : TABS).map(t => {
+              {(q ? filteredTabs : SETTINGS_SECTIONS).map(t => {
                 const Icon = t.icon;
                 const active = (!q && settingsTab === t.id);
                 return (
@@ -7688,10 +7688,10 @@ Später
           {/* Desktop sidebar */}
           <aside className="hidden lg:block sticky top-6 self-start">
             <div className="bg-neutral-950/50 border border-neutral-800 rounded-2xl p-2">
-              {TABS.map(t => {
+              {SETTINGS_SECTIONS.map(t => {
                 const Icon = t.icon;
                 const active = settingsTab === t.id && !q;
-                const disabledBySearch = q && !match(t.keys);
+                const disabledBySearch = q && !match(sectionSearchTerms(t));
                 return (
                   <button
                     key={t.id}
@@ -7720,7 +7720,7 @@ Später
 
           <main className="space-y-3 min-w-0">
             {/* KALENDER VERWALTUNG */}
-            <AccordionItem id="calendars" label="Kalender" icon={CalendarIcon} keys={['kalender','schicht','farbe','privat','freigabe','teilen','share','busy']} >
+            <AccordionItem id="calendars">
               <section id="settings-calendars">
                 <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-4">
                   <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-2">
@@ -7789,7 +7789,7 @@ Später
             </AccordionItem>
 
             {/* EXTRAS */}
-            <AccordionItem id="notifications" label="Extras" icon={Activity} keys={['extras','smart day','stempelung','fokus','notiz','tagesziel','soll ist','freie zeitfenster','push','benachr','erinnerung','pwa','token','test']} >
+            <AccordionItem id="notifications">
               <section id="settings-notifications">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <Activity className="w-4 h-4" /> Extras
@@ -8080,7 +8080,7 @@ Später
             </AccordionItem>
 
             {/* PUBLIC LINKS */}
-            <AccordionItem id="links" label="Public Links" icon={Link2} keys={['public','link','busy','passcode','magic','ablauf']} >
+            <AccordionItem id="links">
               <section id="settings-links">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <Link2 className="w-4 h-4" /> Public Links
@@ -8197,7 +8197,7 @@ Später
             </AccordionItem>
 
             {/* AUDIT LOG */}
-            <AccordionItem id="audit" label="Audit" icon={History} keys={['audit','log','verlauf','änderung','wer']} >
+            <AccordionItem id="audit">
               <section id="settings-audit">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <History className="w-4 h-4" /> Audit Log
@@ -8262,7 +8262,7 @@ Später
             </AccordionItem>
 
             {/* ACCOUNT */}
-            <AccordionItem id="account" label="Account" icon={User} keys={['account','datenschutz','abmelden','email']} >
+            <AccordionItem id="account">
               <section id="settings-account">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <User className="w-4 h-4" /> Datenschutz & Account
@@ -8422,7 +8422,7 @@ Später
             </AccordionItem>
 
             {/* ICS */}
-            <AccordionItem id="ics" label="Import/Export" icon={Download} keys={['ics','import','export','download','upload']} >
+            <AccordionItem id="ics">
               <section id="settings-ics">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <Download className="w-4 h-4" /> Import / Export (.ics)
@@ -10979,3 +10979,6 @@ Später
 
 
 export default AmoledCalendarApp;
+
+
+

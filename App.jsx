@@ -2070,33 +2070,6 @@ const handleTouchEnd = () => {
         return out;
       };
 
-      const _qMsg = String(messageSearchQuery || '').trim().toLowerCase();
-      const baseByType = (isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media')
-        ? chatMessages.filter(m => messageTypeMatchesFilter(m, messageSearchFilter))
-        : chatMessages;
-
-      const mediaSearchResults = (isMessageSearchOpen && messageSearchFilter === 'media')
-        ? chatMediaItems.filter(m => {
-            if (!_qMsg) return true;
-            const hay = `${String(m?.text || '')} ${senderLabelFromId(m?.senderId || '')}`.toLowerCase();
-            return hay.includes(_qMsg);
-          })
-        : [];
-
-      const messageMatches = (isMessageSearchOpen && (_qMsg || messageSearchFilter !== 'all'))
-        ? (messageSearchFilter === 'media'
-            ? mediaSearchResults
-            : baseByType.filter(m => {
-                if (!_qMsg) return true;
-                return String(m?.text || '').toLowerCase().includes(_qMsg);
-              }))
-        : [];
-
-      const currentMatchId = (isMessageSearchOpen && messageMatches.length > 0)
-        ? messageMatches[Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1))].id
-        : null;
-
-      const visibleChatMessages = (isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media') ? baseByType : chatMessages;
 
 
       useEffect(() => {
@@ -5887,6 +5860,34 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           return (p?.displayName || p?.username || p?.email || 'Unbekannt');
         } catch (_) { return 'Unbekannt'; }
       }
+
+      const _qMsg = String(messageSearchQuery || '').trim().toLowerCase();
+      const baseByType = (isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media')
+        ? chatMessages.filter(m => messageTypeMatchesFilter(m, messageSearchFilter))
+        : chatMessages;
+
+      const mediaSearchResults = (isMessageSearchOpen && messageSearchFilter === 'media')
+        ? chatMediaItems.filter(m => {
+            if (!_qMsg) return true;
+            const hay = `${String(m?.text || '')} ${senderLabelFromId(m?.senderId || '')}`.toLowerCase();
+            return hay.includes(_qMsg);
+          })
+        : [];
+
+      const messageMatches = (isMessageSearchOpen && (_qMsg || messageSearchFilter !== 'all'))
+        ? (messageSearchFilter === 'media'
+            ? mediaSearchResults
+            : baseByType.filter(m => {
+                if (!_qMsg) return true;
+                return String(m?.text || '').toLowerCase().includes(_qMsg);
+              }))
+        : [];
+
+      const currentMatchId = (isMessageSearchOpen && messageMatches.length > 0)
+        ? messageMatches[Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1))].id
+        : null;
+
+      const visibleChatMessages = (isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media') ? baseByType : chatMessages;
 
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
         if (e) e.preventDefault();

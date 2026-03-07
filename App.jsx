@@ -7839,118 +7839,114 @@ SpÃ¤ter
     const q = (settingsQuery || '').trim().toLowerCase();
     const match = (...keys) => {
       if (!q) return true;
-      const all = keys.flat().filter(Boolean).map(x => String(x).toLowerCase());
-      return all.some(k => k.includes(q));
-    };
-    const show = (tabId, keys) => {
-      if (q) return match(keys);
-      return settingsTab === tabId;
+      const all = keys.flat().filter(Boolean).map((x) => String(x).toLowerCase());
+      return all.some((k) => k.includes(q));
     };
     const TABS = [
-      { id: 'calendars', label: 'Kalender', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
-      { id: 'notifications', label: 'Extras', icon: Activity, keys: ['extras', 'smart day', 'stempelung', 'fokus', 'notiz', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
-      { id: 'links', label: 'Public Links', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
-      { id: 'audit', label: 'Audit', icon: History, keys: ['audit', 'verlauf', 'log', 'Ã¤nderung', 'wer'] },
-      { id: 'account', label: 'Account', icon: User, keys: ['account', 'datenschutz', 'abmelden', 'email'] },
-      { id: 'ics', label: 'Import/Export', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
+      { id: 'calendars', label: 'Kalender', subtitle: 'Farben, Freigaben und Schichtplaene', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
+      { id: 'notifications', label: 'Extras', subtitle: 'Module, Erinnerungen und Push', icon: Activity, keys: ['extras', 'smart day', 'stempelung', 'fokus', 'notiz', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
+      { id: 'links', label: 'Public Links', subtitle: 'Busy-only Links und Ablauf', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
+      { id: 'audit', label: 'Audit', subtitle: 'Aktionsprotokoll und Kalenderhistorie', icon: History, keys: ['audit', 'verlauf', 'log', 'aenderung', 'wer'] },
+      { id: 'account', label: 'Account', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'datenschutz', 'abmelden', 'email'] },
+      { id: 'ics', label: 'Import/Export', subtitle: 'ICS Export und Import', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
     ];
+    const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
+    const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
+    const enabledExtraCount = ['extrasEnabled', 'smartDayEnabled', 'focusModeEnabled', 'weeklyOverviewEnabled', 'freeWindowsEnabled', 'dailyGoalsEnabled', 'timeBalanceEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled', 'workClockEnabled']
+      .filter((field) => isExtraFieldEnabled(field))
+      .length;
 
-    const filteredTabs = q ? TABS.filter(t => match(t.keys)) : TABS;
-
-
-              const AccordionItem = ({ id, label, icon: Icon, keys, children }) => {
-                const visible = !q || match(keys);
-                if (!visible) return null;
-                const open = q ? true : (settingsTab === id);
-                const toggle = () => {
-                  if (q) return;
-                  setSettingsTab(prev => (prev === id ? '' : id));
-                };
-                return (
-                  <div className="border border-neutral-800 rounded-2xl lg:rounded-3xl overflow-hidden bg-neutral-950/50">
-                    <button type="button" onClick={toggle} className="w-full flex items-center justify-between px-4 py-3 lg:px-5 lg:py-4 bg-neutral-950 hover:bg-neutral-900 transition-colors">
-                      <div className="flex items-center gap-3">
-                        {Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}
-                        <span className="text-sm font-medium text-white">{label}</span>
-                      </div>
-                      <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform " + (open ? 'rotate-90' : '')} />
-                    </button>
-                    {open && (
-                      <div className="px-4 pb-4 pt-3 lg:px-5 lg:pb-5 lg:pt-4">
-                        {children}
-                      </div>
-                    )}
-                  </div>
-                );
-              };
+    const AccordionItem = ({ id, label, icon: Icon, keys, children }) => {
+      const visible = !q || match(keys);
+      if (!visible) return null;
+      const open = q ? true : (settingsTab === id);
+      const toggle = () => {
+        if (q) return;
+        setSettingsTab((prev) => (prev === id ? '' : id));
+      };
+      return (
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+          <button type="button" onClick={toggle} className="w-full px-5 py-4 border-b border-neutral-900/80 flex items-center justify-between hover:bg-neutral-900/40 transition-colors">
+            <div className="flex items-center gap-3">
+              {Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}
+              <span className="text-sm font-semibold text-white">{label}</span>
+            </div>
+            <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform " + (open ? 'rotate-90' : '')} />
+          </button>
+          {open && (
+            <div className="px-5 py-4">
+              {children}
+            </div>
+          )}
+        </section>
+      );
+    };
 
     return (
-      <div className="p-5 md:p-8 xl:p-10 max-w-7xl mx-auto w-full animate-fade-in">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
-          <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <h2 className="text-3xl md:text-4xl font-light">Einstellungen</h2>
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
-                title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
-              >
-                {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                <span>{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
-              </button>
-            </div>
-            <p className="mt-2 text-sm text-neutral-500">
-              Suche nach â€žPushâ€œ, â€žLinkâ€œ, â€žFarbeâ€œâ€¦ oder nutze die Kategorien.
-            </p>
-          </div>
-
-          <div className="w-full md:w-[360px]">
-            <div className="relative">
-              <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                value={settingsQuery}
-                onChange={(e) => setSettingsQuery(e.target.value)}
-                placeholder="Einstellungen durchsuchenâ€¦"
-                className="w-full bg-black border border-neutral-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
-              />
-              {!!settingsQuery && (
+      <div className="p-5 md:p-8 xl:p-10 max-w-7xl mx-auto w-full animate-fade-in space-y-6">
+        <section className="rounded-3xl border border-neutral-800 bg-gradient-to-br from-neutral-950 via-black to-neutral-950 p-5 md:p-7">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3">
+                <h2 className="text-3xl md:text-4xl font-light">Settings Dashboard</h2>
                 <button
                   type="button"
-                  onClick={() => setSettingsQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-neutral-500 hover:text-white"
-                  title="ZurÃ¼cksetzen"
+                  onClick={toggleTheme}
+                  className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
+                  title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
                 >
-                  <X className="w-4 h-4" />
+                  {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                  <span>{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
                 </button>
-              )}
+              </div>
+              <p className="mt-2 text-sm text-neutral-400">Alle Einstellungen zentral, klar gruppiert und direkt durchsuchbar.</p>
             </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Tab</div><div className="text-neutral-200 mt-1">{activeTab?.label || 'Kalender'}</div></div>
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Extras aktiv</div><div className="text-neutral-200 mt-1">{enabledExtraCount}</div></div>
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Push</div><div className="text-neutral-200 mt-1">{isStandalone ? 'PWA' : 'Browser'}</div></div>
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Suche</div><div className="text-neutral-200 mt-1">{q ? 'aktiv' : 'aus'}</div></div>
+            </div>
+          </div>
+          <div className="mt-4 relative max-w-xl">
+            <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              value={settingsQuery}
+              onChange={(e) => setSettingsQuery(e.target.value)}
+              placeholder="Einstellungen suchen..."
+              className="w-full bg-black border border-neutral-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
+            />
+            {!!settingsQuery && (
+              <button type="button" onClick={() => setSettingsQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-neutral-500 hover:text-white" title="Zuruecksetzen">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </section>
 
-            {/* Mobile tab row */}
-            <div className="hidden">
-              {(q ? filteredTabs : TABS).map(t => {
-                const Icon = t.icon;
-                const active = (!q && settingsTab === t.id);
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                    className={"shrink-0 px-3 py-2 rounded-xl border text-xs flex items-center gap-2 " + (active ? "bg-white text-black border-white" : "bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-600")}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
+        <div className="lg:hidden overflow-x-auto no-scrollbar -mx-1 px-1">
+          <div className="flex gap-2 min-w-max">
+            {visibleTabs.map((t) => {
+              const Icon = t.icon;
+              const active = settingsTab === t.id && !q;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
+                  className={"px-3 py-2 rounded-xl border text-xs flex items-center gap-2 " + (active ? "bg-white text-black border-white" : "bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-600")}
+                >
+                  <Icon className="w-4 h-4" />
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
-          {/* Desktop sidebar */}
-          <aside className="hidden lg:block sticky top-6 self-start">
-            <div className="bg-neutral-950/50 border border-neutral-800 rounded-2xl p-2">
-              {TABS.map(t => {
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
+          <aside className="hidden lg:block sticky top-6 self-start space-y-3">
+            <div className="bg-neutral-950/60 border border-neutral-800 rounded-2xl p-2">
+              {TABS.map((t) => {
                 const Icon = t.icon;
                 const active = settingsTab === t.id && !q;
                 const disabledBySearch = q && !match(t.keys);
@@ -7959,28 +7955,32 @@ SpÃ¤ter
                     key={t.id}
                     onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
                     className={
-                      "w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors " +
-                      (active ? "bg-white text-black" : "text-neutral-300 hover:bg-neutral-900") +
+                      "w-full text-left px-3 py-3 rounded-xl transition-colors " +
+                      (active ? "bg-white text-black" : "text-neutral-200 hover:bg-neutral-900") +
                       (disabledBySearch ? " opacity-50" : "")
                     }
                     title={disabledBySearch ? "Nicht im Suchresultat" : ""}
                   >
-                    <Icon className="w-4 h-4" />
-                    <span className="truncate">{t.label}</span>
+                    <div className="flex items-center gap-3">
+                      <Icon className="w-4 h-4" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold truncate">{t.label}</div>
+                        <div className={"text-[11px] truncate " + (active ? "text-black/70" : "text-neutral-500")}>{t.subtitle}</div>
+                      </div>
+                    </div>
                   </button>
                 );
               })}
             </div>
-
-            <div className="mt-3 text-[11px] text-neutral-600 leading-relaxed">
+            <div className="rounded-xl border border-neutral-800 bg-black/40 p-3 text-[11px] text-neutral-500 leading-relaxed">
               <div className="flex items-center gap-2">
                 <Info className="w-3.5 h-3.5" />
-                <span>â€žTest (Server)â€œ braucht Firestoreâ€‘Zugriff (kein Adblock/Shield).</span>
+                <span>Server-Push-Test benoetigt Firestore-Zugriff (kein Shield/Adblock).</span>
               </div>
             </div>
           </aside>
 
-          <main className="space-y-3 min-w-0">
+          <main className="space-y-4 min-w-0">
             {/* KALENDER VERWALTUNG */}
             <AccordionItem id="calendars" label="Kalender" icon={CalendarIcon} keys={['kalender','schicht','farbe','privat','freigabe','teilen','share','busy']} >
               <section id="settings-calendars">
@@ -8739,7 +8739,7 @@ SpÃ¤ter
             </AccordionItem>
 
             {/* If search yields nothing */}
-            {q && filteredTabs.length === 0 && (
+            {q && visibleTabs.length === 0 && (
               <div className="border border-neutral-800 rounded-2xl p-6 bg-neutral-950/50 text-sm text-neutral-500">
                 Keine Treffer fÃ¼r â€ž{settingsQuery}â€œ.
               </div>

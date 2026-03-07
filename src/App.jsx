@@ -5879,14 +5879,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         return '';
       };
 
-      const senderLabelFromId = (senderId) => {
+      function senderLabelFromId(senderId) {
         try {
           if (!senderId) return 'Unbekannt';
           if (senderId === user?.uid) return 'Du';
           const p = getProfile(senderId);
           return (p?.displayName || p?.username || p?.email || 'Unbekannt');
         } catch (_) { return 'Unbekannt'; }
-      };
+      }
 
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
         if (e) e.preventDefault();

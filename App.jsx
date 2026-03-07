@@ -612,6 +612,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [chatFriendLoading, setChatFriendLoading] = useState(false);
       const [chatFriendError, setChatFriendError] = useState('');
       const chatFriendLookupTimer = useRef(null);
+      const secretPanicBypassUntilRef = useRef(0);
 
       const [myChats, setMyChats] = useState([]);
       const [activeChat, setActiveChat] = useState(null);
@@ -1968,6 +1969,15 @@ const toggleSecretAutoHide = async () => {
   }
 };
 
+const temporarilySuspendSecretAutoHide = (ms = 30000) => {
+  try {
+    if (currentView !== 'secret_chat') return;
+    if (userProfile?.secretPanicOnHide === false) return;
+    const ttl = Math.max(3000, Number(ms || 0));
+    secretPanicBypassUntilRef.current = Date.now() + ttl;
+  } catch (_) {}
+};
+
 const startSecretGate = () => {
   secretGateTriggered.current = false;
   if (secretPressTimer.current) clearTimeout(secretPressTimer.current);
@@ -2024,8 +2034,17 @@ const handleTouchEnd = () => {
 
       const pinnedChatIds = (userProfile && Array.isArray(userProfile.pinnedChats)) ? userProfile.pinnedChats : [];
       const hiddenChatIds = (userProfile && Array.isArray(userProfile.hiddenChats)) ? userProfile.hiddenChats : [];
+      const friendIds = (userProfile && Array.isArray(userProfile.friends)) ? userProfile.friends : [];
+      const blockedUserIds = (userProfile && Array.isArray(userProfile.blockedUsers)) ? userProfile.blockedUsers : [];
+      const friendRequestIncomingIds = (userProfile && Array.isArray(userProfile.friendRequestsIncoming)) ? userProfile.friendRequestsIncoming : [];
+      const friendRequestSentIds = (userProfile && Array.isArray(userProfile.friendRequestsSent)) ? userProfile.friendRequestsSent : [];
       const sortedMyChats = [...myChats]
         .filter(c => c && c.id && !hiddenChatIds.includes(c.id))
+        .filter((c) => {
+          if (isGroupChat(c)) return true;
+          const otherUid = Array.isArray(c?.participants) ? c.participants.find((id) => id !== user?.uid) : null;
+          return !otherUid || !blockedUserIds.includes(otherUid);
+        })
         .sort((a, b) => {
         const ap = pinnedChatIds.includes(a.id) ? 1 : 0;
         const bp = pinnedChatIds.includes(b.id) ? 1 : 0;
@@ -4906,6 +4925,7 @@ useEffect(() => {
         const panicOnHide = (userProfile?.secretPanicOnHide !== false);
         if (!panicOnHide) return;
         const onSecretVisibility = () => {
+          if (Date.now() < (secretPanicBypassUntilRef.current || 0)) return;
           if (document.visibilityState === 'hidden') hideSecretChatNow('Secret Chat automatisch versteckt');
         };
         document.addEventListener('visibilitychange', onSecretVisibility);
@@ -5585,6 +5605,17 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       };
 
       function getProfile(uid) { return allProfiles.find(p => p.id === uid) || null; }
+      function getUserDisplayLabel(uid) {
+        const p = getProfile(uid);
+        return p?.displayName || p?.username || p?.email || shortId(uid, 6);
+      }
+      function isBlockedByUser(uid) {
+        try {
+          const p = getProfile(uid);
+          const blocked = Array.isArray(p?.blockedUsers) ? p.blockedUsers : [];
+          return blocked.includes(user?.uid);
+        } catch (_) { return false; }
+      }
 
       function normalizeChatId(raw) { return String(raw || '').replace(/\D/g, '').slice(0, 5); }
 
@@ -5629,12 +5660,135 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
+      const sendFriendRequest = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        if (targetUid === user.uid) return;
+        if (blockedUserIds.includes(targetUid)) return showToast('Kontakt ist blockiert');
+        if (isBlockedByUser(targetUid)) return showToast('Du kannst diesem Kontakt keine Anfrage senden');
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+            friendRequestsSent: arrayUnion(targetUid),
+            friendRequestsIncoming: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUid), {
+            friendRequestsIncoming: arrayUnion(user.uid),
+            friendRequestsSent: arrayRemove(user.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
+          showToast('Freundesanfrage gesendet');
+        } catch (e) {
+          console.warn('sendFriendRequest failed', e);
+          showToast('Anfrage fehlgeschlagen');
+        }
+      };
+
+      const cancelFriendRequest = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+            friendRequestsSent: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUid), {
+            friendRequestsIncoming: arrayRemove(user.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
+          showToast('Anfrage zurückgezogen');
+        } catch (e) {
+          console.warn('cancelFriendRequest failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const acceptFriendRequest = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+            friends: arrayUnion(targetUid),
+            friendRequestsIncoming: arrayRemove(targetUid),
+            friendRequestsSent: arrayRemove(targetUid),
+            blockedUsers: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUid), {
+            friends: arrayUnion(user.uid),
+            friendRequestsIncoming: arrayRemove(user.uid),
+            friendRequestsSent: arrayRemove(user.uid),
+            blockedUsers: arrayRemove(user.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
+          await writeAudit({ calId: 'default', action: 'friend.accept', targetType: 'friend', targetId: targetUid, summary: `Freund akzeptiert: ${getUserDisplayLabel(targetUid)}` });
+          showToast('Freund hinzugefügt');
+        } catch (e) {
+          console.warn('acceptFriendRequest failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const rejectFriendRequest = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+            friendRequestsIncoming: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUid), {
+            friendRequestsSent: arrayRemove(user.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
+          showToast('Anfrage abgelehnt');
+        } catch (e) {
+          console.warn('rejectFriendRequest failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const blockUser = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+            blockedUsers: arrayUnion(targetUid),
+            friends: arrayRemove(targetUid),
+            friendRequestsIncoming: arrayRemove(targetUid),
+            friendRequestsSent: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUid), {
+            friends: arrayRemove(user.uid),
+            friendRequestsIncoming: arrayRemove(user.uid),
+            friendRequestsSent: arrayRemove(user.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
+          showToast('Kontakt blockiert');
+        } catch (e) {
+          console.warn('blockUser failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const unblockUser = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+            blockedUsers: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          showToast('Blockierung aufgehoben');
+        } catch (e) {
+          console.warn('unblockUser failed', e);
+          showToast('Fehler');
+        }
+      };
+
       const startChatWithProfile = async (profileOrId) => {
         if (!user) return;
         const targetUserId = (typeof profileOrId === 'string') ? profileOrId : (profileOrId && profileOrId.id);
         const targetProfile = (typeof profileOrId === 'object' && profileOrId) ? profileOrId : (targetUserId ? getProfile(targetUserId) : null);
         if (!targetUserId) return;
         if (targetUserId === user.uid) return showToast('Das bist du selbst');
+        if (blockedUserIds.includes(targetUserId)) return showToast('Kontakt ist blockiert');
+        if (isBlockedByUser(targetUserId)) return showToast('Dieser Kontakt hat dich blockiert');
 
         const existingChat = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(targetUserId));
         if (existingChat) {
@@ -5710,9 +5864,20 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         try {
           // hide existing DM chat (optional UX)
           const dm = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(friendUid));
-          const updates = { friends: arrayRemove(friendUid) };
+          const updates = {
+            friends: arrayRemove(friendUid),
+            friendRequestsIncoming: arrayRemove(friendUid),
+            friendRequestsSent: arrayRemove(friendUid),
+            updatedAt: Date.now()
+          };
           if (dm && dm.id) updates.hiddenChats = arrayUnion(dm.id);
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), updates, { merge: true });
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', friendUid), {
+            friends: arrayRemove(user.uid),
+            friendRequestsIncoming: arrayRemove(user.uid),
+            friendRequestsSent: arrayRemove(user.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
           await writeAudit({ calId: 'default', action: 'friend.remove', targetType: 'friend', targetId: friendUid, summary: `Freund entfernt: ${getProfile(friendUid)?.displayName || getProfile(friendUid)?.username || shortId(friendUid,6)}` });
           showToast('Freund entfernt');
         } catch (e) {
@@ -8647,6 +8812,81 @@ SpÃ¤ter
                       <div className="border border-neutral-800 rounded-xl p-6 bg-neutral-950/50 space-y-5">
                         <div className="flex items-start justify-between gap-4">
                           <div>
+                            <h4 className="text-sm font-semibold text-white flex items-center gap-2"><Users className="w-4 h-4" /> Freunde verwalten</h4>
+                            <p className="text-xs text-neutral-500 mt-1">Anfragen annehmen/ablehnen, Kontakte blockieren oder entfernen.</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                          <div className="border border-neutral-800 rounded-xl p-3 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Freunde</div><div className="text-lg text-white mt-1">{friendIds.length}</div></div>
+                          <div className="border border-neutral-800 rounded-xl p-3 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Eingehend</div><div className="text-lg text-white mt-1">{friendRequestIncomingIds.length}</div></div>
+                          <div className="border border-neutral-800 rounded-xl p-3 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Gesendet</div><div className="text-lg text-white mt-1">{friendRequestSentIds.length}</div></div>
+                          <div className="border border-neutral-800 rounded-xl p-3 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Blockiert</div><div className="text-lg text-white mt-1">{blockedUserIds.length}</div></div>
+                        </div>
+
+                        {friendRequestIncomingIds.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Anfragen an dich</div>
+                            {friendRequestIncomingIds.slice(0, 30).map((uid) => (
+                              <div key={`fri_in_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                <div className="flex items-center gap-2">
+                                  <button type="button" onClick={() => acceptFriendRequest(uid)} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Annehmen</button>
+                                  <button type="button" onClick={() => rejectFriendRequest(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Ablehnen</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {friendRequestSentIds.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Gesendete Anfragen</div>
+                            {friendRequestSentIds.slice(0, 30).map((uid) => (
+                              <div key={`fri_out_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                <button type="button" onClick={() => cancelFriendRequest(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Zurückziehen</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {friendIds.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Freunde</div>
+                            {friendIds.slice(0, 60).map((uid) => (
+                              <div key={`fri_ok_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                <div className="flex items-center gap-2">
+                                  <button type="button" onClick={() => startChatWithProfile(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Chat</button>
+                                  <button type="button" onClick={() => blockUser(uid)} className="px-3 py-2 rounded-lg border border-red-900/50 text-red-300 text-xs hover:bg-red-950/40">Blockieren</button>
+                                  <button type="button" onClick={() => removeFriend(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Entfernen</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {blockedUserIds.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Blockiert</div>
+                            {blockedUserIds.slice(0, 60).map((uid) => (
+                              <div key={`fri_blk_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                <button type="button" onClick={() => unblockUser(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Entblocken</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {(friendIds.length + friendRequestIncomingIds.length + friendRequestSentIds.length + blockedUserIds.length === 0) && (
+                          <div className="text-xs text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-3">Noch keine Kontakte verwaltet.</div>
+                        )}
+                      </div>
+
+                      <div className="border border-neutral-800 rounded-xl p-6 bg-neutral-950/50 space-y-5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
                             <h4 className="text-sm font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Secret PIN</h4>
                             <p className="text-xs text-neutral-500 mt-1">Der Secret Chat verlangt nach dem Long-Press eine PIN mit 4 bis 8 Ziffern.</p>
                           </div>
@@ -8741,7 +8981,7 @@ SpÃ¤ter
                         )}
                         {!chatFriendLoading && chatFriendResult && (
                           <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">
-                            <div onClick={() => startChatWithProfile(chatFriendResult)} className="p-4 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
+                            <div className="p-4 hover:bg-neutral-800 flex items-center gap-3">
                               <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
                                 {chatFriendResult.avatarBase64 ? (
                                   <img
@@ -8755,6 +8995,55 @@ SpÃ¤ter
                               <div className="flex flex-col">
                                 <span className="font-medium text-white">{chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email}</span>
                                 <span className="text-[11px] text-neutral-500 font-mono">Chat-ID: {String(chatFriendResult.friendCode || '').padStart(5,'0')}</span>
+                              </div>
+                              <div className="ml-auto flex items-center gap-2">
+                                {(() => {
+                                  const uid = chatFriendResult.id;
+                                  const isBlocked = blockedUserIds.includes(uid);
+                                  const isFriend = friendIds.includes(uid);
+                                  const incoming = friendRequestIncomingIds.includes(uid);
+                                  const outgoing = friendRequestSentIds.includes(uid);
+                                  const blockedBy = isBlockedByUser(uid);
+                                  if (isBlocked) {
+                                    return (
+                                      <button type="button" onClick={(e) => { e.stopPropagation(); unblockUser(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">
+                                        Entblocken
+                                      </button>
+                                    );
+                                  }
+                                  if (blockedBy) {
+                                    return <span className="text-[11px] text-red-300">Kontakt blockiert dich</span>;
+                                  }
+                                  if (isFriend) {
+                                    return (
+                                      <>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); startChatWithProfile(chatFriendResult); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Chat</button>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); blockUser(uid); }} className="px-3 py-2 rounded-lg border border-red-900/50 text-red-300 text-xs hover:bg-red-950/40">Blockieren</button>
+                                      </>
+                                    );
+                                  }
+                                  if (incoming) {
+                                    return (
+                                      <>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); acceptFriendRequest(uid); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Annehmen</button>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); rejectFriendRequest(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Ablehnen</button>
+                                      </>
+                                    );
+                                  }
+                                  if (outgoing) {
+                                    return (
+                                      <button type="button" onClick={(e) => { e.stopPropagation(); cancelFriendRequest(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">
+                                        Anfrage zurückziehen
+                                      </button>
+                                    );
+                                  }
+                                  return (
+                                    <>
+                                      <button type="button" onClick={(e) => { e.stopPropagation(); sendFriendRequest(uid); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Anfragen</button>
+                                      <button type="button" onClick={(e) => { e.stopPropagation(); startChatWithProfile(chatFriendResult); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Direkt Chat</button>
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </div>
@@ -9112,11 +9401,11 @@ SpÃ¤ter
                         <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
                           <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-x-auto no-scrollbar`}>
                             <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Bild senden">
-                              <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleImageUpload} />
+                              <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(30000)} onChange={handleImageUpload} />
                             </label>
 
                             <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Foto machen">
-                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={handleImageUpload} />
+                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(30000)} onChange={handleImageUpload} />
                             </label>
                             
                             <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">

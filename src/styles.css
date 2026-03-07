@@ -11,3 +11,95 @@ html, body {
   min-height: 100vh;
   background: #000;
 }
+
+/* Light mode (soft, low-contrast opposite to AMOLED dark mode) */
+html.onyx-theme-light,
+html.onyx-theme-light body {
+  background: #f6f5f2;
+  color-scheme: light;
+}
+html.onyx-theme-light #root {
+  background: #f6f5f2;
+}
+
+/* Base surfaces */
+html.onyx-theme-light .bg-black,
+html.onyx-theme-light .bg-black\/40,
+html.onyx-theme-light .bg-black\/60 {
+  background-color: #f6f5f2 !important;
+}
+html.onyx-theme-light .bg-neutral-950,
+html.onyx-theme-light .bg-neutral-950\/40,
+html.onyx-theme-light .bg-neutral-950\/50,
+html.onyx-theme-light .bg-neutral-950\/60,
+html.onyx-theme-light .bg-neutral-950\/70,
+html.onyx-theme-light .bg-neutral-900,
+html.onyx-theme-light .bg-neutral-900\/50,
+html.onyx-theme-light .bg-neutral-900\/70 {
+  background-color: #eceae4 !important;
+}
+html.onyx-theme-light .bg-white {
+  background-color: #171717 !important;
+}
+
+/* Overlay layers */
+html.onyx-theme-light .bg-black\/80,
+html.onyx-theme-light .bg-black\/90,
+html.onyx-theme-light .bg-black\/95 {
+  background-color: rgba(220, 217, 208, 0.82) !important;
+}
+
+/* Typography */
+html.onyx-theme-light .text-white {
+  color: #171717 !important;
+}
+html.onyx-theme-light .text-black {
+  color: #f8f7f4 !important;
+}
+html.onyx-theme-light .text-neutral-200,
+html.onyx-theme-light .text-neutral-300,
+html.onyx-theme-light .text-neutral-400,
+html.onyx-theme-light .text-neutral-500,
+html.onyx-theme-light .text-neutral-600 {
+  color: #585753 !important;
+}
+html.onyx-theme-light .placeholder-neutral-600::placeholder {
+  color: #87857e !important;
+}
+
+/* Inputs and chips */
+html.onyx-theme-light input,
+html.onyx-theme-light textarea,
+html.onyx-theme-light select {
+  background-color: #f2f0ea !important;
+  color: #171717 !important;
+  border-color: #d5d2c8 !important;
+}
+html.onyx-theme-light .bg-white.text-black {
+  background-color: #171717 !important;
+  color: #f8f7f4 !important;
+}
+
+/* Borders and rings */
+html.onyx-theme-light .border-neutral-700,
+html.onyx-theme-light .border-neutral-800,
+html.onyx-theme-light .border-neutral-900 {
+  border-color: #d7d3c8 !important;
+}
+html.onyx-theme-light .ring-white\/20,
+html.onyx-theme-light .ring-white\/70 {
+  --tw-ring-color: rgba(23, 23, 23, 0.24) !important;
+}
+
+/* Hover states */
+html.onyx-theme-light .hover\:bg-neutral-900:hover,
+html.onyx-theme-light .hover\:bg-neutral-800:hover {
+  background-color: #e2dfd6 !important;
+}
+html.onyx-theme-light .hover\:border-neutral-500:hover,
+html.onyx-theme-light .hover\:border-neutral-600:hover {
+  border-color: #bcb8ab !important;
+}
+html.onyx-theme-light .hover\:text-white:hover {
+  color: #171717 !important;
+}

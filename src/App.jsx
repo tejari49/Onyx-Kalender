@@ -51,7 +51,20 @@ import React, { useState, useEffect, useRef } from 'react';
         createdAt: Number(list?.createdAt || Date.now()) || Date.now(),
         updatedAt: Number(list?.updatedAt || Date.now()) || Date.now(),
         items: normalizeShoppingItems(list?.items),
+        purchases: normalizeShoppingPurchases(list?.purchases),
       })).sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+    }
+
+    function normalizeShoppingPurchases(input) {
+      const rows = Array.isArray(input) ? input : [];
+      return rows.map((entry, idx) => ({
+        id: String(entry?.id || `pay_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
+        amount: Number(entry?.amount || 0) || 0,
+        store: String(entry?.store || ''),
+        paidAt: Number(entry?.paidAt || Date.now()) || Date.now(),
+        note: String(entry?.note || ''),
+      })).filter((entry) => Number.isFinite(entry.amount) && entry.amount > 0)
+        .sort((a, b) => Number(b.paidAt || 0) - Number(a.paidAt || 0));
     }
 
     function formatCurrencyCHF(value) {
@@ -195,6 +208,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
     const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    const DEFAULT_WEATHER_LOCATION = { name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 };
 
     
     // --- ERROR BOUNDARY (verhindert "schwarzer Screen" bei Runtime-Fehlern) ---
@@ -324,7 +338,7 @@ function AmoledCalendarApp() {
       const [dailyForecast, setDailyForecast] = useState(null);
       const [hourlyForecast, setHourlyForecast] = useState(null);
       const [selectedForecastDay, setSelectedForecastDay] = useState(null);
-      const [location, setLocation] = useState({ name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 });
+      const [location, setLocation] = useState(DEFAULT_WEATHER_LOCATION);
       const [workClockActive, setWorkClockActive] = useState(null);
       const [workClockSessions, setWorkClockSessions] = useState([]);
       const [workClockTick, setWorkClockTick] = useState(Date.now());
@@ -363,6 +377,16 @@ function AmoledCalendarApp() {
       const [shoppingDraftStore, setShoppingDraftStore] = useState('');
       const [shoppingSaving, setShoppingSaving] = useState(false);
       const [shoppingQuickItem, setShoppingQuickItem] = useState('');
+      const [shoppingPaidAmount, setShoppingPaidAmount] = useState('');
+      const [shoppingPaidNote, setShoppingPaidNote] = useState('');
+      const [themeMode, setThemeMode] = useState(() => {
+        try {
+          const stored = localStorage.getItem('onyx_theme_mode');
+          return (stored === 'light' || stored === 'dark') ? stored : 'dark';
+        } catch (_) {
+          return 'dark';
+        }
+      });
       const [isStandalone, setIsStandalone] = useState(false);
       const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
       const [canInstallPwa, setCanInstallPwa] = useState(false);
@@ -3495,6 +3519,27 @@ const requestNotificationPermission = async (currentUser) => {
           }, 0);
         } catch (_) { return 0; }
       }
+      function calcShoppingPaidTotal(list) {
+        try {
+          const entries = normalizeShoppingPurchases(list?.purchases);
+          return entries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+        } catch (_) { return 0; }
+      }
+      function calcShoppingSpendByStore(lists) {
+        try {
+          const grouped = new Map();
+          for (const list of normalizeShoppingLists(lists)) {
+            const fallbackStore = String(list?.store || '').trim() || 'Ohne Laden';
+            for (const row of normalizeShoppingPurchases(list?.purchases)) {
+              const key = String(row?.store || fallbackStore).trim() || 'Ohne Laden';
+              const prev = Number(grouped.get(key) || 0);
+              grouped.set(key, prev + Number(row.amount || 0));
+            }
+          }
+          return Array.from(grouped.entries()).map(([store, amount]) => ({ store, amount }))
+            .sort((a, b) => b.amount - a.amount);
+        } catch (_) { return []; }
+      }
       async function persistShoppingLists(nextLists) {
         if (!user?.uid) return;
         const normalized = normalizeShoppingLists(nextLists);
@@ -3548,6 +3593,32 @@ const requestNotificationPermission = async (currentUser) => {
         const next = normalizeShoppingLists(shoppingLists).filter((list) => list.id !== listId);
         await persistShoppingLists(next);
         setActiveShoppingListId((prev) => prev === listId ? (next[0]?.id || '') : prev);
+      };
+      const addShoppingPurchase = async (listId) => {
+        const amount = Number(String(shoppingPaidAmount || '').replace(',', '.').replace(/[^0-9.]/g, ''));
+        if (!Number.isFinite(amount) || amount <= 0) {
+          showToast('Bitte einen gültigen Betrag eingeben');
+          return;
+        }
+        const next = normalizeShoppingLists(shoppingLists).map((list) => {
+          if (list.id !== listId) return list;
+          const nextEntry = {
+            id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            amount,
+            store: String(list.store || '').trim(),
+            paidAt: Date.now(),
+            note: String(shoppingPaidNote || '').trim(),
+          };
+          return {
+            ...list,
+            updatedAt: Date.now(),
+            purchases: [nextEntry, ...normalizeShoppingPurchases(list.purchases)].slice(0, 80),
+          };
+        });
+        await persistShoppingLists(next);
+        setShoppingPaidAmount('');
+        setShoppingPaidNote('');
+        showToast('Einkauf gespeichert');
       };
 
       useEffect(() => {
@@ -3824,6 +3895,36 @@ const requestNotificationPermission = async (currentUser) => {
       useEffect(() => {
         if (isLoggedIn) fetchWeather();
       }, [location, isLoggedIn]);
+
+      useEffect(() => {
+        try {
+          const fromProfile = userProfile?.weatherLocation;
+          if (!fromProfile) return;
+          const nextLoc = {
+            name: String(fromProfile.name || DEFAULT_WEATHER_LOCATION.name),
+            lat: Number(fromProfile.lat || DEFAULT_WEATHER_LOCATION.lat),
+            lon: Number(fromProfile.lon || DEFAULT_WEATHER_LOCATION.lon),
+          };
+          const same =
+            String(location?.name || '') === nextLoc.name
+            && Number(location?.lat || 0) === Number(nextLoc.lat || 0)
+            && Number(location?.lon || 0) === Number(nextLoc.lon || 0);
+          if (!same) setLocation(nextLoc);
+        } catch (_) {}
+      }, [userProfile?.weatherLocation?.name, userProfile?.weatherLocation?.lat, userProfile?.weatherLocation?.lon]);
+
+      useEffect(() => {
+        const mode = (themeMode === 'light') ? 'light' : 'dark';
+        try {
+          localStorage.setItem('onyx_theme_mode', mode);
+          document.documentElement.classList.toggle('onyx-theme-light', mode === 'light');
+        } catch (_) {}
+      }, [themeMode]);
+
+      useEffect(() => {
+        const profileMode = userProfile?.themeMode;
+        if (profileMode === 'light' || profileMode === 'dark') setThemeMode(profileMode);
+      }, [userProfile?.themeMode]);
 
       useEffect(() => {
         // reset expanded forecast when location changes
@@ -4312,9 +4413,47 @@ const handleAuth = async (e) => {
       };
 
       const selectLocation = (loc) => {
-        setLocation({ name: `${loc.name}${loc.admin1 ? `, ${loc.admin1}` : ''}`, lat: loc.latitude, lon: loc.longitude });
+        const nextLoc = { name: `${loc.name}${loc.admin1 ? `, ${loc.admin1}` : ''}`, lat: loc.latitude, lon: loc.longitude };
+        setLocation(nextLoc);
+        persistWeatherLocation(nextLoc);
         setSearchResults([]); setSearchQuery('');
         showToast(`Standort: ${loc.name}`);
+      };
+
+      const persistWeatherLocation = async (nextLoc) => {
+        try {
+          if (!user?.uid || !nextLoc) return;
+          const payload = {
+            name: String(nextLoc.name || DEFAULT_WEATHER_LOCATION.name),
+            lat: Number(nextLoc.lat || DEFAULT_WEATHER_LOCATION.lat),
+            lon: Number(nextLoc.lon || DEFAULT_WEATHER_LOCATION.lon),
+          };
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+            weatherLocation: payload,
+            updatedAt: Date.now(),
+          }, { merge: true });
+          setUserProfile((prev) => ({ ...(prev || {}), weatherLocation: payload }));
+        } catch (err) {
+          console.warn('persistWeatherLocation failed', err);
+        }
+      };
+
+      const persistThemeMode = async (nextMode) => {
+        const mode = (nextMode === 'light') ? 'light' : 'dark';
+        setThemeMode(mode);
+        try {
+          localStorage.setItem('onyx_theme_mode', mode);
+        } catch (_) {}
+        try {
+          if (!user?.uid) return;
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+            themeMode: mode,
+            updatedAt: Date.now(),
+          }, { merge: true });
+          setUserProfile((prev) => ({ ...(prev || {}), themeMode: mode }));
+        } catch (err) {
+          console.warn('persistThemeMode failed', err);
+        }
       };
 
       // --- KALENDER LOGIK ---
@@ -7290,12 +7429,23 @@ setSelfDestruct(false);
                                 <div className="font-semibold text-white truncate">{list.title}</div>
                                 <div className="text-xs text-neutral-500 mt-1">{list.store || 'Ohne Ort'} · {bought}/{total} gekauft</div>
                               </div>
-                              <div className="text-[11px] text-neutral-400">{formatCurrencyCHF(calcShoppingListTotal(list, true))}</div>
+                              <div className="text-[11px] text-neutral-400">{formatCurrencyCHF(calcShoppingPaidTotal(list))}</div>
                             </div>
                           </button>
                         );
                       })}
                     </div>
+                    {calcShoppingSpendByStore(shoppingLists).length > 0 && (
+                      <div className="mt-4 border-t border-neutral-800 pt-3 space-y-2">
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">Ausgaben je Laden</div>
+                        {calcShoppingSpendByStore(shoppingLists).slice(0, 6).map((row) => (
+                          <div key={row.store} className="flex items-center justify-between text-xs text-neutral-400">
+                            <span className="truncate pr-3">{row.store}</span>
+                            <span className="text-neutral-200">{formatCurrencyCHF(row.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </aside>
                   <section className="flex-1 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-6">
                     {!activeShoppingList ? (
@@ -7310,7 +7460,7 @@ setSelfDestruct(false);
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <div className="px-3 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300">Offen {normalizeShoppingItems(activeShoppingList.items).filter((item) => !item.done).length}</div>
-                            <div className="px-3 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300">Gekauft {formatCurrencyCHF(calcShoppingListTotal(activeShoppingList, true))}</div>
+                            <div className="px-3 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300">Bezahlt {formatCurrencyCHF(calcShoppingPaidTotal(activeShoppingList))}</div>
                             <button onClick={() => deleteShoppingList(activeShoppingList.id)} className="px-3 py-2 rounded-xl border border-red-900/60 text-sm text-red-300 hover:bg-red-950/40 transition-colors">Liste löschen</button>
                           </div>
                         </div>
@@ -7318,15 +7468,32 @@ setSelfDestruct(false);
                           <input value={shoppingQuickItem} onChange={(e) => setShoppingQuickItem(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addShoppingItem(activeShoppingList.id); }} placeholder="Artikel hinzufügen, z. B. Milch" className="flex-1 bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                           <button onClick={() => addShoppingItem(activeShoppingList.id)} className="px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-neutral-200 transition-colors">Hinzufügen</button>
                         </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[160px,1fr,auto] gap-3 mb-5">
+                          <input value={shoppingPaidAmount} onChange={(e) => setShoppingPaidAmount(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="Betrag CHF" className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                          <input value={shoppingPaidNote} onChange={(e) => setShoppingPaidNote(e.target.value)} placeholder="Notiz (optional), z. B. Wocheneinkauf" className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                          <button onClick={() => addShoppingPurchase(activeShoppingList.id)} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-700 text-white font-semibold hover:bg-neutral-800 transition-colors">Betrag speichern</button>
+                        </div>
+                        {normalizeShoppingPurchases(activeShoppingList.purchases).length > 0 && (
+                          <div className="mb-5 border border-neutral-800 rounded-xl p-3 bg-black/40 space-y-2">
+                            <div className="text-xs text-neutral-500">Letzte Ausgaben</div>
+                            {normalizeShoppingPurchases(activeShoppingList.purchases).slice(0, 5).map((row) => (
+                              <div key={row.id} className="flex items-center justify-between text-xs">
+                                <span className="text-neutral-400 truncate pr-3">
+                                  {(row.store || activeShoppingList.store || 'Ohne Laden')} · {new Date(row.paidAt).toLocaleDateString('de-CH')}{row.note ? ` · ${row.note}` : ''}
+                                </span>
+                                <span className="text-neutral-200">{formatCurrencyCHF(row.amount)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         <div className="space-y-3">
                           {normalizeShoppingItems(activeShoppingList.items).length === 0 ? (
                             <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4">Noch keine Artikel in dieser Liste.</div>
                           ) : normalizeShoppingItems(activeShoppingList.items).sort((a,b) => Number(a.done) - Number(b.done)).map((item) => (
-                            <div key={item.id} className={`grid grid-cols-1 md:grid-cols-[auto,1fr,110px,120px,auto] gap-3 items-center rounded-2xl border p-3 transition-colors ${item.done ? 'border-neutral-800 bg-neutral-950/70' : 'border-neutral-800 bg-black/60'}`}>
+                            <div key={item.id} className={`grid grid-cols-1 md:grid-cols-[auto,1fr,120px,auto] gap-3 items-center rounded-2xl border p-3 transition-colors ${item.done ? 'border-neutral-800 bg-neutral-950/70' : 'border-neutral-800 bg-black/60'}`}>
                               <button onClick={() => toggleShoppingItem(activeShoppingList.id, item.id)} className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors ${item.done ? 'bg-white text-black border-white' : 'border-neutral-700 text-neutral-400 hover:border-neutral-500'}`}><CheckSquare className="w-4 h-4" /></button>
                               <input value={item.text} onChange={(e) => updateShoppingItem(activeShoppingList.id, item.id, { text: e.target.value })} className={`bg-black border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-neutral-500 ${item.done ? 'line-through text-neutral-500 border-neutral-900' : 'text-white border-neutral-800'}`} />
                               <input value={item.qty} onChange={(e) => updateShoppingItem(activeShoppingList.id, item.id, { qty: e.target.value })} placeholder="Menge" className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                              <input value={item.price} onChange={(e) => updateShoppingItem(activeShoppingList.id, item.id, { price: e.target.value.replace(/[^0-9.,]/g, '') })} placeholder="Preis CHF" className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                               <button onClick={() => deleteShoppingItem(activeShoppingList.id, item.id)} className="h-10 w-10 rounded-xl border border-neutral-800 text-neutral-400 hover:border-red-700 hover:text-red-300 transition-colors flex items-center justify-center"><Trash2 className="w-4 h-4" /></button>
                             </div>
                           ))}
@@ -7665,7 +7832,7 @@ Später
             </div>
 
             {/* Mobile tab row */}
-            <div className="hidden">
+            <div className="lg:hidden mt-3 flex gap-2 overflow-x-auto no-scrollbar pb-1">
               {(q ? filteredTabs : SETTINGS_SECTIONS).map(t => {
                 const Icon = t.icon;
                 const active = (!q && settingsTab === t.id);
@@ -8322,6 +8489,31 @@ Später
                     )}
                   </div>
                   <button onClick={handleLogout} className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors">Abmelden</button>
+                </div>
+
+                <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-medium text-white">Design</p>
+                      <p className="text-xs text-neutral-500 mt-1">Wähle zwischen Dunkel und einem weichen hellen Modus.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => persistThemeMode('dark')}
+                        className={"px-3 py-2 rounded-lg text-xs font-semibold border transition-colors " + (themeMode === 'dark' ? "bg-white text-black border-white" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
+                      >
+                        Dunkel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => persistThemeMode('light')}
+                        className={"px-3 py-2 rounded-lg text-xs font-semibold border transition-colors " + (themeMode === 'light' ? "bg-white text-black border-white" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
+                      >
+                        Hell
+                      </button>
+                    </div>
+                  </div>
                 </div>
               
                 <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">

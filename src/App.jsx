@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter } from "firebase/firestore";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment } from "firebase/firestore";
     import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
     import heic2any from 'heic2any';
 
@@ -388,6 +388,20 @@ function AmoledCalendarApp() {
 
 
 
+
+function getSupportedAudioRecorderConfig() {
+  const MR = (typeof window !== 'undefined' && window.MediaRecorder) ? window.MediaRecorder : null;
+  const supports = (mime) => {
+    try { return !!(MR && MR.isTypeSupported && MR.isTypeSupported(mime)); }
+    catch (_) { return false; }
+  };
+  if (supports('audio/webm;codecs=opus')) return { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 };
+  if (supports('audio/ogg;codecs=opus')) return { mimeType: 'audio/ogg;codecs=opus', audioBitsPerSecond: 128000 };
+  if (supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
+  if (supports('audio/webm')) return { mimeType: 'audio/webm', audioBitsPerSecond: 96000 };
+  return { mimeType: '', audioBitsPerSecond: 96000 };
+}
+
       const isIosUA = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
       
       const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
@@ -418,6 +432,40 @@ function AmoledCalendarApp() {
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
       }, [isImageViewerOpen]);
+
+      const openChatMediaViewer = (index = 0) => {
+        const items = Array.isArray(chatMediaItems) ? chatMediaItems : [];
+        if (!items.length) return;
+        const safeIndex = Math.max(0, Math.min(index, items.length - 1));
+        setChatMediaViewerIndex(safeIndex);
+        setIsChatMediaGalleryOpen(true);
+      };
+
+      const closeChatMediaViewer = () => {
+        setIsChatMediaGalleryOpen(false);
+      };
+
+      const moveChatMediaViewer = (dir = 1) => {
+        const items = Array.isArray(chatMediaItems) ? chatMediaItems : [];
+        if (!items.length) return;
+        setChatMediaViewerIndex((prev) => {
+          const next = prev + dir;
+          if (next < 0) return items.length - 1;
+          if (next >= items.length) return 0;
+          return next;
+        });
+      };
+
+      useEffect(() => {
+        if (!isChatMediaGalleryOpen) return;
+        const onKey = (e) => {
+          if (e.key === 'Escape') closeChatMediaViewer();
+          if (e.key === 'ArrowLeft') moveChatMediaViewer(-1);
+          if (e.key === 'ArrowRight') moveChatMediaViewer(1);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [isChatMediaGalleryOpen, chatMediaItems]);
 
       // --- KALENDER & SCHICHTEN STATES ---
       const [events, setEvents] = useState([]); // Default private events
@@ -583,6 +631,11 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const CHAT_PAGE_SIZE = 25;
       const [chatHasMore, setChatHasMore] = useState(false);
       const [chatLoadingMore, setChatLoadingMore] = useState(false);
+      const [chatTotalCount, setChatTotalCount] = useState(0);
+      const [chatMediaItems, setChatMediaItems] = useState([]);
+      const [chatMediaLoading, setChatMediaLoading] = useState(false);
+      const [isChatMediaGalleryOpen, setIsChatMediaGalleryOpen] = useState(false);
+      const [chatMediaViewerIndex, setChatMediaViewerIndex] = useState(0);
 
 
       // --- IN-APP CHAT PING (SOUND / VIBRATION) ---
@@ -2018,22 +2071,32 @@ const handleTouchEnd = () => {
       };
 
       const _qMsg = String(messageSearchQuery || '').trim().toLowerCase();
-      const baseByType = (isMessageSearchOpen && messageSearchFilter !== 'all')
+      const baseByType = (isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media')
         ? chatMessages.filter(m => messageTypeMatchesFilter(m, messageSearchFilter))
         : chatMessages;
 
-      const messageMatches = (isMessageSearchOpen && (_qMsg || messageSearchFilter !== 'all'))
-        ? baseByType.filter(m => {
+      const mediaSearchResults = (isMessageSearchOpen && messageSearchFilter === 'media')
+        ? chatMediaItems.filter(m => {
             if (!_qMsg) return true;
-            return String(m?.text || '').toLowerCase().includes(_qMsg);
+            const hay = `${String(m?.text || '')} ${senderLabelFromId(m?.senderId || '')}`.toLowerCase();
+            return hay.includes(_qMsg);
           })
+        : [];
+
+      const messageMatches = (isMessageSearchOpen && (_qMsg || messageSearchFilter !== 'all'))
+        ? (messageSearchFilter === 'media'
+            ? mediaSearchResults
+            : baseByType.filter(m => {
+                if (!_qMsg) return true;
+                return String(m?.text || '').toLowerCase().includes(_qMsg);
+              }))
         : [];
 
       const currentMatchId = (isMessageSearchOpen && messageMatches.length > 0)
         ? messageMatches[Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1))].id
         : null;
 
-      const visibleChatMessages = (isMessageSearchOpen && messageSearchFilter !== 'all') ? baseByType : chatMessages;
+      const visibleChatMessages = (isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media') ? baseByType : chatMessages;
 
 
       useEffect(() => {
@@ -2627,6 +2690,55 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
         return () => unsubscribeMessages();
       }, [activeChat, user, currentView, secretView, userProfile]);
+
+      useEffect(() => {
+        let cancelled = false;
+        const chatId = activeChat?.id;
+        if (!chatId || !user) {
+          setChatTotalCount(0);
+          setChatMediaItems([]);
+          setChatMediaLoading(false);
+          return;
+        }
+        const hintedCount = Number(activeChatData?.messageCount || activeChat?.messageCount || 0);
+        if (hintedCount > 0) setChatTotalCount(hintedCount);
+        const loadAllChatMeta = async () => {
+          setChatMediaLoading(true);
+          try {
+            const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
+            const snap = await getDocs(query(messagesRef, orderBy('timestamp', 'asc')));
+            if (cancelled) return;
+            const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const media = all
+              .filter(m => m && !m.deleted && !!m.image)
+              .map(m => ({
+                id: m.id,
+                src: m.image,
+                timestamp: Number(m.timestamp || 0) || 0,
+                senderId: m.senderId || '',
+                text: String(m.text || ''),
+              }))
+              .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            setChatTotalCount(all.length);
+            setChatMediaItems(media);
+            const currentCount = Number(activeChatData?.messageCount || activeChat?.messageCount || 0);
+            const currentMedia = Number(activeChatData?.mediaCount || activeChat?.mediaCount || 0);
+            if (all.length !== currentCount || media.length !== currentMedia) {
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), {
+                messageCount: all.length,
+                mediaCount: media.length,
+                statsUpdatedAt: Date.now(),
+              }).catch(() => {});
+            }
+          } catch (err) {
+            console.warn('CHAT_META_LOAD_ERROR', err);
+          } finally {
+            if (!cancelled) setChatMediaLoading(false);
+          }
+        };
+        loadAllChatMeta();
+        return () => { cancelled = true; };
+      }, [activeChat?.id, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
 
       const loadMoreChatMessages = async () => {
         try {
@@ -5692,20 +5804,32 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const startRecording = async () => {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          mediaRecorderRef.current = new MediaRecorder(stream);
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              channelCount: 1,
+            }
+          });
+          const recorderCfg = getSupportedAudioRecorderConfig();
+          const recorderOpts = {};
+          if (recorderCfg.mimeType) recorderOpts.mimeType = recorderCfg.mimeType;
+          if (recorderCfg.audioBitsPerSecond) recorderOpts.audioBitsPerSecond = recorderCfg.audioBitsPerSecond;
+          mediaRecorderRef.current = new MediaRecorder(stream, recorderOpts);
           mediaRecorderRef.current.ondataavailable = (e) => {
-            if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
           };
           mediaRecorderRef.current.onstop = () => {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            const finalMime = mediaRecorderRef.current?.mimeType || recorderCfg.mimeType || 'audio/webm';
+            const audioBlob = new Blob(audioChunksRef.current, { type: finalMime });
             audioChunksRef.current = [];
             const reader = new FileReader();
             reader.readAsDataURL(audioBlob);
             reader.onloadend = () => { sendMessage(null, null, reader.result); };
           };
           audioChunksRef.current = [];
-          mediaRecorderRef.current.start();
+          mediaRecorderRef.current.start(250);
           setIsRecording(true);
         } catch (err) { showToast("Mikrofon-Zugriff verweigert"); }
       };
@@ -5835,6 +5959,8 @@ setSelfDestruct(false);
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
             updatedAt: Date.now(),
             lastMessageSenderId: user.uid,
+            messageCount: increment(1),
+            mediaCount: imageBase64 ? increment(1) : increment(0),
             [`typing.${user.uid}`]: false,
             [`typingAt.${user.uid}`]: Date.now()
           });
@@ -8366,6 +8492,16 @@ Später
                       </button>
                     )}
                     {secretView === 'chat' && activeChat && (
+                      <div className="hidden md:flex items-center px-3 py-1.5 rounded-xl border border-neutral-800 bg-neutral-950 text-[11px] text-neutral-400">
+                        <span className="text-neutral-200 font-semibold mr-1">{Number(chatTotalCount || 0)}</span> Nachrichten
+                      </div>
+                    )}
+                    {secretView === 'chat' && activeChat && (
+                      <button onClick={() => openChatMediaViewer(0)} className="text-neutral-500 hover:text-white transition-colors p-2" title="Alle Medien">
+                        <ImageIcon className="w-5 h-5" />
+                      </button>
+                    )}
+                    {secretView === 'chat' && activeChat && (
                       <button onClick={() => { setIsMessageSearchOpen(v => !v); setTimeout(() => document.getElementById('msgSearchInput')?.focus(), 0); }} className={`text-neutral-500 hover:text-white transition-colors p-2 ${isMessageSearchOpen ? 'bg-neutral-900 rounded-lg' : ''}`} title="Chat durchsuchen">
                         <Search className="w-5 h-5" />
                       </button>
@@ -8727,7 +8863,34 @@ Später
                           </div>
                         )}
 
-                        {visibleChatMessages.map((msg) => {
+                        {(isMessageSearchOpen && messageSearchFilter === 'media') && (
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between mb-3 text-xs text-neutral-500">
+                              <span>{chatMediaLoading ? 'Lade Medien…' : `${mediaSearchResults.length} Medien`}</span>
+                              <span>Tippe auf ein Bild für Vollbild</span>
+                            </div>
+                            {mediaSearchResults.length === 0 ? (
+                              <div className="p-6 rounded-2xl border border-dashed border-neutral-800 text-center text-sm text-neutral-500 bg-neutral-950/60">Keine Medien gefunden.</div>
+                            ) : (
+                              <div className="grid grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
+                                {mediaSearchResults.map((item) => {
+                                  const absoluteIndex = chatMediaItems.findIndex((x) => String(x.id) === String(item.id));
+                                  return (
+                                    <button key={item.id} type="button" onClick={() => openChatMediaViewer(Math.max(0, absoluteIndex))} className="group relative aspect-square overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
+                                      <img src={item.src} alt="Medium" className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" />
+                                      <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 to-transparent text-left">
+                                        <div className="text-[10px] text-white/90 truncate">{senderLabelFromId(item.senderId)}</div>
+                                        <div className="text-[10px] text-neutral-300">{item.timestamp ? new Date(item.timestamp).toLocaleDateString() : ''}</div>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {(isMessageSearchOpen && messageSearchFilter === 'media') ? null : visibleChatMessages.map((msg) => {
                           const isMe = msg.senderId === user.uid;
                           const showActions = selectedMessageId === msg.id;
                           
@@ -10681,10 +10844,69 @@ Später
 
                    <div className="mt-4 bg-neutral-900 border border-neutral-800 p-4 rounded-xl text-center flex items-center justify-center gap-3">
                      <Activity className="w-5 h-5 text-neutral-400" />
-                     <p className="text-sm text-neutral-300">Total <strong className="text-white ml-1">{chatMessages.length}</strong> Nachrichten</p>
+                     <p className="text-sm text-neutral-300">Total <strong className="text-white ml-1">{chatTotalCount || chatMessages.length}</strong> Nachrichten</p>
+                   </div>
+                   <div className="mt-4 bg-neutral-900 border border-neutral-800 p-4 rounded-xl">
+                     <div className="flex items-center justify-between gap-3 mb-3">
+                       <div>
+                         <div className="text-xs uppercase tracking-widest text-neutral-500">Medien</div>
+                         <div className="text-sm text-neutral-300">{chatMediaLoading ? 'Lade…' : `${chatMediaItems.length} Bilder im Chat`}</div>
+                       </div>
+                       <button type="button" onClick={() => openChatMediaViewer(0)} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-50" disabled={!chatMediaItems.length}>Galerie öffnen</button>
+                     </div>
+                     {chatMediaItems.length > 0 ? (
+                       <div className="grid grid-cols-4 gap-2">
+                         {chatMediaItems.slice(0, 8).map((item, idx) => (
+                           <button key={item.id} type="button" onClick={() => openChatMediaViewer(idx)} className="aspect-square rounded-xl overflow-hidden border border-neutral-800 bg-black">
+                             <img src={item.src} alt="Medium" className="w-full h-full object-cover" />
+                           </button>
+                         ))}
+                       </div>
+                     ) : (
+                       <div className="p-4 rounded-xl border border-dashed border-neutral-800 text-sm text-neutral-500 text-center">Noch keine Medien im Chat.</div>
+                     )}
                    </div>
                 </div>
              </div>
+          )}
+
+          {isChatMediaGalleryOpen && (
+            <div className="fixed inset-0 z-[85] bg-black/95 backdrop-blur-sm flex flex-col">
+              <div className="flex items-center justify-between p-4 md:p-6 border-b border-neutral-900">
+                <div>
+                  <div className="text-xs uppercase tracking-widest text-neutral-500">Medien</div>
+                  <div className="text-sm text-neutral-300">{chatMediaItems.length ? `${chatMediaViewerIndex + 1} / ${chatMediaItems.length}` : '0 / 0'}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => moveChatMediaViewer(-1)} className="p-2 rounded-xl border border-neutral-800 text-neutral-200 hover:bg-neutral-900" disabled={chatMediaItems.length <= 1}><ChevronLeft className="w-5 h-5" /></button>
+                  <button type="button" onClick={() => moveChatMediaViewer(1)} className="p-2 rounded-xl border border-neutral-800 text-neutral-200 hover:bg-neutral-900" disabled={chatMediaItems.length <= 1}><ChevronRight className="w-5 h-5" /></button>
+                  <button type="button" onClick={closeChatMediaViewer} className="p-2 rounded-xl border border-neutral-800 text-neutral-200 hover:bg-neutral-900"><X className="w-5 h-5" /></button>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="min-h-0 flex items-center justify-center p-4 md:p-8">
+                  {chatMediaItems[chatMediaViewerIndex] ? (
+                    <img src={chatMediaItems[chatMediaViewerIndex].src} alt="Medium Vollbild" className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" />
+                  ) : (
+                    <div className="text-neutral-500">Keine Medien vorhanden.</div>
+                  )}
+                </div>
+                <div className="border-l border-neutral-900 min-h-0 flex flex-col bg-black/40">
+                  <div className="p-4 border-b border-neutral-900 text-sm text-neutral-300">
+                    <div>{senderLabelFromId(chatMediaItems[chatMediaViewerIndex]?.senderId || '')}</div>
+                    <div className="text-xs text-neutral-500 mt-1">{chatMediaItems[chatMediaViewerIndex]?.timestamp ? new Date(chatMediaItems[chatMediaViewerIndex].timestamp).toLocaleString() : ''}</div>
+                    {chatMediaItems[chatMediaViewerIndex]?.text && <div className="mt-2 text-xs text-neutral-400 whitespace-pre-wrap">{chatMediaItems[chatMediaViewerIndex].text}</div>}
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-2 content-start">
+                    {chatMediaItems.map((item, idx) => (
+                      <button key={item.id} type="button" onClick={() => setChatMediaViewerIndex(idx)} className={`aspect-square rounded-xl overflow-hidden border ${idx === chatMediaViewerIndex ? 'border-white' : 'border-neutral-800'} bg-black`}>
+                        <img src={item.src} alt="Medium Miniatur" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {isShareEventModalOpen && (

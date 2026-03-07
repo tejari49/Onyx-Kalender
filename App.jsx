@@ -8201,42 +8201,45 @@ SpÃ¤ter
                   </div>
 
 
-                  <details
-                    open={diagTestsOpen}
-                    onToggle={(e) => setDiagTestsOpen(Boolean(e.currentTarget?.open))}
-                    className="border border-neutral-800 rounded-xl bg-black p-4"
-                  >
-                    <summary className="cursor-pointer text-xs text-neutral-300 font-semibold select-none flex items-center gap-2">
-                      <Activity className="w-4 h-4" /> Diagnostik & Tests
-                    </summary>
+                  <div className="border border-neutral-800 rounded-xl bg-black p-4">
+                    <button
+                      type="button"
+                      onClick={() => setDiagTestsOpen(v => !v)}
+                      className="w-full flex items-center justify-between gap-3 text-xs text-neutral-300 font-semibold"
+                      aria-expanded={diagTestsOpen ? 'true' : 'false'}
+                    >
+                      <span className="flex items-center gap-2"><Activity className="w-4 h-4" /> Diagnostik & Tests</span>
+                      <ChevronDown className={`w-4 h-4 transition-transform ${diagTestsOpen ? 'rotate-180' : ''}`} />
+                    </button>
 
+                    {diagTestsOpen && (
                     <div className="mt-3 space-y-3">
                       <div className="text-[11px] text-neutral-600">
-                        Status: <span className="text-neutral-300">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstÃ¼tzt'}</span>
+                        Status: <span className="text-neutral-300">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstuetzt'}</span>
                       </div>
 
                       <div className="text-[11px] text-neutral-600">
-                        Service Worker: <span className="text-neutral-300">{pushDiag.sw}</span>{pushDiag.controlling ? <span className="text-neutral-500"> Â· controlling âœ…</span> : <span className="text-neutral-500"> Â· not controlling</span>}
+                        Service Worker: <span className="text-neutral-300">{pushDiag.sw}</span>{pushDiag.controlling ? <span className="text-neutral-500"> · controlling ✅</span> : <span className="text-neutral-500"> · not controlling</span>}
                       </div>
 
                       <div className="text-[11px] text-neutral-600">
-                        Web Token: <span className="text-neutral-300">{(userProfile && userProfile.fcmTokenWeb) ? 'vorhanden âœ…' : 'nicht gesetzt'}</span>
+                        Web Token: <span className="text-neutral-300">{(userProfile && userProfile.fcmTokenWeb) ? 'vorhanden ✅' : 'nicht gesetzt'}</span>
                       </div>
 
                       <div className="text-[11px] text-neutral-600">
-                        Letzter Push-Empfang: <span className="text-neutral-300">{pushDiag.lastReceivedAt ? `${new Date(pushDiag.lastReceivedAt).toLocaleString()}${pushDiag.lastReceivedTitle ? ` Â· ${pushDiag.lastReceivedTitle}` : ''}` : 'â€”'}</span>
+                        Letzter Push-Empfang: <span className="text-neutral-300">{pushDiag.lastReceivedAt ? `${new Date(pushDiag.lastReceivedAt).toLocaleString()}${pushDiag.lastReceivedTitle ? ` · ${pushDiag.lastReceivedTitle}` : ''}` : '—'}</span>
                       </div>
 
                       {!!pushTest?.id && (
                         <div className="text-[11px] text-neutral-600 break-words">
                           Server-Test Status: <span className="text-neutral-300">{pushTest.status || 'pending'}</span>
-                          {pushTest.lastError ? <span className="text-amber-400"> Â· {pushTest.lastError}</span> : null}
+                          {pushTest.lastError ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
                         </div>
                       )}
 
                       {!isStandalone && (
                         <div className="text-[11px] text-amber-400">
-                          {isIosUA ? 'iPhone/iPad: Teilen â†’ â€žZum Home-Bildschirmâ€œ installieren.' : 'Bitte installieren, dann â€žErlaubenâ€œ. '}
+                          {isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren.' : 'Bitte installieren, dann „Erlauben“. '}
                         </div>
                       )}
 
@@ -8264,10 +8267,11 @@ SpÃ¤ter
                       </div>
 
                       <div className="text-[11px] text-neutral-600 leading-relaxed">
-                        Hinweis: Wenn â€žTest (Server)â€œ sofort fehlschlÃ¤gt, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create</span>.
+                        Hinweis: Wenn "Test (Server)" sofort fehlschlaegt, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create</span>.
                       </div>
                     </div>
-                  </details>
+                    )}
+                  </div>
                 </div>
               </section>
             </AccordionItem>
@@ -9400,12 +9404,24 @@ SpÃ¤ter
 
                         <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
                           <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-x-auto no-scrollbar`}>
-                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Bild senden">
-                              <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(30000)} onChange={handleImageUpload} />
+                            <label
+                              className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0"
+                              title="Bild senden"
+                              onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                              onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                              onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                            >
+                              <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(180000)} onChange={handleImageUpload} />
                             </label>
 
-                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Foto machen">
-                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(30000)} onChange={handleImageUpload} />
+                            <label
+                              className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0"
+                              title="Foto machen"
+                              onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                              onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                              onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                            >
+                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(180000)} onChange={handleImageUpload} />
                             </label>
                             
                             <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">

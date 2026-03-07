@@ -145,3 +145,6 @@ Die folgenden Extras-Daten werden jetzt im Firebase-Profil mitgespeichert und st
 - periodisches FCM-Token-Refresh in `App.jsx`
 - Service-Worker-Update-Check mit `SKIP_WAITING`
 - Manifest um monochromes Badge-Icon ergänzt
+
+- Secret Chat: Medien-Galerie mit allen Bildern als Miniaturen, Vollbild-Viewer und echtem Gesamt-Nachrichtenzähler pro Chat.
+- Voice-Nachrichten: Recorder mit stabileren Audio-Parametern (Opus/WebM bevorzugt, 1 Kanal, Echo-/Noise-Suppression) gegen stotternde Aufnahmen.

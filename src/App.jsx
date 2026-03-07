@@ -2211,14 +2211,30 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       useEffect(() => {
         if (!isMessageSearchOpen) return;
-        if (!messageMatches || messageMatches.length === 0) return;
-        const idx = Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1));
-        const id = messageMatches[idx].id;
+        const qMsg = String(messageSearchQuery || '').trim().toLowerCase();
+        const baseByType = (messageSearchFilter !== 'all' && messageSearchFilter !== 'media')
+          ? chatMessages.filter(m => messageTypeMatchesFilter(m, messageSearchFilter))
+          : chatMessages;
+        const mediaMatches = (messageSearchFilter === 'media')
+          ? chatMediaItems.filter(m => {
+              if (!qMsg) return true;
+              const hay = `${String(m?.text || '')} ${senderLabelFromId(m?.senderId || '')}`.toLowerCase();
+              return hay.includes(qMsg);
+            })
+          : [];
+        const matches = (qMsg || messageSearchFilter !== 'all')
+          ? (messageSearchFilter === 'media'
+              ? mediaMatches
+              : baseByType.filter(m => !qMsg || String(m?.text || '').toLowerCase().includes(qMsg)))
+          : [];
+        if (matches.length === 0) return;
+        const idx = Math.max(0, Math.min(messageMatchIndex, matches.length - 1));
+        const id = matches[idx].id;
         setTimeout(() => {
           const el = document.getElementById(`msg-${id}`);
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 0);
-      }, [messageMatchIndex, messageSearchQuery, messageSearchFilter, isMessageSearchOpen, messageMatches]);
+      }, [messageMatchIndex, messageSearchQuery, messageSearchFilter, isMessageSearchOpen, chatMessages, chatMediaItems]);
 
 
       useEffect(() => {

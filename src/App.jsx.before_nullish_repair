@@ -174,7 +174,7 @@
     };
 
     const sha256Hex = async (input) => {
-      const s = String(input ?? '');
+      const s = String(input ? '');
       try {
         if (crypto.subtle.digest) {
           const enc = new TextEncoder();
@@ -276,7 +276,7 @@ window.isGroupChat = window.isGroupChat || function(chat) {
 
     // --- Robust helper functions (v20) ---
     function safeTrim(v) {
-      return (v ?? "").toString().trim();
+      return (v ? "").toString().trim();
     }
     function initialsFrom(nameOrEmail) {
       const s = safeTrim(nameOrEmail);
@@ -748,7 +748,7 @@ const handleGlobalTouchStart = (e) => {
   setPullDistance(0);
 
   // Nur ziehen, wenn der Scroll-Container oben ist
-  const atTop = (mainRef.current.scrollTop ?? 0) <= 0;
+  const atTop = (mainRef.current.scrollTop ? 0) <= 0;
   canPullRef.current = atTop && !isRefreshing;
 };
 const handleGlobalTouchMove = (e) => {
@@ -761,7 +761,7 @@ const handleGlobalTouchMove = (e) => {
   if (delta > 0) {
     // iOS / mobile: verhindern, dass der Browser selbst "bounce" scrollt
     // React registriert Touch-Events oft als passive -> preventDefault würde warnen
-    const cancelable = (e.cancelable ?? e.nativeEvent.cancelable);
+    const cancelable = (e.cancelable ? e.nativeEvent.cancelable);
     if (cancelable !== false && typeof e.preventDefault === 'function') e.preventDefault();
     setPullDistance(Math.min(delta, 120));
   } else {
@@ -895,7 +895,7 @@ const persistDisplayName = async (rawName, opts = {}) => {
   }
 };
 const sanitizeAlias = (raw) => {
-  const s = String(raw ?? '').trim();
+  const s = String(raw ? '').trim();
   // Allow: letters, numbers, dot, underscore, dash. Spaces become underscore.
   const underscored = s.replace(/\s+/g, '_');
   const cleaned = underscored.replace(/[^a-zA-Z0-9._-]/g, '');
@@ -960,10 +960,10 @@ const hasPasswordProvider = () => {
 const doSendPasswordReset = async () => {
   try {
     const u = auth.currentUser;
-    if (!u || !u.email) return showToast('Keine E-Mail');
+    if (!u || !u.email) return showToast('Keine Eâ€‘Mail');
     await sendPasswordResetEmail(auth, u.email);
     setPwResetSent(true);
-    showToast('Reset-Mail gesendet');
+    showToast('Resetâ€‘Mail gesendet');
   } catch (e) {
     console.warn('sendPasswordResetEmail failed', e);
     showToast('Reset fehlgeschlagen');
@@ -1044,7 +1044,7 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
 
     // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt (bombensicher, ohne Full-Scan)
     const normalizeFriendCode = (v) => {
-      const s = String(v ?? '').trim();
+      const s = String(v ? '').trim();
       if (/^\d{5}$/.test(s)) return s;
       if (/^\d+$/.test(s)) {
         try { return String(parseInt(s, 10)).padStart(5, '0'); } catch(e) { return ''; }
@@ -1208,8 +1208,7 @@ const computePollTally = (poll, fallbackVoterIds = []) => {
       else if (s === POLL_STATE.MAYBE) maybe++;
       else if (s === POLL_STATE.NO) no++;
     }
-    // Scoring: ein einziges "Nein" macht den Slot praktisch unattraktiv
-    const score = (no > 0 ? -1000 : 0) + (yes * 2) + maybe;
+    // Scoring: ein einziges "Nein" macht den Slot praktisch unattraktiv ?    const score = (no > 0 ? -1000 : 0) + (yes * 2) + maybe;
     byOptionId[opt.id] = { yes, maybe, no, score };
   }
 
@@ -1750,7 +1749,7 @@ const saveEvent = async (e) => {
           movedAt: Date.now()
         });
         await deleteDoc(eventDocRefFor(fromCalId, eventToEdit.id));
-        await writeAudit({ calId: fromCalId, action: 'event.move', targetType: 'event', targetId: eventToEdit.id, summary: `Termin verschoben: ${title} -> ${getCalendarById(toCalId).name || toCalId}`, details: { toCalId, newEventId: newRef.id || null } });
+        await writeAudit({ calId: fromCalId, action: 'event.move', targetType: 'event', targetId: eventToEdit.id, summary: `Termin verschoben: ${title} â†’ ${getCalendarById(toCalId).name || toCalId}`, details: { toCalId, newEventId: newRef.id || null } });
         showToast("Termin verschoben");
         setActiveCalendarId(toCalId);
       }
@@ -1775,8 +1774,7 @@ const deleteEvent = async (mode = null) => {
   const isRecurring = !!(baseRec && baseRec.freq && baseRec.freq !== 'NONE');
   const isInstance = !!(isRecurring && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date);
 
-  // mode kann 'single' oder 'series' sein (UI setzt das explizit)
-  const effectiveMode = mode || (isInstance ? eventEditScope : 'series');
+  // mode kann 'single' oder 'series' sein (UI setzt das explizit) ? ? const effectiveMode = mode || (isInstance ? eventEditScope : 'series');
 
   if (isInstance && effectiveMode === 'single') {
     if (!confirm("Dieses Vorkommen löschen")) return;
@@ -2029,7 +2027,7 @@ const handleTouchEnd = () => {
         let m;
         let k = 0;
         while ((m = re.exec(src)) !== null) {
-          const start = m.index ?? 0;
+          const start = m.index ? 0;
           const end = start + (m[0] || '').length;
           if (start > last) out.push(src.slice(last, start));
           const matchText = src.slice(start, end);
@@ -2227,7 +2225,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const token = m ? m[1] : null;
             let key = '';
             try {
-              const qs = h.includes('?') ? h.split('?').slice(1).join('?') : '';
+              const qs = h.includes('') ? h.split('').slice(1).join('') : '';
               if (qs) {
                 const params = new URLSearchParams(qs);
                 key = params.get('k') || '';
@@ -2418,7 +2416,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
         const calRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars');
 
-        // Wichtig für sichere Firestore Rules:
+        // ðŸ”’ Wichtig für sichere Firestore Rules:
         // Wir dürfen NICHT die komplette calendars Collection lesen und client-side filtern,
         // sonst scheitert die Query mit permission-denied.
         const ownerQ = query(calRef, where('ownerId', '==', user.uid));
@@ -2561,8 +2559,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           const loadedDesc = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           const loaded = [...loadedDesc].reverse(); // ascending
 
-          // Cursor (oldest doc among currently listened page)
-          const lastDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
+          // Cursor (oldest doc among currently listened page) ?          const lastDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
           if (!chatLoadedMoreRef.current) {
             chatOldestCursorRef.current = lastDoc;
           }
@@ -2728,8 +2725,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           const pageDesc = docs.map(d => ({ id: d.id, ...d.data() }));
           const page = [...pageDesc].reverse();
 
-          // Update cursor to the new oldest doc
-          const newCursor = docs.length > 0 ? docs[docs.length - 1] : cursor;
+          // Update cursor to the new oldest doc ?          const newCursor = docs.length > 0 ? docs[docs.length - 1] : cursor;
           chatOldestCursorRef.current = newCursor;
 
           // If we received fewer than page size, no more
@@ -3354,7 +3350,7 @@ const requestNotificationPermission = async (currentUser) => {
       const deleteWorkClockSession = async (session) => {
         if (!user.uid || !session) return;
         const label = String(session.title || 'Arbeit');
-        if (!window.confirm(`Session "${label}" löschen`)) return;
+        if (!window.confirm(`Session â€ž${label}â€œ löschen`)) return;
         const deleteKey = String(session.localId || session.id || '');
         try {
           setWorkClockDeletingId(deleteKey);
@@ -3394,7 +3390,7 @@ const requestNotificationPermission = async (currentUser) => {
           });
           body.push([]);
           body.push(['Summe','','','', '', Math.round(weekWorkMs / 60000), '', '']);
-          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('\"','\"\"')}"`).join(';')).join('\n');
+          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ? '').replaceAll('\"','\"\"')}"`).join(';')).join('\n');
           const stamp = new Date().toISOString().slice(0,10);
           downloadTextFile(`rapport-woche-${stamp}.csv`, csv, 'text/csv;charset=utf-8');
           showToast('Wochenrapport exportiert');
@@ -3422,7 +3418,7 @@ const requestNotificationPermission = async (currentUser) => {
           });
           body.push([]);
           body.push(['Summe','','','', '', Math.round(monthWorkMs / 60000), Math.round(monthPauseMs / 60000), '']);
-          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"','""')}"`).join(';')).join('\n');
+          const csv = [header, ...body].map((row) => row.map((cell) => `"${String(cell ? '').replaceAll('"','""')}"`).join(';')).join('\n');
           const stamp = new Date().toISOString().slice(0,7);
           downloadTextFile(`rapport-monat-${stamp}.csv`, csv, 'text/csv;charset=utf-8');
           showToast('Monatsrapport exportiert');
@@ -3665,8 +3661,8 @@ const requestNotificationPermission = async (currentUser) => {
             }
           }
           if (bestIdx < 0 || bestDiff > (3 * 60 * 60 * 1000)) return '';
-          const rainProb = Number(hourlyForecast.precipitation_probability?.[bestIdx] ?? 0);
-          const wind = Number(hourlyForecast.windspeed_10m?.[bestIdx] ?? weather.windspeed ?? 0);
+          const rainProb = Number(hourlyForecast.precipitation_probability?.[bestIdx] ? 0);
+          const wind = Number(hourlyForecast.windspeed_10m?.[bestIdx] ? weather.windspeed ? 0);
           if (rainProb >= 55 && wind >= 30) return ' • Wetter: Regen + Wind - Schirm/Regenjacke';
           if (rainProb >= 55) return ' • Wetter: Regen möglich - Schirm mitnehmen';
           if (wind >= 35) return ' • Wetter: windig - Jacke einplanen';
@@ -3681,12 +3677,12 @@ const requestNotificationPermission = async (currentUser) => {
           const dayStr = dailyForecast.time?.[dayIndex];
           if (!dayStr) return 'Wetterdaten werden geladen...';
 
-          const maxTemp = Math.round(dailyForecast.temperature_2m_max?.[dayIndex] ?? weather.temperature ?? 0);
-          const minTemp = Math.round(dailyForecast.temperature_2m_min?.[dayIndex] ?? weather.temperature ?? 0);
-          const rainProb = Math.round(dailyForecast.precipitation_probability_max?.[dayIndex] ?? 0);
-          const rainSum = Number(dailyForecast.precipitation_sum?.[dayIndex] ?? 0);
-          const windMax = Math.round(dailyForecast.windspeed_10m_max?.[dayIndex] ?? weather.windspeed ?? 0);
-          const dayCode = Number(dailyForecast.weathercode?.[dayIndex] ?? weather.weathercode ?? 0);
+          const maxTemp = Math.round(dailyForecast.temperature_2m_max?.[dayIndex] ? weather.temperature ? 0);
+          const minTemp = Math.round(dailyForecast.temperature_2m_min?.[dayIndex] ? weather.temperature ? 0);
+          const rainProb = Math.round(dailyForecast.precipitation_probability_max?.[dayIndex] ? 0);
+          const rainSum = Number(dailyForecast.precipitation_sum?.[dayIndex] ? 0);
+          const windMax = Math.round(dailyForecast.windspeed_10m_max?.[dayIndex] ? weather.windspeed ? 0);
+          const dayCode = Number(dailyForecast.weathercode?.[dayIndex] ? weather.weathercode ? 0);
 
           const getPartOfDayLabel = (hour) => {
             if (hour >= 5 && hour < 11) return 'am Morgen';
@@ -3696,7 +3692,7 @@ const requestNotificationPermission = async (currentUser) => {
             return 'in der Nacht';
           };
 
-          const isMostlySunnyCode = (code) => [0, 1, 2].includes(Number(code ?? -1));
+          const isMostlySunnyCode = (code) => [0, 1, 2].includes(Number(code ? -1));
           const rainIntensityText = (prob) => {
             if (prob >= 85) return 'kräftiger Regen';
             if (prob >= 70) return 'spürbarer Regen';
@@ -3722,16 +3718,16 @@ const requestNotificationPermission = async (currentUser) => {
               const firstIdx = windowIdxs[0];
               const lastIdx = windowIdxs[windowIdxs.length - 1];
               const untilLabel = formatHourLabel(hourlyForecast.time?.[lastIdx]);
-              const temps = windowIdxs.map((idx) => Number(hourlyForecast.temperature_2m?.[idx] ?? weather.temperature ?? 0));
-              const probs = windowIdxs.map((idx) => Number(hourlyForecast.precipitation_probability?.[idx] ?? 0));
-              const codes = windowIdxs.map((idx) => Number(hourlyForecast.weathercode?.[idx] ?? weather.weathercode ?? 0));
-              const winds = windowIdxs.map((idx) => Number(hourlyForecast.windspeed_10m?.[idx] ?? weather.windspeed ?? 0));
+              const temps = windowIdxs.map((idx) => Number(hourlyForecast.temperature_2m?.[idx] ? weather.temperature ? 0));
+              const probs = windowIdxs.map((idx) => Number(hourlyForecast.precipitation_probability?.[idx] ? 0));
+              const codes = windowIdxs.map((idx) => Number(hourlyForecast.weathercode?.[idx] ? weather.weathercode ? 0));
+              const winds = windowIdxs.map((idx) => Number(hourlyForecast.windspeed_10m?.[idx] ? weather.windspeed ? 0));
               const tempMin4h = Math.round(Math.min(...temps));
               const tempMax4h = Math.round(Math.max(...temps));
               const maxRain4h = Math.round(Math.max(...probs));
               const maxWind4h = Math.round(Math.max(...winds));
-              const firstRainIdx4h = windowIdxs.find((idx) => Number(hourlyForecast.precipitation_probability?.[idx] ?? 0) >= 45);
-              const firstWindIdx4h = windowIdxs.find((idx) => Number(hourlyForecast.windspeed_10m?.[idx] ?? weather.windspeed ?? 0) >= 30);
+              const firstRainIdx4h = windowIdxs.find((idx) => Number(hourlyForecast.precipitation_probability?.[idx] ? 0) >= 45);
+              const firstWindIdx4h = windowIdxs.find((idx) => Number(hourlyForecast.windspeed_10m?.[idx] ? weather.windspeed ? 0) >= 30);
               const mostlySunny = codes.filter((code) => isMostlySunnyCode(code)).length >= Math.ceil(windowIdxs.length * 0.6);
               const nowHour = now.getHours();
               const laterHour = new Date(hourlyForecast.time?.[lastIdx] || now).getHours();
@@ -3739,7 +3735,7 @@ const requestNotificationPermission = async (currentUser) => {
               const laterPhase = getPartOfDayLabel(laterHour);
 
               if (firstRainIdx4h != null) {
-                const rainProbAtStart = Math.round(Number(hourlyForecast.precipitation_probability?.[firstRainIdx4h] ?? maxRain4h));
+                const rainProbAtStart = Math.round(Number(hourlyForecast.precipitation_probability?.[firstRainIdx4h] ? maxRain4h));
                 const rainLabel = rainIntensityText(rainProbAtStart);
                 const rainTimeLabel = formatHourLabel(hourlyForecast.time?.[firstRainIdx4h]);
                 const startsLater = firstRainIdx4h !== firstIdx;
@@ -3773,10 +3769,10 @@ const requestNotificationPermission = async (currentUser) => {
             }
           }
 
-          const firstRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.precipitation_probability?.[idx] ?? 0) >= 55);
-          const firstStrongRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.precipitation_probability?.[idx] ?? 0) >= 75);
-          const firstCoolIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.temperature_2m?.[idx] ?? 99) <= 12);
-          const firstWarmIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.temperature_2m?.[idx] ?? -99) >= 22);
+          const firstRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.precipitation_probability?.[idx] ? 0) >= 55);
+          const firstStrongRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.precipitation_probability?.[idx] ? 0) >= 75);
+          const firstCoolIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.temperature_2m?.[idx] ? 99) <= 12);
+          const firstWarmIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.temperature_2m?.[idx] ? -99) >= 22);
           const morningIdx = findFirstHourMatch(dayStr, (idx) => {
             const h = new Date(hourlyForecast.time?.[idx] || 0).getHours();
             return h >= 6 && h <= 10;
@@ -3785,8 +3781,8 @@ const requestNotificationPermission = async (currentUser) => {
             const h = new Date(hourlyForecast.time?.[idx] || 0).getHours();
             return h >= 13 && h <= 17;
           });
-          const morningTemp = morningIdx != null ? Math.round(hourlyForecast?.temperature_2m?.[morningIdx] ?? minTemp) : minTemp;
-          const afternoonTemp = afternoonIdx != null ? Math.round(hourlyForecast?.temperature_2m?.[afternoonIdx] ?? maxTemp) : maxTemp;
+          const morningTemp = morningIdx != null ? Math.round(hourlyForecast?.temperature_2m?.[morningIdx] ? minTemp) : minTemp;
+          const afternoonTemp = afternoonIdx != null ? Math.round(hourlyForecast?.temperature_2m?.[afternoonIdx] ? maxTemp) : maxTemp;
 
           if (firstStrongRainIdx != null || rainProb >= 75 || rainSum >= 4) {
             const idx = firstStrongRainIdx != null ? firstStrongRainIdx : firstRainIdx;
@@ -4045,8 +4041,7 @@ const requestNotificationPermission = async (currentUser) => {
               continue;
             }
 
-            // muted
-            const muted = Array.isArray(prof.mutedChatIds) ? prof.mutedChatIds : [];
+            // muted ?            const muted = Array.isArray(prof.mutedChatIds) ? prof.mutedChatIds : [];
             if (muted.includes(c.id)) {
               lastChatPingRef.current[c.id] = updatedAt;
               continue;
@@ -4383,8 +4378,8 @@ const handleAuth = async (e) => {
       case 'auth/user-not-found':
       case 'auth/wrong-password': setAuthError('E-Mail oder Passwort falsch.'); break;
       case 'auth/weak-password': setAuthError('Passwort min. 6 Zeichen.'); break;
-      case 'auth/operation-not-allowed': setAuthError('Email/Passwort Login ist in Firebase Auth deaktiviert. Bitte in Firebase -> Authentication -> Sign-in method aktivieren.'); break;
-      case 'auth/unauthorized-domain': setAuthError('Domain nicht autorisiert. In Firebase Auth -> Settings -> Authorized domains muss tejari49.github.io erlaubt sein.'); break;
+      case 'auth/operation-not-allowed': setAuthError('Email/Passwort Login ist in Firebase Auth deaktiviert. Bitte in Firebase â†’ Authentication â†’ Sign-in method aktivieren.'); break;
+      case 'auth/unauthorized-domain': setAuthError('Domain nicht autorisiert. In Firebase Auth â†’ Settings â†’ Authorized domains muss tejari49.github.io erlaubt sein.'); break;
       case 'auth/network-request-failed': setAuthError('Netzwerkfehler. Bitte Internet prüfen.'); break;
       default:
         setAuthError('Fehler: ' + (code || msg || 'Unbekannt'));
@@ -4984,7 +4979,7 @@ useEffect(() => {
           const body = `${item.title}${item.time ? ' • ' + item.time : ''} • ${calName}${weatherHint}`;
 
           // In-App Hinweis immer
-          showToast(`Erinnerung: ${body}`);
+          showToast(`â° ${body}`);
 
           // System Notification falls erlaubt
           try {
@@ -4993,7 +4988,7 @@ useEffect(() => {
             // Tag ist kompatibel mit oxynoti (dedupe über `tag`).
             const canNotify = ('Notification' in window) && Notification.permission === 'granted';
             if (canNotify) {
-                const dedupeKey = `${user.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;
+              const dedupeKey = `${user.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ? ''}:${item.dueMs}`;
               const tag = `onyx_event_${fnv1a32(dedupeKey)}`;
               await showSystemNotification('Erinnerung', body, tag);
             }
@@ -5308,7 +5303,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', shareCalData.id), {
                  [`sharedWith.${targetProfile.id}`]: sharePerm
              });
-             await writeAudit({ calId: shareCalData.id, action: 'calendar.share', targetType: 'calendar', targetId: shareCalData.id, summary: `Kalender geteilt (${sharePerm}): ${shareCalData.name} -> ${targetProfile.email || targetProfile.username || shortId(targetProfile.id,6)}`, details: { targetUid: targetProfile.id, perm: sharePerm } });
+             await writeAudit({ calId: shareCalData.id, action: 'calendar.share', targetType: 'calendar', targetId: shareCalData.id, summary: `Kalender geteilt (${sharePerm}): ${shareCalData.name} â†’ ${targetProfile.email || targetProfile.username || shortId(targetProfile.id,6)}`, details: { targetUid: targetProfile.id, perm: sharePerm } });
              showToast(`Geteilt mit ${targetProfile.email || targetProfile.username || "Nutzer"} (${sharePerm})`);
              setShareCalData(prev => prev && prev.id === shareCalData.id ? { ...prev, sharedWith: { ...(prev.sharedWith || {}), [targetProfile.id]: sharePerm } } : prev);
              setShareUsername('');
@@ -5323,7 +5318,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
              const newShared = { ...(cal.sharedWith || {}) };
              delete newShared[targetUid];
              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId), { sharedWith: newShared });
-             await writeAudit({ calId, action: 'calendar.unshare', targetType: 'calendar', targetId: calId, summary: `Freigabe entfernt: ${cal.name || calId} -> ${getProfile(targetUid).username || shortId(targetUid,6)}`, details: { targetUid } });
+             await writeAudit({ calId, action: 'calendar.unshare', targetType: 'calendar', targetId: calId, summary: `Freigabe entfernt: ${cal.name || calId} â†’ ${getProfile(targetUid).username || shortId(targetUid,6)}`, details: { targetUid } });
              setShareCalData(prev => prev && prev.id === calId ? { ...prev, sharedWith: newShared } : prev);
              showToast("Freigabe entfernt");
           } catch(err) {}
@@ -5437,7 +5432,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             date: String(evSnapshot.date || ''),
             time: String(evSnapshot.time || ''),
             location: String(evSnapshot.location || ''),
-            durationMinutes: (evSnapshot.durationMinutes ?? null),
+            durationMinutes: (evSnapshot.durationMinutes ? null),
             desc: String(evSnapshot.desc || ''),
           },
           mode: 'full',
@@ -5740,7 +5735,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             const d = snap.docs[0].data() || {};
             return { id: snap.docs[0].id, ...d };
           }
-          // Fallback: alte Profile hatten friendCode evtl. als Number -> suche über local allProfiles
+          // Fallback: alte Profile hatten friendCode evtl. als Number â†’ suche über local allProfiles
           const local = (allProfiles || []).find(p => String(p.friendCode || '').padStart(5, '0') === code);
           return local || null;
         } catch (e) {
@@ -5998,9 +5993,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         if (m.deleted) return 'Nachricht gelöscht';
         const t = String(m.text || '').trim();
         if (t) return t.length > 140 ? `${t.slice(0, 140)}...` : t;
-      if (m.image) return 'Bild';
-      if (m.audio) return 'Sprachnachricht';
-      if (m.event) return `Termin: ${String(m.event.title || 'Termin')}`;
+        if (m.image) return 'ðŸ“· Bild';
+        if (m.audio) return 'ðŸŽ¤ Sprachnachricht';
+        if (m.event) return `ðŸ“… ${String(m.event.title || 'Termin')}`;
         return '';
       }
 
@@ -6562,7 +6557,7 @@ setSelfDestruct(false);
                     {d.kind === 'calendar' ? (
                       <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
                         <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Busy-Only</div>
-                          <div className="text-[11px] text-neutral-500 mb-4">Zeigt nur belegte Zeiten (ohne Titel/Ort). Range: {d.rangeStart} bis {d.rangeEnd}</div>
+                        <div className="text-[11px] text-neutral-500 mb-4">Zeigt nur belegte Zeiten (ohne Titel/Ort). Range: {d.rangeStart} -> {d.rangeEnd}</div>
 
                         {Array.isArray(d.busyBlocks) && d.busyBlocks.length > 0 ? (
                           <div className="space-y-3 max-h-[52vh] overflow-y-auto no-scrollbar pr-1">
@@ -7131,7 +7126,7 @@ setSelfDestruct(false);
                                  >
                                    <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
                                    <span className="text-neutral-500 mr-1">{event.time}</span>
-                                   {event.poll && event.poll.status === 'open' && <span className="mr-1">Poll</span>}
+                                   {event.poll && event.poll.status === 'open' && <span className="mr-1">ðŸ—³ï¸</span>}
                                    <span className="truncate">{event.title}</span>
                                  </div>
                               )
@@ -7262,13 +7257,13 @@ setSelfDestruct(false);
                           <p className="text-[10px] uppercase tracking-widest text-neutral-500">Kalender-Feed</p>
                           <h3 className="text-sm font-medium text-white">{feedTitle}</h3>
                         </div>
-                        <div className="text-[11px] text-neutral-500">Abstimmungen: {openPollEvents.length} • Kommentare: {commentEvents.length}</div>
+                        <div className="text-[11px] text-neutral-500">ðŸ—³ï¸ {openPollEvents.length} • ðŸ’¬ {commentEvents.length}</div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-semibold text-white">Abstimmungen</div>
+                            <div className="text-xs font-semibold text-white">ðŸ—³ï¸ Abstimmungen</div>
                             {openPollEvents.some(x => !canWriteCalendar(x.calendarId || 'default')) && (
                               <div className="text-[10px] text-neutral-600">teilweise nur Lesen</div>
                             )}
@@ -7331,7 +7326,7 @@ setSelfDestruct(false);
                                           className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800') + (!canWrite ? ' opacity-60' : '')}
                                         >
                                           <div className="flex items-center justify-between gap-2">
-                                            <div className="text-xs text-white">{opt.date} • {opt.time}{isWinner ? ' *' : ''}</div>
+                                            <div className="text-xs text-white">{opt.date} • {opt.time}{isWinner ? ' â­' : ''}</div>
                                             <div className="flex items-center gap-1">
                                               <button
                                                 type="button"
@@ -7340,7 +7335,7 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)}
                                                 title="Fix"
                                               >
-                                                Ja
+                                                âœ…
                                               </button>
                                               <button
                                                 type="button"
@@ -7349,7 +7344,7 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)}
                                                 title="Kann"
                                               >
-                                                Kann
+                                                ðŸ¤·
                                               </button>
                                               <button
                                                 type="button"
@@ -7358,11 +7353,11 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)}
                                                 title="Nein"
                                               >
-                                                Nein
+                                                âŒ
                                               </button>
                                             </div>
                                           </div>
-                                          <div className="mt-1 text-[10px] text-neutral-500 tabular-nums">Ja {t.yes} &nbsp; Kann {t.maybe} &nbsp; Nein {t.no}</div>
+                                          <div className="mt-1 text-[10px] text-neutral-500 tabular-nums">âœ…{t.yes} &nbsp; ðŸ¤·{t.maybe} &nbsp; âŒ{t.no}</div>
                                         </div>
                                       );
                                     }
@@ -7411,7 +7406,7 @@ setSelfDestruct(false);
 
                         <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-semibold text-white">Kommentare</div>
+                            <div className="text-xs font-semibold text-white">ðŸ’¬ Kommentare</div>
                             <div className="text-[10px] text-neutral-600">letzte</div>
                           </div>
 
@@ -7614,7 +7609,7 @@ setSelfDestruct(false);
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ø {formatDurationVerbose(weekAvgMs)}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ã˜ {formatDurationVerbose(weekAvgMs)}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
                     </div>
@@ -7677,7 +7672,7 @@ setSelfDestruct(false);
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute Termine</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayEventCount}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Frei-Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</div><div className="mt-1 text-sm font-medium text-neutral-100">{weatherBadgeMeta.text}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ø pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ã˜ pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
                     </div>
                   </>
                 ))});
@@ -7910,7 +7905,7 @@ setSelfDestruct(false);
             <div className="mt-3 text-[11px] text-neutral-600 leading-relaxed">
               <div className="flex items-center gap-2">
                 <Info className="w-3.5 h-3.5" />
-                <span>"Test (Server)" braucht Firestore-Zugriff (kein Adblock/Shield).</span>
+                <span>â€žTest (Server)â€œ braucht Firestoreâ€‘Zugriff (kein Adblock/Shield).</span>
               </div>
             </div>
           </aside>
@@ -7952,7 +7947,7 @@ setSelfDestruct(false);
                         type="button"
                         onClick={() => openShareLinkModalForCalendar({ id: 'default', name: 'Privat' })}
                         className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-                        title="Public Busy-Only Link"
+                        title="Public Busyâ€‘Only Link"
                       >
                         <Lock className="w-4 h-4" />
                       </button>
@@ -7966,7 +7961,7 @@ setSelfDestruct(false);
                         <p className="text-xs text-neutral-500 mt-1">Freigegeben für: {Object.keys(cal.sharedWith || {}).length} Nutzer</p>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busy-Only Link"><Lock className="w-4 h-4"/></button>
+                        <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busyâ€‘Only Link"><Lock className="w-4 h-4"/></button>
                         <button onClick={() => { setShareCalData(cal); setIsShareCalModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Share2 className="w-4 h-4"/></button>
                         <button onClick={() => { setCalForm({ ...cal, color: (cal.color || calendarTint(cal.id)) }); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
                         <button onClick={() => deleteCalendar(cal.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 className="w-4 h-4"/></button>
@@ -8143,7 +8138,7 @@ setSelfDestruct(false);
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-medium text-white">Kalender-Erinnerungen</p>
-                      <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit "Standard"). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
+                      <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit â€žStandardâ€œ). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
                     </div>
                     <div className="flex gap-2">
                       {!isStandalone && canInstallPwa && (
@@ -8304,7 +8299,7 @@ setSelfDestruct(false);
                   
 <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
   <div className="flex-1 min-w-0">
-    <div className="text-sm text-white font-medium">Busy-Only Links</div>
+    <div className="text-sm text-white font-medium">Busyâ€‘Only Links</div>
     <div className="text-[11px] text-neutral-500 mt-1">Externe sehen nur belegte Zeitblöcke (keine Titel/Orte). Optional mit Ablauf & Passcode.</div>
   </div>
   <div className="flex flex-col sm:flex-row gap-2">
@@ -8346,7 +8341,7 @@ setSelfDestruct(false);
     const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '-';
     const calName = (l.calName || (l.calId === 'default' ? 'Privat' : (customCalendars || []).find(c => c.id === l.calId).name) || 'Kalender');
     const prot = (l.protection || 'magic');
-    const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magic-Link');
+    const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magicâ€‘Link');
     return (
       <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
         <div className="min-w-0">
@@ -8382,7 +8377,7 @@ setSelfDestruct(false);
   if (active.length === 0 && expired.length === 0) {
     return (
       <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
-        Noch keine Links. Erstelle einen Link über <span className="text-neutral-300">Link erstellen</span> oder das <span className="text-neutral-300">Schloss</span>-Icon am Kalender.
+        Noch keine Links. Erstelle einen Link über <span className="text-neutral-300">Link erstellen</span> oder das <span className="text-neutral-300">ðŸ”’</span> Icon am Kalender.
       </div>
     );
   }
@@ -8437,13 +8432,13 @@ setSelfDestruct(false);
 
                       <div className="border-t border-neutral-800 pt-4">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-xs text-neutral-400 font-semibold">Kalender-Audit</div>
+                          <div className="text-xs text-neutral-400 font-semibold">Kalenderâ€‘Audit</div>
                           <select
                             value={auditCalId || 'default'}
                             onChange={(e) => setAuditCalId(e.target.value)}
                             className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
                           >
-                            <option value="default">Privat (nur "Meine Aktionen")</option>
+                            <option value="default">Privat (nur â€žMeine Aktionenâ€œ)</option>
                             {(customCalendars || []).map(c => (
                               <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
@@ -8452,7 +8447,7 @@ setSelfDestruct(false);
 
                         <div className="mt-3">
                           {auditCalId === 'default' ? (
-                            <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalender-Audit (siehe "Meine Aktionen").</div>
+                            <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalenderâ€‘Audit (siehe â€žMeine Aktionenâ€œ).</div>
                           ) : (auditCalEntries || []).length === 0 ? (
                             <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
                           ) : (
@@ -8501,7 +8496,7 @@ setSelfDestruct(false);
 
                         {aliasEditOpen && (
                           <div className="mt-3 border border-neutral-800 rounded-xl p-3 bg-black space-y-2">
-                            <div className="text-xs text-neutral-500">Alias ändern (2-20 Zeichen). Erlaubt: a-z, 0-9, <span className="font-mono">._-</span>. Leerzeichen werden zu <span className="font-mono">_</span>.</div>
+                            <div className="text-xs text-neutral-500">Alias ändern (2-20 Zeichen). Erlaubt: a-z, 0-9, <span className="font-mono">._-</span>. Leerzeichen â†’ <span className="font-mono">_</span>.</div>
                             <input
                               value={aliasDraft}
                               onChange={(e) => { setAliasDraft(e.target.value); setAliasEditError(''); }}
@@ -8690,7 +8685,7 @@ setSelfDestruct(false);
             {/* If search yields nothing */}
             {q && filteredTabs.length === 0 && (
               <div className="border border-neutral-800 rounded-2xl p-6 bg-neutral-950/50 text-sm text-neutral-500">
-                Keine Treffer für "{settingsQuery}".
+                Keine Treffer für â€ž{settingsQuery}â€œ.
               </div>
             )}
           </main>
@@ -8840,14 +8835,14 @@ setSelfDestruct(false);
                           <input type="text" name="displayName" defaultValue={userProfile.displayName || userProfile.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
                           <div className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                             <div className="flex flex-col">
-                              <span className="text-[10px] uppercase tracking-widest text-neutral-500">Chat-ID (5-stellig)</span>
+                              <span className="text-[10px] uppercase tracking-widest text-neutral-500">Chatâ€‘ID (5â€‘stellig)</span>
                               <span className="font-mono text-white text-sm">{userProfile.friendCode || '-----'}</span>
                             </div>
                             <button type="button" onClick={() => { const v = String(userProfile.friendCode||''); if (v && v !== '-----') { navigator.clipboard.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors">
                               Kopieren
                             </button>
                           </div>
-                          <p className="text-[11px] text-neutral-500 text-center">Freunde im Chat fügst du über diese Chat-ID hinzu. Kalender-Freunde werden per E-Mail geteilt.</p>
+                          <p className="text-[11px] text-neutral-500 text-center">Freunde im Chat fügst du über diese Chatâ€‘ID hinzu. Kalenderâ€‘Freunde werden per Eâ€‘Mail geteilt.</p>
 
                           <button type="submit" className="w-full bg-neutral-800 text-white font-medium py-3 rounded-lg hover:bg-neutral-700 transition-colors">Profil speichern</button>
                         </form>
@@ -9646,13 +9641,13 @@ setSelfDestruct(false);
                           </div>
                           <div className="flex items-center gap-3">
                             <div className="hidden sm:flex items-center gap-2 text-[11px] text-neutral-400">
-                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">Regen {Math.round(dailyForecast.precipitation_probability_max?.[i] ?? 0)}%</span>
-                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">Wind {Math.round(dailyForecast.windspeed_10m_max?.[i] ?? 0)} km/h</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">ðŸ’§ {Math.round(dailyForecast.precipitation_probability_max?.[i] ? 0)}%</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">ðŸŒ¬ï¸ {Math.round(dailyForecast.windspeed_10m_max?.[i] ? 0)} km/h</span>
                             </div>
                             <div className="text-sm tabular-nums">
-                              <span className="text-white">{Math.round(dailyForecast.temperature_2m_max?.[i] ?? 0)}°</span>
+                              <span className="text-white">{Math.round(dailyForecast.temperature_2m_max?.[i] ? 0)}°</span>
                               <span className="text-neutral-600 mx-1">/</span>
-                              <span className="text-neutral-400">{Math.round(dailyForecast.temperature_2m_min?.[i] ?? 0)}°</span>
+                              <span className="text-neutral-400">{Math.round(dailyForecast.temperature_2m_min?.[i] ? 0)}°</span>
                             </div>
                             <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform ${selectedForecastDay === i ? 'rotate-180' : ''}`} />
                           </div>
@@ -9663,11 +9658,11 @@ setSelfDestruct(false);
                             <div className="grid grid-cols-2 gap-2">
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Regen</div>
-                                <div className="mt-1 text-sm">{Math.round(dailyForecast.precipitation_probability_max?.[i] ?? 0)}% • {Math.round(dailyForecast.precipitation_sum?.[i] ?? 0)} mm</div>
+                                <div className="mt-1 text-sm">{Math.round(dailyForecast.precipitation_probability_max?.[i] ? 0)}% • {Math.round(dailyForecast.precipitation_sum?.[i] ? 0)} mm</div>
                               </div>
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Wind</div>
-                                <div className="mt-1 text-sm">bis {Math.round(dailyForecast.windspeed_10m_max?.[i] ?? 0)} km/h</div>
+                                <div className="mt-1 text-sm">bis {Math.round(dailyForecast.windspeed_10m_max?.[i] ? 0)} km/h</div>
                               </div>
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Sonnenaufgang</div>
@@ -9694,8 +9689,8 @@ setSelfDestruct(false);
                                       return idxs.slice(0, 8).map((k) => (
                                         <div key={hourlyForecast.time[k]} className="min-w-[64px] rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-2 text-center">
                                           <div className="text-[11px] text-neutral-400">{new Date(hourlyForecast.time[k]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}</div>
-                                          <div className="mt-1 text-sm font-medium text-white tabular-nums">{Math.round(hourlyForecast.temperature_2m?.[k] ?? 0)}°</div>
-                          <div className="mt-1 text-[11px] text-neutral-400">Regen {Math.round(hourlyForecast.precipitation_probability?.[k] ?? 0)}%</div>
+                                          <div className="mt-1 text-sm font-medium text-white tabular-nums">{Math.round(hourlyForecast.temperature_2m?.[k] ? 0)}°</div>
+                                          <div className="mt-1 text-[11px] text-neutral-400">ðŸ’§ {Math.round(hourlyForecast.precipitation_probability?.[k] ? 0)}%</div>
                                         </div>
                                       ));
                                     } catch (_) { return null; }
@@ -9906,7 +9901,7 @@ setSelfDestruct(false);
                 {!(eventToEdit && eventModalMode === 'view') && (
                   <form onSubmit={saveEvent} className="space-y-3">
                   <div className="bg-black border border-neutral-800 rounded-2xl p-4">
-                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">? Schnelleingabe</label>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">âš¡ Schnelleingabe</label>
                     <textarea
                       value={quickEventText}
                       onChange={(e) => updateQuickEventText(e.target.value)}
@@ -9999,7 +9994,7 @@ setSelfDestruct(false);
                     <div className="bg-black border border-neutral-800 rounded-2xl p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Abstimmung</label>
+                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">ðŸ—³ï¸ Abstimmung</label>
                           <p className="mt-1 text-[11px] text-neutral-500">Beim Speichern werden Zeitvorschläge an Mitglieder mit Schreibrecht gesendet.</p>
                         </div>
                         <button
@@ -10065,7 +10060,7 @@ setSelfDestruct(false);
                                 {pollAutoFinalize ? 'An' : 'Aus'}
                               </button>
                             </div>
-                            <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: Fix · Kann · Nein (pro Vorschlag)</div>
+                            <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: âœ… Fix · ðŸ¤· Kann · âŒ Nein (pro Vorschlag)</div>
                           </div>
 <div className="flex gap-2">
                             <button
@@ -10078,8 +10073,7 @@ setSelfDestruct(false);
                             <button
                               type="button"
                               onClick={() => {
-                                // Convenience: setze Hauptdatum/Zeit auf ersten Vorschlag
-                                const first = (pollDraft && pollDraft[0]) ? pollDraft[0] : null;
+                                // Convenience: setze Hauptdatum/Zeit auf ersten Vorschlag ?                                const first = (pollDraft && pollDraft[0]) ? pollDraft[0] : null;
                                 if (first.date) setEventForm(prev => ({ ...prev, date: first.date }));
                                 if (first.time) setEventForm(prev => ({ ...prev, time: first.time }));
                               }}
@@ -10310,14 +10304,14 @@ setSelfDestruct(false);
         onClick={() => { setShowEventComments(v => !v); setShowEventPoll(false); }}
         className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${showEventComments ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
       >
-        Kommentare
+        ðŸ’¬ Kommentare
       </button>
       <button
         type="button"
         onClick={() => { setShowEventPoll(v => !v); setShowEventComments(false); initPollDraftFromEvent(modalEvent || eventToEdit); }}
         className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${showEventPoll ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
       >
-        Abstimmung
+        ðŸ—³ï¸ Abstimmung
       </button>
     </div>
 
@@ -10359,14 +10353,14 @@ setSelfDestruct(false);
       <div className="bg-black border border-neutral-800 rounded-2xl p-3 space-y-3">
         {modalEvent && modalEvent.poll && modalEvent.poll.status === 'closed' && (
           <div className="text-xs text-neutral-400">
-            Letzte Abstimmung geschlossen.
+            Letzte Abstimmung geschlossen âœ…
           </div>
         )}
 
         {(!modalEvent || !modalEvent.poll || modalEvent.poll.status !== 'open') ? (
           <div className="space-y-3">
             <p className="text-xs text-neutral-400">
-                3 Vorschläge senden, Mitglieder mit <span className="text-white">Schreibrecht</span> im Kalender stimmen ab. Gewinner wird automatisch gesetzt.
+              3 Vorschläge senden â†’ Mitglieder mit <span className="text-white">Schreibrecht</span> im Kalender stimmen ab. Gewinner wird automatisch gesetzt.
             </p>
 
             {[0,1,2].map((i) => (
@@ -10412,7 +10406,7 @@ setSelfDestruct(false);
                   {pollAutoFinalize ? 'An' : 'Aus'}
                 </button>
               </div>
-              <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: Fix · Kann · Nein (pro Vorschlag)</div>
+              <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: âœ… Fix · ðŸ¤· Kann · âŒ Nein (pro Vorschlag)</div>
             </div>
 
 
@@ -10466,7 +10460,7 @@ setSelfDestruct(false);
 
                   {tally.version < 2 && (
                     <div className="text-[11px] text-yellow-300 border border-yellow-900/30 bg-yellow-900/10 rounded-xl p-3">
-                      Diese Abstimmung ist 1.0 (eine Stimme pro Person). Neue Abstimmungen nutzen 2.0 (Fix/Kann/Nein pro Vorschlag).
+                      Diese Abstimmung ist 1.0 (eine Stimme pro Person). Neue Abstimmungen nutzen 2.0 (âœ…/ðŸ¤·/âŒ pro Vorschlag).
                       {(poll.createdBy === user.uid) && (
                         <div className="mt-2">
                           <button
@@ -10499,14 +10493,14 @@ setSelfDestruct(false);
                             className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800')}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <div className="text-sm text-white">{opt.date} • {opt.time}{isWinner ? ' *' : ''}</div>
+                              <div className="text-sm text-white">{opt.date} • {opt.time}{isWinner ? ' â­' : ''}</div>
                               <div className="flex items-center gap-1">
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.YES)} className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)} title="Fix">Ja</button>
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.MAYBE)} className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)} title="Kann">Kann</button>
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.NO)} className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)} title="Nein">Nein</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.YES)} className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)} title="Fix">âœ…</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.MAYBE)} className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)} title="Kann">ðŸ¤·</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.NO)} className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)} title="Nein">âŒ</button>
                               </div>
                             </div>
-                            <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">Ja {t.yes} &nbsp; Kann {t.maybe} &nbsp; Nein {t.no}</div>
+                            <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">âœ…{t.yes} &nbsp; ðŸ¤·{t.maybe} &nbsp; âŒ{t.no}</div>
                           </div>
                         );
                       }
@@ -10597,7 +10591,7 @@ setSelfDestruct(false);
                       <option value="normal">Normal (Termine)</option>
                       <option value="shift">Schichtplan (Farben)</option>
                     </select>
-                    <p className="mt-1 text-[11px] text-neutral-500">Schichtplan: Tippen wechselt Schichten, lang drücken öffnet Auswahl, "Pinsel" malt mehrere Tage.</p>
+                    <p className="mt-1 text-[11px] text-neutral-500">Schichtplan: Tippen wechselt Schichten, lang drücken öffnet Auswahl, â€žPinselâ€œ malt mehrere Tage.</p>
                   </div>
 
                   {calForm.type === 'shift' && (
@@ -10753,7 +10747,7 @@ setSelfDestruct(false);
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500">Privacy-first Sharing</p>
                     <h3 className="text-lg font-medium text-white">Public Link</h3>
                     <p className="text-[11px] text-neutral-500 mt-1">
-                      {shareLinkDraft.kind === 'calendar' ? `Busy-Only: ${shareLinkDraft.calName || 'Kalender'}` : `Event: ${(shareLinkDraft.eventSnapshot.title || 'Termin')}`}
+                      {shareLinkDraft.kind === 'calendar' ? `Busyâ€‘Only: ${shareLinkDraft.calName || 'Kalender'}` : `Event: ${(shareLinkDraft.eventSnapshot.title || 'Termin')}`}
                     </p>
                   </div>
                   <button onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
@@ -10763,7 +10757,7 @@ setSelfDestruct(false);
 
                 {shareLinkDraft.kind === 'calendar' && (
                   <div className="bg-black border border-neutral-800 rounded-xl p-4 mb-4">
-                    <div className="text-xs font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Busy-Only</div>
+                    <div className="text-xs font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Busyâ€‘Only</div>
                     <div className="mt-1 text-[11px] text-neutral-500">Extern sieht nur Zeitblöcke (keine Titel/Orte).</div>
                   </div>
                 )}
@@ -10776,7 +10770,7 @@ setSelfDestruct(false);
                       onChange={(e) => setShareLinkDraft(prev => ({ ...prev, protection: e.target.value, passcode: '' }))}
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
                     >
-                      <option value="magic">Magic-Link (ohne Eingabe)</option>
+                      <option value="magic">Magicâ€‘Link (ohne Eingabe)</option>
                       <option value="passcode">Passcode</option>
                       <option value="none">Offen (nicht empfohlen)</option>
                     </select>
@@ -10831,7 +10825,7 @@ setSelfDestruct(false);
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
-                    <div className="mt-2 text-[11px] text-neutral-500">Hinweis: Externe Links benötigen passende Firestore-Rules für <span className="font-mono text-neutral-300">shares</span>.</div>
+                    <div className="mt-2 text-[11px] text-neutral-500">Hinweis: Externe Links benötigen passende Firestoreâ€‘Rules für <span className="font-mono text-neutral-300">shares</span>.</div>
                   </div>
                 )}
 
@@ -10860,7 +10854,7 @@ setSelfDestruct(false);
                           return (
                             <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
                               <div className="min-w-0">
-                                <div className="text-sm text-white font-medium truncate">{l.kind === 'calendar' ? 'Busy-Only' : 'Event'} • {shareLinkDraft.calName}</div>
+                                <div className="text-sm text-white font-medium truncate">{l.kind === 'calendar' ? 'Busyâ€‘Only' : 'Event'} • {shareLinkDraft.calName}</div>
                                 <div className="text-[11px] text-neutral-500">Ablauf: {exp}</div>
                               </div>
                               <div className="flex items-center gap-2">
@@ -10956,7 +10950,7 @@ setSelfDestruct(false);
                         return (
                           <span key={id} className="inline-flex items-center gap-2 bg-neutral-900 border border-neutral-800 text-white text-xs px-3 py-1.5 rounded-full">
                             {(p.username || 'User').substring(0, 18)}
-                            <button onClick={(e) => { e.stopPropagation(); setGroupDraftMembers(prev => (prev || []).filter(x => x !== id)); }} className="text-neutral-400 hover:text-white">x</button>
+                            <button onClick={(e) => { e.stopPropagation(); setGroupDraftMembers(prev => (prev || []).filter(x => x !== id)); }} className="text-neutral-400 hover:text-white">Ã—</button>
                           </span>
                         );
                       })}

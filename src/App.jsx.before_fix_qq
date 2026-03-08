@@ -960,10 +960,10 @@ const hasPasswordProvider = () => {
 const doSendPasswordReset = async () => {
   try {
     const u = auth.currentUser;
-    if (!u || !u.email) return showToast('Keine E-Mail');
+    if (!u || !u.email) return showToast('Keine Eâ€‘Mail');
     await sendPasswordResetEmail(auth, u.email);
     setPwResetSent(true);
-    showToast('Reset-Mail gesendet');
+    showToast('Resetâ€‘Mail gesendet');
   } catch (e) {
     console.warn('sendPasswordResetEmail failed', e);
     showToast('Reset fehlgeschlagen');
@@ -1208,8 +1208,7 @@ const computePollTally = (poll, fallbackVoterIds = []) => {
       else if (s === POLL_STATE.MAYBE) maybe++;
       else if (s === POLL_STATE.NO) no++;
     }
-    // Scoring: ein einziges "Nein" macht den Slot praktisch unattraktiv
-    const score = (no > 0 ? -1000 : 0) + (yes * 2) + maybe;
+    // Scoring: ein einziges "Nein" macht den Slot praktisch unattraktiv ?    const score = (no > 0 ? -1000 : 0) + (yes * 2) + maybe;
     byOptionId[opt.id] = { yes, maybe, no, score };
   }
 
@@ -1750,7 +1749,7 @@ const saveEvent = async (e) => {
           movedAt: Date.now()
         });
         await deleteDoc(eventDocRefFor(fromCalId, eventToEdit.id));
-        await writeAudit({ calId: fromCalId, action: 'event.move', targetType: 'event', targetId: eventToEdit.id, summary: `Termin verschoben: ${title} -> ${getCalendarById(toCalId).name || toCalId}`, details: { toCalId, newEventId: newRef.id || null } });
+        await writeAudit({ calId: fromCalId, action: 'event.move', targetType: 'event', targetId: eventToEdit.id, summary: `Termin verschoben: ${title} â†’ ${getCalendarById(toCalId).name || toCalId}`, details: { toCalId, newEventId: newRef.id || null } });
         showToast("Termin verschoben");
         setActiveCalendarId(toCalId);
       }
@@ -1775,8 +1774,7 @@ const deleteEvent = async (mode = null) => {
   const isRecurring = !!(baseRec && baseRec.freq && baseRec.freq !== 'NONE');
   const isInstance = !!(isRecurring && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date);
 
-  // mode kann 'single' oder 'series' sein (UI setzt das explizit)
-  const effectiveMode = mode || (isInstance ? eventEditScope : 'series');
+  // mode kann 'single' oder 'series' sein (UI setzt das explizit) ? ? const effectiveMode = mode || (isInstance ? eventEditScope : 'series');
 
   if (isInstance && effectiveMode === 'single') {
     if (!confirm("Dieses Vorkommen löschen")) return;
@@ -2227,7 +2225,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const token = m ? m[1] : null;
             let key = '';
             try {
-              const qs = h.includes('?') ? h.split('?').slice(1).join('?') : '';
+              const qs = h.includes('') ? h.split('').slice(1).join('') : '';
               if (qs) {
                 const params = new URLSearchParams(qs);
                 key = params.get('k') || '';
@@ -2418,7 +2416,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
         const calRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars');
 
-        // Wichtig für sichere Firestore Rules:
+        // ðŸ”’ Wichtig für sichere Firestore Rules:
         // Wir dürfen NICHT die komplette calendars Collection lesen und client-side filtern,
         // sonst scheitert die Query mit permission-denied.
         const ownerQ = query(calRef, where('ownerId', '==', user.uid));
@@ -2561,8 +2559,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           const loadedDesc = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           const loaded = [...loadedDesc].reverse(); // ascending
 
-          // Cursor (oldest doc among currently listened page)
-          const lastDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
+          // Cursor (oldest doc among currently listened page) ?          const lastDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
           if (!chatLoadedMoreRef.current) {
             chatOldestCursorRef.current = lastDoc;
           }
@@ -2728,8 +2725,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           const pageDesc = docs.map(d => ({ id: d.id, ...d.data() }));
           const page = [...pageDesc].reverse();
 
-          // Update cursor to the new oldest doc
-          const newCursor = docs.length > 0 ? docs[docs.length - 1] : cursor;
+          // Update cursor to the new oldest doc ?          const newCursor = docs.length > 0 ? docs[docs.length - 1] : cursor;
           chatOldestCursorRef.current = newCursor;
 
           // If we received fewer than page size, no more
@@ -3354,7 +3350,7 @@ const requestNotificationPermission = async (currentUser) => {
       const deleteWorkClockSession = async (session) => {
         if (!user.uid || !session) return;
         const label = String(session.title || 'Arbeit');
-        if (!window.confirm(`Session "${label}" löschen`)) return;
+        if (!window.confirm(`Session â€ž${label}â€œ löschen`)) return;
         const deleteKey = String(session.localId || session.id || '');
         try {
           setWorkClockDeletingId(deleteKey);
@@ -4045,8 +4041,7 @@ const requestNotificationPermission = async (currentUser) => {
               continue;
             }
 
-            // muted
-            const muted = Array.isArray(prof.mutedChatIds) ? prof.mutedChatIds : [];
+            // muted ?            const muted = Array.isArray(prof.mutedChatIds) ? prof.mutedChatIds : [];
             if (muted.includes(c.id)) {
               lastChatPingRef.current[c.id] = updatedAt;
               continue;
@@ -4383,8 +4378,8 @@ const handleAuth = async (e) => {
       case 'auth/user-not-found':
       case 'auth/wrong-password': setAuthError('E-Mail oder Passwort falsch.'); break;
       case 'auth/weak-password': setAuthError('Passwort min. 6 Zeichen.'); break;
-      case 'auth/operation-not-allowed': setAuthError('Email/Passwort Login ist in Firebase Auth deaktiviert. Bitte in Firebase -> Authentication -> Sign-in method aktivieren.'); break;
-      case 'auth/unauthorized-domain': setAuthError('Domain nicht autorisiert. In Firebase Auth -> Settings -> Authorized domains muss tejari49.github.io erlaubt sein.'); break;
+      case 'auth/operation-not-allowed': setAuthError('Email/Passwort Login ist in Firebase Auth deaktiviert. Bitte in Firebase â†’ Authentication â†’ Sign-in method aktivieren.'); break;
+      case 'auth/unauthorized-domain': setAuthError('Domain nicht autorisiert. In Firebase Auth â†’ Settings â†’ Authorized domains muss tejari49.github.io erlaubt sein.'); break;
       case 'auth/network-request-failed': setAuthError('Netzwerkfehler. Bitte Internet prüfen.'); break;
       default:
         setAuthError('Fehler: ' + (code || msg || 'Unbekannt'));
@@ -4984,7 +4979,7 @@ useEffect(() => {
           const body = `${item.title}${item.time ? ' • ' + item.time : ''} • ${calName}${weatherHint}`;
 
           // In-App Hinweis immer
-          showToast(`Erinnerung: ${body}`);
+          showToast(`â° ${body}`);
 
           // System Notification falls erlaubt
           try {
@@ -4993,7 +4988,7 @@ useEffect(() => {
             // Tag ist kompatibel mit oxynoti (dedupe über `tag`).
             const canNotify = ('Notification' in window) && Notification.permission === 'granted';
             if (canNotify) {
-                const dedupeKey = `${user.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;
+              const dedupeKey = `${user.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;
               const tag = `onyx_event_${fnv1a32(dedupeKey)}`;
               await showSystemNotification('Erinnerung', body, tag);
             }
@@ -5308,7 +5303,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', shareCalData.id), {
                  [`sharedWith.${targetProfile.id}`]: sharePerm
              });
-             await writeAudit({ calId: shareCalData.id, action: 'calendar.share', targetType: 'calendar', targetId: shareCalData.id, summary: `Kalender geteilt (${sharePerm}): ${shareCalData.name} -> ${targetProfile.email || targetProfile.username || shortId(targetProfile.id,6)}`, details: { targetUid: targetProfile.id, perm: sharePerm } });
+             await writeAudit({ calId: shareCalData.id, action: 'calendar.share', targetType: 'calendar', targetId: shareCalData.id, summary: `Kalender geteilt (${sharePerm}): ${shareCalData.name} â†’ ${targetProfile.email || targetProfile.username || shortId(targetProfile.id,6)}`, details: { targetUid: targetProfile.id, perm: sharePerm } });
              showToast(`Geteilt mit ${targetProfile.email || targetProfile.username || "Nutzer"} (${sharePerm})`);
              setShareCalData(prev => prev && prev.id === shareCalData.id ? { ...prev, sharedWith: { ...(prev.sharedWith || {}), [targetProfile.id]: sharePerm } } : prev);
              setShareUsername('');
@@ -5323,7 +5318,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
              const newShared = { ...(cal.sharedWith || {}) };
              delete newShared[targetUid];
              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId), { sharedWith: newShared });
-             await writeAudit({ calId, action: 'calendar.unshare', targetType: 'calendar', targetId: calId, summary: `Freigabe entfernt: ${cal.name || calId} -> ${getProfile(targetUid).username || shortId(targetUid,6)}`, details: { targetUid } });
+             await writeAudit({ calId, action: 'calendar.unshare', targetType: 'calendar', targetId: calId, summary: `Freigabe entfernt: ${cal.name || calId} â†’ ${getProfile(targetUid).username || shortId(targetUid,6)}`, details: { targetUid } });
              setShareCalData(prev => prev && prev.id === calId ? { ...prev, sharedWith: newShared } : prev);
              showToast("Freigabe entfernt");
           } catch(err) {}
@@ -5740,7 +5735,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             const d = snap.docs[0].data() || {};
             return { id: snap.docs[0].id, ...d };
           }
-          // Fallback: alte Profile hatten friendCode evtl. als Number -> suche über local allProfiles
+          // Fallback: alte Profile hatten friendCode evtl. als Number â†’ suche über local allProfiles
           const local = (allProfiles || []).find(p => String(p.friendCode || '').padStart(5, '0') === code);
           return local || null;
         } catch (e) {
@@ -5998,9 +5993,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         if (m.deleted) return 'Nachricht gelöscht';
         const t = String(m.text || '').trim();
         if (t) return t.length > 140 ? `${t.slice(0, 140)}...` : t;
-      if (m.image) return 'Bild';
-      if (m.audio) return 'Sprachnachricht';
-      if (m.event) return `Termin: ${String(m.event.title || 'Termin')}`;
+        if (m.image) return 'ðŸ“· Bild';
+        if (m.audio) return 'ðŸŽ¤ Sprachnachricht';
+        if (m.event) return `ðŸ“… ${String(m.event.title || 'Termin')}`;
         return '';
       }
 
@@ -6562,7 +6557,7 @@ setSelfDestruct(false);
                     {d.kind === 'calendar' ? (
                       <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
                         <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Busy-Only</div>
-                          <div className="text-[11px] text-neutral-500 mb-4">Zeigt nur belegte Zeiten (ohne Titel/Ort). Range: {d.rangeStart} bis {d.rangeEnd}</div>
+                        <div className="text-[11px] text-neutral-500 mb-4">Zeigt nur belegte Zeiten (ohne Titel/Ort). Range: {d.rangeStart} -> {d.rangeEnd}</div>
 
                         {Array.isArray(d.busyBlocks) && d.busyBlocks.length > 0 ? (
                           <div className="space-y-3 max-h-[52vh] overflow-y-auto no-scrollbar pr-1">
@@ -7131,7 +7126,7 @@ setSelfDestruct(false);
                                  >
                                    <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
                                    <span className="text-neutral-500 mr-1">{event.time}</span>
-                                   {event.poll && event.poll.status === 'open' && <span className="mr-1">Poll</span>}
+                                   {event.poll && event.poll.status === 'open' && <span className="mr-1">ðŸ—³ï¸</span>}
                                    <span className="truncate">{event.title}</span>
                                  </div>
                               )
@@ -7188,7 +7183,7 @@ setSelfDestruct(false);
                           </button>
                         </div>
 
-                        {dates.length === 0 ? (
+                        {dates.length === 0 ?? (
                           <div className="p-10 text-center border border-dashed border-neutral-800 rounded-2xl text-neutral-500">
                             Keine Termine gefunden.
                           </div>
@@ -7262,19 +7257,19 @@ setSelfDestruct(false);
                           <p className="text-[10px] uppercase tracking-widest text-neutral-500">Kalender-Feed</p>
                           <h3 className="text-sm font-medium text-white">{feedTitle}</h3>
                         </div>
-                        <div className="text-[11px] text-neutral-500">Abstimmungen: {openPollEvents.length} • Kommentare: {commentEvents.length}</div>
+                        <div className="text-[11px] text-neutral-500">ðŸ—³ï¸ {openPollEvents.length} • ðŸ’¬ {commentEvents.length}</div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-semibold text-white">Abstimmungen</div>
+                            <div className="text-xs font-semibold text-white">ðŸ—³ï¸ Abstimmungen</div>
                             {openPollEvents.some(x => !canWriteCalendar(x.calendarId || 'default')) && (
                               <div className="text-[10px] text-neutral-600">teilweise nur Lesen</div>
                             )}
                           </div>
 
-                          {openPollEvents.length === 0 ? (
+                          {openPollEvents.length === 0 ?? (
                             <div className="text-xs text-neutral-500">Keine offenen Abstimmungen.</div>
                           ) : openPollEvents.map(ev => {
                             const poll = ev.poll || {};
@@ -7331,7 +7326,7 @@ setSelfDestruct(false);
                                           className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800') + (!canWrite ? ' opacity-60' : '')}
                                         >
                                           <div className="flex items-center justify-between gap-2">
-                                            <div className="text-xs text-white">{opt.date} • {opt.time}{isWinner ? ' *' : ''}</div>
+                                            <div className="text-xs text-white">{opt.date} • {opt.time}{isWinner ? ' â­' : ''}</div>
                                             <div className="flex items-center gap-1">
                                               <button
                                                 type="button"
@@ -7340,7 +7335,7 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)}
                                                 title="Fix"
                                               >
-                                                Ja
+                                                âœ…
                                               </button>
                                               <button
                                                 type="button"
@@ -7349,7 +7344,7 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)}
                                                 title="Kann"
                                               >
-                                                Kann
+                                                ðŸ¤·
                                               </button>
                                               <button
                                                 type="button"
@@ -7358,11 +7353,11 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)}
                                                 title="Nein"
                                               >
-                                                Nein
+                                                âŒ
                                               </button>
                                             </div>
                                           </div>
-                                          <div className="mt-1 text-[10px] text-neutral-500 tabular-nums">Ja {t.yes} &nbsp; Kann {t.maybe} &nbsp; Nein {t.no}</div>
+                                          <div className="mt-1 text-[10px] text-neutral-500 tabular-nums">âœ…{t.yes} &nbsp; ðŸ¤·{t.maybe} &nbsp; âŒ{t.no}</div>
                                         </div>
                                       );
                                     }
@@ -7411,11 +7406,11 @@ setSelfDestruct(false);
 
                         <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-semibold text-white">Kommentare</div>
+                            <div className="text-xs font-semibold text-white">ðŸ’¬ Kommentare</div>
                             <div className="text-[10px] text-neutral-600">letzte</div>
                           </div>
 
-                          {commentEvents.length === 0 ? (
+                          {commentEvents.length === 0 ?? (
                             <div className="text-xs text-neutral-500">Noch keine Kommentare in den sichtbaren Kalendern.</div>
                           ) : commentEvents.map(ev => (
                             <button
@@ -7458,7 +7453,7 @@ setSelfDestruct(false);
                       <button onClick={() => { setShoppingListModalOpen(true); setPlusMenuOpen(false); }} className="px-3 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200 transition-colors">Neu</button>
                     </div>
                     <div className="space-y-2">
-                      {shoppingLists.length === 0 ? (
+                      {shoppingLists.length === 0 && (
                         <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4">Noch keine Einkaufsliste vorhanden.</div>
                       ) : shoppingLists.map((list) => {
                         const bought = normalizeShoppingItems(list.items).filter((item) => item.done).length;
@@ -7489,7 +7484,7 @@ setSelfDestruct(false);
                     )}
                   </aside>
                   <section className="flex-1 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-6">
-                    {!activeShoppingList ? (
+                    {!activeShoppingList ?? (
                       <div className="h-full min-h-[22rem] flex items-center justify-center text-neutral-500 text-sm">Liste auswählen oder neue Einkaufsliste erstellen.</div>
                     ) : (
                       <>
@@ -7528,7 +7523,7 @@ setSelfDestruct(false);
                           </div>
                         )}
                         <div className="space-y-3">
-                          {normalizeShoppingItems(activeShoppingList.items).length === 0 ? (
+                          {normalizeShoppingItems(activeShoppingList.items).length === 0 ?? (
                             <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4">Noch keine Artikel in dieser Liste.</div>
                           ) : normalizeShoppingItems(activeShoppingList.items).sort((a,b) => Number(a.done) - Number(b.done)).map((item) => (
                             <div key={item.id} className={`grid grid-cols-1 md:grid-cols-[auto,1fr,120px,auto] gap-3 items-center rounded-2xl border p-3 transition-colors ${item.done ? 'border-neutral-800 bg-neutral-950/70' : 'border-neutral-800 bg-black/60'}`}>
@@ -7600,7 +7595,7 @@ setSelfDestruct(false);
                         <div className="mt-2 text-sm text-neutral-400">{workClockActive.startedAt ? (workClockActive.isPaused ? 'Pause aktiv - Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {!workClockActive.startedAt ? (
+                        {!workClockActive.startedAt ?? (
                           <button onClick={startWorkClock} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
                         ) : (
                           <>
@@ -7614,7 +7609,7 @@ setSelfDestruct(false);
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ø {formatDurationVerbose(weekAvgMs)}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ã˜ {formatDurationVerbose(weekAvgMs)}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
                     </div>
@@ -7654,7 +7649,7 @@ setSelfDestruct(false);
                       <option value="90">90 Minuten</option>
                     </select>
                     <div className="flex flex-wrap gap-2">
-                      {!focusState.startedAt ? (
+                      {!focusState.startedAt ?? (
                         <button onClick={startFocusMode} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Fokus starten</button>
                       ) : (
                         <>
@@ -7677,7 +7672,7 @@ setSelfDestruct(false);
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute Termine</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayEventCount}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Frei-Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</div><div className="mt-1 text-sm font-medium text-neutral-100">{weatherBadgeMeta.text}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ø pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ã˜ pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
                     </div>
                   </>
                 ))});
@@ -7743,8 +7738,8 @@ setSelfDestruct(false);
                   <>
                     <div className="text-sm text-neutral-400">Cloud-Sync aktiv. Änderungen werden automatisch übernommen.</div>
                     <textarea value={quickNotes} onChange={(e) => setQuickNotes(e.target.value)} rows={10} placeholder={`Heute
-- ... ? Morgen
-- ... ? Später
+- ... ?? Morgen
+- ... ?? Später
 - ...`} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                   </>
                 ))});
@@ -7808,8 +7803,7 @@ setSelfDestruct(false);
     const sectionSearchTerms = (section) => [section.label, section.id, ...(section.keys || [])];
     const filteredTabs = q ? SETTINGS_SECTIONS.filter((t) => match(sectionSearchTerms(t))) : SETTINGS_SECTIONS;
     const activeSectionId = q
-      ? (filteredTabs.find((t) => t.id === settingsTab)?.id || filteredTabs[0]?.id || null)
-      : settingsTab;
+       (filteredTabs.find((t) => t.id === settingsTab).id || filteredTabs[0].id || null) ?      : settingsTab;
     const isCompactSettings = (typeof window !== 'undefined') ? window.innerWidth < 1024 : false;
 
 
@@ -7867,7 +7861,7 @@ setSelfDestruct(false);
                   }}
                   className="w-full appearance-none bg-black border border-neutral-800 rounded-xl px-4 py-3 pr-10 text-sm text-white focus:outline-none focus:border-neutral-500"
                 >
-                  {(q ? filteredTabs : SETTINGS_SECTIONS).length === 0 ? (
+                  {(q ? filteredTabs : SETTINGS_SECTIONS).length === 0 ?? (
                     <option value="">Keine Kategorie</option>
                   ) : (
                     (q ? filteredTabs : SETTINGS_SECTIONS).map((t) => (
@@ -7910,7 +7904,7 @@ setSelfDestruct(false);
             <div className="mt-3 text-[11px] text-neutral-600 leading-relaxed">
               <div className="flex items-center gap-2">
                 <Info className="w-3.5 h-3.5" />
-                <span>"Test (Server)" braucht Firestore-Zugriff (kein Adblock/Shield).</span>
+                <span>â€žTest (Server)â€œ braucht Firestoreâ€‘Zugriff (kein Adblock/Shield).</span>
               </div>
             </div>
           </aside>
@@ -7952,7 +7946,7 @@ setSelfDestruct(false);
                         type="button"
                         onClick={() => openShareLinkModalForCalendar({ id: 'default', name: 'Privat' })}
                         className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-                        title="Public Busy-Only Link"
+                        title="Public Busyâ€‘Only Link"
                       >
                         <Lock className="w-4 h-4" />
                       </button>
@@ -7966,7 +7960,7 @@ setSelfDestruct(false);
                         <p className="text-xs text-neutral-500 mt-1">Freigegeben für: {Object.keys(cal.sharedWith || {}).length} Nutzer</p>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busy-Only Link"><Lock className="w-4 h-4"/></button>
+                        <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busyâ€‘Only Link"><Lock className="w-4 h-4"/></button>
                         <button onClick={() => { setShareCalData(cal); setIsShareCalModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Share2 className="w-4 h-4"/></button>
                         <button onClick={() => { setCalForm({ ...cal, color: (cal.color || calendarTint(cal.id)) }); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
                         <button onClick={() => deleteCalendar(cal.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 className="w-4 h-4"/></button>
@@ -8143,7 +8137,7 @@ setSelfDestruct(false);
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-medium text-white">Kalender-Erinnerungen</p>
-                      <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit "Standard"). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
+                      <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit â€žStandardâ€œ). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
                     </div>
                     <div className="flex gap-2">
                       {!isStandalone && canInstallPwa && (
@@ -8304,7 +8298,7 @@ setSelfDestruct(false);
                   
 <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
   <div className="flex-1 min-w-0">
-    <div className="text-sm text-white font-medium">Busy-Only Links</div>
+    <div className="text-sm text-white font-medium">Busyâ€‘Only Links</div>
     <div className="text-[11px] text-neutral-500 mt-1">Externe sehen nur belegte Zeitblöcke (keine Titel/Orte). Optional mit Ablauf & Passcode.</div>
   </div>
   <div className="flex flex-col sm:flex-row gap-2">
@@ -8322,9 +8316,8 @@ setSelfDestruct(false);
     <button
       type="button"
       onClick={() => {
-          const cal = (settingsShareCalId === 'default')
-            ? { id: 'default', name: 'Privat' }
-            : (customCalendars || []).find(c => c.id === settingsShareCalId) || { id: 'default', name: 'Privat' };
+        const cal = (settingsShareCalId === 'default')
+           { id: 'default', name: 'Privat' } ?          : (customCalendars || []).find(c => c.id === settingsShareCalId) || { id: 'default', name: 'Privat' };
         openShareLinkModalForCalendar(cal);
       }}
       className="px-3 py-2 bg-white text-black rounded-lg text-xs font-semibold hover:bg-gray-200"
@@ -8332,7 +8325,7 @@ setSelfDestruct(false);
       Link erstellen
     </button>
   </div>
-</div> ? {(() => {
+</div> ?? {(() => {
   const now = Date.now();
   const all = Array.isArray(shareLinks) ? shareLinks.slice() : [];
   const notRevoked = all.filter(l => l && !l.revokedAtMs);
@@ -8346,7 +8339,7 @@ setSelfDestruct(false);
     const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '-';
     const calName = (l.calName || (l.calId === 'default' ? 'Privat' : (customCalendars || []).find(c => c.id === l.calId).name) || 'Kalender');
     const prot = (l.protection || 'magic');
-    const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magic-Link');
+    const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magicâ€‘Link');
     return (
       <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
         <div className="min-w-0">
@@ -8382,7 +8375,7 @@ setSelfDestruct(false);
   if (active.length === 0 && expired.length === 0) {
     return (
       <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
-        Noch keine Links. Erstelle einen Link über <span className="text-neutral-300">Link erstellen</span> oder das <span className="text-neutral-300">Schloss</span>-Icon am Kalender.
+        Noch keine Links. Erstelle einen Link über <span className="text-neutral-300">Link erstellen</span> oder das <span className="text-neutral-300">ðŸ”’</span> Icon am Kalender.
       </div>
     );
   }
@@ -8421,7 +8414,7 @@ setSelfDestruct(false);
                     <div className="space-y-4">
                       <div>
                         <div className="text-xs text-neutral-400 mb-2 font-semibold">Meine Aktionen</div>
-                        {(auditEntries || []).length === 0 ? (
+                        {(auditEntries || []).length === 0 ?? (
                           <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
                         ) : (
                           <div className="space-y-2 max-h-[34vh] overflow-y-auto no-scrollbar pr-1">
@@ -8437,13 +8430,13 @@ setSelfDestruct(false);
 
                       <div className="border-t border-neutral-800 pt-4">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-xs text-neutral-400 font-semibold">Kalender-Audit</div>
+                          <div className="text-xs text-neutral-400 font-semibold">Kalenderâ€‘Audit</div>
                           <select
                             value={auditCalId || 'default'}
                             onChange={(e) => setAuditCalId(e.target.value)}
                             className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
                           >
-                            <option value="default">Privat (nur "Meine Aktionen")</option>
+                            <option value="default">Privat (nur â€žMeine Aktionenâ€œ)</option>
                             {(customCalendars || []).map(c => (
                               <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
@@ -8451,9 +8444,9 @@ setSelfDestruct(false);
                         </div>
 
                         <div className="mt-3">
-                          {auditCalId === 'default' ? (
-                            <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalender-Audit (siehe "Meine Aktionen").</div>
-                          ) : (auditCalEntries || []).length === 0 ? (
+                          {auditCalId === 'default' ?? (
+                            <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalenderâ€‘Audit (siehe â€žMeine Aktionenâ€œ).</div>
+                          ) : (auditCalEntries || []).length === 0 ?? (
                             <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
                           ) : (
                             <div className="space-y-2 max-h-[34vh] overflow-y-auto no-scrollbar pr-1">
@@ -8501,7 +8494,7 @@ setSelfDestruct(false);
 
                         {aliasEditOpen && (
                           <div className="mt-3 border border-neutral-800 rounded-xl p-3 bg-black space-y-2">
-                            <div className="text-xs text-neutral-500">Alias ändern (2-20 Zeichen). Erlaubt: a-z, 0-9, <span className="font-mono">._-</span>. Leerzeichen werden zu <span className="font-mono">_</span>.</div>
+                            <div className="text-xs text-neutral-500">Alias ändern (2-20 Zeichen). Erlaubt: a-z, 0-9, <span className="font-mono">._-</span>. Leerzeichen â†’ <span className="font-mono">_</span>.</div>
                             <input
                               value={aliasDraft}
                               onChange={(e) => { setAliasDraft(e.target.value); setAliasEditError(''); }}
@@ -8569,8 +8562,7 @@ setSelfDestruct(false);
                       <p className="font-medium text-white">Passwort</p>
                       <p className="text-xs text-neutral-500 mt-1">
                         {hasPasswordProvider()
-                          ? 'Passwort ändern (mit aktuellem Passwort bestätigen).'
-                          : 'Dieses Konto nutzt keinen Passwort-Login. Du kannst dir eine Reset-Mail senden, um ein Passwort zu setzen/ändern.'}
+                           'Passwort ändern (mit aktuellem Passwort bestätigen).' ?                          : 'Dieses Konto nutzt keinen Passwortâ€‘Login. Du kannst dir eine Resetâ€‘Mail senden, um ein Passwort zu setzen/ändern.'}
                       </p>
                     </div>
 
@@ -8690,7 +8682,7 @@ setSelfDestruct(false);
             {/* If search yields nothing */}
             {q && filteredTabs.length === 0 && (
               <div className="border border-neutral-800 rounded-2xl p-6 bg-neutral-950/50 text-sm text-neutral-500">
-                Keine Treffer für "{settingsQuery}".
+                Keine Treffer für â€ž{settingsQuery}â€œ.
               </div>
             )}
           </main>
@@ -8705,21 +8697,21 @@ setSelfDestruct(false);
                 
                 {/* Geheimer Chat Header */}
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
-                  {secretView === 'chat' && activeChat ? (
+                  {secretView === 'chat' && activeChat ?? (
                     <div className="flex items-center gap-3">
                       <button onClick={() => { setActiveChat(null); setSecretView('list'); }} className="text-neutral-400 hover:text-white transition-colors mr-2">
                         <ArrowLeft className="w-6 h-6" /> 
                       </button>
                       
                       <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setShowPartnerStats(true)}>
-                        {getChatPartnerAvatar(activeChat) ? (
+                        {getChatPartnerAvatar(activeChat) ?? (
                           <img src={getChatPartnerAvatar(activeChat)} className="w-10 h-10 rounded-full border border-neutral-700 object-cover" />
                         ) : (
                           <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-sm font-bold text-white uppercase">{initialsFrom(getChatPartnerName(activeChat))}</div>
                         )}
                         <div className="flex flex-col">
                           <span className="font-medium text-white leading-tight">{getChatPartnerName(activeChat)}</span>
-                          {(activeChatData && getTypingUsers(activeChatData).length > 0) ? (
+                          {(activeChatData && getTypingUsers(activeChatData).length > 0) ?? (
                              <span className="text-[11px] text-green-400 animate-pulse font-medium">
                                {isGroupChat(activeChatData) ? (getTypingUsers(activeChatData).length === 1 ? `${getProfile(getTypingUsers(activeChatData)[0]).username || 'Jemand'} tippt...` : `${getTypingUsers(activeChatData).length} tippen...`) : 'tippt...'}
                              </span>
@@ -8731,7 +8723,7 @@ setSelfDestruct(false);
                         </div>
                       </div>
                     </div>
-                  ) : secretView === 'settings' ? (
+                  ) : secretView === 'settings' ?? (
                     <button onClick={() => setSecretView('list')} className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors">
                       <ArrowLeft className="w-5 h-5" /> <span className="font-medium text-white">Chat Profil</span>
                     </button>
@@ -8801,7 +8793,7 @@ setSelfDestruct(false);
                 </header>
 
                 <div className="flex-1 overflow-hidden flex flex-col">
-                  {!userProfile ? (
+                  {!userProfile ?? (
                     <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">Identität festlegen</h3><p className="text-sm text-neutral-500 mb-6">Wähle einen einzigartigen Benutzernamen.</p>
                     <form onSubmit={saveUsername}>
                       <input type="text" name="username" defaultValue={userProfile.displayName || userProfile.username || user.email.split('@')[0] || ''} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
@@ -8817,11 +8809,11 @@ setSelfDestruct(false);
                     </form>
                     </div></div>
                   
-                  ) : secretView === 'settings' ? (
+                  ) : secretView === 'settings' ?? (
                     <div className="flex-1 overflow-y-auto p-6 max-w-2xl w-full mx-auto space-y-8">
                       <div className="flex flex-col items-center border border-neutral-800 rounded-xl p-8 bg-neutral-950/50">
                         <div className="relative mb-6">
-                          {userProfile.avatarBase64 ? (
+                          {userProfile.avatarBase64 ?? (
                             <img
                               src={userProfile.avatarThumbBase64 || userProfile.avatarBase64}
                               className="w-32 h-32 rounded-full border-2 border-neutral-700 object-cover cursor-zoom-in"
@@ -8840,14 +8832,14 @@ setSelfDestruct(false);
                           <input type="text" name="displayName" defaultValue={userProfile.displayName || userProfile.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
                           <div className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                             <div className="flex flex-col">
-                              <span className="text-[10px] uppercase tracking-widest text-neutral-500">Chat-ID (5-stellig)</span>
+                              <span className="text-[10px] uppercase tracking-widest text-neutral-500">Chatâ€‘ID (5â€‘stellig)</span>
                               <span className="font-mono text-white text-sm">{userProfile.friendCode || '-----'}</span>
                             </div>
                             <button type="button" onClick={() => { const v = String(userProfile.friendCode||''); if (v && v !== '-----') { navigator.clipboard.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors">
                               Kopieren
                             </button>
                           </div>
-                          <p className="text-[11px] text-neutral-500 text-center">Freunde im Chat fügst du über diese Chat-ID hinzu. Kalender-Freunde werden per E-Mail geteilt.</p>
+                          <p className="text-[11px] text-neutral-500 text-center">Freunde im Chat fügst du über diese Chatâ€‘ID hinzu. Kalenderâ€‘Freunde werden per Eâ€‘Mail geteilt.</p>
 
                           <button type="submit" className="w-full bg-neutral-800 text-white font-medium py-3 rounded-lg hover:bg-neutral-700 transition-colors">Profil speichern</button>
                         </form>
@@ -8937,7 +8929,7 @@ setSelfDestruct(false);
                       </div>
                     </div>
 
-                  ) : secretView === 'list' ? (
+                  ) : secretView === 'list' ?? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
                       <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
                         <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
@@ -8952,7 +8944,7 @@ setSelfDestruct(false);
                           <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">
                             <div onClick={() => startChatWithProfile(chatFriendResult)} className="p-4 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
                               <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
-                                {chatFriendResult.avatarBase64 ? (
+                                {chatFriendResult.avatarBase64 ?? (
                                   <img
                                     src={chatFriendResult.avatarThumbBase64 || chatFriendResult.avatarBase64}
                                     className="w-full h-full object-cover cursor-zoom-in"
@@ -8976,7 +8968,7 @@ setSelfDestruct(false);
                       </div>
                       <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-4 font-semibold px-2">Verlauf</h4>
                       <div className="space-y-2">
-                        {sortedMyChats.length === 0 ? (
+                        {sortedMyChats.length === 0 ?? (
                           <div className="p-8 text-center border border-dashed border-neutral-800 rounded-xl text-neutral-500 text-sm">Noch keine Chats vorhanden.</div>
                         ) : (
                           <>
@@ -8992,7 +8984,7 @@ setSelfDestruct(false);
                               return (
                                 <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
                                   <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
-                                    {getChatPartnerAvatar(chat) ? (
+                                    {getChatPartnerAvatar(chat) ?? (
                                     <img
                                       src={getChatPartnerAvatar(chat)}
                                       className="w-full h-full object-cover cursor-zoom-in"
@@ -9003,7 +8995,7 @@ setSelfDestruct(false);
                                   </div>
                                   <div className="flex-1 overflow-hidden">
                                     <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
-                                    {chat.lastMessageSenderId !== user.uid && chat.updatedAt > lastChatVisit ? (
+                                    {chat.lastMessageSenderId !== user.uid && chat.updatedAt > lastChatVisit ?? (
                                       <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
                                     ) : (
                                       <p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>
@@ -9123,7 +9115,7 @@ setSelfDestruct(false);
                               <span>{chatMediaLoading ? 'Lade Medien...' : `${mediaSearchResults.length} Medien`}</span>
                               <span>Tippe auf ein Bild für Vollbild</span>
                             </div>
-                            {mediaSearchResults.length === 0 ? (
+                            {mediaSearchResults.length === 0 ?? (
                               <div className="p-6 rounded-2xl border border-dashed border-neutral-800 text-center text-sm text-neutral-500 bg-neutral-950/60">Keine Medien gefunden.</div>
                             ) : (
                               <div className="grid grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
@@ -9214,7 +9206,7 @@ setSelfDestruct(false);
                                   </div>
                                 )}
 
-                                {msg.deleted ? (
+                                {msg.deleted ?? (
                                   <p className={`text-sm italic whitespace-pre-wrap ${isMe ? 'text-neutral-600' : 'text-neutral-500'}`}>
                                     Nachricht gelöscht
                                   </p>
@@ -9338,7 +9330,7 @@ setSelfDestruct(false);
                           </div>
                           
                           <div className="flex-1 relative">
-                            {isRecording ? (
+                            {isRecording ?? (
                               <div className="w-full bg-red-950 border border-red-900 text-red-500 rounded-2xl pl-4 pr-12 py-3 flex items-center justify-between animate-pulse">
                                 <span className="text-sm font-medium">Aufnahme läuft...</span>
                               </div>
@@ -9403,7 +9395,7 @@ setSelfDestruct(false);
                 <div className="space-y-3">
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
-                    {workClockEditUsePreset ? (
+                    {workClockEditUsePreset ?? (
                       <div className="mt-1 space-y-2">
                         <select
                           value={workClockEditTitle}
@@ -9477,7 +9469,7 @@ setSelfDestruct(false);
                 <div className="space-y-3">
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
-                    {workClockDraftUsePreset ? (
+                    {workClockDraftUsePreset ?? (
                       <div className="mt-1 space-y-2">
                         <select
                           value={workClockDraftTitle}
@@ -9646,8 +9638,8 @@ setSelfDestruct(false);
                           </div>
                           <div className="flex items-center gap-3">
                             <div className="hidden sm:flex items-center gap-2 text-[11px] text-neutral-400">
-                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">Regen {Math.round(dailyForecast.precipitation_probability_max?.[i] ?? 0)}%</span>
-                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">Wind {Math.round(dailyForecast.windspeed_10m_max?.[i] ?? 0)} km/h</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">ðŸ’§ {Math.round(dailyForecast.precipitation_probability_max?.[i] ?? 0)}%</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">ðŸŒ¬ï¸ {Math.round(dailyForecast.windspeed_10m_max?.[i] ?? 0)} km/h</span>
                             </div>
                             <div className="text-sm tabular-nums">
                               <span className="text-white">{Math.round(dailyForecast.temperature_2m_max?.[i] ?? 0)}°</span>
@@ -9695,7 +9687,7 @@ setSelfDestruct(false);
                                         <div key={hourlyForecast.time[k]} className="min-w-[64px] rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-2 text-center">
                                           <div className="text-[11px] text-neutral-400">{new Date(hourlyForecast.time[k]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}</div>
                                           <div className="mt-1 text-sm font-medium text-white tabular-nums">{Math.round(hourlyForecast.temperature_2m?.[k] ?? 0)}°</div>
-                          <div className="mt-1 text-[11px] text-neutral-400">Regen {Math.round(hourlyForecast.precipitation_probability?.[k] ?? 0)}%</div>
+                                          <div className="mt-1 text-[11px] text-neutral-400">ðŸ’§ {Math.round(hourlyForecast.precipitation_probability?.[k] ?? 0)}%</div>
                                         </div>
                                       ));
                                     } catch (_) { return null; }
@@ -9873,7 +9865,7 @@ setSelfDestruct(false);
                         </div>
                       )}
 
-                      {eventForm.desc ? (
+                      {eventForm.desc ?? (
                         <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Beschreibung</div>
                           <div className="mt-1 text-neutral-200 whitespace-pre-wrap">{eventForm.desc}</div>
@@ -9906,7 +9898,7 @@ setSelfDestruct(false);
                 {!(eventToEdit && eventModalMode === 'view') && (
                   <form onSubmit={saveEvent} className="space-y-3">
                   <div className="bg-black border border-neutral-800 rounded-2xl p-4">
-                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">? Schnelleingabe</label>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">âš¡ Schnelleingabe</label>
                     <textarea
                       value={quickEventText}
                       onChange={(e) => updateQuickEventText(e.target.value)}
@@ -9999,7 +9991,7 @@ setSelfDestruct(false);
                     <div className="bg-black border border-neutral-800 rounded-2xl p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Abstimmung</label>
+                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">ðŸ—³ï¸ Abstimmung</label>
                           <p className="mt-1 text-[11px] text-neutral-500">Beim Speichern werden Zeitvorschläge an Mitglieder mit Schreibrecht gesendet.</p>
                         </div>
                         <button
@@ -10065,7 +10057,7 @@ setSelfDestruct(false);
                                 {pollAutoFinalize ? 'An' : 'Aus'}
                               </button>
                             </div>
-                            <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: Fix · Kann · Nein (pro Vorschlag)</div>
+                            <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: âœ… Fix · ðŸ¤· Kann · âŒ Nein (pro Vorschlag)</div>
                           </div>
 <div className="flex gap-2">
                             <button
@@ -10078,8 +10070,7 @@ setSelfDestruct(false);
                             <button
                               type="button"
                               onClick={() => {
-                                // Convenience: setze Hauptdatum/Zeit auf ersten Vorschlag
-                                const first = (pollDraft && pollDraft[0]) ? pollDraft[0] : null;
+                                // Convenience: setze Hauptdatum/Zeit auf ersten Vorschlag ?                                const first = (pollDraft && pollDraft[0]) ? pollDraft[0] : null;
                                 if (first.date) setEventForm(prev => ({ ...prev, date: first.date }));
                                 if (first.time) setEventForm(prev => ({ ...prev, time: first.time }));
                               }}
@@ -10099,7 +10090,7 @@ setSelfDestruct(false);
                       {!eventForm.time && <span className="text-[10px] text-neutral-500">benötigt Uhrzeit</span>}
                     </div>
                     <select
-                      value={(eventForm.reminderMode === 'custom') ? String(eventForm.reminderMinutes || 15) : (eventForm.reminderMode === 'none' ? 'none' : 'default')}
+                      value={(eventForm.reminderMode === 'custom') ? String(eventForm.reminderMinutes ? 15) : (eventForm.reminderMode === 'none' ? 'none' : 'default')}
                       onChange={(e) => {
                         const v = e.target.value;
                         if (v === 'default') {
@@ -10268,8 +10259,8 @@ setSelfDestruct(false);
                   </div>
 
                   <div className="flex gap-2 pt-2">
-                    {eventToEdit ? (
-                      (eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date) ? (
+                    {eventToEdit ?? (
+                      (eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date) ?? (
                         <>
                           <button type="button" onClick={() => deleteEvent('single')} className="py-3 px-4 rounded-lg text-sm text-red-300 bg-red-500/10 border border-red-900/40 hover:bg-red-500/20 transition-colors">
                             Dieses Datum
@@ -10282,8 +10273,7 @@ setSelfDestruct(false);
                         <button type="button" onClick={() => deleteEvent('series')} className="py-3 px-4 rounded-lg text-sm text-red-500 bg-red-500/10 border border-red-900/40 hover:bg-red-500/20 transition-colors">
                           Löschen
                         </button>
-                      )
-                    ) : (
+                      ) ?                    ) : (
                       <button type="button" onClick={closeEventModal} className="py-3 px-4 rounded-lg text-sm text-neutral-400 bg-neutral-900 border border-neutral-800 hover:text-white transition-colors">
                         Abbrechen
                       </button>
@@ -10310,21 +10300,21 @@ setSelfDestruct(false);
         onClick={() => { setShowEventComments(v => !v); setShowEventPoll(false); }}
         className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${showEventComments ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
       >
-        Kommentare
+        ðŸ’¬ Kommentare
       </button>
       <button
         type="button"
         onClick={() => { setShowEventPoll(v => !v); setShowEventComments(false); initPollDraftFromEvent(modalEvent || eventToEdit); }}
         className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${showEventPoll ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
       >
-        Abstimmung
+        ðŸ—³ï¸ Abstimmung
       </button>
     </div>
 
     {showEventComments && (
       <div className="bg-black border border-neutral-800 rounded-2xl p-3">
         <div className="h-48 overflow-auto space-y-2 pr-1">
-          {eventComments.length === 0 ? (
+          {eventComments.length === 0 ?? (
             <div className="text-xs text-neutral-500">Noch keine Kommentare.</div>
           ) : eventComments.map((c) => (
             <div
@@ -10359,14 +10349,14 @@ setSelfDestruct(false);
       <div className="bg-black border border-neutral-800 rounded-2xl p-3 space-y-3">
         {modalEvent && modalEvent.poll && modalEvent.poll.status === 'closed' && (
           <div className="text-xs text-neutral-400">
-            Letzte Abstimmung geschlossen.
+            Letzte Abstimmung geschlossen âœ…
           </div>
         )}
 
-        {(!modalEvent || !modalEvent.poll || modalEvent.poll.status !== 'open') ? (
+        {(!modalEvent || !modalEvent.poll || modalEvent.poll.status !== 'open') ?? (
           <div className="space-y-3">
             <p className="text-xs text-neutral-400">
-                3 Vorschläge senden, Mitglieder mit <span className="text-white">Schreibrecht</span> im Kalender stimmen ab. Gewinner wird automatisch gesetzt.
+              3 Vorschläge senden â†’ Mitglieder mit <span className="text-white">Schreibrecht</span> im Kalender stimmen ab. Gewinner wird automatisch gesetzt.
             </p>
 
             {[0,1,2].map((i) => (
@@ -10412,7 +10402,7 @@ setSelfDestruct(false);
                   {pollAutoFinalize ? 'An' : 'Aus'}
                 </button>
               </div>
-              <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: Fix · Kann · Nein (pro Vorschlag)</div>
+              <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: âœ… Fix · ðŸ¤· Kann · âŒ Nein (pro Vorschlag)</div>
             </div>
 
 
@@ -10466,7 +10456,7 @@ setSelfDestruct(false);
 
                   {tally.version < 2 && (
                     <div className="text-[11px] text-yellow-300 border border-yellow-900/30 bg-yellow-900/10 rounded-xl p-3">
-                      Diese Abstimmung ist 1.0 (eine Stimme pro Person). Neue Abstimmungen nutzen 2.0 (Fix/Kann/Nein pro Vorschlag).
+                      Diese Abstimmung ist 1.0 (eine Stimme pro Person). Neue Abstimmungen nutzen 2.0 (âœ…/ðŸ¤·/âŒ pro Vorschlag).
                       {(poll.createdBy === user.uid) && (
                         <div className="mt-2">
                           <button
@@ -10499,14 +10489,14 @@ setSelfDestruct(false);
                             className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800')}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <div className="text-sm text-white">{opt.date} • {opt.time}{isWinner ? ' *' : ''}</div>
+                              <div className="text-sm text-white">{opt.date} • {opt.time}{isWinner ? ' â­' : ''}</div>
                               <div className="flex items-center gap-1">
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.YES)} className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)} title="Fix">Ja</button>
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.MAYBE)} className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)} title="Kann">Kann</button>
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.NO)} className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)} title="Nein">Nein</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.YES)} className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)} title="Fix">âœ…</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.MAYBE)} className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)} title="Kann">ðŸ¤·</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.NO)} className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)} title="Nein">âŒ</button>
                               </div>
                             </div>
-                            <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">Ja {t.yes} &nbsp; Kann {t.maybe} &nbsp; Nein {t.no}</div>
+                            <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">âœ…{t.yes} &nbsp; ðŸ¤·{t.maybe} &nbsp; âŒ{t.no}</div>
                           </div>
                         );
                       }
@@ -10597,7 +10587,7 @@ setSelfDestruct(false);
                       <option value="normal">Normal (Termine)</option>
                       <option value="shift">Schichtplan (Farben)</option>
                     </select>
-                    <p className="mt-1 text-[11px] text-neutral-500">Schichtplan: Tippen wechselt Schichten, lang drücken öffnet Auswahl, "Pinsel" malt mehrere Tage.</p>
+                    <p className="mt-1 text-[11px] text-neutral-500">Schichtplan: Tippen wechselt Schichten, lang drücken öffnet Auswahl, â€žPinselâ€œ malt mehrere Tage.</p>
                   </div>
 
                   {calForm.type === 'shift' && (
@@ -10609,7 +10599,7 @@ setSelfDestruct(false);
                         </button>
                       </div>
 
-                      {(calForm.shifts || []).length === 0 ? (
+                      {(calForm.shifts || []).length === 0 ?? (
                         <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
                           Noch keine Schichten. Füge mindestens eine hinzu.
                         </div>
@@ -10710,7 +10700,7 @@ setSelfDestruct(false);
 
                 <div className="mt-5">
                   <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Aktive Freigaben</h4>
-                  {Object.keys(shareCalData.sharedWith || {}).length === 0 ? (
+                  {Object.keys(shareCalData.sharedWith || {}).length === 0 ?? (
                     <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
                       Noch keine Freigaben.
                     </div>
@@ -10753,7 +10743,7 @@ setSelfDestruct(false);
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500">Privacy-first Sharing</p>
                     <h3 className="text-lg font-medium text-white">Public Link</h3>
                     <p className="text-[11px] text-neutral-500 mt-1">
-                      {shareLinkDraft.kind === 'calendar' ? `Busy-Only: ${shareLinkDraft.calName || 'Kalender'}` : `Event: ${(shareLinkDraft.eventSnapshot.title || 'Termin')}`}
+                      {shareLinkDraft.kind === 'calendar' ? `Busyâ€‘Only: ${shareLinkDraft.calName || 'Kalender'}` : `Event: ${(shareLinkDraft.eventSnapshot.title || 'Termin')}`}
                     </p>
                   </div>
                   <button onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
@@ -10763,7 +10753,7 @@ setSelfDestruct(false);
 
                 {shareLinkDraft.kind === 'calendar' && (
                   <div className="bg-black border border-neutral-800 rounded-xl p-4 mb-4">
-                    <div className="text-xs font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Busy-Only</div>
+                    <div className="text-xs font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Busyâ€‘Only</div>
                     <div className="mt-1 text-[11px] text-neutral-500">Extern sieht nur Zeitblöcke (keine Titel/Orte).</div>
                   </div>
                 )}
@@ -10776,7 +10766,7 @@ setSelfDestruct(false);
                       onChange={(e) => setShareLinkDraft(prev => ({ ...prev, protection: e.target.value, passcode: '' }))}
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
                     >
-                      <option value="magic">Magic-Link (ohne Eingabe)</option>
+                      <option value="magic">Magicâ€‘Link (ohne Eingabe)</option>
                       <option value="passcode">Passcode</option>
                       <option value="none">Offen (nicht empfohlen)</option>
                     </select>
@@ -10831,7 +10821,7 @@ setSelfDestruct(false);
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
-                    <div className="mt-2 text-[11px] text-neutral-500">Hinweis: Externe Links benötigen passende Firestore-Rules für <span className="font-mono text-neutral-300">shares</span>.</div>
+                    <div className="mt-2 text-[11px] text-neutral-500">Hinweis: Externe Links benötigen passende Firestoreâ€‘Rules für <span className="font-mono text-neutral-300">shares</span>.</div>
                   </div>
                 )}
 
@@ -10860,7 +10850,7 @@ setSelfDestruct(false);
                           return (
                             <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
                               <div className="min-w-0">
-                                <div className="text-sm text-white font-medium truncate">{l.kind === 'calendar' ? 'Busy-Only' : 'Event'} • {shareLinkDraft.calName}</div>
+                                <div className="text-sm text-white font-medium truncate">{l.kind === 'calendar' ? 'Busyâ€‘Only' : 'Event'} • {shareLinkDraft.calName}</div>
                                 <div className="text-[11px] text-neutral-500">Ablauf: {exp}</div>
                               </div>
                               <div className="flex items-center gap-2">
@@ -10927,7 +10917,7 @@ setSelfDestruct(false);
                         .map(p => (
                           <div key={p.id} onClick={() => { setGroupDraftMembers(prev => Array.from(new Set([...(prev || []), p.id]))); setGroupMemberSearch(''); }} className="p-3 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
                             <div className="w-9 h-9 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
-                              {p.avatarBase64 ? (
+                              {p.avatarBase64 ?? (
                                  <img
                                    src={p.avatarThumbBase64 || p.avatarBase64}
                                    className="w-full h-full object-cover cursor-zoom-in"
@@ -10956,7 +10946,7 @@ setSelfDestruct(false);
                         return (
                           <span key={id} className="inline-flex items-center gap-2 bg-neutral-900 border border-neutral-800 text-white text-xs px-3 py-1.5 rounded-full">
                             {(p.username || 'User').substring(0, 18)}
-                            <button onClick={(e) => { e.stopPropagation(); setGroupDraftMembers(prev => (prev || []).filter(x => x !== id)); }} className="text-neutral-400 hover:text-white">x</button>
+                            <button onClick={(e) => { e.stopPropagation(); setGroupDraftMembers(prev => (prev || []).filter(x => x !== id)); }} className="text-neutral-400 hover:text-white">Ã—</button>
                           </span>
                         );
                       })}
@@ -10980,7 +10970,7 @@ setSelfDestruct(false);
                 <div className="w-full max-w-sm bg-neutral-950 border border-neutral-800 rounded-2xl p-6 relative animate-fade-in shadow-2xl">
                    <button onClick={() => setShowPartnerStats(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white"><X className="w-5 h-5"/></button>
                    <div className="flex flex-col items-center mb-8">
-                     {getChatPartnerAvatar(activeChat) ? (
+                     {getChatPartnerAvatar(activeChat) ?? (
                         <img
                         src={getChatPartnerAvatar(activeChat)}
                         className="w-20 h-20 rounded-full border-2 border-neutral-700 object-cover mb-4 cursor-zoom-in"
@@ -10995,7 +10985,7 @@ setSelfDestruct(false);
                    </div>
                    
                    <div className="grid grid-cols-2 gap-4">
-                     {isGroupChat(activeChatData || activeChat) ? (
+                     {isGroupChat(activeChatData || activeChat) ?? (
                        <>
                          <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
                            <p className="text-xs text-neutral-500 uppercase mb-1">Mitglieder</p>
@@ -11069,7 +11059,7 @@ setSelfDestruct(false);
                                    .map(p => (
                                      <div key={p.id} onClick={() => { addMemberToGroup(activeChatData || activeChat, p.id); setGroupEditSearch(''); }} className="p-3 border-b border-neutral-800 last:border-0 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
                                        <div className="w-9 h-9 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
-                                         {p.avatarBase64 ? (
+                                         {p.avatarBase64 ?? (
                                  <img
                                    src={p.avatarThumbBase64 || p.avatarBase64}
                                    className="w-full h-full object-cover cursor-zoom-in"
@@ -11108,7 +11098,7 @@ setSelfDestruct(false);
                        </div>
                        <button type="button" onClick={() => openChatMediaViewer(0)} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-50" disabled={!chatMediaItems.length}>Galerie öffnen</button>
                      </div>
-                     {chatMediaItems.length > 0 ? (
+                     {chatMediaItems.length > 0 ?? (
                        <div className="grid grid-cols-4 gap-2">
                          {chatMediaItems.slice(0, 8).map((item, idx) => (
                            <button key={item.id} type="button" onClick={() => openChatMediaViewer(idx)} className="aspect-square rounded-xl overflow-hidden border border-neutral-800 bg-black">
@@ -11139,7 +11129,7 @@ setSelfDestruct(false);
               </div>
               <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="min-h-0 flex items-center justify-center p-4 md:p-8">
-                  {chatMediaItems[chatMediaViewerIndex] ? (
+                  {chatMediaItems[chatMediaViewerIndex] ?? (
                     <img src={chatMediaItems[chatMediaViewerIndex].src} alt="Medium Vollbild" className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl" />
                   ) : (
                     <div className="text-neutral-500">Keine Medien vorhanden.</div>
@@ -11215,9 +11205,7 @@ setSelfDestruct(false);
     }
 
 
-}
 export default AmoledCalendarApp;
-
 
 
 

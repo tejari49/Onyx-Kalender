@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
       Copy, Link2, History, UserMinus
     } from 'lucide-react';
 
@@ -6821,6 +6821,15 @@ setSelfDestruct(false);
           <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
             {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in pointer-events-auto"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
           </div>
+          <button
+            type="button"
+            onClick={() => persistThemeMode(themeMode === 'dark' ? 'light' : 'dark')}
+            className="fixed top-4 left-4 z-[61] p-3 rounded-full border border-neutral-700 bg-neutral-900/90 text-white hover:bg-neutral-800 transition-colors"
+            title={themeMode === 'dark' ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren'}
+            aria-label={themeMode === 'dark' ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren'}
+          >
+            {themeMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
 
           <aside className="hidden md:flex w-64 border-r border-neutral-800 flex-col shrink-0 bg-black z-10">
             <div className="p-6 flex-1 overflow-y-auto">
@@ -6857,12 +6866,13 @@ setSelfDestruct(false);
             </div>
           </aside>
 
-          <nav className="md:hidden fixed bottom-0 left-0 w-full h-16 bg-black border-t border-neutral-800 flex items-center justify-around z-40 px-2 pb-safe">
-            <button onClick={() => setCurrentView('dashboard')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-6 h-6" /></button>
-            <button onClick={() => setCurrentView('calendar')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-6 h-6" /></button>
-            <button onClick={() => setPlusMenuOpen(true)} className="p-3 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg"><Plus className="w-6 h-6" /></button>
-            <button onClick={() => setCurrentView('extras')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`}><Activity className="w-6 h-6" /></button>
-            <button onClick={() => setCurrentView('settings')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-6 h-6" /></button>
+          <nav className="md:hidden fixed bottom-0 left-0 w-full h-16 bg-black border-t border-neutral-800 flex items-center justify-between z-40 px-3 pb-safe">
+            <button onClick={() => setCurrentView('dashboard')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`} title="Dashboard"><Home className="w-5 h-5" /></button>
+            <button onClick={() => setCurrentView('calendar')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`} title="Kalender"><CalendarIcon className="w-5 h-5" /></button>
+            <button onClick={() => setCurrentView('shopping')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'shopping' ? 'text-white' : 'text-neutral-500'}`} title="Einkauf"><ShoppingCart className="w-5 h-5" /></button>
+            <button onClick={() => setPlusMenuOpen(true)} className="p-2.5 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg" title="Neuer Termin"><Plus className="w-5 h-5" /></button>
+            <button onClick={() => setCurrentView('extras')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`} title="Extras"><Activity className="w-5 h-5" /></button>
+            <button onClick={() => setCurrentView('settings')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`} title="Einstellungen"><Settings className="w-5 h-5" /></button>
           </nav>
 
           <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative">
@@ -8572,15 +8582,17 @@ Später
                       <button
                         type="button"
                         onClick={() => persistThemeMode('dark')}
-                        className={"px-3 py-2 rounded-lg text-xs font-semibold border transition-colors " + (themeMode === 'dark' ? "bg-white text-black border-white" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
+                        className={"px-3 py-2 rounded-lg text-xs font-semibold border transition-colors inline-flex items-center gap-2 " + (themeMode === 'dark' ? "bg-white text-black border-white" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
                       >
+                        <Moon className="w-4 h-4" />
                         Dunkel
                       </button>
                       <button
                         type="button"
                         onClick={() => persistThemeMode('light')}
-                        className={"px-3 py-2 rounded-lg text-xs font-semibold border transition-colors " + (themeMode === 'light' ? "bg-white text-black border-white" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
+                        className={"px-3 py-2 rounded-lg text-xs font-semibold border transition-colors inline-flex items-center gap-2 " + (themeMode === 'light' ? "bg-white text-black border-white" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
                       >
+                        <Sun className="w-4 h-4" />
                         Hell
                       </button>
                     </div>

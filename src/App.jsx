@@ -667,6 +667,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const userProfileRef = useRef(null);
       const extrasCloudReadyRef = useRef(false);
       const extrasCloudTimerRef = useRef(null);
+      const workClockPresetEditingRef = useRef(false);
+      const weeklyTargetEditingRef = useRef(false);
       const activeChatIdRef = useRef(null);
       const currentViewRef = useRef(null);
       const lastChatPingRef = useRef({});
@@ -3500,7 +3502,9 @@ const requestNotificationPermission = async (currentUser) => {
 
       useEffect(() => {
         const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
-        setWorkClockPresetInput(presets.join('\n'));
+        if (!workClockPresetEditingRef.current) {
+          setWorkClockPresetInput(presets.join('\n'));
+        }
         setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
         setWorkClockDraftUsePreset(true);
       }, [userProfile?.workClockTaskOptions, userProfile?.workClockLastTitle]);
@@ -6440,7 +6444,9 @@ setSelfDestruct(false);
         try {
           if (typeof userProfile?.quickNotesCloud === 'string') setQuickNotes(String(userProfile.quickNotesCloud || ''));
           if (Array.isArray(userProfile?.dailyGoals)) setDailyGoals(normalizeDailyGoals(userProfile.dailyGoals));
-          if (userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) setWeeklyTargetHours(String(userProfile.weeklyTargetHours));
+          if (!weeklyTargetEditingRef.current && userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) {
+            setWeeklyTargetHours(String(userProfile.weeklyTargetHours));
+          }
           if (Array.isArray(userProfile?.extrasSlotOrder)) setExtrasSlotOrder(normalizeExtrasOrder(userProfile.extrasSlotOrder));
           setExtrasUpdatedAt(remoteTs);
           extrasCloudReadyRef.current = true;
@@ -7763,7 +7769,7 @@ setSelfDestruct(false);
                       <div className="h-2 rounded-full bg-black border border-neutral-800 overflow-hidden"><div className="h-full bg-white" style={{ width: `${weekTargetPct}%` }} /></div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <input value={weeklyTargetHours} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="w-28 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                      <input value={weeklyTargetHours} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} onFocus={() => { weeklyTargetEditingRef.current = true; }} onBlur={() => { weeklyTargetEditingRef.current = false; }} placeholder="42" className="w-28 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                       <span className="text-sm text-neutral-500">Stunden pro Woche</span>
                     </div>
                   </>
@@ -7853,7 +7859,7 @@ Später
                 const open = q ? true : (settingsTab === id);
                 const toggle = () => {
                   if (q) return;
-                  setSettingsTab(prev => (prev === id ? '' : id));
+                  setSettingsTab(id);
                 };
                 return (
                   <div className="border border-neutral-800 rounded-2xl lg:rounded-3xl overflow-hidden bg-neutral-950/50">
@@ -8127,6 +8133,7 @@ Später
                           try {
                             const v = e.target.value;
                             const next = (v === 'none') ? null : (parseInt(v, 10) || 0);
+                            setUserProfile(prev => ({ ...(prev || {}), defaultReminderMinutes: next }));
                             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultReminderMinutes: next }, { merge: true });
                             showToast('Gespeichert');
                           } catch (err) {
@@ -8157,6 +8164,7 @@ Später
                         onChange={async (e) => {
                           try {
                             const v = e.target.value;
+                            setUserProfile(prev => ({ ...(prev || {}), notificationSoundMode: v }));
                             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { notificationSoundMode: v }, { merge: true });
                             showToast('Gespeichert');
                           } catch (err) {
@@ -8215,6 +8223,8 @@ Später
                           <textarea
                             value={workClockPresetInput}
                             onChange={(e) => setWorkClockPresetInput(e.target.value)}
+                            onFocus={() => { workClockPresetEditingRef.current = true; }}
+                            onBlur={() => { workClockPresetEditingRef.current = false; }}
                             rows={4}
                             placeholder={"Büro\nBaustelle\nSupport"}
                             className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
@@ -8252,7 +8262,7 @@ Später
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wochenziel in Stunden</label>
-                        <input value={weeklyTargetHours} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                        <input value={weeklyTargetHours} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} onFocus={() => { weeklyTargetEditingRef.current = true; }} onBlur={() => { weeklyTargetEditingRef.current = false; }} placeholder="42" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                       </div>
                       <div className="flex items-end">
                         <button type="button" onClick={() => { setExtrasSlotOrder(normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER)); showToast('Extras-Reihenfolge zurückgesetzt'); }} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Reihenfolge zurücksetzen</button>

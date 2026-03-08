@@ -263,7 +263,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 
 // ===== Build marker (v10) =====
-const BUILD_VERSION = 'v28';
+const BUILD_VERSION = 'v29';
 console.log(`[Onyx-Kalender] build ${BUILD_VERSION} loaded @`, new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
@@ -6825,9 +6825,9 @@ setSelfDestruct(false);
       return (
         <div 
           className="flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative" style={{ height: 'var(--app-height, 100vh)' }}
-          onTouchStart={handleGlobalTouchStart}
-          onTouchMove={handleGlobalTouchMove}
-          onTouchEnd={handleGlobalTouchEnd}
+          onTouchStart={currentView === 'settings' ? undefined : handleGlobalTouchStart}
+          onTouchMove={currentView === 'settings' ? undefined : handleGlobalTouchMove}
+          onTouchEnd={currentView === 'settings' ? undefined : handleGlobalTouchEnd}
         >
           {/* PULL TO REFRESH INDICATOR */}
           <div className="absolute top-0 left-0 w-full flex justify-center z-[100] transition-transform duration-200 pointer-events-none" style={{ transform: `translateY(${pullDistance - 50}px)` }}>
@@ -7869,20 +7869,16 @@ Später
                 const { label, icon: Icon } = section;
                 const visible = !q || match(sectionSearchTerms(section));
                 if (!visible) return null;
-                const open = q ? true : (isCompactSettings ? true : (settingsTab === id));
-                const toggle = () => {
-                  if (q || isCompactSettings) return;
-                  setSettingsTab(id);
-                };
+                const open = true;
                 return (
                   <div className="border border-neutral-800 rounded-2xl lg:rounded-3xl overflow-hidden bg-neutral-950/50">
-                    <button type="button" onClick={toggle} className="w-full flex items-center justify-between px-4 py-3 lg:px-5 lg:py-4 bg-neutral-950 hover:bg-neutral-900 transition-colors">
+                    <div className="w-full flex items-center justify-between px-4 py-3 lg:px-5 lg:py-4 bg-neutral-950">
                       <div className="flex items-center gap-3">
                         {Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}
                         <span className="text-sm font-medium text-white">{label}</span>
                       </div>
-                      <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform " + (open ? 'rotate-90' : '')} />
-                    </button>
+                      <ChevronRight className="w-4 h-4 text-neutral-500 rotate-90" />
+                    </div>
                     {open && (
                       <div className="px-4 pb-4 pt-3 lg:px-5 lg:pb-5 lg:pt-4">
                         {children}

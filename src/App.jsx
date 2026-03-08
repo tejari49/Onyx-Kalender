@@ -263,7 +263,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 
 // ===== Build marker (v10) =====
-const BUILD_VERSION = 'v29';
+const BUILD_VERSION = 'v30';
 console.log(`[Onyx-Kalender] build ${BUILD_VERSION} loaded @`, new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
@@ -6839,16 +6839,6 @@ setSelfDestruct(false);
           <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
             {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in pointer-events-auto"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
           </div>
-          <button
-            type="button"
-            onClick={() => persistThemeMode(themeMode === 'dark' ? 'light' : 'dark')}
-            className="fixed top-4 left-4 z-[61] p-3 rounded-full border border-neutral-700 bg-neutral-900/90 text-white hover:bg-neutral-800 transition-colors"
-            title={themeMode === 'dark' ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren'}
-            aria-label={themeMode === 'dark' ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren'}
-          >
-            {themeMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-
           <aside className="hidden md:flex w-64 border-r border-neutral-800 flex-col shrink-0 bg-black z-10">
             <div className="p-6 flex-1 overflow-y-auto">
               <h1 className="text-xl font-bold tracking-wider mb-8 flex items-center gap-3"><div className="w-4 h-4 bg-white rounded-sm"></div>ONYX</h1>
@@ -6894,6 +6884,17 @@ setSelfDestruct(false);
           </nav>
 
           <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative">
+            <div className="shrink-0 flex justify-end px-3 md:px-4 pt-3 md:pt-4">
+              <button
+                type="button"
+                onClick={() => persistThemeMode(themeMode === 'dark' ? 'light' : 'dark')}
+                className="h-9 w-9 rounded-lg border border-neutral-800 bg-neutral-950 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors flex items-center justify-center"
+                title={themeMode === 'dark' ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren'}
+                aria-label={themeMode === 'dark' ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren'}
+              >
+                {themeMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+            </div>
             {currentView === 'dashboard' && (
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
                 <header className="flex justify-between items-center mb-8 md:mb-10">

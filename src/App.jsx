@@ -262,8 +262,9 @@ import React, { useState, useEffect, useRef } from 'react';
     }
 
 
-// ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v27 loaded @', new Date().toISOString());
+// ===== Build marker (v10) =====
+const BUILD_VERSION = 'v28';
+console.log(`[Onyx-Kalender] build ${BUILD_VERSION} loaded @`, new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -740,6 +741,17 @@ const canPullRef = useRef(false);
 
 const handleGlobalTouchStart = (e) => {
   if (!e.touches || e.touches.length === 0) return;
+  if (currentViewRef.current === 'settings') {
+    canPullRef.current = false;
+    setPullDistance(0);
+    return;
+  }
+  const tagName = String(e?.target?.tagName || '').toLowerCase();
+  if (['input', 'textarea', 'select', 'button'].includes(tagName) || e?.target?.isContentEditable) {
+    canPullRef.current = false;
+    setPullDistance(0);
+    return;
+  }
   touchStartY.current = e.touches[0].clientY;
   touchCurrentY.current = touchStartY.current;
   setPullDistance(0);
@@ -7848,6 +7860,7 @@ Später
     const settingsSectionById = Object.fromEntries(SETTINGS_SECTIONS.map((s) => [s.id, s]));
     const sectionSearchTerms = (section) => [section?.label, section?.id, ...(section?.keys || [])];
     const filteredTabs = q ? SETTINGS_SECTIONS.filter((t) => match(sectionSearchTerms(t))) : SETTINGS_SECTIONS;
+    const isCompactSettings = (typeof window !== 'undefined') ? window.innerWidth < 1024 : false;
 
 
               const AccordionItem = ({ id, children }) => {
@@ -7856,9 +7869,9 @@ Später
                 const { label, icon: Icon } = section;
                 const visible = !q || match(sectionSearchTerms(section));
                 if (!visible) return null;
-                const open = q ? true : (settingsTab === id);
+                const open = q ? true : (isCompactSettings ? true : (settingsTab === id));
                 const toggle = () => {
-                  if (q) return;
+                  if (q || isCompactSettings) return;
                   setSettingsTab(id);
                 };
                 return (
@@ -7887,6 +7900,7 @@ Später
             <p className="mt-2 text-sm text-neutral-500">
               Suche nach „Push“, „Link“, „Farbe“… oder nutze die Kategorien.
             </p>
+            <p className="mt-1 text-[11px] text-neutral-600">Build {BUILD_VERSION}</p>
           </div>
 
           <div className="w-full md:w-[360px]">

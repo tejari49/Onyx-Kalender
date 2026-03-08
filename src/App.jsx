@@ -613,7 +613,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
-      const dashboardName = (userProfile && (userProfile.displayName || userProfile.username)) ? (userProfile.displayName || userProfile.username) : (user.email ? user.email.split('@')[0] : '');
+      const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user.email.split('@')[0] : '');
       const todayKey = new Date().toISOString().split('T')[0];
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
@@ -1294,7 +1294,7 @@ const sendEventComment = async () => {
 
   try {
     const ref = collection(eventDocRefFor(calId, eventToEdit.id), 'comments');
-    const senderName = (userProfile && (userProfile.displayName || userProfile.username)) ? (userProfile.displayName || userProfile.username) : (user.email ? user.email.split('@')[0] : 'User');
+    const senderName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user.email.split('@')[0] : 'User');
     await addDoc(ref, {
       text: txt,
       senderId: user.uid,
@@ -1836,7 +1836,7 @@ const hideSecretChatNow = (toast = 'Secret Chat versteckt') => {
   if (toast) showToast(toast);
 };
 const requestSecretEntry = () => {
-  const pinEnabled = !!(userProfile.secretPinEnabled && userProfile.secretPinHash);
+  const pinEnabled = !!(userProfile?.secretPinEnabled && userProfile?.secretPinHash);
   if (pinEnabled) {
     setSecretPinError('');
     setSecretPinInput('');
@@ -1874,7 +1874,7 @@ const saveSecretPinSettings = async () => {
   const nextPin = String(secretPinSetupNew || '').trim();
   const confirmPin = String(secretPinSetupConfirm || '').trim();
   const currentPin = String(secretPinSetupCurrent || '').trim();
-  const hasExistingPin = !!(userProfile.secretPinEnabled && userProfile.secretPinHash);
+  const hasExistingPin = !!(userProfile?.secretPinEnabled && userProfile?.secretPinHash);
 
   if (!/^\d{4,8}$/.test(nextPin)) return showToast('PIN muss 4 bis 8 Ziffern haben');
   if (nextPin !== confirmPin) return showToast('PIN-Bestätigung stimmt nicht überein');
@@ -1904,7 +1904,7 @@ const saveSecretPinSettings = async () => {
 const disableSecretPin = async () => {
   if (!user.uid) return;
   const currentPin = String(secretPinSetupCurrent || '').trim();
-  if (!(userProfile.secretPinEnabled && userProfile.secretPinHash)) return;
+  if (!(userProfile?.secretPinEnabled && userProfile?.secretPinHash)) return;
   if (!/^\d{4,8}$/.test(currentPin)) return showToast('Aktuelle PIN eingeben');
   try {
     setSecretPinActionBusy(true);
@@ -1929,7 +1929,7 @@ const disableSecretPin = async () => {
 };
 const toggleSecretAutoHide = async () => {
   if (!user.uid) return;
-  const nextValue = !(userProfile.secretPanicOnHide !== false);
+  const nextValue = !(userProfile?.secretPanicOnHide !== false);
   const patch = { secretPanicOnHide: nextValue, updatedAt: Date.now() };
   try {
     await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), patch, { merge: true });
@@ -2608,7 +2608,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           try {
             const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user.uid) {
-              const mutedChatIds = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile.mutedChatIds : [];
               const isMuted = mutedChatIds.includes(activeChat.id);
               const canNotify = (('Notification' in window) && Notification.permission === 'granted');
               const key = `onyx_last_notify_${activeChat.id}`;
@@ -2927,7 +2927,7 @@ const requestNotificationPermission = async (currentUser) => {
 
 	            // Wenn Chat stummgeschaltet ist: keine In-App Benachrichtigung
 	            try {
-	              const muted = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+	              const muted = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile.mutedChatIds : [];
 	              if (kind === 'chat' && chatId && muted.includes(chatId)) return;
 	            } catch (_) {}
 
@@ -3224,7 +3224,7 @@ const requestNotificationPermission = async (currentUser) => {
 
       const requestStopWorkClock = () => {
         if (!workClockActive.startedAt) return;
-        const presets = normalizeWorkClockPresets(userProfile.workClockTaskOptions);
+        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
         setWorkClockDraftUsePreset(true);
         setWorkClockDraftTitle(String(userProfile.workClockLastTitle || presets[0] || 'Arbeit'));
         setWorkClockDraftLevel('mittel');
@@ -3285,7 +3285,7 @@ const requestNotificationPermission = async (currentUser) => {
 
       const openEditWorkClockSession = (session) => {
         if (!session) return;
-        const presets = normalizeWorkClockPresets(userProfile.workClockTaskOptions);
+        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
         const rawTitle = String(session.title || 'Arbeit');
         const usePreset = presets.some(p => String(p).toLowerCase() === rawTitle.toLowerCase());
         setWorkClockEditingSession(session);
@@ -3450,13 +3450,13 @@ const requestNotificationPermission = async (currentUser) => {
       }, [user.uid]);
 
       useEffect(() => {
-        const presets = normalizeWorkClockPresets(userProfile.workClockTaskOptions);
+        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
         if (!workClockPresetEditingRef.current) {
           setWorkClockPresetInput(presets.join('\n'));
         }
         setWorkClockDraftTitle(String(userProfile.workClockLastTitle || presets[0] || 'Arbeit'));
         setWorkClockDraftUsePreset(true);
-      }, [userProfile.workClockTaskOptions, userProfile.workClockLastTitle]);
+      }, [userProfile?.workClockTaskOptions, userProfile?.workClockLastTitle]);
 
 
       useEffect(() => {
@@ -3615,7 +3615,7 @@ const requestNotificationPermission = async (currentUser) => {
           writeShoppingListsLocal(user.uid, normalized);
           if (!activeShoppingListId && normalized[0].id) setActiveShoppingListId(normalized[0].id);
         }
-      }, [user.uid, userProfile.shoppingListsUpdatedAt, userProfile.shoppingListsCloud]);
+      }, [user?.uid, userProfile?.shoppingListsUpdatedAt, userProfile?.shoppingListsCloud]);
 
       useEffect(() => {
         if (activeShoppingListId) return;
@@ -3916,7 +3916,7 @@ const requestNotificationPermission = async (currentUser) => {
             && Number(location.lon || 0) === Number(nextLoc.lon || 0);
           if (!same) setLocation(nextLoc);
         } catch (_) {}
-      }, [userProfile.weatherLocation.name, userProfile.weatherLocation.lat, userProfile.weatherLocation.lon]);
+      }, [userProfile?.weatherLocation?.name, userProfile?.weatherLocation?.lat, userProfile?.weatherLocation?.lon]);
 
       useEffect(() => {
         const mode = (themeMode === 'light') ? 'light' : 'dark';
@@ -3929,7 +3929,7 @@ const requestNotificationPermission = async (currentUser) => {
       useEffect(() => {
         const profileMode = userProfile.themeMode;
         if (profileMode === 'light' || profileMode === 'dark') setThemeMode(profileMode);
-      }, [userProfile.themeMode]);
+      }, [userProfile?.themeMode]);
 
       useEffect(() => {
         // reset expanded forecast when location changes
@@ -5044,7 +5044,7 @@ useEffect(() => {
 
       useEffect(() => {
         if (currentView !== 'secret_chat') return;
-        const panicOnHide = (userProfile.secretPanicOnHide !== false);
+        const panicOnHide = (userProfile?.secretPanicOnHide !== false);
         if (!panicOnHide) return;
         const onSecretVisibility = () => {
           if (document.visibilityState === 'hidden') hideSecretChatNow('Secret Chat automatisch versteckt');
@@ -5550,7 +5550,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         if (!user) return;
         const nameRaw = new FormData(e.target).get('displayName') || new FormData(e.target).get('username') || '';
         const displayName = String(nameRaw).trim();
-        await persistDisplayName(displayName, { avatarThumbBase64: userProfile.avatarThumbBase64 || userProfile.avatarBase64, avatarFullBase64: userProfile.avatarFullBase64 || null, toast: 'Profil aktualisiert!' });
+        await persistDisplayName(displayName, { avatarThumbBase64: userProfile?.avatarThumbBase64 || userProfile?.avatarBase64, avatarFullBase64: userProfile.avatarFullBase64 || null, toast: 'Profil aktualisiert!' });
       };
 
       const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
@@ -5790,7 +5790,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
 
         try {
-          const meName = (userProfile.displayName || userProfile.username || (user.email ? user.email.split('@')[0] : 'Ich'));
+          const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? user.email.split('@')[0] : 'Ich'));
           const otherName = (targetProfile.displayName || targetProfile.username || targetProfile.email || 'Kontakt');
           const displayNames = { [user.uid]: meName, [targetUserId]: otherName };
 
@@ -5916,7 +5916,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       const toggleMuteChat = async (chatId) => {
         if (!user) return;
         try {
-          const muted = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+          const muted = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile.mutedChatIds : [];
           const isMuted = muted.includes(chatId);
           const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
           await updateDoc(profileRef, { mutedChatIds: isMuted ? arrayRemove(chatId) : arrayUnion(chatId) });
@@ -6391,7 +6391,7 @@ setSelfDestruct(false);
           setExtrasUpdatedAt(remoteTs);
           extrasCloudReadyRef.current = true;
         } catch (_) {}
-      }, [user.uid, userProfile.extrasUpdatedAt, userProfile.quickNotesCloud, userProfile.dailyGoals, userProfile.weeklyTargetHours, userProfile.extrasSlotOrder]);
+      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder]);
       useEffect(() => {
         if (!user) return;
         if (!extrasCloudReadyRef.current) { extrasCloudReadyRef.current = true; return; }
@@ -8481,17 +8481,17 @@ setSelfDestruct(false);
                 </h3>
                 <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
-                    <p className="font-medium text-white">Angemeldet als: {user.email}</p>
+                    <p className="font-medium text-white">Angemeldet als: {user?.email}</p>
 
                     {userProfile && (
                       <div className="mt-1 space-y-1">
-                        <p className="text-sm text-neutral-400">Name: {userProfile.displayName || userProfile.username}</p>
+                        <p className="text-sm text-neutral-400">Name: {userProfile?.displayName || userProfile?.username}</p>
 
                         <div className="flex items-center gap-2">
-                          <p className="text-sm text-neutral-400">Alias: <span className="font-mono text-neutral-200">{userProfile.username}</span></p>
+                          <p className="text-sm text-neutral-400">Alias: <span className="font-mono text-neutral-200">{userProfile?.username}</span></p>
                           <button
                             type="button"
-                            onClick={() => { setAliasDraft(userProfile.username || ''); setAliasEditError(''); setAliasEditOpen(true); }}
+                            onClick={() => { setAliasDraft(userProfile?.username || ''); setAliasEditError(''); setAliasEditOpen(true); }}
                             className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
                             title="Alias ändern"
                           >
@@ -8788,9 +8788,9 @@ setSelfDestruct(false);
                       <button
                         onClick={() => toggleMuteChat(activeChat.id)}
                         className="text-neutral-500 hover:text-white transition-colors p-2"
-                        title={(Array.isArray(userProfile.mutedChatIds) && userProfile.mutedChatIds.includes(activeChat.id)) ? 'Stumm aus' : 'Stumm schalten'}
+                        title={(Array.isArray(userProfile?.mutedChatIds) && userProfile?.mutedChatIds?.includes(activeChat.id)) ? 'Stumm aus' : 'Stumm schalten'}
                       >
-                        {(Array.isArray(userProfile.mutedChatIds) && userProfile.mutedChatIds.includes(activeChat.id)) ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+                        {(Array.isArray(userProfile?.mutedChatIds) && userProfile?.mutedChatIds?.includes(activeChat.id)) ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
                       </button>
                     )}
                     <button onClick={() => hideSecretChatNow()} className="text-red-400 hover:text-red-300 transition-colors p-2" title="Panic Mode">
@@ -8804,12 +8804,12 @@ setSelfDestruct(false);
                   {!userProfile ? (
                     <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">Identität festlegen</h3><p className="text-sm text-neutral-500 mb-6">Wähle einen einzigartigen Benutzernamen.</p>
                     <form onSubmit={saveUsername}>
-                      <input type="text" name="username" defaultValue={userProfile.displayName || userProfile.username || user.email.split('@')[0] || ''} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
+                      <input type="text" name="username" defaultValue={userProfile?.displayName || userProfile?.username || user?.email?.split('@')[0] || ''} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
                       <div className="flex items-center justify-between text-xs text-neutral-500 mb-4">
                         <div>Deine Chat-ID:</div>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-neutral-200">{userProfile.friendCode || '-----'}</span>
-                          <button type="button" onClick={() => { const v = String(userProfile.friendCode||''); if (v) { navigator.clipboard.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-2 py-1 rounded bg-neutral-900 border border-neutral-700 text-neutral-200 hover:bg-neutral-800">Kopieren</button>
+                          <span className="font-mono text-neutral-200">{userProfile?.friendCode || '-----'}</span>
+                          <button type="button" onClick={() => { const v = String(userProfile?.friendCode||''); if (v) { navigator.clipboard.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-2 py-1 rounded bg-neutral-900 border border-neutral-700 text-neutral-200 hover:bg-neutral-800">Kopieren</button>
                         </div>
                       </div>
 
@@ -8821,15 +8821,15 @@ setSelfDestruct(false);
                     <div className="flex-1 overflow-y-auto p-6 max-w-2xl w-full mx-auto space-y-8">
                       <div className="flex flex-col items-center border border-neutral-800 rounded-xl p-8 bg-neutral-950/50">
                         <div className="relative mb-6">
-                          {userProfile.avatarBase64 ? (
+                          {userProfile?.avatarBase64 ? (
                             <img
-                              src={userProfile.avatarThumbBase64 || userProfile.avatarBase64}
+                              src={userProfile?.avatarThumbBase64 || userProfile?.avatarBase64}
                               className="w-32 h-32 rounded-full border-2 border-neutral-700 object-cover cursor-zoom-in"
                               alt="Profilbild"
-                              onClick={() => openImageViewer(userProfile.avatarFullBase64 || userProfile.avatarBase64 || userProfile.avatarThumbBase64)}
+                              onClick={() => openImageViewer(userProfile?.avatarFullBase64 || userProfile?.avatarBase64 || userProfile?.avatarThumbBase64)}
                             />
                           ) : (
-                            <div className="w-32 h-32 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-4xl font-medium text-neutral-500">{initialsFrom(userProfile.displayName || userProfile.username || userProfile.email || '')}</div>
+                            <div className="w-32 h-32 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-4xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile.email || '')}</div>
                           )}
                           <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
                             <Camera className="w-4 h-4" />
@@ -8837,13 +8837,13 @@ setSelfDestruct(false);
                           </label>
                         </div>
                         <form onSubmit={updateProfileSettings} className="w-full max-w-xs space-y-4">
-                          <input type="text" name="displayName" defaultValue={userProfile.displayName || userProfile.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
+                          <input type="text" name="displayName" defaultValue={userProfile?.displayName || userProfile?.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
                           <div className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                             <div className="flex flex-col">
                               <span className="text-[10px] uppercase tracking-widest text-neutral-500">Chat-ID (5-stellig)</span>
-                              <span className="font-mono text-white text-sm">{userProfile.friendCode || '-----'}</span>
+                              <span className="font-mono text-white text-sm">{userProfile?.friendCode || '-----'}</span>
                             </div>
-                            <button type="button" onClick={() => { const v = String(userProfile.friendCode||''); if (v && v !== '-----') { navigator.clipboard.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors">
+                            <button type="button" onClick={() => { const v = String(userProfile?.friendCode||''); if (v && v !== '-----') { navigator.clipboard.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors">
                               Kopieren
                             </button>
                           </div>
@@ -8859,11 +8859,11 @@ setSelfDestruct(false);
                             <h4 className="text-sm font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Secret PIN</h4>
                             <p className="text-xs text-neutral-500 mt-1">Der Secret Chat verlangt nach dem Long-Press eine PIN mit 4 bis 8 Ziffern.</p>
                           </div>
-                          <div className={"px-2 py-1 rounded-full text-[10px] uppercase tracking-widest border " + ((userProfile.secretPinEnabled && userProfile.secretPinHash) ? 'border-emerald-700 text-emerald-300 bg-emerald-950/40' : 'border-neutral-800 text-neutral-500 bg-black')}>
-                            {(userProfile.secretPinEnabled && userProfile.secretPinHash) ? 'aktiv' : 'aus'}
+                          <div className={"px-2 py-1 rounded-full text-[10px] uppercase tracking-widest border " + ((userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'border-emerald-700 text-emerald-300 bg-emerald-950/40' : 'border-neutral-800 text-neutral-500 bg-black')}>
+                            {(userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'aktiv' : 'aus'}
                           </div>
                         </div>
-                        {(userProfile.secretPinEnabled && userProfile.secretPinHash) && (
+                        {(userProfile?.secretPinEnabled && userProfile?.secretPinHash) && (
                           <input
                             type="password"
                             inputMode="numeric"
@@ -8883,7 +8883,7 @@ setSelfDestruct(false);
                             maxLength={8}
                             value={secretPinSetupNew}
                             onChange={(e) => setSecretPinSetupNew(String(e.target.value || '').replace(/\D/g, '').slice(0, 8))}
-                            placeholder={(userProfile.secretPinEnabled && userProfile.secretPinHash) ? 'Neue PIN' : 'PIN festlegen'}
+                            placeholder={(userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'Neue PIN' : 'PIN festlegen'}
                             className="w-full bg-black border border-neutral-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-neutral-600"
                           />
                           <input
@@ -8899,9 +8899,9 @@ setSelfDestruct(false);
                         </div>
                         <div className="flex flex-wrap gap-3">
                           <button type="button" onClick={saveSecretPinSettings} disabled={secretPinActionBusy} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">
-                            {secretPinActionBusy ? 'Speichern...' : ((userProfile.secretPinEnabled && userProfile.secretPinHash) ? 'PIN ändern' : 'PIN aktivieren')}
+                            {secretPinActionBusy ? 'Speichern...' : ((userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'PIN ändern' : 'PIN aktivieren')}
                           </button>
-                          {(userProfile.secretPinEnabled && userProfile.secretPinHash) && (
+                          {(userProfile?.secretPinEnabled && userProfile?.secretPinHash) && (
                             <button type="button" onClick={disableSecretPin} disabled={secretPinActionBusy} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-300 text-sm font-semibold hover:bg-red-950/60 transition-colors disabled:opacity-60">
                               PIN deaktivieren
                             </button>
@@ -8912,8 +8912,8 @@ setSelfDestruct(false);
                             <h4 className="text-sm font-semibold text-white flex items-center gap-2"><Bomb className="w-4 h-4" /> Panic Mode</h4>
                             <p className="text-xs text-neutral-500 mt-1">Blendet den Secret Chat sofort aus. Optional auch automatisch beim App-Wechsel.</p>
                           </div>
-                          <button type="button" onClick={toggleSecretAutoHide} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + ((userProfile.secretPanicOnHide !== false) ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
-                            {(userProfile.secretPanicOnHide !== false) ? 'Auto-Panic an' : 'Auto-Panic aus'}
+                          <button type="button" onClick={toggleSecretAutoHide} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + ((userProfile?.secretPanicOnHide !== false) ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
+                            {(userProfile?.secretPanicOnHide !== false) ? 'Auto-Panic an' : 'Auto-Panic aus'}
                           </button>
                         </div>
                         <button type="button" onClick={() => hideSecretChatNow()} className="w-full px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-300 text-sm font-semibold hover:bg-red-950/60 transition-colors">
@@ -8985,7 +8985,7 @@ setSelfDestruct(false);
                             )}
                             {sortedMyChats.map(chat => {
                               const isPinned = pinnedChatIds.includes(chat.id);
-                              const mutedChatIds = (userProfile && Array.isArray(userProfile.mutedChatIds)) ? userProfile.mutedChatIds : [];
+                              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile.mutedChatIds : [];
                               const isMuted = mutedChatIds.includes(chat.id);
                               const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
                               const otherUid = isDm ? chat.participants.find(id => id !== user.uid) : null;
@@ -9418,7 +9418,7 @@ setSelfDestruct(false);
                           }}
                           className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
                         >
-                          {normalizeWorkClockPresets(userProfile.workClockTaskOptions).map((preset) => (
+                          {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
                             <option key={preset} value={preset}>{preset}</option>
                           ))}
                           <option value="__other__">Andere Tätigkeit...</option>
@@ -9428,7 +9428,7 @@ setSelfDestruct(false);
                     ) : (
                       <div className="mt-1 space-y-2">
                         <input value={workClockEditTitle} onChange={(e) => setWorkClockEditTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile.workClockTaskOptions); setWorkClockEditUsePreset(true); setWorkClockEditTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
+                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockEditUsePreset(true); setWorkClockEditTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
                       </div>
                     )}
                   </div>
@@ -9492,7 +9492,7 @@ setSelfDestruct(false);
                           }}
                           className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
                         >
-                          {normalizeWorkClockPresets(userProfile.workClockTaskOptions).map((preset) => (
+                          {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
                             <option key={preset} value={preset}>{preset}</option>
                           ))}
                           <option value="__other__">Andere Tätigkeit...</option>
@@ -9502,7 +9502,7 @@ setSelfDestruct(false);
                     ) : (
                       <div className="mt-1 space-y-2">
                         <input value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile.workClockTaskOptions); setWorkClockDraftUsePreset(true); setWorkClockDraftTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
+                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockDraftUsePreset(true); setWorkClockDraftTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
                       </div>
                     )}
                   </div>

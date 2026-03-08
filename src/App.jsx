@@ -8304,10 +8304,10 @@ Später
                     </div>
                   </div>
 
-                  <details className="border border-neutral-800 rounded-xl bg-black p-4">
-                    <summary className="cursor-pointer text-xs text-neutral-300 font-semibold select-none flex items-center gap-2">
+                  <div className="border border-neutral-800 rounded-xl bg-black p-4">
+                    <div className="text-xs text-neutral-300 font-semibold select-none flex items-center gap-2">
                       <Activity className="w-4 h-4" /> Diagnostik & Tests
-                    </summary>
+                    </div>
 
                     <div className="mt-3 space-y-3">
                       <div className="text-[11px] text-neutral-600">
@@ -8366,7 +8366,7 @@ Später
                         Hinweis: Wenn â€žTest (Server)â€œ sofort fehlschlägt, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create</span>.
                       </div>
                     </div>
-                  </details>
+                  </div>
                 </div>
               </section>
             </AccordionItem>

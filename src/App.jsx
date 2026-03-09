@@ -7486,7 +7486,7 @@ setSelfDestruct(false);
                         const bought = normalizeShoppingItems(list.items).filter((item) => item.done).length;
                         const total = normalizeShoppingItems(list.items).length;
                         return (
-                          <button key={list.id} onClick={() => setActiveShoppingListId(list.id)} className={`w-full text-left rounded-2xl border p-4 transition-colors ${activeShoppingList.id === list.id ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500 bg-black/40'}`}>
+                          <button key={list.id} onClick={() => setActiveShoppingListId(list.id)} className={`w-full text-left rounded-2xl border p-4 transition-colors ${activeShoppingList?.id === list.id ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500 bg-black/40'}`}>
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="font-semibold text-white truncate">{list.title}</div>

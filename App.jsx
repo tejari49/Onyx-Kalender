@@ -625,7 +625,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
-      const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? (user?.email?.split('@')[0] || '') : '');
+      const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : '');
       const todayKey = new Date().toISOString().split('T')[0];
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
@@ -1318,7 +1318,7 @@ const sendEventComment = async () => {
 
   try {
     const ref = collection(eventDocRefFor(calId, eventToEdit.id), 'comments');
-    const senderName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? (user?.email?.split('@')[0] || 'User') : 'User');
+    const senderName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : 'User');
     await addDoc(ref, {
       text: txt,
       senderId: user?.uid,
@@ -2032,7 +2032,7 @@ const handleTouchEnd = () => {
   }
 };
 
-      const activeChatData = activeChat ? myChats.find(c => c.id === activeChat.id) : null;
+      const activeChatData = activeChat?.id ? (Array.isArray(myChats) ? myChats.find(c => c && c.id === activeChat.id) : null) : null;
 
       const getTypingUsers = (chat) => {
         if (!chat || !chat.typing) return [];
@@ -2042,7 +2042,7 @@ const handleTouchEnd = () => {
         return Object.keys(typingMap).filter(uid => uid !== user?.uid && typingMap[uid] === true && (now - (typingAt[uid] || 0) < 6500));
       };
 
-      const partnerId = activeChatData && !isGroupChat(activeChatData) ? activeChatData.participants.find(id => id !== user?.uid) : null;
+      const partnerId = (activeChatData && !isGroupChat(activeChatData) && Array.isArray(activeChatData.participants)) ? activeChatData.participants.find(id => id !== user?.uid) : null;
       const isPartnerTyping = activeChatData ? (getTypingUsers(activeChatData).length > 0) : false;
 
       const refreshDailyFact = () => {
@@ -2456,8 +2456,9 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         const unsubscribeChats = onSnapshot(chatsQ, (snapshot) => {
           const loadedChats = [];
           snapshot.forEach(doc => loadedChats.push({ id: doc.id, ...doc.data() }));
-          loadedChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-          setMyChats(loadedChats);
+          const safeChats = loadedChats.filter(chat => chat && chat.id).map((chat) => ({ ...chat, participants: Array.isArray(chat.participants) ? chat.participants.filter(Boolean) : [], admins: Array.isArray(chat.admins) ? chat.admins.filter(Boolean) : [] }));
+          safeChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          setMyChats(safeChats);
         });
 
         // Public share links created by this user
@@ -4072,7 +4073,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=38`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=36`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -5659,7 +5660,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
-      function getProfile(uid) { return allProfiles.find(p => p.id === uid) || null; }
+      function getProfile(uid) { return (Array.isArray(allProfiles) ? allProfiles : []).find(p => p && p.id === uid) || null; }
       function getUserDisplayLabel(uid) {
         const p = getProfile(uid);
         return p?.displayName || p?.username || p?.email || shortId(uid, 6);
@@ -5859,7 +5860,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
 
         try {
-          const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? (user?.email?.split('@')[0] || 'Ich') : 'Ich'));
+          const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? user?.email.split('@')[0] : 'Ich'));
           const otherName = (targetProfile?.displayName || targetProfile?.username || targetProfile?.email || 'Kontakt');
           const displayNames = { [user?.uid]: meName, [targetUserId]: otherName };
 

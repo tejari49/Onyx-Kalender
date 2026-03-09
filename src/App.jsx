@@ -2204,7 +2204,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         const mediaMatches = (messageSearchFilter === 'media')
           ? chatMediaItems.filter(m => {
               if (!qMsg) return true;
-              const hay = `${String(m.text || '')} ${senderLabelFromId(m.senderId || '')}`.toLowerCase();
+              const hay = `${String(m?.text || '')} ${senderLabelFromId(m?.senderId || '')}`.toLowerCase();
               return hay.includes(qMsg);
             })
           : [];
@@ -6041,19 +6041,19 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           if (!senderId) return 'Unbekannt';
           if (senderId === user?.uid) return 'Du';
           const p = getProfile(senderId);
-          return (p.displayName || p.username || p.email || 'Unbekannt');
+          return (p?.displayName || p?.username || p?.email || 'Unbekannt');
         } catch (_) { return 'Unbekannt'; }
       }
 
       const _qMsg = String(messageSearchQuery || '').trim().toLowerCase();
       const baseByType = (isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media')
-        ? chatMessages.filter(m => messageTypeMatchesFilter(m, messageSearchFilter))
-        : chatMessages;
+        ? (chatMessages || []).filter(m => m && messageTypeMatchesFilter(m, messageSearchFilter))
+        : (chatMessages || []).filter(Boolean);
 
       const mediaSearchResults = (isMessageSearchOpen && messageSearchFilter === 'media')
         ? chatMediaItems.filter(m => {
             if (!_qMsg) return true;
-            const hay = `${String(m.text || '')} ${senderLabelFromId(m.senderId || '')}`.toLowerCase();
+            const hay = `${String(m?.text || '')} ${senderLabelFromId(m?.senderId || '')}`.toLowerCase();
             return hay.includes(_qMsg);
           })
         : [];
@@ -6063,7 +6063,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             ? mediaSearchResults
             : baseByType.filter(m => {
                 if (!_qMsg) return true;
-                return String(m.text || '').toLowerCase().includes(_qMsg);
+                return String(m?.text || '').toLowerCase().includes(_qMsg);
               }))
         : [];
 
@@ -6071,7 +6071,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         ? messageMatches[Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1))].id
         : null;
 
-      const visibleChatMessages = (isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media') ? baseByType : chatMessages;
+      const visibleChatMessages = ((isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media') ? baseByType : (chatMessages || [])).filter(Boolean);
 
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
         if (e) e.preventDefault();
@@ -9159,8 +9159,8 @@ setSelfDestruct(false);
                               <div className="p-6 rounded-2xl border border-dashed border-neutral-800 text-center text-sm text-neutral-500 bg-neutral-950/60">Keine Medien gefunden.</div>
                             ) : (
                               <div className="grid grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
-                                {mediaSearchResults.map((item) => {
-                                  const absoluteIndex = chatMediaItems.findIndex((x) => String(x.id) === String(item.id));
+                                {mediaSearchResults.filter(Boolean).map((item) => {
+                                  const absoluteIndex = (chatMediaItems || []).findIndex((x) => x && String(x.id) === String(item.id));
                                   return (
                                     <button key={item.id} type="button" onClick={() => openChatMediaViewer(Math.max(0, absoluteIndex))} className="group relative aspect-square overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
                                       <img src={item.src} alt="Medium" className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" />
@@ -9177,8 +9177,9 @@ setSelfDestruct(false);
                         )}
 
                         {(isMessageSearchOpen && messageSearchFilter === 'media') ? null : visibleChatMessages.map((msg) => {
-                          const isMe = msg.senderId === user?.uid;
-                          const showActions = selectedMessageId === msg.id;
+                          if (!msg) return null;
+                          const isMe = msg?.senderId === user?.uid;
+                          const showActions = selectedMessageId === msg?.id;
                           
                           return (
                             <div key={msg.id} id={`msg-${msg.id}`} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
@@ -9194,10 +9195,10 @@ setSelfDestruct(false);
                                 )}
                                 {!msg.deleted && msg.replyTo && (
                                   (() => {
-                                    const refId = msg.replyTo.id;
-                                    const refMsg = refId ? (chatMessages || []).find(m => m.id === refId) : null;
-                                    const label = senderLabelFromId(refMsg.senderId || msg.replyTo.senderId);
-                                    const preview = (refMsg ? messagePreviewText(refMsg) : String(msg.replyTo.preview || '').trim()) || '-';
+                                    const refId = msg.replyTo?.id;
+                                    const refMsg = refId ? (chatMessages || []).find(m => m && m.id === refId) : null;
+                                    const label = senderLabelFromId(refMsg?.senderId || msg.replyTo?.senderId);
+                                    const preview = (refMsg ? messagePreviewText(refMsg) : String(msg.replyTo?.preview || '').trim()) || '—';
                                     return (
                                       <button
                                         type="button"
@@ -9341,7 +9342,7 @@ setSelfDestruct(false);
                             <div className="min-w-0">
                               <div className="text-[10px] uppercase tracking-widest text-neutral-500">Zitieren</div>
                               <div className="truncate">
-                                <span className="text-neutral-300 font-semibold">{senderLabelFromId(replyToMessage.senderId)}</span>
+                                <span className="text-neutral-300 font-semibold">{senderLabelFromId(replyToMessage?.senderId)}</span>
                                 <span className="text-neutral-600 mx-2">•</span>
                                 <span className="text-neutral-400">{messagePreviewText(replyToMessage)}</span>
                               </div>
@@ -11179,12 +11180,12 @@ setSelfDestruct(false);
                 </div>
                 <div className="border-l border-neutral-900 min-h-0 flex flex-col bg-black/40">
                   <div className="p-4 border-b border-neutral-900 text-sm text-neutral-300">
-                    <div>{senderLabelFromId(chatMediaItems[chatMediaViewerIndex].senderId || '')}</div>
-                    <div className="text-xs text-neutral-500 mt-1">{chatMediaItems[chatMediaViewerIndex].timestamp ? new Date(chatMediaItems[chatMediaViewerIndex].timestamp).toLocaleString() : ''}</div>
-                    {chatMediaItems[chatMediaViewerIndex].text && <div className="mt-2 text-xs text-neutral-400 whitespace-pre-wrap">{chatMediaItems[chatMediaViewerIndex].text}</div>}
+                    <div>{senderLabelFromId(chatMediaItems[chatMediaViewerIndex]?.senderId || '')}</div>
+                    <div className="text-xs text-neutral-500 mt-1">{chatMediaItems[chatMediaViewerIndex]?.timestamp ? new Date(chatMediaItems[chatMediaViewerIndex]?.timestamp).toLocaleString() : ''}</div>
+                    {chatMediaItems[chatMediaViewerIndex]?.text && <div className="mt-2 text-xs text-neutral-400 whitespace-pre-wrap">{chatMediaItems[chatMediaViewerIndex]?.text}</div>}
                   </div>
                   <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-2 content-start">
-                    {chatMediaItems.map((item, idx) => (
+                    {(chatMediaItems || []).filter(Boolean).map((item, idx) => (
                       <button key={item.id} type="button" onClick={() => setChatMediaViewerIndex(idx)} className={`aspect-square rounded-xl overflow-hidden border ${idx === chatMediaViewerIndex ? 'border-white' : 'border-neutral-800'} bg-black`}>
                         <img src={item.src} alt="Medium Miniatur" className="w-full h-full object-cover" />
                       </button>

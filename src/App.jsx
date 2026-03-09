@@ -2592,20 +2592,15 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           return;
         }
 
-        const chatId = activeChat.id;
-        const switchedChat = lastResetChatIdRef.current !== chatId;
-        if (switchedChat) {
-          // Reset pagination + transient state only on real chat switch (prevents UI blinking on foreground/presence updates)
-          chatOldestCursorRef.current = null;
-          chatLoadedMoreRef.current = false;
-          chatAutoLoadLockRef.current = false;
-          setChatMessages([]);
-          setChatHasMore(false);
-          setChatLoadingMore(false);
-          setChatTotalCount(0);
-          setChatMediaItems([]);
-          lastResetChatIdRef.current = chatId;
-        }
+        // Reset pagination state when switching chats
+        chatOldestCursorRef.current = null;
+        chatLoadedMoreRef.current = false;
+        chatAutoLoadLockRef.current = false;
+        setChatMessages([]);
+        setChatHasMore(false);
+        setChatLoadingMore(false);
+        setChatTotalCount(0);
+        setChatMediaItems([]);
 
         const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
         const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));

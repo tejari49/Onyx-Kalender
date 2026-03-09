@@ -661,6 +661,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const chatOldestCursorRef = useRef(null);
       const chatLoadedMoreRef = useRef(false);
       const chatAutoLoadLockRef = useRef(false);
+      const lastResetChatIdRef = useRef(null);
       const CHAT_PAGE_SIZE = 25;
       const [chatHasMore, setChatHasMore] = useState(false);
       const [chatLoadingMore, setChatLoadingMore] = useState(false);
@@ -2586,16 +2587,27 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       // --- CHAT MESSAGES SYNC (Pagination: letzte 25 + Infinite Scroll nach oben) ---
       useEffect(() => {
-        if (!activeChat || !user) return;
+        if (!activeChat || !user) {
+          lastResetChatIdRef.current = null;
+          return;
+        }
 
-        // Reset pagination state when switching chats
-        chatOldestCursorRef.current = null;
-        chatLoadedMoreRef.current = false;
-        chatAutoLoadLockRef.current = false;
-        setChatHasMore(false);
-        setChatLoadingMore(false);
+        const chatId = activeChat.id;
+        const switchedChat = lastResetChatIdRef.current !== chatId;
+        if (switchedChat) {
+          // Reset pagination + transient state only on real chat switch (prevents UI blinking on foreground/presence updates)
+          chatOldestCursorRef.current = null;
+          chatLoadedMoreRef.current = false;
+          chatAutoLoadLockRef.current = false;
+          setChatMessages([]);
+          setChatHasMore(false);
+          setChatLoadingMore(false);
+          setChatTotalCount(0);
+          setChatMediaItems([]);
+          lastResetChatIdRef.current = chatId;
+        }
 
-        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
         const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
 
         const unsubscribeMessages = onSnapshot(latestQ, (snapshot) => {
@@ -9062,6 +9074,10 @@ setSelfDestruct(false);
 
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
+                      <div className="mb-4 px-2">
+                        <h3 className="text-sm md:text-base font-semibold text-white">Freunde hinzufügen & verwalten</h3>
+                        <p className="text-xs text-neutral-500 mt-1">Alles für Kontakte liegt jetzt direkt im Secret-Chat-Dashboard.</p>
+                      </div>
                       <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
                         <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
                         
@@ -11369,5 +11385,4 @@ setSelfDestruct(false);
 
 
 export default AmoledCalendarApp;
-
 

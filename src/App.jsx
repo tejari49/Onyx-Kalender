@@ -8345,7 +8345,7 @@ setSelfDestruct(false);
   const renderItem = (l) => {
     const url = makeShareUrl(l.id);
     const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '-';
-    const calName = (l.calName || (l.calId === 'default' ? 'Privat' : (customCalendars || []).find(c => c.id === l.calId).name) || 'Kalender');
+    const calName = (l.calName || (l.calId === 'default' ? 'Privat' : ((customCalendars || []).find(c => c.id === l.calId)?.name)) || 'Kalender');
     const prot = (l.protection || 'magic');
     const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magic-Link');
     return (

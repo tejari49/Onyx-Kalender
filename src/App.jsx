@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     import { 
       Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
-      Copy, Link2, History, UserMinus
+      Copy, Link2, History, UserMinus, UserPlus
     } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
@@ -2002,6 +2002,14 @@ const handleTouchEnd = () => {
 
       const pinnedChatIds = (userProfile && Array.isArray(userProfile?.pinnedChats)) ? userProfile?.pinnedChats : [];
       const hiddenChatIds = (userProfile && Array.isArray(userProfile?.hiddenChats)) ? userProfile?.hiddenChats : [];
+      const friendIds = (userProfile && Array.isArray(userProfile?.friends)) ? userProfile?.friends : [];
+      const removedFriendChats = (Array.isArray(myChats) ? myChats : []).filter((chat) => {
+        if (!chat || !chat.id || !Array.isArray(chat.participants) || chat.participants.length !== 2) return false;
+        if (!hiddenChatIds.includes(chat.id)) return false;
+        const otherUid = chat.participants.find(id => id !== user?.uid);
+        if (!otherUid) return false;
+        return !friendIds.includes(otherUid);
+      });
       const sortedMyChats = [...myChats]
         .filter(c => c && c.id && !hiddenChatIds.includes(c.id))
         .sort((a, b) => {
@@ -5812,7 +5820,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         if (existingChat) {
           // Track as friend (so user can manage/remove later)
           try {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+              friends: arrayUnion(targetUserId),
+              hiddenChats: arrayRemove(existingChat.id)
+            }, { merge: true });
             await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${targetProfile.displayName || targetProfile.username || targetProfile.email || shortId(targetUserId,6)}` });
           } catch (_) {}
           setActiveChat(existingChat);
@@ -5889,6 +5900,21 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           showToast('Freund entfernt');
         } catch (e) {
           console.warn('removeFriend failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const restoreFriend = async (friendUid, chatId) => {
+        if (!user || !friendUid || !chatId) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            friends: arrayUnion(friendUid),
+            hiddenChats: arrayRemove(chatId)
+          }, { merge: true });
+          await writeAudit({ calId: 'default', action: 'friend.restore', targetType: 'friend', targetId: friendUid, summary: `Freund wiederhergestellt: ${getProfile(friendUid)?.displayName || getProfile(friendUid)?.username || shortId(friendUid,6)}` });
+          showToast('Freund wieder hinzugefügt');
+        } catch (e) {
+          console.warn('restoreFriend failed', e);
           showToast('Fehler');
         }
       };
@@ -9006,6 +9032,35 @@ setSelfDestruct(false);
                           <Users className="w-4 h-4" /> Gruppe erstellen
                         </button>
                       </div>
+                      {removedFriendChats.length > 0 && (
+                        <div className="mb-4 p-3 border border-amber-900/40 bg-amber-950/20 rounded-xl">
+                          <h4 className="text-[11px] uppercase tracking-widest text-amber-300 mb-2">Kürzlich entfernte Freunde</h4>
+                          <div className="space-y-2">
+                            {removedFriendChats.map((chat) => {
+                              const otherUid = Array.isArray(chat.participants) ? chat.participants.find(id => id !== user?.uid) : null;
+                              if (!otherUid) return null;
+                              const otherName = getProfile(otherUid)?.displayName || getProfile(otherUid)?.username || getProfile(otherUid)?.email || getChatPartnerName(chat);
+                              return (
+                                <div key={`restore_${chat.id}`} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-neutral-800 bg-black/40">
+                                  <div className="min-w-0">
+                                    <p className="text-sm text-white truncate">{otherName}</p>
+                                    <p className="text-[11px] text-neutral-500">Aus Versehen entfernt? Mit einem Tap wiederherstellen.</p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => restoreFriend(otherUid, chat.id)}
+                                    className="px-3 py-2 rounded-lg border border-emerald-900/40 bg-emerald-900/20 text-emerald-300 hover:bg-emerald-900/30 text-xs font-semibold flex items-center gap-1 shrink-0"
+                                    title="Freund wieder hinzufügen"
+                                  >
+                                    <UserPlus className="w-3.5 h-3.5" /> Wieder hinzufügen
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-4 font-semibold px-2">Verlauf</h4>
                       <div className="space-y-2">
                         {sortedMyChats.length === 0 ? (
@@ -11249,6 +11304,5 @@ setSelfDestruct(false);
 
 
 export default AmoledCalendarApp;
-
 
 

@@ -948,7 +948,8 @@ const persistAliasUsername = async (rawAlias) => {
     setAliasEditError('Speichern fehlgeschlagen');
   } finally {
     try { setAliasSaving(false); } catch (_) {}
-  };
+  }
+};
 const hasPasswordProvider = () => {
   try {
     const u = auth.currentUser;
@@ -1345,7 +1346,7 @@ useEffect(() => {
     try { unsub(); } catch(_) {}
     if (eventCommentsUnsubRef.current === unsub) eventCommentsUnsubRef.current = null;
   };
-}, [user?.uid, isModalOpen, showEventComments, eventToEdit.id, eventToEdit.calendarId]);
+}, [user?.uid, isModalOpen, showEventComments, eventToEdit?.id, eventToEdit?.calendarId]);
 const createPollForEvent = async () => {
   if (!user || !eventToEdit) return;
   const calId = eventToEdit.calendarId || 'default';
@@ -2135,7 +2136,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setMessageMatchIndex(0);
         setMessageSearchFilter('all');
         setIsChatMetaMenuOpen(false);
-      }, [activeChat.id, secretView]);
+      }, [activeChat?.id, secretView]);
 
       // Chat meta prefs: load/save (per user)
       useEffect(() => {
@@ -2658,7 +2659,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       useEffect(() => {
         let cancelled = false;
-        const chatId = activeChat.id;
+        const chatId = activeChat?.id;
         if (!chatId || !user) {
           setChatTotalCount(0);
           setChatMediaItems([]);
@@ -2703,7 +2704,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         };
         loadAllChatMeta();
         return () => { cancelled = true; };
-      }, [activeChat.id, activeChatData.messageCount, activeChatData.mediaCount, user?.uid]);
+      }, [activeChat?.id, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
 
       const loadMoreChatMessages = async () => {
         try {
@@ -3204,7 +3205,7 @@ const requestNotificationPermission = async (currentUser) => {
       };
 
       const toggleWorkClockPause = async () => {
-        if (!user || !workClockActive.startedAt) return;
+        if (!user || !workClockActive?.startedAt) return;
         const now = Date.now();
         let next = { ...(workClockActive || {}) };
         if (next.isPaused) {
@@ -3223,7 +3224,7 @@ const requestNotificationPermission = async (currentUser) => {
       };
 
       const requestStopWorkClock = () => {
-        if (!workClockActive.startedAt) return;
+        if (!workClockActive?.startedAt) return;
         const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
         setWorkClockDraftUsePreset(true);
         setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
@@ -3239,7 +3240,7 @@ const requestNotificationPermission = async (currentUser) => {
       };
 
       const finishWorkClock = async () => {
-        if (!user || !workClockActive.startedAt) return;
+        if (!user || !workClockActive?.startedAt) return;
         try {
           setWorkClockSaving(true);
           const now = Date.now();
@@ -3247,14 +3248,14 @@ const requestNotificationPermission = async (currentUser) => {
           const pauseMs = Number(workClockActive.pausedAccumulatedMs || 0) + ((workClockActive.isPaused && workClockActive.pauseStartedAt) ? Math.max(0, now - Number(workClockActive.pauseStartedAt || now)) : 0);
           const finalTitle = String(workClockDraftTitle || '').trim() || 'Arbeit';
           const payload = {
-            startedAt: Number(workClockActive.startedAt || now),
+            startedAt: Number(workClockActive?.startedAt || now),
             endedAt: now,
             workMs: workedMs,
             pauseMs,
-            totalMs: Math.max(0, now - Number(workClockActive.startedAt || now)),
+            totalMs: Math.max(0, now - Number(workClockActive?.startedAt || now)),
             title: finalTitle,
             level: String(workClockDraftLevel || 'mittel'),
-            dateKey: localDateKey(workClockActive.startedAt || now),
+            dateKey: localDateKey(workClockActive?.startedAt || now),
             createdAt: Date.now(),
             updatedAt: now,
           };
@@ -3619,7 +3620,7 @@ const requestNotificationPermission = async (currentUser) => {
 
       useEffect(() => {
         if (activeShoppingListId) return;
-        if (shoppingLists[0].id) setActiveShoppingListId(shoppingLists[0].id);
+        if (shoppingLists[0]?.id) setActiveShoppingListId(shoppingLists[0].id);
       }, [shoppingLists, activeShoppingListId]);
 
       function getHourlyIndexesForDay(dayStr) {
@@ -3945,7 +3946,7 @@ const requestNotificationPermission = async (currentUser) => {
 
       // --- IN-APP CHAT PING (SOUND / VIBRATION) ---
       useEffect(() => { try { userProfileRef.current = userProfile; } catch(_) {} }, [userProfile]);
-      useEffect(() => { try { activeChatIdRef.current = activeChat.id || null; } catch(_) {} }, [activeChat]);
+      useEffect(() => { try { activeChatIdRef.current = activeChat?.id || null; } catch(_) {} }, [activeChat]);
       useEffect(() => { try { currentViewRef.current = currentView; } catch(_) {} }, [currentView]);
 
       const ensureAudioContext = () => {
@@ -6420,16 +6421,16 @@ setSelfDestruct(false);
         const paused = Number(state.pausedAccumulatedMs || 0) + ((state.isPaused && state.pauseStartedAt) ? Math.max(0, now - Number(state.pauseStartedAt || now)) : 0);
         return Math.max(0, base - paused);
       };
-      const focusRemainingMs = focusState.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
+      const focusRemainingMs = focusState?.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
       const startFocusMode = () => {
         const now = Date.now();
         setFocusState({ startedAt: now, durationMin: Number(focusDurationMin || 25), isPaused: false, pausedAccumulatedMs: 0, pauseStartedAt: null });
         showToast('Fokus gestartet');
       };
       const toggleFocusPause = () => {
-        if (!focusState.startedAt) return;
+        if (!focusState?.startedAt) return;
         const now = Date.now();
-        if (focusState.isPaused) {
+        if (focusState?.isPaused) {
           setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev.pauseStartedAt || now)), pauseStartedAt: null }));
           showToast('Fokus weitergeführt');
         } else {
@@ -6439,20 +6440,20 @@ setSelfDestruct(false);
       };
       const stopFocusMode = (markDone = false) => {
         try {
-          if (markDone && focusState.startedAt) {
+          if (markDone && focusState?.startedAt) {
             const finishedAt = Date.now();
             const elapsedMs = getFocusElapsedMs(focusState, finishedAt);
-            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
+            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState?.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
           }
         } catch (_) {}
         setFocusState(null);
         if (markDone) showToast('Fokusblock gespeichert');
       };
       useEffect(() => {
-        if (focusState.startedAt && !focusState.isPaused && focusRemainingMs === 0) {
+        if (focusState?.startedAt && !focusState?.isPaused && focusRemainingMs === 0) {
           stopFocusMode(true);
         }
-      }, [focusRemainingMs, focusState.startedAt, focusState.isPaused]);
+      }, [focusRemainingMs, focusState?.startedAt, focusState?.isPaused]);
 
       if (!isAppReady) {
         return (
@@ -6701,7 +6702,7 @@ setSelfDestruct(false);
         }
         return freeWindowText;
       })();
-      const focusTodayMs = (focusHistory || []).filter((x) => localDateKey(x.startedAt || Date.now()) === todayDateStr).reduce((sum, x) => sum + Number(x.elapsedMs || 0), 0) + (focusState.startedAt ? getFocusElapsedMs(focusState, focusTick) : 0);
+      const focusTodayMs = (focusHistory || []).filter((x) => localDateKey(x.startedAt || Date.now()) === todayDateStr).reduce((sum, x) => sum + Number(x.elapsedMs || 0), 0) + (focusState?.startedAt ? getFocusElapsedMs(focusState, focusTick) : 0);
       const bestWeatherWindow = (() => {
         try {
           const times = hourlyForecast.time || [];
@@ -6887,8 +6888,8 @@ setSelfDestruct(false);
                   </button>
                   <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
                     <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
-                    <div className="text-lg font-semibold text-white">{workClockActive.startedAt ? 'Aktiv' : 'Inaktiv'}</div>
-                    <div className="mt-1 text-xs text-neutral-500">{workClockActive.startedAt ? formatDurationCompact(activeWorkMs) : `Heute ${formatDurationCompact(todayWorkMs)}`}</div>
+                    <div className="text-lg font-semibold text-white">{workClockActive?.startedAt ? 'Aktiv' : 'Inaktiv'}</div>
+                    <div className="mt-1 text-xs text-neutral-500">{workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : `Heute ${formatDurationCompact(todayWorkMs)}`}</div>
                   </button>
                   <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
                     <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Tagesziele</div>
@@ -7596,11 +7597,11 @@ setSelfDestruct(false);
                   <>
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       <div>
-                        <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{workClockActive.startedAt ? (workClockActive.isPaused ? 'Pause aktiv - Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
+                        <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
+                        <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive.isPaused ? 'Pause aktiv - Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {!workClockActive.startedAt ? (
+                        {!workClockActive?.startedAt ? (
                           <button onClick={startWorkClock} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
                         ) : (
                           <>
@@ -7643,8 +7644,8 @@ setSelfDestruct(false);
                   <>
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="text-xl font-semibold text-white">{focusState.startedAt ? formatDurationCompact(focusRemainingMs) : `${focusDurationMin} Min.`}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{focusState.startedAt ? (focusState.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block läuft') : 'Starte einen Fokusblock für ruhiges Arbeiten.'}</div>
+                        <div className="text-xl font-semibold text-white">{focusState?.startedAt ? formatDurationCompact(focusRemainingMs) : `${focusDurationMin} Min.`}</div>
+                        <div className="mt-2 text-sm text-neutral-400">{focusState?.startedAt ? (focusState?.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block läuft') : 'Starte einen Fokusblock für ruhiges Arbeiten.'}</div>
                       </div>
                       <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-sm text-neutral-300">Heute {formatDurationVerbose(focusTodayMs)}</div>
                     </div>
@@ -7654,11 +7655,11 @@ setSelfDestruct(false);
                       <option value="90">90 Minuten</option>
                     </select>
                     <div className="flex flex-wrap gap-2">
-                      {!focusState.startedAt ? (
+                      {!focusState?.startedAt ? (
                         <button onClick={startFocusMode} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Fokus starten</button>
                       ) : (
                         <>
-                          <button onClick={toggleFocusPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{focusState.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{focusState.isPaused ? 'Weiter' : 'Pause'}</button>
+                          <button onClick={toggleFocusPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{focusState?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{focusState?.isPaused ? 'Weiter' : 'Pause'}</button>
                           <button onClick={() => stopFocusMode(true)} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">Als Fokusblock speichern</button>
                         </>
                       )}
@@ -11215,10 +11216,7 @@ setSelfDestruct(false);
     }
 
 
-}
 export default AmoledCalendarApp;
-
-
 
 
 

@@ -2576,7 +2576,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       useEffect(() => {
         if (!user || customCalendars.length === 0) return;
         
-        const unsubscribes = customCalendars.map(cal => {
+        const unsubscribes = (customCalendars||[]).filter(Boolean).map(cal => {
            const calEventsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', cal.id, 'events');
            return onSnapshot(query(calEventsRef), (snapshot) => {
               const evts = [];
@@ -6875,7 +6875,7 @@ setSelfDestruct(false);
                     </label>
                     <button onClick={() => setActiveCalendarId('default')} className={`w-3 h-3 rounded-full ${activeCalendarId === 'default' ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-transparent border border-neutral-600 group-hover:border-white'}`} title="Als aktiven Kalender setzen"></button>
                  </div>
-                 {customCalendars.map(cal => (
+                 {(customCalendars||[]).filter(Boolean).map(cal => (
                    <div key={cal.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-neutral-900/50 transition-colors group">
                       <label className="flex items-center gap-3 cursor-pointer flex-1 overflow-hidden">
                         <input type="checkbox" checked={visibleCalendars.includes(cal.id)} onChange={() => toggleCalendarVisibility(cal.id)} className="appearance-none w-4 h-4 border border-neutral-600 rounded-sm checked:bg-white checked:border-white transition-colors cursor-pointer shrink-0" />
@@ -7013,7 +7013,7 @@ setSelfDestruct(false);
                       <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: calendarTint('default') }} />
                       Privat
                     </button>
-                    {customCalendars.map(cal => (
+                    {(customCalendars||[]).filter(Boolean).map(cal => (
                       <button
                         key={cal.id}
                         type="button"
@@ -7029,7 +7029,7 @@ setSelfDestruct(false);
                   <div className="flex items-center gap-2 overflow-x-auto no-scrollbar mt-2">
                     <span className="text-[10px] text-neutral-500 uppercase font-semibold mr-1 shrink-0">Aktiv:</span>
                     <button onClick={() => setActiveCalendarId('default')} className={`shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${activeCalendarId === 'default' ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'}`}>Privat</button>
-                    {customCalendars.map(cal => (
+                    {(customCalendars||[]).filter(Boolean).map(cal => (
                       <button key={cal.id} onClick={() => setActiveCalendarId(cal.id)} className={`shrink-0 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${activeCalendarId === cal.id ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800'}`}>{cal.name}</button>
                     ))}
                   </div>
@@ -7111,7 +7111,7 @@ setSelfDestruct(false);
                               }}
                               className="bg-black border border-neutral-700 text-white text-xs rounded-md px-2 py-1.5 focus:outline-none"
                            >
-                              {activeCalForView.shifts.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                              {(activeCalForView?.shifts||[]).filter(Boolean).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                               <option value="delete">Frei / LÃ¶schen</option>
                            </select>
                         )}
@@ -8024,7 +8024,7 @@ SpÃ¤ter
                     </div>
                   </div>
 
-                  {customCalendars.filter(c => c.ownerId === user?.uid).map(cal => (
+                  {(customCalendars||[]).filter(Boolean).filter(c => c.ownerId === user?.uid).map(cal => (
                     <div key={cal.id} className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <p className="font-medium text-white flex items-center gap-2">{cal.name} {cal.type==='shift' && <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-900/50 px-2 py-0.5 rounded-full uppercase">Schichtplan</span>}</p>
@@ -8038,7 +8038,7 @@ SpÃ¤ter
                       </div>
                     </div>
                   ))}
-                  {customCalendars.filter(c => c.ownerId !== user?.uid).map(cal => (
+                  {(customCalendars||[]).filter(Boolean).filter(c => c.ownerId !== user?.uid).map(cal => (
                     <div key={cal.id} className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between opacity-80">
                       <div>
                         <p className="font-medium text-white flex items-center gap-2">{cal.name} <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Geteilt mit dir</span></p>
@@ -11074,7 +11074,7 @@ SpÃ¤ter
                    <p className="text-neutral-500 text-xs text-center mb-4 border-b border-neutral-800 pb-3">{new Date(shiftModalData.dateStr).toLocaleDateString('de-DE')}</p>
                    
                    <div className="space-y-2 max-h-[50vh] overflow-y-auto no-scrollbar">
-                      {shiftModalData.shifts.map(s => (
+                      {(shiftModalData?.shifts||[]).filter(Boolean).map(s => (
                          <button key={s.id} onClick={() => handleShiftModalSelect(s)} className="w-full py-3 rounded-xl text-sm font-semibold text-black transition-transform active:scale-95 shadow-sm" style={{backgroundColor: s.color}}>
                             {s.name} <span className="font-normal opacity-70 ml-2">{s.time}</span>
                          </button>

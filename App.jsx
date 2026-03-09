@@ -625,7 +625,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
-      const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : '');
+      const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? (user?.email?.split('@')[0] || '') : '');
       const todayKey = new Date().toISOString().split('T')[0];
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
@@ -1318,7 +1318,7 @@ const sendEventComment = async () => {
 
   try {
     const ref = collection(eventDocRefFor(calId, eventToEdit.id), 'comments');
-    const senderName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : 'User');
+    const senderName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? (user?.email?.split('@')[0] || 'User') : 'User');
     await addDoc(ref, {
       text: txt,
       senderId: user?.uid,
@@ -4072,7 +4072,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=36`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=38`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -5859,7 +5859,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
 
         try {
-          const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? user?.email.split('@')[0] : 'Ich'));
+          const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? (user?.email?.split('@')[0] || 'Ich') : 'Ich'));
           const otherName = (targetProfile?.displayName || targetProfile?.username || targetProfile?.email || 'Kontakt');
           const displayNames = { [user?.uid]: meName, [targetUserId]: otherName };
 

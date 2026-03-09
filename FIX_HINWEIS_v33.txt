@@ -1,0 +1,17 @@
+Onyx Kalender Fix v33
+
+Behoben:
+- Schwarzer Screen nach Login durch unsicheren Zugriff auf userProfile.weatherLocation.name/lat/lon
+- Zusätzliche Absicherung bei email.split(...)
+- Zusätzliche Absicherung bei hourlyForecast.time.length
+- Service Worker Cache-Version erhöht, damit neue Dateien sauber übernommen werden
+
+Wichtige Änderungen:
+- BUILD_VERSION: v33
+- Service Worker URL: firebase-messaging-sw.js?v=38
+- CACHE_NAME: onyx-v38
+
+Nach Deploy:
+- Browser hart neu laden
+- Falls nötig: Seite öffnen -> DevTools -> Application -> Service Workers -> Unregister
+- Danach Seite neu laden und erneut einloggen

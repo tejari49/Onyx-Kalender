@@ -263,7 +263,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 
 // ===== Build marker (v10) =====
-const BUILD_VERSION = 'v32';
+const BUILD_VERSION = 'v33';
 console.log(`[Onyx-Kalender] build ${BUILD_VERSION} loaded @`, new Date().toISOString()); // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
   try {
@@ -613,7 +613,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
-      const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : '');
+      const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? (user?.email?.split('@')[0] || '') : '');
       const todayKey = new Date().toISOString().split('T')[0];
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
@@ -1295,7 +1295,7 @@ const sendEventComment = async () => {
 
   try {
     const ref = collection(eventDocRefFor(calId, eventToEdit.id), 'comments');
-    const senderName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : 'User');
+    const senderName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? (user?.email?.split('@')[0] || 'User') : 'User');
     await addDoc(ref, {
       text: txt,
       senderId: user?.uid,
@@ -3647,7 +3647,7 @@ const requestNotificationPermission = async (currentUser) => {
           if (!Array.isArray(hourlyForecast?.time)) return [];
           const key = String(dayStr || '').slice(0, 10);
           const idxs = [];
-          for (let i = 0; i < hourlyForecast?.time.length; i++) {
+          for (let i = 0; i < (hourlyForecast?.time?.length || 0); i++) {
             if (String(hourlyForecast?.time[i]).slice(0, 10) === key) idxs.push(i);
           }
           return idxs;
@@ -3675,7 +3675,7 @@ const requestNotificationPermission = async (currentUser) => {
           if (!Number.isFinite(ts) || !Array.isArray(hourlyForecast?.time)) return '';
           let bestIdx = -1;
           let bestDiff = Infinity;
-          for (let i = 0; i < hourlyForecast?.time.length; i += 1) {
+          for (let i = 0; i < (hourlyForecast?.time?.length || 0); i += 1) {
             const hourTs = new Date(hourlyForecast?.time[i]).getTime();
             if (!Number.isFinite(hourTs)) continue;
             const diff = Math.abs(hourTs - ts);
@@ -3936,7 +3936,7 @@ const requestNotificationPermission = async (currentUser) => {
             && Number(location.lon || 0) === Number(nextLoc.lon || 0);
           if (!same) setLocation(nextLoc);
         } catch (_) {}
-      }, [userProfile?.weatherLocation.name, userProfile?.weatherLocation.lat, userProfile?.weatherLocation.lon]);
+      }, [userProfile?.weatherLocation?.name, userProfile?.weatherLocation?.lat, userProfile?.weatherLocation?.lon]);
 
       useEffect(() => {
         const mode = (themeMode === 'light') ? 'light' : 'dark';
@@ -4127,7 +4127,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=36`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=38`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -5812,7 +5812,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
 
         try {
-          const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? user?.email.split('@')[0] : 'Ich'));
+          const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? (user?.email?.split('@')[0] || 'Ich') : 'Ich'));
           const otherName = (targetProfile.displayName || targetProfile.username || targetProfile.email || 'Kontakt');
           const displayNames = { [user?.uid]: meName, [targetUserId]: otherName };
 
@@ -7486,7 +7486,7 @@ setSelfDestruct(false);
                         const bought = normalizeShoppingItems(list.items).filter((item) => item.done).length;
                         const total = normalizeShoppingItems(list.items).length;
                         return (
-                          <button key={list.id} onClick={() => setActiveShoppingListId(list.id)} className={`w-full text-left rounded-2xl border p-4 transition-colors ${activeShoppingList?.id === list.id ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500 bg-black/40'}`}>
+                          <button key={list.id} onClick={() => setActiveShoppingListId(list.id)} className={`w-full text-left rounded-2xl border p-4 transition-colors ${activeShoppingList.id === list.id ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500 bg-black/40'}`}>
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="font-semibold text-white truncate">{list.title}</div>
@@ -8826,7 +8826,7 @@ setSelfDestruct(false);
                   {!userProfile ? (
                     <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">Identität festlegen</h3><p className="text-sm text-neutral-500 mb-6">Wähle einen einzigartigen Benutzernamen.</p>
                     <form onSubmit={saveUsername}>
-                      <input type="text" name="username" defaultValue={userProfile?.displayName || userProfile?.username || user?.email.split('@')[0] || ''} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
+                      <input type="text" name="username" defaultValue={userProfile?.displayName || userProfile?.username || user?.email?.split('@')[0] || ''} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
                       <div className="flex items-center justify-between text-xs text-neutral-500 mb-4">
                         <div>Deine Chat-ID:</div>
                         <div className="flex items-center gap-2">
@@ -9710,7 +9710,7 @@ setSelfDestruct(false);
                                     try {
                                       const dayStr = String(d).slice(0, 10);
                                       const idxs = [];
-                                      for (let k = 0; k < hourlyForecast?.time.length; k++) {
+                                      for (let k = 0; k < (hourlyForecast?.time?.length || 0); k++) {
                                         if (String(hourlyForecast?.time[k]).slice(0, 10) === dayStr) idxs.push(k);
                                       }
                                       return idxs.slice(0, 8).map((k) => (

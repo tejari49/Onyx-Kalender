@@ -31,39 +31,48 @@ import React, { useState, useEffect, useRef } from 'react';
     const DEFAULT_EXTRAS_ORDER = ['smartday','workclock','focus','week','freewindows','goals','sollist','notes','weather'];
 
     function normalizeShoppingItems(input) {
-      const rows = Array.isArray(input) ? input : [];
-      return rows.map((item, idx) => ({
-        id: String(item.id || `item_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
-        text: String(item.text || ''),
-        qty: String(item.qty || ''),
-        price: item.price === 0 ? '0' : String(item.price || ''),
-        done: item.done === true,
-        checkedAt: Number(item.checkedAt || 0) || 0,
-      }));
+      const rows = Array.isArray(input) ? input.filter(Boolean) : [];
+      return rows.map((item, idx) => {
+        const safeItem = item && typeof item === 'object' ? item : {};
+        return {
+          id: String(safeItem.id || `item_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
+          text: String(safeItem.text || ''),
+          qty: String(safeItem.qty || ''),
+          price: safeItem.price === 0 ? '0' : String(safeItem.price || ''),
+          done: safeItem.done === true,
+          checkedAt: Number(safeItem.checkedAt || 0) || 0,
+        };
+      });
     }
 
     function normalizeShoppingLists(input) {
-      const rows = Array.isArray(input) ? input : [];
-      return rows.map((list, idx) => ({
-        id: String(list.id || `shop_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
-        title: String(list.title || 'Einkaufsliste'),
-        store: String(list.store || ''),
-        createdAt: Number(list.createdAt || Date.now()) || Date.now(),
-        updatedAt: Number(list.updatedAt || Date.now()) || Date.now(),
-        items: normalizeShoppingItems(list.items),
-        purchases: normalizeShoppingPurchases(list.purchases),
-      })).sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+      const rows = Array.isArray(input) ? input.filter(Boolean) : [];
+      return rows.map((list, idx) => {
+        const safeList = list && typeof list === 'object' ? list : {};
+        return {
+          id: String(safeList.id || `shop_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
+          title: String(safeList.title || 'Einkaufsliste'),
+          store: String(safeList.store || ''),
+          createdAt: Number(safeList.createdAt || Date.now()) || Date.now(),
+          updatedAt: Number(safeList.updatedAt || Date.now()) || Date.now(),
+          items: normalizeShoppingItems(safeList.items),
+          purchases: normalizeShoppingPurchases(safeList.purchases),
+        };
+      }).sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
     }
 
     function normalizeShoppingPurchases(input) {
-      const rows = Array.isArray(input) ? input : [];
-      return rows.map((entry, idx) => ({
-        id: String(entry.id || `pay_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
-        amount: Number(entry.amount || 0) || 0,
-        store: String(entry.store || ''),
-        paidAt: Number(entry.paidAt || Date.now()) || Date.now(),
-        note: String(entry.note || ''),
-      })).filter((entry) => Number.isFinite(entry.amount) && entry.amount > 0)
+      const rows = Array.isArray(input) ? input.filter(Boolean) : [];
+      return rows.map((entry, idx) => {
+        const safeEntry = entry && typeof entry === 'object' ? entry : {};
+        return {
+          id: String(safeEntry.id || `pay_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
+          amount: Number(safeEntry.amount || 0) || 0,
+          store: String(safeEntry.store || ''),
+          paidAt: Number(safeEntry.paidAt || Date.now()) || Date.now(),
+          note: String(safeEntry.note || ''),
+        };
+      }).filter((entry) => Number.isFinite(entry.amount) && entry.amount > 0)
         .sort((a, b) => Number(b.paidAt || 0) - Number(a.paidAt || 0));
     }
 
@@ -263,7 +272,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 
 // ===== Build marker (v10) =====
-const BUILD_VERSION = 'v34';
+const BUILD_VERSION = 'v35';
 console.log(`[Onyx-Kalender] build ${BUILD_VERSION} loaded @`, new Date().toISOString()); // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
   try {
@@ -6846,7 +6855,6 @@ setSelfDestruct(false);
                 {themeMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
             </div>
-            <ErrorBoundary onReset={() => { setCurrentView('dashboard'); setActiveChat(null); setSecretView('list'); }}>
                         {currentView === 'dashboard' && (
               <div className="p-5 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
                 <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
@@ -8717,7 +8725,6 @@ setSelfDestruct(false);
                 Keine Treffer für "{settingsQuery}".
               </div>
             )}
-            </ErrorBoundary>
           </main>
         </div>
       </div>
@@ -9410,8 +9417,7 @@ setSelfDestruct(false);
                   )}
                 </div>
               </div>
-              </ErrorBoundary>
-            )}
+              )}
           </main>
 
           

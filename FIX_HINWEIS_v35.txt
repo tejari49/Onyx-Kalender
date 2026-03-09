@@ -1,0 +1,8 @@
+Onyx-Kalender FIX v35
+
+Behoben:
+- Build-Fehler durch falsch platzierte ErrorBoundary-Tags in src/App.jsx / App.jsx entfernt
+- Crash "Cannot read properties of undefined (reading 'id')" in Einkaufslisten-Normalisierung behoben
+- normalizeShoppingLists / normalizeShoppingItems / normalizeShoppingPurchases gegen undefinierte Einträge abgesichert
+- Build-Version auf v35 erhöht
+- Service-Worker-Cache auf onyx-v39 erhöht

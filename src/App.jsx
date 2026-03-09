@@ -948,7 +948,8 @@ const persistAliasUsername = async (rawAlias) => {
     setAliasEditError('Speichern fehlgeschlagen');
   } finally {
     try { setAliasSaving(false); } catch (_) {}
-  };
+  }
+};
 const hasPasswordProvider = () => {
   try {
     const u = auth.currentUser;
@@ -1345,7 +1346,7 @@ useEffect(() => {
     try { unsub(); } catch(_) {}
     if (eventCommentsUnsubRef.current === unsub) eventCommentsUnsubRef.current = null;
   };
-}, [user?.uid, isModalOpen, showEventComments, eventToEdit.id, eventToEdit.calendarId]);
+}, [user?.uid, isModalOpen, showEventComments, eventToEdit?.id, eventToEdit?.calendarId]);
 const createPollForEvent = async () => {
   if (!user || !eventToEdit) return;
   const calId = eventToEdit.calendarId || 'default';
@@ -2135,7 +2136,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setMessageMatchIndex(0);
         setMessageSearchFilter('all');
         setIsChatMetaMenuOpen(false);
-      }, [activeChat.id, secretView]);
+      }, [activeChat?.id, secretView]);
 
       // Chat meta prefs: load/save (per user)
       useEffect(() => {
@@ -2658,7 +2659,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       useEffect(() => {
         let cancelled = false;
-        const chatId = activeChat.id;
+        const chatId = activeChat?.id;
         if (!chatId || !user) {
           setChatTotalCount(0);
           setChatMediaItems([]);
@@ -2703,7 +2704,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         };
         loadAllChatMeta();
         return () => { cancelled = true; };
-      }, [activeChat.id, activeChatData.messageCount, activeChatData.mediaCount, user?.uid]);
+      }, [activeChat?.id, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
 
       const loadMoreChatMessages = async () => {
         try {
@@ -3204,7 +3205,7 @@ const requestNotificationPermission = async (currentUser) => {
       };
 
       const toggleWorkClockPause = async () => {
-        if (!user || !workClockActive.startedAt) return;
+        if (!user || !workClockActive?.startedAt) return;
         const now = Date.now();
         let next = { ...(workClockActive || {}) };
         if (next.isPaused) {
@@ -3223,7 +3224,7 @@ const requestNotificationPermission = async (currentUser) => {
       };
 
       const requestStopWorkClock = () => {
-        if (!workClockActive.startedAt) return;
+        if (!workClockActive?.startedAt) return;
         const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
         setWorkClockDraftUsePreset(true);
         setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
@@ -3239,7 +3240,7 @@ const requestNotificationPermission = async (currentUser) => {
       };
 
       const finishWorkClock = async () => {
-        if (!user || !workClockActive.startedAt) return;
+        if (!user || !workClockActive?.startedAt) return;
         try {
           setWorkClockSaving(true);
           const now = Date.now();
@@ -3247,14 +3248,14 @@ const requestNotificationPermission = async (currentUser) => {
           const pauseMs = Number(workClockActive.pausedAccumulatedMs || 0) + ((workClockActive.isPaused && workClockActive.pauseStartedAt) ? Math.max(0, now - Number(workClockActive.pauseStartedAt || now)) : 0);
           const finalTitle = String(workClockDraftTitle || '').trim() || 'Arbeit';
           const payload = {
-            startedAt: Number(workClockActive.startedAt || now),
+            startedAt: Number(workClockActive?.startedAt || now),
             endedAt: now,
             workMs: workedMs,
             pauseMs,
-            totalMs: Math.max(0, now - Number(workClockActive.startedAt || now)),
+            totalMs: Math.max(0, now - Number(workClockActive?.startedAt || now)),
             title: finalTitle,
             level: String(workClockDraftLevel || 'mittel'),
-            dateKey: localDateKey(workClockActive.startedAt || now),
+            dateKey: localDateKey(workClockActive?.startedAt || now),
             createdAt: Date.now(),
             updatedAt: now,
           };
@@ -3619,16 +3620,16 @@ const requestNotificationPermission = async (currentUser) => {
 
       useEffect(() => {
         if (activeShoppingListId) return;
-        if (shoppingLists[0].id) setActiveShoppingListId(shoppingLists[0].id);
+        if (shoppingLists[0]?.id) setActiveShoppingListId(shoppingLists[0].id);
       }, [shoppingLists, activeShoppingListId]);
 
       function getHourlyIndexesForDay(dayStr) {
         try {
-          if (!Array.isArray(hourlyForecast.time)) return [];
+          if (!Array.isArray(hourlyForecast?.time)) return [];
           const key = String(dayStr || '').slice(0, 10);
           const idxs = [];
-          for (let i = 0; i < hourlyForecast.time.length; i++) {
-            if (String(hourlyForecast.time[i]).slice(0, 10) === key) idxs.push(i);
+          for (let i = 0; i < hourlyForecast?.time.length; i++) {
+            if (String(hourlyForecast?.time[i]).slice(0, 10) === key) idxs.push(i);
           }
           return idxs;
         } catch (_) { return []; }
@@ -3652,11 +3653,11 @@ const requestNotificationPermission = async (currentUser) => {
 
       function getWeatherHintForTimestamp(ts) {
         try {
-          if (!Number.isFinite(ts) || !Array.isArray(hourlyForecast.time)) return '';
+          if (!Number.isFinite(ts) || !Array.isArray(hourlyForecast?.time)) return '';
           let bestIdx = -1;
           let bestDiff = Infinity;
-          for (let i = 0; i < hourlyForecast.time.length; i += 1) {
-            const hourTs = new Date(hourlyForecast.time[i]).getTime();
+          for (let i = 0; i < hourlyForecast?.time.length; i += 1) {
+            const hourTs = new Date(hourlyForecast?.time[i]).getTime();
             if (!Number.isFinite(hourTs)) continue;
             const diff = Math.abs(hourTs - ts);
             if (diff < bestDiff) {
@@ -3665,8 +3666,8 @@ const requestNotificationPermission = async (currentUser) => {
             }
           }
           if (bestIdx < 0 || bestDiff > (3 * 60 * 60 * 1000)) return '';
-          const rainProb = Number(hourlyForecast.precipitation_probability?.[bestIdx] ?? 0);
-          const wind = Number(hourlyForecast.windspeed_10m?.[bestIdx] ?? weather.windspeed ?? 0);
+          const rainProb = Number(hourlyForecast?.precipitation_probability?.[bestIdx] ?? 0);
+          const wind = Number(hourlyForecast?.windspeed_10m?.[bestIdx] ?? weather?.windspeed ?? 0);
           if (rainProb >= 55 && wind >= 30) return ' • Wetter: Regen + Wind - Schirm/Regenjacke';
           if (rainProb >= 55) return ' • Wetter: Regen möglich - Schirm mitnehmen';
           if (wind >= 35) return ' • Wetter: windig - Jacke einplanen';
@@ -3678,15 +3679,15 @@ const requestNotificationPermission = async (currentUser) => {
 
       function getWeatherAdviceForDay(dayIndex = 0) {
         try {
-          const dayStr = dailyForecast.time?.[dayIndex];
+          const dayStr = dailyForecast?.time?.[dayIndex];
           if (!dayStr) return 'Wetterdaten werden geladen...';
 
-          const maxTemp = Math.round(dailyForecast.temperature_2m_max?.[dayIndex] ?? weather.temperature ?? 0);
-          const minTemp = Math.round(dailyForecast.temperature_2m_min?.[dayIndex] ?? weather.temperature ?? 0);
-          const rainProb = Math.round(dailyForecast.precipitation_probability_max?.[dayIndex] ?? 0);
-          const rainSum = Number(dailyForecast.precipitation_sum?.[dayIndex] ?? 0);
-          const windMax = Math.round(dailyForecast.windspeed_10m_max?.[dayIndex] ?? weather.windspeed ?? 0);
-          const dayCode = Number(dailyForecast.weathercode?.[dayIndex] ?? weather.weathercode ?? 0);
+          const maxTemp = Math.round(dailyForecast?.temperature_2m_max?.[dayIndex] ?? weather?.temperature ?? 0);
+          const minTemp = Math.round(dailyForecast?.temperature_2m_min?.[dayIndex] ?? weather?.temperature ?? 0);
+          const rainProb = Math.round(dailyForecast?.precipitation_probability_max?.[dayIndex] ?? 0);
+          const rainSum = Number(dailyForecast?.precipitation_sum?.[dayIndex] ?? 0);
+          const windMax = Math.round(dailyForecast?.windspeed_10m_max?.[dayIndex] ?? weather?.windspeed ?? 0);
+          const dayCode = Number(dailyForecast?.weathercode?.[dayIndex] ?? weather?.weathercode ?? 0);
 
           const getPartOfDayLabel = (hour) => {
             if (hour >= 5 && hour < 11) return 'am Morgen';
@@ -3709,39 +3710,39 @@ const requestNotificationPermission = async (currentUser) => {
             return 'eher ruhig';
           };
 
-          if (dayIndex === 0 && Array.isArray(hourlyForecast.time)) {
+          if (dayIndex === 0 && Array.isArray(hourlyForecast?.time)) {
             const now = new Date();
             const end = new Date(now.getTime() + (4 * 60 * 60 * 1000));
             const todayIdxs = getHourlyIndexesForDay(dayStr);
             const windowIdxs = todayIdxs.filter((idx) => {
-              const ts = new Date(hourlyForecast.time?.[idx] || 0).getTime();
+              const ts = new Date(hourlyForecast?.time?.[idx] || 0).getTime();
               return Number.isFinite(ts) && ts >= (now.getTime() - 60 * 1000) && ts <= end.getTime();
             });
 
             if (windowIdxs.length > 0) {
               const firstIdx = windowIdxs[0];
               const lastIdx = windowIdxs[windowIdxs.length - 1];
-              const untilLabel = formatHourLabel(hourlyForecast.time?.[lastIdx]);
-              const temps = windowIdxs.map((idx) => Number(hourlyForecast.temperature_2m?.[idx] ?? weather.temperature ?? 0));
-              const probs = windowIdxs.map((idx) => Number(hourlyForecast.precipitation_probability?.[idx] ?? 0));
-              const codes = windowIdxs.map((idx) => Number(hourlyForecast.weathercode?.[idx] ?? weather.weathercode ?? 0));
-              const winds = windowIdxs.map((idx) => Number(hourlyForecast.windspeed_10m?.[idx] ?? weather.windspeed ?? 0));
+              const untilLabel = formatHourLabel(hourlyForecast?.time?.[lastIdx]);
+              const temps = windowIdxs.map((idx) => Number(hourlyForecast?.temperature_2m?.[idx] ?? weather?.temperature ?? 0));
+              const probs = windowIdxs.map((idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0));
+              const codes = windowIdxs.map((idx) => Number(hourlyForecast?.weathercode?.[idx] ?? weather?.weathercode ?? 0));
+              const winds = windowIdxs.map((idx) => Number(hourlyForecast?.windspeed_10m?.[idx] ?? weather?.windspeed ?? 0));
               const tempMin4h = Math.round(Math.min(...temps));
               const tempMax4h = Math.round(Math.max(...temps));
               const maxRain4h = Math.round(Math.max(...probs));
               const maxWind4h = Math.round(Math.max(...winds));
-              const firstRainIdx4h = windowIdxs.find((idx) => Number(hourlyForecast.precipitation_probability?.[idx] ?? 0) >= 45);
-              const firstWindIdx4h = windowIdxs.find((idx) => Number(hourlyForecast.windspeed_10m?.[idx] ?? weather.windspeed ?? 0) >= 30);
+              const firstRainIdx4h = windowIdxs.find((idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 45);
+              const firstWindIdx4h = windowIdxs.find((idx) => Number(hourlyForecast?.windspeed_10m?.[idx] ?? weather?.windspeed ?? 0) >= 30);
               const mostlySunny = codes.filter((code) => isMostlySunnyCode(code)).length >= Math.ceil(windowIdxs.length * 0.6);
               const nowHour = now.getHours();
-              const laterHour = new Date(hourlyForecast.time?.[lastIdx] || now).getHours();
+              const laterHour = new Date(hourlyForecast?.time?.[lastIdx] || now).getHours();
               const nowPhase = getPartOfDayLabel(nowHour);
               const laterPhase = getPartOfDayLabel(laterHour);
 
               if (firstRainIdx4h != null) {
-                const rainProbAtStart = Math.round(Number(hourlyForecast.precipitation_probability?.[firstRainIdx4h] ?? maxRain4h));
+                const rainProbAtStart = Math.round(Number(hourlyForecast?.precipitation_probability?.[firstRainIdx4h] ?? maxRain4h));
                 const rainLabel = rainIntensityText(rainProbAtStart);
-                const rainTimeLabel = formatHourLabel(hourlyForecast.time?.[firstRainIdx4h]);
+                const rainTimeLabel = formatHourLabel(hourlyForecast?.time?.[firstRainIdx4h]);
                 const startsLater = firstRainIdx4h !== firstIdx;
                 if (startsLater) {
                   return `Bis ${rainTimeLabel} bleibt es meist trocken, danach ist ${rainLabel} möglich - Regenschirm mitnehmen.`;
@@ -3750,7 +3751,7 @@ const requestNotificationPermission = async (currentUser) => {
               }
 
               if (firstWindIdx4h != null && maxWind4h >= 30) {
-                const windTimeLabel = formatHourLabel(hourlyForecast.time?.[firstWindIdx4h]);
+                const windTimeLabel = formatHourLabel(hourlyForecast?.time?.[firstWindIdx4h]);
                 if (tempMin4h <= 11) {
                   return `Bis ${untilLabel} wird es ${windText(maxWind4h)} - ab ${windTimeLabel} lieber mit Jacke raus.`;
                 }
@@ -3773,16 +3774,16 @@ const requestNotificationPermission = async (currentUser) => {
             }
           }
 
-          const firstRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.precipitation_probability?.[idx] ?? 0) >= 55);
-          const firstStrongRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.precipitation_probability?.[idx] ?? 0) >= 75);
-          const firstCoolIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.temperature_2m?.[idx] ?? 99) <= 12);
-          const firstWarmIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast.temperature_2m?.[idx] ?? -99) >= 22);
+          const firstRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 55);
+          const firstStrongRainIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.precipitation_probability?.[idx] ?? 0) >= 75);
+          const firstCoolIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.temperature_2m?.[idx] ?? 99) <= 12);
+          const firstWarmIdx = findFirstHourMatch(dayStr, (idx) => Number(hourlyForecast?.temperature_2m?.[idx] ?? -99) >= 22);
           const morningIdx = findFirstHourMatch(dayStr, (idx) => {
-            const h = new Date(hourlyForecast.time?.[idx] || 0).getHours();
+            const h = new Date(hourlyForecast?.time?.[idx] || 0).getHours();
             return h >= 6 && h <= 10;
           });
           const afternoonIdx = findFirstHourMatch(dayStr, (idx) => {
-            const h = new Date(hourlyForecast.time?.[idx] || 0).getHours();
+            const h = new Date(hourlyForecast?.time?.[idx] || 0).getHours();
             return h >= 13 && h <= 17;
           });
           const morningTemp = morningIdx != null ? Math.round(hourlyForecast?.temperature_2m?.[morningIdx] ?? minTemp) : minTemp;
@@ -3790,13 +3791,13 @@ const requestNotificationPermission = async (currentUser) => {
 
           if (firstStrongRainIdx != null || rainProb >= 75 || rainSum >= 4) {
             const idx = firstStrongRainIdx != null ? firstStrongRainIdx : firstRainIdx;
-            const when = idx != null ? ` - ab ${formatHourLabel(hourlyForecast.time?.[idx])} ist kräftiger Regen möglich.` : '.';
+            const when = idx != null ? ` - ab ${formatHourLabel(hourlyForecast?.time?.[idx])} ist kräftiger Regen möglich.` : '.';
             return `Nimm einen Regenschirm mit${when}`;
           }
 
           if (firstRainIdx != null || rainProb >= 55 || rainSum >= 1.2) {
             const idx = firstRainIdx != null ? firstRainIdx : firstStrongRainIdx;
-            const when = idx != null ? ` - ab ${formatHourLabel(hourlyForecast.time?.[idx])} steigt die Regenchance.` : '.';
+            const when = idx != null ? ` - ab ${formatHourLabel(hourlyForecast?.time?.[idx])} steigt die Regenchance.` : '.';
             return `Leichte Regengefahr${when}`;
           }
 
@@ -3809,7 +3810,7 @@ const requestNotificationPermission = async (currentUser) => {
           }
 
           if (firstCoolIdx != null && maxTemp - minTemp >= 6) {
-            return `Zwiebellook lohnt sich - ab ${formatHourLabel(hourlyForecast.time?.[firstCoolIdx])} wird es spürbar kühler.`;
+            return `Zwiebellook lohnt sich - ab ${formatHourLabel(hourlyForecast?.time?.[firstCoolIdx])} wird es spürbar kühler.`;
           }
 
           if (windMax >= 35) {
@@ -3825,7 +3826,7 @@ const requestNotificationPermission = async (currentUser) => {
           }
 
           if ([0,1].includes(dayCode) && maxTemp >= 20 && firstWarmIdx != null) {
-            return `Freundliches Wetter - ab ${formatHourLabel(hourlyForecast.time?.[firstWarmIdx])} wird es angenehm mild.`;
+            return `Freundliches Wetter - ab ${formatHourLabel(hourlyForecast?.time?.[firstWarmIdx])} wird es angenehm mild.`;
           }
 
           return `Heute zwischen ${minTemp}° und ${maxTemp}° - insgesamt eher ruhiges Wetter.`;
@@ -3945,7 +3946,7 @@ const requestNotificationPermission = async (currentUser) => {
 
       // --- IN-APP CHAT PING (SOUND / VIBRATION) ---
       useEffect(() => { try { userProfileRef.current = userProfile; } catch(_) {} }, [userProfile]);
-      useEffect(() => { try { activeChatIdRef.current = activeChat.id || null; } catch(_) {} }, [activeChat]);
+      useEffect(() => { try { activeChatIdRef.current = activeChat?.id || null; } catch(_) {} }, [activeChat]);
       useEffect(() => { try { currentViewRef.current = currentView; } catch(_) {} }, [currentView]);
 
       const ensureAudioContext = () => {
@@ -6420,16 +6421,16 @@ setSelfDestruct(false);
         const paused = Number(state.pausedAccumulatedMs || 0) + ((state.isPaused && state.pauseStartedAt) ? Math.max(0, now - Number(state.pauseStartedAt || now)) : 0);
         return Math.max(0, base - paused);
       };
-      const focusRemainingMs = focusState.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
+      const focusRemainingMs = focusState?.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
       const startFocusMode = () => {
         const now = Date.now();
         setFocusState({ startedAt: now, durationMin: Number(focusDurationMin || 25), isPaused: false, pausedAccumulatedMs: 0, pauseStartedAt: null });
         showToast('Fokus gestartet');
       };
       const toggleFocusPause = () => {
-        if (!focusState.startedAt) return;
+        if (!focusState?.startedAt) return;
         const now = Date.now();
-        if (focusState.isPaused) {
+        if (focusState?.isPaused) {
           setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev.pauseStartedAt || now)), pauseStartedAt: null }));
           showToast('Fokus weitergeführt');
         } else {
@@ -6439,20 +6440,20 @@ setSelfDestruct(false);
       };
       const stopFocusMode = (markDone = false) => {
         try {
-          if (markDone && focusState.startedAt) {
+          if (markDone && focusState?.startedAt) {
             const finishedAt = Date.now();
             const elapsedMs = getFocusElapsedMs(focusState, finishedAt);
-            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
+            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState?.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
           }
         } catch (_) {}
         setFocusState(null);
         if (markDone) showToast('Fokusblock gespeichert');
       };
       useEffect(() => {
-        if (focusState.startedAt && !focusState.isPaused && focusRemainingMs === 0) {
+        if (focusState?.startedAt && !focusState?.isPaused && focusRemainingMs === 0) {
           stopFocusMode(true);
         }
-      }, [focusRemainingMs, focusState.startedAt, focusState.isPaused]);
+      }, [focusRemainingMs, focusState?.startedAt, focusState?.isPaused]);
 
       if (!isAppReady) {
         return (
@@ -6701,12 +6702,12 @@ setSelfDestruct(false);
         }
         return freeWindowText;
       })();
-      const focusTodayMs = (focusHistory || []).filter((x) => localDateKey(x.startedAt || Date.now()) === todayDateStr).reduce((sum, x) => sum + Number(x.elapsedMs || 0), 0) + (focusState.startedAt ? getFocusElapsedMs(focusState, focusTick) : 0);
+      const focusTodayMs = (focusHistory || []).filter((x) => localDateKey(x.startedAt || Date.now()) === todayDateStr).reduce((sum, x) => sum + Number(x.elapsedMs || 0), 0) + (focusState?.startedAt ? getFocusElapsedMs(focusState, focusTick) : 0);
       const bestWeatherWindow = (() => {
         try {
-          const times = hourlyForecast.time || [];
-          const rain = hourlyForecast.precipitation_probability || [];
-          const temps = hourlyForecast.temperature_2m || [];
+          const times = hourlyForecast?.time || [];
+          const rain = hourlyForecast?.precipitation_probability || [];
+          const temps = hourlyForecast?.temperature_2m || [];
           if (!times.length) return 'Aktuell keine 4h-Tendenz verfügbar';
           const now = Date.now();
           const next = times.map((t, i) => ({ t, idx: i, ms: Date.parse(t), rain: Number(rain?.[i] || 0), temp: Number(temps?.[i] || 0) })).filter(x => Number.isFinite(x.ms) && x.ms >= now).slice(0, 8);
@@ -6864,10 +6865,10 @@ setSelfDestruct(false);
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2 flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {location.name}</div>
-                        <div className="text-4xl font-light text-white">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</div>
+                        <div className="text-4xl font-light text-white">{weather ? `${Math.round(weather?.temperature)}°` : '--°'}</div>
                         <div className="mt-2 text-sm text-neutral-400 leading-relaxed">{todayWeatherAdvice}</div>
                       </div>
-                      <div className="shrink-0">{getWeatherIcon(weather.weathercode, "w-10 h-10 text-white")}</div>
+                      <div className="shrink-0">{getWeatherIcon(weather?.weathercode, "w-10 h-10 text-white")}</div>
                     </div>
                   </div>
                   <div className="border border-neutral-800 rounded-2xl bg-neutral-950/50 p-5">
@@ -6887,8 +6888,8 @@ setSelfDestruct(false);
                   </button>
                   <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
                     <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
-                    <div className="text-lg font-semibold text-white">{workClockActive.startedAt ? 'Aktiv' : 'Inaktiv'}</div>
-                    <div className="mt-1 text-xs text-neutral-500">{workClockActive.startedAt ? formatDurationCompact(activeWorkMs) : `Heute ${formatDurationCompact(todayWorkMs)}`}</div>
+                    <div className="text-lg font-semibold text-white">{workClockActive?.startedAt ? 'Aktiv' : 'Inaktiv'}</div>
+                    <div className="mt-1 text-xs text-neutral-500">{workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : `Heute ${formatDurationCompact(todayWorkMs)}`}</div>
                   </button>
                   <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
                     <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Tagesziele</div>
@@ -7596,11 +7597,11 @@ setSelfDestruct(false);
                   <>
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       <div>
-                        <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{workClockActive.startedAt ? (workClockActive.isPaused ? 'Pause aktiv - Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
+                        <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
+                        <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive.isPaused ? 'Pause aktiv - Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {!workClockActive.startedAt ? (
+                        {!workClockActive?.startedAt ? (
                           <button onClick={startWorkClock} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
                         ) : (
                           <>
@@ -7643,8 +7644,8 @@ setSelfDestruct(false);
                   <>
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="text-xl font-semibold text-white">{focusState.startedAt ? formatDurationCompact(focusRemainingMs) : `${focusDurationMin} Min.`}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{focusState.startedAt ? (focusState.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block läuft') : 'Starte einen Fokusblock für ruhiges Arbeiten.'}</div>
+                        <div className="text-xl font-semibold text-white">{focusState?.startedAt ? formatDurationCompact(focusRemainingMs) : `${focusDurationMin} Min.`}</div>
+                        <div className="mt-2 text-sm text-neutral-400">{focusState?.startedAt ? (focusState?.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block läuft') : 'Starte einen Fokusblock für ruhiges Arbeiten.'}</div>
                       </div>
                       <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-sm text-neutral-300">Heute {formatDurationVerbose(focusTodayMs)}</div>
                     </div>
@@ -7654,11 +7655,11 @@ setSelfDestruct(false);
                       <option value="90">90 Minuten</option>
                     </select>
                     <div className="flex flex-wrap gap-2">
-                      {!focusState.startedAt ? (
+                      {!focusState?.startedAt ? (
                         <button onClick={startFocusMode} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Fokus starten</button>
                       ) : (
                         <>
-                          <button onClick={toggleFocusPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{focusState.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{focusState.isPaused ? 'Weiter' : 'Pause'}</button>
+                          <button onClick={toggleFocusPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{focusState?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{focusState?.isPaused ? 'Weiter' : 'Pause'}</button>
                           <button onClick={() => stopFocusMode(true)} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">Als Fokusblock speichern</button>
                         </>
                       )}
@@ -9616,21 +9617,21 @@ setSelfDestruct(false);
 
                 <div className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
+                    <p className="text-4xl font-light">{weather ? `${Math.round(weather?.temperature)}°` : '--°'}</p>
                     <p className="text-xs text-neutral-500 mt-1">
-                      {weather ? `Wind ${Math.round(weather.windspeed || 0)} km/h` : 'Lade Daten...'}
+                      {weather ? `Wind ${Math.round(weather?.windspeed || 0)} km/h` : 'Lade Daten...'}
                     </p>
                     <p className="mt-3 text-sm text-neutral-300 leading-relaxed">{todayWeatherAdvice}</p>
                   </div>
                   <div className="shrink-0">
-                    {getWeatherIcon(weather.weathercode, "w-12 h-12 text-white")}
+                    {getWeatherIcon(weather?.weathercode, "w-12 h-12 text-white")}
                   </div>
                 </div>
 
                 <div className="mt-5">
                   <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Vorhersage</h4>
                   <div className="space-y-2">
-                    {(dailyForecast.time || []).slice(0, 7).map((d, i) => (
+                    {(dailyForecast?.time || []).slice(0, 7).map((d, i) => (
                       <div key={d} className="bg-black border border-neutral-800 rounded-xl overflow-hidden">
                         <button
                           type="button"
@@ -9640,19 +9641,19 @@ setSelfDestruct(false);
                           <div className="flex items-center gap-3">
                             <div className="w-10 text-[11px] font-semibold text-neutral-300">{formatDayName(d)}</div>
                             <div className="flex items-center gap-2">
-                              {getWeatherIcon(dailyForecast.weathercode?.[i], "w-5 h-5 text-white")}
+                              {getWeatherIcon(dailyForecast?.weathercode?.[i], "w-5 h-5 text-white")}
                               <span className="text-xs text-neutral-400">{new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-3">
                             <div className="hidden sm:flex items-center gap-2 text-[11px] text-neutral-400">
-                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">Regen {Math.round(dailyForecast.precipitation_probability_max?.[i] ?? 0)}%</span>
-                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">Wind {Math.round(dailyForecast.windspeed_10m_max?.[i] ?? 0)} km/h</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">Regen {Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}%</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">Wind {Math.round(dailyForecast?.windspeed_10m_max?.[i] ?? 0)} km/h</span>
                             </div>
                             <div className="text-sm tabular-nums">
-                              <span className="text-white">{Math.round(dailyForecast.temperature_2m_max?.[i] ?? 0)}°</span>
+                              <span className="text-white">{Math.round(dailyForecast?.temperature_2m_max?.[i] ?? 0)}°</span>
                               <span className="text-neutral-600 mx-1">/</span>
-                              <span className="text-neutral-400">{Math.round(dailyForecast.temperature_2m_min?.[i] ?? 0)}°</span>
+                              <span className="text-neutral-400">{Math.round(dailyForecast?.temperature_2m_min?.[i] ?? 0)}°</span>
                             </div>
                             <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform ${selectedForecastDay === i ? 'rotate-180' : ''}`} />
                           </div>
@@ -9663,24 +9664,24 @@ setSelfDestruct(false);
                             <div className="grid grid-cols-2 gap-2">
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Regen</div>
-                                <div className="mt-1 text-sm">{Math.round(dailyForecast.precipitation_probability_max?.[i] ?? 0)}% • {Math.round(dailyForecast.precipitation_sum?.[i] ?? 0)} mm</div>
+                                <div className="mt-1 text-sm">{Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}% • {Math.round(dailyForecast?.precipitation_sum?.[i] ?? 0)} mm</div>
                               </div>
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Wind</div>
-                                <div className="mt-1 text-sm">bis {Math.round(dailyForecast.windspeed_10m_max?.[i] ?? 0)} km/h</div>
+                                <div className="mt-1 text-sm">bis {Math.round(dailyForecast?.windspeed_10m_max?.[i] ?? 0)} km/h</div>
                               </div>
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Sonnenaufgang</div>
-                                <div className="mt-1 text-sm">{dailyForecast.sunrise?.[i] ? new Date(dailyForecast.sunrise[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
+                                <div className="mt-1 text-sm">{dailyForecast?.sunrise?.[i] ? new Date(dailyForecast?.sunrise[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
                               </div>
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Sonnenuntergang</div>
-                                <div className="mt-1 text-sm">{dailyForecast.sunset?.[i] ? new Date(dailyForecast.sunset[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
+                                <div className="mt-1 text-sm">{dailyForecast?.sunset?.[i] ? new Date(dailyForecast?.sunset[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
                               </div>
                             </div>
 
                             {/* Optional: mini hourly for this day (first ~8 hours) */}
-                            {Array.isArray(hourlyForecast.time) && (
+                            {Array.isArray(hourlyForecast?.time) && (
                               <div className="mt-3">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Stündlich</div>
                                 <div className="flex gap-2 overflow-x-auto no-scrollbar">
@@ -9688,14 +9689,14 @@ setSelfDestruct(false);
                                     try {
                                       const dayStr = String(d).slice(0, 10);
                                       const idxs = [];
-                                      for (let k = 0; k < hourlyForecast.time.length; k++) {
-                                        if (String(hourlyForecast.time[k]).slice(0, 10) === dayStr) idxs.push(k);
+                                      for (let k = 0; k < hourlyForecast?.time.length; k++) {
+                                        if (String(hourlyForecast?.time[k]).slice(0, 10) === dayStr) idxs.push(k);
                                       }
                                       return idxs.slice(0, 8).map((k) => (
-                                        <div key={hourlyForecast.time[k]} className="min-w-[64px] rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-2 text-center">
-                                          <div className="text-[11px] text-neutral-400">{new Date(hourlyForecast.time[k]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}</div>
-                                          <div className="mt-1 text-sm font-medium text-white tabular-nums">{Math.round(hourlyForecast.temperature_2m?.[k] ?? 0)}°</div>
-                          <div className="mt-1 text-[11px] text-neutral-400">Regen {Math.round(hourlyForecast.precipitation_probability?.[k] ?? 0)}%</div>
+                                        <div key={hourlyForecast?.time[k]} className="min-w-[64px] rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-2 text-center">
+                                          <div className="text-[11px] text-neutral-400">{new Date(hourlyForecast?.time[k]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}</div>
+                                          <div className="mt-1 text-sm font-medium text-white tabular-nums">{Math.round(hourlyForecast?.temperature_2m?.[k] ?? 0)}°</div>
+                          <div className="mt-1 text-[11px] text-neutral-400">Regen {Math.round(hourlyForecast?.precipitation_probability?.[k] ?? 0)}%</div>
                                         </div>
                                       ));
                                     } catch (_) { return null; }
@@ -11215,10 +11216,7 @@ setSelfDestruct(false);
     }
 
 
-}
 export default AmoledCalendarApp;
-
-
 
 
 

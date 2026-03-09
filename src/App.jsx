@@ -4541,7 +4541,9 @@ useEffect(() => {
 
       function getCalendarById(id) {
          if (id === 'default') return { id: 'default', name: 'Privat', type: 'normal', ownerId: user?.uid };
-         return customCalendars.find(c => c.id === id);
+         const cal = (customCalendars || []).find(c => c?.id === id);
+         if (cal) return cal;
+         return { id: id || 'unknown', name: 'Kalender', type: 'normal', ownerId: null };
       }
 
       const calendarTint = (calId) => {

@@ -9592,6 +9592,7 @@ SpÃ¤ter
                   )}
                 </div>
               </div>
+              </ErrorBoundary>
               )}
           </main>
 

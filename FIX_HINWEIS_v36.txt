@@ -1,0 +1,4 @@
+FIX v36
+ - JSX mismatch in secret chat fixed
+ - missing </ErrorBoundary> before </main> added
+ - resolves build error at src/App.jsx around line 9420

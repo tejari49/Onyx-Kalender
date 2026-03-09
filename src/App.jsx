@@ -9417,6 +9417,7 @@ setSelfDestruct(false);
                   )}
                 </div>
               </div>
+              </ErrorBoundary>
               )}
           </main>
 

@@ -3885,7 +3885,7 @@ const requestNotificationPermission = async (currentUser) => {
         try {
           // Open-Meteo: add richer daily details + hourly for nicer UI
           const res = await fetch(
-            `https://api.open-meteo.com/v1/forecastlatitude=${location.lat}&longitude=${location.lon}` +
+            `https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}` +
             `&current_weather=true` +
             `&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m` +
             `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,windspeed_10m_max,sunrise,sunset` +
@@ -4406,7 +4406,7 @@ const handleAuth = async (e) => {
         e.preventDefault();
         if (!searchQuery) return;
         try {
-          const res = await fetch(`https://geocoding-api.open-meteo.com/v1/searchname=${searchQuery}&count=5&language=de&format=json`);
+          const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${searchQuery}&count=5&language=de&format=json`);
           const data = await res.json();
           setSearchResults(data.results || []);
         } catch (error) {}
@@ -4541,7 +4541,9 @@ useEffect(() => {
 
       function getCalendarById(id) {
          if (id === 'default') return { id: 'default', name: 'Privat', type: 'normal', ownerId: user?.uid };
-         return customCalendars.find(c => c.id === id);
+         const cal = (customCalendars || []).find(c => c?.id === id);
+         if (cal) return cal;
+         return { id: id || 'unknown', name: 'Kalender', type: 'normal', ownerId: null };
       }
 
       const calendarTint = (calId) => {
@@ -8345,7 +8347,7 @@ setSelfDestruct(false);
   const renderItem = (l) => {
     const url = makeShareUrl(l.id);
     const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '-';
-    const calName = (l.calName || (l.calId === 'default' ? 'Privat' : (customCalendars || []).find(c => c.id === l.calId).name) || 'Kalender');
+    const calName = (l.calName || (l.calId === 'default' ? 'Privat' : ((customCalendars || []).find(c => c.id === l.calId)?.name)) || 'Kalender');
     const prot = (l.protection || 'magic');
     const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magic-Link');
     return (
@@ -11217,7 +11219,6 @@ setSelfDestruct(false);
 
 
 export default AmoledCalendarApp;
-
 
 
 

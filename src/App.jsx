@@ -661,6 +661,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const chatOldestCursorRef = useRef(null);
       const chatLoadedMoreRef = useRef(false);
       const chatAutoLoadLockRef = useRef(false);
+      const lastResetChatIdRef = useRef(null);
       const CHAT_PAGE_SIZE = 25;
       const [chatHasMore, setChatHasMore] = useState(false);
       const [chatLoadingMore, setChatLoadingMore] = useState(false);
@@ -2586,7 +2587,10 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       // --- CHAT MESSAGES SYNC (Pagination: letzte 25 + Infinite Scroll nach oben) ---
       useEffect(() => {
-        if (!activeChat || !user) return;
+        if (!activeChat || !user) {
+          lastResetChatIdRef.current = null;
+          return;
+        }
 
         // Reset pagination state when switching chats
         chatOldestCursorRef.current = null;
@@ -2598,7 +2602,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setChatTotalCount(0);
         setChatMediaItems([]);
 
-        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
         const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
 
         const unsubscribeMessages = onSnapshot(latestQ, (snapshot) => {

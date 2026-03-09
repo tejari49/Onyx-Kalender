@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
     import { 
       Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
@@ -263,7 +263,7 @@
 
 
 // ===== Build marker (v10) =====
-const BUILD_VERSION = 'v31';
+const BUILD_VERSION = 'v32';
 console.log(`[Onyx-Kalender] build ${BUILD_VERSION} loaded @`, new Date().toISOString()); // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
   try {
@@ -613,7 +613,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
-      const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user.email.split('@')[0] : '');
+      const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : '');
       const todayKey = new Date().toISOString().split('T')[0];
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
@@ -798,7 +798,7 @@ const openNewEventModal = (dateStr = null) => {
       activeCal &&
       activeCal.id !== 'default' &&
       activeCal.type !== 'shift' &&
-      (activeCal.ownerId === user.uid || activeCal.sharedWith?.[user.uid] === 'write');
+      (activeCal.ownerId === user?.uid || activeCal.sharedWith?.[user?.uid] === 'write');
 
     if (canWriteActive) targetCalId = activeCal.id;
   } catch (_) {}
@@ -844,12 +844,12 @@ const persistDisplayName = async (rawName, opts = {}) => {
   if (uname.length > 40) return showToast('Max. 40 Zeichen');
 
   try {
-    const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+    const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid);
     const dataToSave = {
       displayName: uname,
-      uid: user.uid,
-      email: user.email,
-      emailLower: (user.email || '').toLowerCase(),
+      uid: user?.uid,
+      email: user?.email,
+      emailLower: (user?.email || '').toLowerCase(),
       updatedAt: Date.now(),
     };
 
@@ -857,7 +857,7 @@ const persistDisplayName = async (rawName, opts = {}) => {
     // username is a stable alias/handle and should NOT be overwritten on every name change.
     // Only set it once if missing/empty (legacy compatibility).
     try {
-      const existingAlias = (userProfile && typeof userProfile.username === 'string') ? userProfile.username.trim() : '';
+      const existingAlias = (userProfile && typeof userProfile?.username === 'string') ? userProfile?.username.trim() : '';
       if (!existingAlias || existingAlias.length < 2) {
         dataToSave.username = uname.slice(0, 20);
         dataToSave.usernameLower = String(dataToSave.username).toLowerCase();
@@ -876,15 +876,15 @@ const persistDisplayName = async (rawName, opts = {}) => {
     // UI sofort aktualisieren + lokale Fallbacks
     try { setUserProfile(prev => ({ ...(prev || {}), ...dataToSave })); } catch (_) {}
     try {
-      localStorage.setItem(`onyx_displayName_${user.uid}`, uname);
-      if (dataToSave.username) localStorage.setItem(`onyx_username_${user.uid}`, dataToSave.username);
+      localStorage.setItem(`onyx_displayName_${user?.uid}`, uname);
+      if (dataToSave.username) localStorage.setItem(`onyx_username_${user?.uid}`, dataToSave.username);
     } catch (_) {}
 
     // Best-effort: displayName in bestehenden Chats aktualisieren (damit es überall konsistent ist)
     try {
       const updates = myChats.slice(0, 75).map(c => {
         if (!c.id) return null;
-        return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user.uid}`]: uname }).catch(()=>{});
+        return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user?.uid}`]: uname }).catch(()=>{});
       }).filter(Boolean);
       await Promise.all(updates);
     } catch (_) {}
@@ -909,7 +909,7 @@ const persistAliasUsername = async (rawAlias) => {
   try {
     setAliasSaving(true);
     setAliasEditError('');
-    const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+    const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid);
 
     const patch = {
       username: nextAlias,
@@ -918,7 +918,7 @@ const persistAliasUsername = async (rawAlias) => {
     };
 
     // If displayName is empty, keep UI consistent by setting it once.
-    if (!userProfile.displayName || String(userProfile.displayName).trim().length < 2) {
+    if (!userProfile?.displayName || String(userProfile?.displayName).trim().length < 2) {
       patch.displayName = nextAlias;
     }
 
@@ -927,16 +927,16 @@ const persistAliasUsername = async (rawAlias) => {
     // Update local state + fallback storage
     try { setUserProfile(prev => ({ ...(prev || {}), ...patch })); } catch (_) {}
     try {
-      localStorage.setItem(`onyx_username_${user.uid}`, nextAlias);
-      if (patch.displayName) localStorage.setItem(`onyx_displayName_${user.uid}`, patch.displayName);
+      localStorage.setItem(`onyx_username_${user?.uid}`, nextAlias);
+      if (patch.displayName) localStorage.setItem(`onyx_displayName_${user?.uid}`, patch.displayName);
     } catch (_) {}
 
     // Best-effort: update chat displayNames if we don't have a dedicated displayName
     try {
-      const nameForChats = (patch.displayName || userProfile.displayName || nextAlias);
+      const nameForChats = (patch.displayName || userProfile?.displayName || nextAlias);
       const updates = (myChats || []).slice(0, 75).map(c => {
         if (!c.id) return null;
-        return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user.uid}`]: nameForChats }).catch(()=>{});
+        return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user?.uid}`]: nameForChats }).catch(()=>{});
       }).filter(Boolean);
       await Promise.all(updates);
     } catch (_) {}
@@ -1268,7 +1268,7 @@ const formatDeadlineShort = (deadlineAt) => {
 const computePollVoterIdsForEvent = (ev) => {
   if (!user) return [];
   const calId = (ev && ev.calendarId) ? ev.calendarId : 'default';
-  if (calId === 'default') return [user.uid];
+  if (calId === 'default') return [user?.uid];
 
   const cal = getCalendarById(calId);
   const voters = new Set();
@@ -1281,7 +1281,7 @@ const computePollVoterIdsForEvent = (ev) => {
     }
   }
 
-  voters.add(user.uid);
+  voters.add(user?.uid);
   return Array.from(voters).filter(Boolean);
 };
 const sendEventComment = async () => {
@@ -1294,10 +1294,10 @@ const sendEventComment = async () => {
 
   try {
     const ref = collection(eventDocRefFor(calId, eventToEdit.id), 'comments');
-    const senderName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user.email.split('@')[0] : 'User');
+    const senderName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : 'User');
     await addDoc(ref, {
       text: txt,
-      senderId: user.uid,
+      senderId: user?.uid,
       senderName,
       timestamp: Date.now(),
     });
@@ -1307,7 +1307,7 @@ const sendEventComment = async () => {
       await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
         lastCommentAt: Date.now(),
         lastCommentText: txt.slice(0, 240),
-        lastCommentById: user.uid,
+        lastCommentById: user?.uid,
         lastCommentByName: senderName,
         updatedAt: Date.now()
       });
@@ -1345,7 +1345,7 @@ useEffect(() => {
     try { unsub(); } catch(_) {}
     if (eventCommentsUnsubRef.current === unsub) eventCommentsUnsubRef.current = null;
   };
-}, [user.uid, isModalOpen, showEventComments, eventToEdit.id, eventToEdit.calendarId]);
+}, [user?.uid, isModalOpen, showEventComments, eventToEdit.id, eventToEdit.calendarId]);
 const createPollForEvent = async () => {
   if (!user || !eventToEdit) return;
   const calId = eventToEdit.calendarId || 'default';
@@ -1370,7 +1370,7 @@ const createPollForEvent = async () => {
         voteMode: 'matrix',
         status: 'open',
         createdAt: Date.now(),
-        createdBy: user.uid,
+        createdBy: user?.uid,
         voterIds,
         options: opts,
         votes: {},
@@ -1431,13 +1431,13 @@ const voteInPoll = async (optionId, state = POLL_STATE.YES) => {
   try {
     if (pollVer >= 2) {
       await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
-        [`poll.votes.${user.uid}.${optionId}`]: state,
+        [`poll.votes.${user?.uid}.${optionId}`]: state,
         [`poll.votesUpdatedAt`]: Date.now(),
         updatedAt: Date.now()
       });
     } else {
       await updateDoc(eventDocRefFor(calId, eventToEdit.id), {
-        [`poll.votes.${user.uid}`]: optionId,
+        [`poll.votes.${user?.uid}`]: optionId,
         [`poll.votesUpdatedAt`]: Date.now(),
         updatedAt: Date.now()
       });
@@ -1477,7 +1477,7 @@ const finalizePollForEvent = async () => {
         'poll.status': 'closed',
         'poll.winnerOptionId': winnerId,
         'poll.closedAt': Date.now(),
-        'poll.closedBy': user.uid,
+        'poll.closedBy': user?.uid,
         'poll.autoFinalized': false
       });
     });
@@ -1498,13 +1498,13 @@ const voteInPollForSpecificEvent = async (ev, optionId, state = POLL_STATE.YES) 
   try {
     if (pollVer >= 2) {
       await updateDoc(eventDocRefFor(calId, ev.id), {
-        [`poll.votes.${user.uid}.${optionId}`]: state,
+        [`poll.votes.${user?.uid}.${optionId}`]: state,
         [`poll.votesUpdatedAt`]: Date.now(),
         updatedAt: Date.now()
       });
     } else {
       await updateDoc(eventDocRefFor(calId, ev.id), {
-        [`poll.votes.${user.uid}`]: optionId,
+        [`poll.votes.${user?.uid}`]: optionId,
         [`poll.votesUpdatedAt`]: Date.now(),
         updatedAt: Date.now()
       });
@@ -1544,7 +1544,7 @@ const finalizePollForSpecificEvent = async (ev) => {
         'poll.status': 'closed',
         'poll.winnerOptionId': winnerId,
         'poll.closedAt': Date.now(),
-        'poll.closedBy': user.uid,
+        'poll.closedBy': user?.uid,
         'poll.autoFinalized': false
       });
     });
@@ -1559,29 +1559,29 @@ const canWriteCalendar = (calId) => {
   if (calId === 'default') return true;
   const cal = customCalendars.find(c => c.id === calId);
   if (!cal) return false;
-  return cal.ownerId === user.uid || cal.sharedWith?.[user.uid] === 'write';
+  return cal.ownerId === user?.uid || cal.sharedWith?.[user?.uid] === 'write';
 };
 const eventCollectionRefFor = (calId) => {
   if (!user) return null;
   if (calId === 'default') {
-    return collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events');
+    return collection(db, 'artifacts', APP_ID, 'users', user?.uid, 'events');
   }
   return collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events');
 };
 function eventDocRefFor(calId, eventId) {
   if (!user) return null;
   if (calId === 'default') {
-    return doc(db, 'artifacts', APP_ID, 'users', user.uid, 'events', eventId);
+    return doc(db, 'artifacts', APP_ID, 'users', user?.uid, 'events', eventId);
   }
   return doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events', eventId);
 }; // --- AUDIT LOG ---
 const writeUserAudit = async (entry) => {
   try {
     if (!user) return;
-    await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'auditLogs'), {
+    await addDoc(collection(db, 'artifacts', APP_ID, 'users', user?.uid, 'auditLogs'), {
       ts: serverTimestamp(),
       tsMs: Date.now(),
-      uid: user.uid,
+      uid: user?.uid,
       ...entry,
     });
   } catch (_) {}
@@ -1593,7 +1593,7 @@ const writeCalendarAudit = async (calId, entry) => {
     await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'auditLogs'), {
       ts: serverTimestamp(),
       tsMs: Date.now(),
-      uid: user.uid,
+      uid: user?.uid,
       calId,
       ...entry,
     });
@@ -1714,7 +1714,7 @@ const saveEvent = async (e) => {
       voteMode: 'matrix',
       status: 'open',
       createdAt: Date.now(),
-      createdBy: user.uid,
+      createdBy: user?.uid,
       voterIds,
       options: opts,
       votes: {},
@@ -1810,7 +1810,7 @@ const deleteEvent = async (mode = null) => {
 const openShiftPicker = (dateStr) => {
   const activeCal = getCalendarById(activeCalendarId);
   if (!activeCal || activeCal.type !== 'shift') return;
-  if (activeCal.id !== 'default' && activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
+  if (activeCal.id !== 'default' && activeCal.ownerId !== user?.uid && activeCal.sharedWith?.[user?.uid] !== 'write') {
     return showToast("Nur Lesezugriff auf diesen Kalender.");
   }
   if (!activeCal.shifts || activeCal.shifts.length === 0) return showToast("Keine Schichten konfiguriert.");
@@ -1855,7 +1855,7 @@ const verifySecretPinAndEnter = async () => {
     setSecretPinBusy(true);
     setSecretPinError('');
     const candidate = await sha256Hex(raw);
-    if (candidate !== userProfile.secretPinHash) {
+    if (candidate !== userProfile?.secretPinHash) {
       setSecretPinError('PIN falsch');
       return;
     }
@@ -1870,7 +1870,7 @@ const verifySecretPinAndEnter = async () => {
   }
 };
 const saveSecretPinSettings = async () => {
-  if (!user.uid) return;
+  if (!user?.uid) return;
   const nextPin = String(secretPinSetupNew || '').trim();
   const confirmPin = String(secretPinSetupConfirm || '').trim();
   const currentPin = String(secretPinSetupCurrent || '').trim();
@@ -1881,14 +1881,14 @@ const saveSecretPinSettings = async () => {
   if (hasExistingPin) {
     if (!/^\d{4,8}$/.test(currentPin)) return showToast('Aktuelle PIN eingeben');
     const currentHash = await sha256Hex(currentPin);
-    if (currentHash !== userProfile.secretPinHash) return showToast('Aktuelle PIN ist falsch');
+    if (currentHash !== userProfile?.secretPinHash) return showToast('Aktuelle PIN ist falsch');
   }
 
   try {
     setSecretPinActionBusy(true);
     const nextHash = await sha256Hex(nextPin);
     const patch = { secretPinEnabled: true, secretPinHash: nextHash, updatedAt: Date.now() };
-    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), patch, { merge: true });
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
     setUserProfile(prev => ({ ...(prev || {}), ...patch }));
     setSecretPinSetupCurrent('');
     setSecretPinSetupNew('');
@@ -1902,19 +1902,19 @@ const saveSecretPinSettings = async () => {
   }
 };
 const disableSecretPin = async () => {
-  if (!user.uid) return;
+  if (!user?.uid) return;
   const currentPin = String(secretPinSetupCurrent || '').trim();
   if (!(userProfile?.secretPinEnabled && userProfile?.secretPinHash)) return;
   if (!/^\d{4,8}$/.test(currentPin)) return showToast('Aktuelle PIN eingeben');
   try {
     setSecretPinActionBusy(true);
     const currentHash = await sha256Hex(currentPin);
-    if (currentHash !== userProfile.secretPinHash) {
+    if (currentHash !== userProfile?.secretPinHash) {
       showToast('Aktuelle PIN ist falsch');
       return;
     }
     const patch = { secretPinEnabled: false, secretPinHash: '' , updatedAt: Date.now() };
-    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), patch, { merge: true });
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
     setUserProfile(prev => ({ ...(prev || {}), ...patch }));
     setSecretPinSetupCurrent('');
     setSecretPinSetupNew('');
@@ -1928,11 +1928,11 @@ const disableSecretPin = async () => {
   }
 };
 const toggleSecretAutoHide = async () => {
-  if (!user.uid) return;
+  if (!user?.uid) return;
   const nextValue = !(userProfile?.secretPanicOnHide !== false);
   const patch = { secretPanicOnHide: nextValue, updatedAt: Date.now() };
   try {
-    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), patch, { merge: true });
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
     setUserProfile(prev => ({ ...(prev || {}), ...patch }));
     showToast(nextValue ? 'Auto-Panic aktiv' : 'Auto-Panic aus');
   } catch (e) {
@@ -1976,10 +1976,10 @@ const handleTouchEnd = () => {
         const now = Date.now();
         const typingMap = chat.typing || {};
         const typingAt = chat.typingAt || {};
-        return Object.keys(typingMap).filter(uid => uid !== user.uid && typingMap[uid] === true && (now - (typingAt[uid] || 0) < 6500));
+        return Object.keys(typingMap).filter(uid => uid !== user?.uid && typingMap[uid] === true && (now - (typingAt[uid] || 0) < 6500));
       };
 
-      const partnerId = activeChatData && !isGroupChat(activeChatData) ? activeChatData.participants.find(id => id !== user.uid) : null;
+      const partnerId = activeChatData && !isGroupChat(activeChatData) ? activeChatData.participants.find(id => id !== user?.uid) : null;
       const isPartnerTyping = activeChatData ? (getTypingUsers(activeChatData).length > 0) : false;
 
       const refreshDailyFact = () => {
@@ -1990,8 +1990,8 @@ const handleTouchEnd = () => {
       };
 
 
-      const pinnedChatIds = (userProfile && Array.isArray(userProfile.pinnedChats)) ? userProfile.pinnedChats : [];
-      const hiddenChatIds = (userProfile && Array.isArray(userProfile.hiddenChats)) ? userProfile.hiddenChats : [];
+      const pinnedChatIds = (userProfile && Array.isArray(userProfile?.pinnedChats)) ? userProfile?.pinnedChats : [];
+      const hiddenChatIds = (userProfile && Array.isArray(userProfile?.hiddenChats)) ? userProfile?.hiddenChats : [];
       const sortedMyChats = [...myChats]
         .filter(c => c && c.id && !hiddenChatIds.includes(c.id))
         .sort((a, b) => {
@@ -2096,7 +2096,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       // --- PRESENCE (online/offline + last seen) ---
       useEffect(() => {
         if (!user) return;
-        const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+        const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid);
         const setPresence = (status) => {
           setDoc(profileRef, { presenceStatus: status, presenceLastSeen: Date.now() }, { merge: true }).catch(()=>{});
         };
@@ -2139,9 +2139,9 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       // Chat meta prefs: load/save (per user)
       useEffect(() => {
-        if (!user.uid) return;
+        if (!user?.uid) return;
         try {
-          const key = `onyx_msg_meta_${user.uid}`;
+          const key = `onyx_msg_meta_${user?.uid}`;
           const raw = localStorage.getItem(key) || localStorage.getItem('onyx_msg_meta');
           if (raw) {
             const j = JSON.parse(raw);
@@ -2153,16 +2153,16 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             }
           }
         } catch (_) {}
-      }, [user.uid]);
+      }, [user?.uid]);
 
       useEffect(() => {
-        if (!user.uid) return;
+        if (!user?.uid) return;
         try {
-          const key = `onyx_msg_meta_${user.uid}`;
+          const key = `onyx_msg_meta_${user?.uid}`;
           localStorage.setItem(key, JSON.stringify(chatMetaPrefs));
           localStorage.setItem('onyx_msg_meta', JSON.stringify(chatMetaPrefs));
         } catch (_) {}
-      }, [chatMetaPrefs, user.uid]);
+      }, [chatMetaPrefs, user?.uid]);
 
       useEffect(() => {
         if (!isChatMetaMenuOpen) return;
@@ -2322,21 +2322,21 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       useEffect(() => {
         if (!user) return;
 
-        const eventsRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events');
+        const eventsRef = collection(db, 'artifacts', APP_ID, 'users', user?.uid, 'events');
         const unsubscribeEvents = onSnapshot(query(eventsRef), (snapshot) => {
           const loadedEvents = [];
           snapshot.forEach((doc) => loadedEvents.push({ id: doc.id, calendarId: 'default', ...doc.data() }));
           setEvents(loadedEvents);
         });
 
-        const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+        const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid);
         const unsubscribeProfile = onSnapshot(profileRef, (docSnap) => {
           if (!docSnap.exists()) return;
           const incoming = { id: docSnap.id, ...docSnap.data() };
           setUserProfile(prev => {
             try {
-              const localAlias = String(localStorage.getItem(`onyx_username_${user.uid}`) || '').trim();
-              const localDisplayName = String(localStorage.getItem(`onyx_displayName_${user.uid}`) || '').trim();
+              const localAlias = String(localStorage.getItem(`onyx_username_${user?.uid}`) || '').trim();
+              const localDisplayName = String(localStorage.getItem(`onyx_displayName_${user?.uid}`) || '').trim();
               const prevAlias = String(prev.username || '').trim();
               const incomingAlias = String(incoming.username || '').trim();
               const prevUpdatedAt = Number(prev.updatedAt || 0);
@@ -2357,7 +2357,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
                 merged.displayName = localDisplayName;
               }
               try {
-                const localClockRaw = localStorage.getItem(`onyx_work_clock_active_${user.uid}`);
+                const localClockRaw = localStorage.getItem(`onyx_work_clock_active_${user?.uid}`);
                 if (localClockRaw) {
                   const localClock = JSON.parse(localClockRaw);
                   const incomingClock = incoming.workClockActive || null;
@@ -2381,7 +2381,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         const chatsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats');
-        const chatsQ = query(chatsRef, where('participants', 'array-contains', user.uid));
+        const chatsQ = query(chatsRef, where('participants', 'array-contains', user?.uid));
         const unsubscribeChats = onSnapshot(chatsQ, (snapshot) => {
           const loadedChats = [];
           snapshot.forEach(doc => loadedChats.push({ id: doc.id, ...doc.data() }));
@@ -2391,7 +2391,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
         // Public share links created by this user
         const sharesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'shares');
-        const sharesQ = query(sharesRef, where('createdByUid', '==', user.uid), limit(100));
+        const sharesQ = query(sharesRef, where('createdByUid', '==', user?.uid), limit(100));
         const unsubscribeShares = onSnapshot(sharesQ, (snap) => {
           const list = [];
           snap.forEach(d => list.push({ id: d.id, ...d.data() }));
@@ -2404,7 +2404,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         // Personal audit log (your actions)
-        const auditRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'auditLogs');
+        const auditRef = collection(db, 'artifacts', APP_ID, 'users', user?.uid, 'auditLogs');
         const auditQ = query(auditRef, orderBy('tsMs', 'desc'), limit(80));
         const unsubscribeAudit = onSnapshot(auditQ, (snap) => {
           const list = [];
@@ -2421,8 +2421,8 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         // Wichtig für sichere Firestore Rules:
         // Wir dürfen NICHT die komplette calendars Collection lesen und client-side filtern,
         // sonst scheitert die Query mit permission-denied.
-        const ownerQ = query(calRef, where('ownerId', '==', user.uid));
-        const sharedQ = query(calRef, where('sharedWith.' + user.uid, 'in', ['read', 'write']));
+        const ownerQ = query(calRef, where('ownerId', '==', user?.uid));
+        const sharedQ = query(calRef, where('sharedWith.' + user?.uid, 'in', ['read', 'write']));
 
         let ownerCals = [];
         let sharedCals = [];
@@ -2481,7 +2481,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             if (!prof) {
               setChatFriendResult(null);
               setChatFriendError('Kein Nutzer gefunden');
-            } else if (prof.id === user.uid) {
+            } else if (prof.id === user?.uid) {
               setChatFriendResult(null);
               setChatFriendError('Das bist du selbst');
             } else {
@@ -2578,10 +2578,10 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           // Read/delivered marking only for messages in latest window
           for (const docSnap of snapshot.docs) {
             const data = docSnap.data() || {};
-            if (data.senderId !== user.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
+            if (data.senderId !== user?.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
               unreadToUpdate.push(docSnap.id);
             }
-            if (data.senderId !== user.uid && !data.deliveredAt && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
+            if (data.senderId !== user?.uid && !data.deliveredAt && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
               deliveredToUpdate.push(docSnap.id);
             }
           }
@@ -2607,8 +2607,8 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           // System-Notification für neue eingehende Nachrichten (wenn App nicht im Vordergrund ist)
           try {
             const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
-            if (lastMsg && lastMsg.senderId !== user.uid) {
-              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile.mutedChatIds : [];
+            if (lastMsg && lastMsg.senderId !== user?.uid) {
+              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
               const isMuted = mutedChatIds.includes(activeChat.id);
               const canNotify = (('Notification' in window) && Notification.permission === 'granted');
               const key = `onyx_last_notify_${activeChat.id}`;
@@ -2626,7 +2626,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const nowMs = Date.now();
             if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
               lastReadWriteRef.current = nowMs;
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`lastRead.${user.uid}`]: nowMs }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
             }
           }
 
@@ -2703,7 +2703,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         };
         loadAllChatMeta();
         return () => { cancelled = true; };
-      }, [activeChat.id, activeChatData.messageCount, activeChatData.mediaCount, user.uid]);
+      }, [activeChat.id, activeChatData.messageCount, activeChatData.mediaCount, user?.uid]);
 
       const loadMoreChatMessages = async () => {
         try {
@@ -2795,7 +2795,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id, 'messages');
           const snap = await getDocs(messagesRef);
           snap.forEach(doc => {
-            if (doc.data().senderId === user.uid) sent++;
+            if (doc.data().senderId === user?.uid) sent++;
             else received++;
           });
         }
@@ -2927,7 +2927,7 @@ const requestNotificationPermission = async (currentUser) => {
 
 	            // Wenn Chat stummgeschaltet ist: keine In-App Benachrichtigung
 	            try {
-	              const muted = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile.mutedChatIds : [];
+	              const muted = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
 	              if (kind === 'chat' && chatId && muted.includes(chatId)) return;
 	            } catch (_) {}
 
@@ -3172,8 +3172,8 @@ const requestNotificationPermission = async (currentUser) => {
 
       const persistWorkClockActiveLocal = (payload) => {
         try {
-          if (!user.uid) return;
-          const key = `onyx_work_clock_active_${user.uid}`;
+          if (!user?.uid) return;
+          const key = `onyx_work_clock_active_${user?.uid}`;
           if (payload) localStorage.setItem(key, JSON.stringify(payload));
           else localStorage.removeItem(key);
         } catch (_) {}
@@ -3182,7 +3182,7 @@ const requestNotificationPermission = async (currentUser) => {
       const saveWorkClockProfilePatch = async (patch) => {
         try {
           if (!user) return;
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), patch, { merge: true });
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
           setUserProfile(prev => ({ ...(prev || {}), ...patch }));
         } catch (_) {}
       };
@@ -3226,7 +3226,7 @@ const requestNotificationPermission = async (currentUser) => {
         if (!workClockActive.startedAt) return;
         const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
         setWorkClockDraftUsePreset(true);
-        setWorkClockDraftTitle(String(userProfile.workClockLastTitle || presets[0] || 'Arbeit'));
+        setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
         setWorkClockDraftLevel('mittel');
         setWorkClockModalOpen(true);
       };
@@ -3258,13 +3258,13 @@ const requestNotificationPermission = async (currentUser) => {
             createdAt: Date.now(),
             updatedAt: now,
           };
-          const localRow = saveWorkClockSessionLocal(user.uid, payload);
+          const localRow = saveWorkClockSessionLocal(user?.uid, payload);
           setWorkClockSessions(prev => mergeWorkClockSessions([localRow], prev || []));
           try {
-            const ref = await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions'), { ...payload, createdAt: serverTimestamp() });
+            const ref = await addDoc(collection(db, 'artifacts', APP_ID, 'users', user?.uid, 'workSessions'), { ...payload, createdAt: serverTimestamp() });
             const syncedRow = { ...localRow, id: ref.id, remoteSaved: true };
-            const current = readWorkClockSessionsLocal(user.uid).map(row => String(row.localId || row.id || '') === String(localRow.localId || localRow.id || '') ? syncedRow : row);
-            writeWorkClockSessionsLocal(user.uid, current);
+            const current = readWorkClockSessionsLocal(user?.uid).map(row => String(row.localId || row.id || '') === String(localRow.localId || localRow.id || '') ? syncedRow : row);
+            writeWorkClockSessionsLocal(user?.uid, current);
             setWorkClockSessions(prev => mergeWorkClockSessions(current, prev || []));
           } catch (remoteErr) {
             console.warn('finishWorkClock remote save skipped', remoteErr);
@@ -3298,7 +3298,7 @@ const requestNotificationPermission = async (currentUser) => {
       };
 
       const saveEditedWorkClockSession = async () => {
-        if (!user.uid || !workClockEditingSession) return;
+        if (!user?.uid || !workClockEditingSession) return;
         try {
           const nextTitle = String(workClockEditTitle || '').trim() || 'Arbeit';
           const nextStart = parseDateTimeInputValue(workClockEditStartValue);
@@ -3322,11 +3322,11 @@ const requestNotificationPermission = async (currentUser) => {
             level: String(workClockEditLevel || 'mittel'),
             updatedAt: Date.now(),
           };
-          const localRow = replaceWorkClockSessionLocal(user.uid, patch);
+          const localRow = replaceWorkClockSessionLocal(user?.uid, patch);
           setWorkClockSessions(prev => mergeWorkClockSessions([localRow], (prev || []).filter(row => String(row.localId || row.id || '') !== String(localRow.localId || localRow.id || ''))));
           try {
             if (workClockEditingSession.id && !String(workClockEditingSession.id).startsWith('wc_')) {
-              await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions', workClockEditingSession.id), {
+              await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user?.uid, 'workSessions', workClockEditingSession.id), {
                 startedAt: nextStart,
                 endedAt: nextEnd,
                 totalMs,
@@ -3352,17 +3352,17 @@ const requestNotificationPermission = async (currentUser) => {
       };
 
       const deleteWorkClockSession = async (session) => {
-        if (!user.uid || !session) return;
+        if (!user?.uid || !session) return;
         const label = String(session.title || 'Arbeit');
         if (!window.confirm(`Session "${label}" löschen`)) return;
         const deleteKey = String(session.localId || session.id || '');
         try {
           setWorkClockDeletingId(deleteKey);
-          const nextLocal = removeWorkClockSessionLocal(user.uid, session);
+          const nextLocal = removeWorkClockSessionLocal(user?.uid, session);
           setWorkClockSessions(nextLocal);
           try {
             if (session.id && !String(session.id).startsWith('wc_')) {
-              await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions', session.id));
+              await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user?.uid, 'workSessions', session.id));
             }
           } catch (remoteErr) {
             console.warn('deleteWorkClockSession remote delete skipped', remoteErr);
@@ -3439,43 +3439,43 @@ const requestNotificationPermission = async (currentUser) => {
       }, []);
 
       useEffect(() => {
-        if (!user.uid) return;
+        if (!user?.uid) return;
         try {
-          const raw = localStorage.getItem(`onyx_work_clock_active_${user.uid}`);
+          const raw = localStorage.getItem(`onyx_work_clock_active_${user?.uid}`);
           if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed.startedAt) setWorkClockActive(parsed);
           }
         } catch (_) {}
-      }, [user.uid]);
+      }, [user?.uid]);
 
       useEffect(() => {
         const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
         if (!workClockPresetEditingRef.current) {
           setWorkClockPresetInput(presets.join('\n'));
         }
-        setWorkClockDraftTitle(String(userProfile.workClockLastTitle || presets[0] || 'Arbeit'));
+        setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
         setWorkClockDraftUsePreset(true);
       }, [userProfile?.workClockTaskOptions, userProfile?.workClockLastTitle]);
 
 
       useEffect(() => {
-        if (!user.uid) return;
-        const localRows = readWorkClockSessionsLocal(user.uid);
+        if (!user?.uid) return;
+        const localRows = readWorkClockSessionsLocal(user?.uid);
         if (localRows.length) setWorkClockSessions(prev => mergeWorkClockSessions(localRows, prev || []));
-        const ref = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'workSessions');
+        const ref = collection(db, 'artifacts', APP_ID, 'users', user?.uid, 'workSessions');
         const unsub = onSnapshot(query(ref, orderBy('startedAt', 'desc'), limit(120)), (snap) => {
           const remoteRows = [];
           snap.forEach((d) => remoteRows.push({ id: d.id, ...d.data(), remoteSaved: true }));
-          const merged = mergeWorkClockSessions(readWorkClockSessionsLocal(user.uid), remoteRows);
+          const merged = mergeWorkClockSessions(readWorkClockSessionsLocal(user?.uid), remoteRows);
           setWorkClockSessions(merged);
-          writeWorkClockSessionsLocal(user.uid, merged);
+          writeWorkClockSessionsLocal(user?.uid, merged);
         }, (err) => {
           console.warn('workSessions snapshot fallback to local', err);
-          setWorkClockSessions(readWorkClockSessionsLocal(user.uid));
+          setWorkClockSessions(readWorkClockSessionsLocal(user?.uid));
         });
         return () => { try { unsub(); } catch (_) {} };
-      }, [user.uid]);
+      }, [user?.uid]);
 
       function getShoppingStorageKey(uid) { return `onyx_shopping_lists_${uid || 'guest'}`; }
       function readShoppingListsLocal(uid) {
@@ -3520,13 +3520,13 @@ const requestNotificationPermission = async (currentUser) => {
         } catch (_) { return []; }
       }
       async function persistShoppingLists(nextLists) {
-        if (!user.uid) return;
+        if (!user?.uid) return;
         const normalized = normalizeShoppingLists(nextLists);
-        writeShoppingListsLocal(user.uid, normalized);
+        writeShoppingListsLocal(user?.uid, normalized);
         setShoppingLists(normalized);
         setShoppingListsUpdatedAt(Date.now());
         try {
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
             shoppingListsCloud: normalized,
             shoppingListsUpdatedAt: Date.now()
           }, { merge: true });
@@ -3601,18 +3601,18 @@ const requestNotificationPermission = async (currentUser) => {
       };
 
       useEffect(() => {
-        if (!user.uid) return;
-        const localLists = readShoppingListsLocal(user.uid);
+        if (!user?.uid) return;
+        const localLists = readShoppingListsLocal(user?.uid);
         if (localLists.length) setShoppingLists(localLists);
-      }, [user.uid]);
+      }, [user?.uid]);
 
       useEffect(() => {
-        if (!user.uid) return;
-        const remoteTs = Number(userProfile.shoppingListsUpdatedAt || 0);
-        if (remoteTs >= Number(shoppingListsUpdatedAt || 0) && Array.isArray(userProfile.shoppingListsCloud)) {
-          const normalized = normalizeShoppingLists(userProfile.shoppingListsCloud);
+        if (!user?.uid) return;
+        const remoteTs = Number(userProfile?.shoppingListsUpdatedAt || 0);
+        if (remoteTs >= Number(shoppingListsUpdatedAt || 0) && Array.isArray(userProfile?.shoppingListsCloud)) {
+          const normalized = normalizeShoppingLists(userProfile?.shoppingListsCloud);
           setShoppingLists(normalized);
-          writeShoppingListsLocal(user.uid, normalized);
+          writeShoppingListsLocal(user?.uid, normalized);
           if (!activeShoppingListId && normalized[0].id) setActiveShoppingListId(normalized[0].id);
         }
       }, [user?.uid, userProfile?.shoppingListsUpdatedAt, userProfile?.shoppingListsCloud]);
@@ -3903,7 +3903,7 @@ const requestNotificationPermission = async (currentUser) => {
 
       useEffect(() => {
         try {
-          const fromProfile = userProfile.weatherLocation;
+          const fromProfile = userProfile?.weatherLocation;
           if (!fromProfile) return;
           const nextLoc = {
             name: String(fromProfile.name || DEFAULT_WEATHER_LOCATION.name),
@@ -3916,7 +3916,7 @@ const requestNotificationPermission = async (currentUser) => {
             && Number(location.lon || 0) === Number(nextLoc.lon || 0);
           if (!same) setLocation(nextLoc);
         } catch (_) {}
-      }, [userProfile?.weatherLocation?.name, userProfile?.weatherLocation?.lat, userProfile?.weatherLocation?.lon]);
+      }, [userProfile?.weatherLocation.name, userProfile?.weatherLocation.lat, userProfile?.weatherLocation.lon]);
 
       useEffect(() => {
         const mode = (themeMode === 'light') ? 'light' : 'dark';
@@ -3927,7 +3927,7 @@ const requestNotificationPermission = async (currentUser) => {
       }, [themeMode]);
 
       useEffect(() => {
-        const profileMode = userProfile.themeMode;
+        const profileMode = userProfile?.themeMode;
         if (profileMode === 'light' || profileMode === 'dark') setThemeMode(profileMode);
       }, [userProfile?.themeMode]);
 
@@ -4029,7 +4029,7 @@ const requestNotificationPermission = async (currentUser) => {
           for (const c of myChats) {
             const updatedAt = (c && typeof c.updatedAt === 'number') ? c.updatedAt : 0;
             if (!updatedAt) continue;
-            if (c.lastMessageSenderId === user.uid) {
+            if (c.lastMessageSenderId === user?.uid) {
               // keep watermark up to date
               const prev = lastChatPingRef.current[c.id] || 0;
               if (updatedAt > prev) lastChatPingRef.current[c.id] = updatedAt;
@@ -4067,7 +4067,7 @@ const requestNotificationPermission = async (currentUser) => {
                   let senderName = 'Jemand';
                   try {
                     const sid = String(c.lastMessageSenderId || '');
-                    if (sid && sid !== user.uid) {
+                    if (sid && sid !== user?.uid) {
                       const sp = getProfile(sid);
                       senderName = (sp && (sp.displayName || sp.username)) ? (sp.displayName || sp.username) : (c.displayNames && c.displayNames[sid] ? String(c.displayNames[sid]) : 'Jemand');
                     }
@@ -4226,7 +4226,7 @@ useEffect(() => {
           if (!('Notification' in window)) return;
           if (Notification.permission !== 'granted') return;
 
-          const silentMode = (userProfile && String(userProfile.notificationSoundMode||'system') === 'silent');
+          const silentMode = (userProfile && String(userProfile?.notificationSoundMode||'system') === 'silent');
 
           const options = {
             icon: './icon-192.png',
@@ -4274,12 +4274,12 @@ Kalender aktuell` : 'Kalender aktuell';
       const sendServerPushTest = async () => {
         try {
           if (!user) return;
-          const id = `${user.uid}_${Date.now()}`;
+          const id = `${user?.uid}_${Date.now()}`;
           setPushTest({ id, status: 'pending', lastError: '', updatedAt: Date.now() });
           await setDoc(
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', id),
             {
-              uid: user.uid,
+              uid: user?.uid,
               createdAt: serverTimestamp(),
               createdAtMs: Date.now(),
               status: 'pending',
@@ -4421,13 +4421,13 @@ const handleAuth = async (e) => {
 
       const persistWeatherLocation = async (nextLoc) => {
         try {
-          if (!user.uid || !nextLoc) return;
+          if (!user?.uid || !nextLoc) return;
           const payload = {
             name: String(nextLoc.name || DEFAULT_WEATHER_LOCATION.name),
             lat: Number(nextLoc.lat || DEFAULT_WEATHER_LOCATION.lat),
             lon: Number(nextLoc.lon || DEFAULT_WEATHER_LOCATION.lon),
           };
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
             weatherLocation: payload,
             updatedAt: Date.now(),
           }, { merge: true });
@@ -4444,8 +4444,8 @@ const handleAuth = async (e) => {
           localStorage.setItem('onyx_theme_mode', mode);
         } catch (_) {}
         try {
-          if (!user.uid) return;
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+          if (!user?.uid) return;
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
             themeMode: mode,
             updatedAt: Date.now(),
           }, { merge: true });
@@ -4525,7 +4525,7 @@ useEffect(() => {
             'poll.status': 'closed',
             'poll.winnerOptionId': winnerId,
             'poll.closedAt': Date.now(),
-            'poll.closedBy': user.uid,
+            'poll.closedBy': user?.uid,
             'poll.autoFinalized': true
           });
         });
@@ -4535,18 +4535,18 @@ useEffect(() => {
       }
     }
   })();
-}, [user.uid, events, sharedEventsMap, customCalendars]);
+}, [user?.uid, events, sharedEventsMap, customCalendars]);
 
 
       function getCalendarById(id) {
-         if (id === 'default') return { id: 'default', name: 'Privat', type: 'normal', ownerId: user.uid };
+         if (id === 'default') return { id: 'default', name: 'Privat', type: 'normal', ownerId: user?.uid };
          return customCalendars.find(c => c.id === id);
       }
 
       const calendarTint = (calId) => {
         try {
           if (!calId || calId === 'default') {
-            return (userProfile && typeof userProfile.defaultCalendarColor === 'string' && userProfile.defaultCalendarColor) ? userProfile.defaultCalendarColor : '#FFFFFF';
+            return (userProfile && typeof userProfile?.defaultCalendarColor === 'string' && userProfile?.defaultCalendarColor) ? userProfile?.defaultCalendarColor : '#FFFFFF';
           }
           const cal = (customCalendars || []).find(c => c && c.id === calId);
           if (cal && typeof cal.color === 'string' && cal.color) return cal.color;
@@ -4923,7 +4923,7 @@ useEffect(() => {
             if (isNaN(m)) return null;
             return Math.max(0, m);
           }
-          const def = (userProfile && typeof userProfile.defaultReminderMinutes === 'number') ? userProfile.defaultReminderMinutes : null;
+          const def = (userProfile && typeof userProfile?.defaultReminderMinutes === 'number') ? userProfile?.defaultReminderMinutes : null;
           if (typeof def === 'number' && !isNaN(def)) return Math.max(0, def);
           return null;
         } catch (e) {
@@ -4993,7 +4993,7 @@ useEffect(() => {
             // Tag ist kompatibel mit oxynoti (dedupe über `tag`).
             const canNotify = ('Notification' in window) && Notification.permission === 'granted';
             if (canNotify) {
-                const dedupeKey = `${user.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;
+                const dedupeKey = `${user?.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;
               const tag = `onyx_event_${fnv1a32(dedupeKey)}`;
               await showSystemNotification('Erinnerung', body, tag);
             }
@@ -5007,7 +5007,7 @@ useEffect(() => {
       useEffect(() => {
         if (!user) return;
         buildRemindersIndex();
-      }, [user, events, sharedEventsMap, visibleCalendars, userProfile && userProfile.defaultReminderMinutes]);
+      }, [user, events, sharedEventsMap, visibleCalendars, userProfile && userProfile?.defaultReminderMinutes]);
 
       // Periodic due-check (works without long setTimeouts)
       useEffect(() => {
@@ -5051,7 +5051,7 @@ useEffect(() => {
         };
         document.addEventListener('visibilitychange', onSecretVisibility);
         return () => document.removeEventListener('visibilitychange', onSecretVisibility);
-      }, [currentView, userProfile.secretPanicOnHide]);
+      }, [currentView, userProfile?.secretPanicOnHide]);
 
 
       // --- NEU: PINSEL & LANGES DRÜCKEN LOGIK ---
@@ -5059,7 +5059,7 @@ useEffect(() => {
          e.preventDefault();
          const activeCal = getCalendarById(activeCalendarId);
          if (!activeCal || activeCal.type !== 'shift') return;
-         if (activeCal.id !== 'default' && activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
+         if (activeCal.id !== 'default' && activeCal.ownerId !== user?.uid && activeCal.sharedWith?.[user?.uid] !== 'write') {
              return showToast("Nur Lesezugriff auf diesen Kalender.");
          }
          if (!activeCal.shifts || activeCal.shifts.length === 0) return showToast("Keine Schichten konfiguriert.");
@@ -5094,7 +5094,7 @@ useEffect(() => {
         
         const activeCal = getCalendarById(activeCalendarId);
         if (!activeCal || activeCal.type !== 'shift' || !selectedPaintShift) return;
-        if (activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
+        if (activeCal.ownerId !== user?.uid && activeCal.sharedWith?.[user?.uid] !== 'write') {
              return;
         }
         
@@ -5148,7 +5148,7 @@ useEffect(() => {
          const activeCal = getCalendarById(activeCalendarId);
          if (!activeCal) return;
 
-         if (activeCal.id !== 'default' && activeCal.ownerId !== user.uid && activeCal.sharedWith?.[user.uid] !== 'write') {
+         if (activeCal.id !== 'default' && activeCal.ownerId !== user?.uid && activeCal.sharedWith?.[user?.uid] !== 'write') {
              return showToast("Nur Lesezugriff auf diesen Kalender.");
          }
 
@@ -5257,7 +5257,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                  showToast("Kalender aktualisiert");
              } else {
                  const newRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars'), {
-                     name: calForm.name, type: calForm.type, color: (calForm.color || ''), shifts: calForm.shifts, ownerId: user.uid, sharedWith: {}
+                     name: calForm.name, type: calForm.type, color: (calForm.color || ''), shifts: calForm.shifts, ownerId: user?.uid, sharedWith: {}
                  });
                  await writeAudit({ calId: newRef.id || 'default', action: 'calendar.create', targetType: 'calendar', targetId: newRef.id || '', summary: `Kalender erstellt: ${calForm.name}` });
                  showToast("Kalender erstellt");
@@ -5301,7 +5301,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           // Kalender-Freunde werden über E-Mail hinzugefügt (nicht über Username)
           const targetProfile = await findProfileByEmailLower(email);
           if(!targetProfile) return showToast("Nutzer nicht gefunden (E-Mail prüfen)");
-          if(targetProfile.id === user.uid) return showToast("Das bist du selbst.");
+          if(targetProfile.id === user?.uid) return showToast("Das bist du selbst.");
 
 
           try {
@@ -5495,7 +5495,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           mode: d.mode,
           calId: d.calId,
           calName: d.calName,
-          createdByUid: user.uid,
+          createdByUid: user?.uid,
           createdAt: serverTimestamp(),
           createdAtMs: Date.now(),
           expiresAtMs: expiresAtMs || null,
@@ -5550,7 +5550,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         if (!user) return;
         const nameRaw = new FormData(e.target).get('displayName') || new FormData(e.target).get('username') || '';
         const displayName = String(nameRaw).trim();
-        await persistDisplayName(displayName, { avatarThumbBase64: userProfile?.avatarThumbBase64 || userProfile?.avatarBase64, avatarFullBase64: userProfile.avatarFullBase64 || null, toast: 'Profil aktualisiert!' });
+        await persistDisplayName(displayName, { avatarThumbBase64: userProfile?.avatarThumbBase64 || userProfile?.avatarBase64, avatarFullBase64: userProfile?.avatarFullBase64 || null, toast: 'Profil aktualisiert!' });
       };
 
       const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
@@ -5711,7 +5711,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           const thumb = await compressAvatarFileToDataUrl(file, { size: 256, quality: 0.86 });
           const full = await compressImageFileToDataUrl(file, { maxDim: 1200, quality: 0.78 });
           if (user) {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
               avatarBase64: thumb,
               avatarThumbBase64: thumb,
               avatarFullBase64: full
@@ -5774,13 +5774,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         const targetUserId = (typeof profileOrId === 'string') ? profileOrId : (profileOrId && profileOrId.id);
         const targetProfile = (typeof profileOrId === 'object' && profileOrId) ? profileOrId : (targetUserId ? getProfile(targetUserId) : null);
         if (!targetUserId) return;
-        if (targetUserId === user.uid) return showToast('Das bist du selbst');
+        if (targetUserId === user?.uid) return showToast('Das bist du selbst');
 
         const existingChat = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(targetUserId));
         if (existingChat) {
           // Track as friend (so user can manage/remove later)
           try {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
             await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${targetProfile.displayName || targetProfile.username || targetProfile.email || shortId(targetUserId,6)}` });
           } catch (_) {}
           setActiveChat(existingChat);
@@ -5790,29 +5790,29 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
 
         try {
-          const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? user.email.split('@')[0] : 'Ich'));
+          const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? user?.email.split('@')[0] : 'Ich'));
           const otherName = (targetProfile.displayName || targetProfile.username || targetProfile.email || 'Kontakt');
-          const displayNames = { [user.uid]: meName, [targetUserId]: otherName };
+          const displayNames = { [user?.uid]: meName, [targetUserId]: otherName };
 
           const newChat = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats'), {
             type: 'dm',
-            participants: [user.uid, targetUserId],
+            participants: [user?.uid, targetUserId],
             displayNames,
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            lastMessageSenderId: user.uid,
+            lastMessageSenderId: user?.uid,
             typing: {},
             typingAt: {},
-            lastRead: { [user.uid]: Date.now() }
+            lastRead: { [user?.uid]: Date.now() }
           });
 
           // Save to friends
           try {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
             await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${otherName}` });
           } catch (_) {}
 
-          setActiveChat({ id: newChat.id, type: 'dm', participants: [user.uid, targetUserId], displayNames, updatedAt: Date.now(), lastMessageSenderId: user.uid });
+          setActiveChat({ id: newChat.id, type: 'dm', participants: [user?.uid, targetUserId], displayNames, updatedAt: Date.now(), lastMessageSenderId: user?.uid });
         } catch (error) {
           console.error('startChatWithProfile failed', error);
           showToast('Chat konnte nicht gestartet werden');
@@ -5826,14 +5826,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       const createGroupChat = async () => {
         if (!user) return;
         const title = (groupDraftName || '').trim() || 'Gruppe';
-        const members = Array.from(new Set([user.uid, ...(groupDraftMembers || [])])).filter(Boolean);
+        const members = Array.from(new Set([user?.uid, ...(groupDraftMembers || [])])).filter(Boolean);
         if (members.length < 3) return showToast('Wähle mindestens 2 Mitglieder aus');
         try {
           const newChat = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats'), {
-            type: 'group', title, participants: members, admins: [user.uid], createdAt: Date.now(), updatedAt: Date.now(), lastMessageSenderId: user.uid,
-            typing: {}, typingAt: {}, lastRead: { [user.uid]: Date.now() }
+            type: 'group', title, participants: members, admins: [user?.uid], createdAt: Date.now(), updatedAt: Date.now(), lastMessageSenderId: user?.uid,
+            typing: {}, typingAt: {}, lastRead: { [user?.uid]: Date.now() }
           });
-          const chatObj = { id: newChat.id, type: 'group', title, participants: members, admins: [user.uid], createdAt: Date.now(), updatedAt: Date.now(), lastMessageSenderId: user.uid };
+          const chatObj = { id: newChat.id, type: 'group', title, participants: members, admins: [user?.uid], createdAt: Date.now(), updatedAt: Date.now(), lastMessageSenderId: user?.uid };
           setActiveChat(chatObj);
           setSecretView('chat');
           setShowCreateGroup(false);
@@ -5852,7 +5852,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           const dm = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(friendUid));
           const updates = { friends: arrayRemove(friendUid) };
           if (dm && dm.id) updates.hiddenChats = arrayUnion(dm.id);
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), updates, { merge: true });
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), updates, { merge: true });
           await writeAudit({ calId: 'default', action: 'friend.remove', targetType: 'friend', targetId: friendUid, summary: `Freund entfernt: ${getProfile(friendUid).displayName || getProfile(friendUid).username || shortId(friendUid,6)}` });
           showToast('Freund entfernt');
         } catch (e) {
@@ -5881,7 +5881,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         if (!user || !chat || !memberId) return;
         try {
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id), { participants: arrayRemove(memberId), admins: arrayRemove(memberId), updatedAt: Date.now() });
-          if (memberId === user.uid) {
+          if (memberId === user?.uid) {
             setShowPartnerStats(false);
             setActiveChat(null);
             setSecretView('list');
@@ -5890,7 +5890,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         } catch(e) { showToast('Fehler'); }
       };
 
-      const leaveGroup = async (chat) => removeMemberFromGroup(chat, user.uid);
+      const leaveGroup = async (chat) => removeMemberFromGroup(chat, user?.uid);
 
       const toggleAdmin = async (chat, memberId) => {
         if (!user || !chat || !memberId) return;
@@ -5900,14 +5900,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         } catch(e) { showToast('Fehler'); }
       };
 
-      const isChatAdmin = (chat) => Array.isArray(chat.admins) && chat.admins.includes(user.uid);
+      const isChatAdmin = (chat) => Array.isArray(chat.admins) && chat.admins.includes(user?.uid);
 
       const togglePinChat = async (chatId) => {
         if (!user) return;
         try {
-          const current = (userProfile && Array.isArray(userProfile.pinnedChats)) ? userProfile.pinnedChats : [];
+          const current = (userProfile && Array.isArray(userProfile?.pinnedChats)) ? userProfile?.pinnedChats : [];
           const next = current.includes(chatId) ? current.filter(id => id !== chatId) : [chatId, ...current];
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { pinnedChats: next });
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { pinnedChats: next });
         } catch (e) {
           showToast("Fehler beim Pinnen");
         }
@@ -5916,9 +5916,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       const toggleMuteChat = async (chatId) => {
         if (!user) return;
         try {
-          const muted = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile.mutedChatIds : [];
+          const muted = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
           const isMuted = muted.includes(chatId);
-          const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid);
+          const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid);
           await updateDoc(profileRef, { mutedChatIds: isMuted ? arrayRemove(chatId) : arrayUnion(chatId) });
           showToast(isMuted ? 'Stumm aus' : 'Chat stumm');
         } catch (e) {
@@ -5971,10 +5971,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
          const value = e.target.value;
          setNewMessageText(value);
          if (!activeChat || !user) return;
-         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: value.length > 0, [`typingAt.${user.uid}`]: Date.now() }).catch(()=>{});
+         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user?.uid}`]: value.length > 0, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
          typingTimeoutRef.current = setTimeout(() => {
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user.uid}`]: false, [`typingAt.${user.uid}`]: Date.now() }).catch(()=>{});
+            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user?.uid}`]: false, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
          }, 2200);
       }
 
@@ -6007,7 +6007,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       function senderLabelFromId(senderId) {
         try {
           if (!senderId) return 'Unbekannt';
-          if (senderId === user.uid) return 'Du';
+          if (senderId === user?.uid) return 'Du';
           const p = getProfile(senderId);
           return (p.displayName || p.username || p.email || 'Unbekannt');
         } catch (_) { return 'Unbekannt'; }
@@ -6075,10 +6075,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           preview: messagePreviewText(replyToMessage),
         } : null;
 
-        const clientMsgId = `${user.uid}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const clientMsgId = `${user?.uid}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const payload = {
           clientMsgId,
-          senderId: user.uid,
+          senderId: user?.uid,
           text: textVal,
           image: imageBase64,
           audio: audioBase64,
@@ -6111,11 +6111,11 @@ setSelfDestruct(false);
           await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
             updatedAt: Date.now(),
-            lastMessageSenderId: user.uid,
+            lastMessageSenderId: user?.uid,
             messageCount: increment(1),
             mediaCount: imageBase64 ? increment(1) : increment(0),
-            [`typing.${user.uid}`]: false,
-            [`typingAt.${user.uid}`]: Date.now()
+            [`typing.${user?.uid}`]: false,
+            [`typingAt.${user?.uid}`]: Date.now()
           });
 
           const now = Date.now();
@@ -6133,7 +6133,7 @@ setSelfDestruct(false);
       const acceptSharedEvent = async (eventDetails) => {
         if (!user) return;
         try {
-          await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'users', user?.uid, 'events'), {
             title: eventDetails.title, date: eventDetails.date, time: eventDetails.time, type: 'Projekt', desc: 'Geteilter Termin aus Chat', reminderMode: 'default', reminderMinutes: null, createdAt: Date.now(), updatedAt: Date.now(), calendarId: 'default'
           });
           showToast("Termin im Kalender gespeichert!");
@@ -6147,7 +6147,7 @@ setSelfDestruct(false);
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), {
             deleted: true,
             deletedAt: Date.now(),
-            deletedBy: user.uid,
+            deletedBy: user?.uid,
             text: '',
             image: null,
             audio: null,
@@ -6155,7 +6155,7 @@ setSelfDestruct(false);
           });
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
             updatedAt: Date.now(),
-            lastMessageSenderId: user.uid
+            lastMessageSenderId: user?.uid
           }).catch(()=>{});
           setSelectedMessageId(null);
           showToast("Nachricht gelöscht");
@@ -6280,14 +6280,14 @@ setSelfDestruct(false);
       const getChatPartnerName = (chat) => {
         if (!chat) return 'Chat';
         if (isGroupChat(chat)) return chat.title || 'Gruppe';
-        const pid = (chat.participants || []).find(id => id !== user.uid);
+        const pid = (chat.participants || []).find(id => id !== user?.uid);
         const prof = pid ? getProfile(pid) : null;
         return (prof.displayName || prof.username || chat.displayNames?.[pid] || prof.email || 'Unbekannt');
       };
       const getChatPartnerAvatar = (chat) => {
         if (!chat) return null;
         if (isGroupChat(chat)) return chat.avatarBase64 || null;
-        const pid = (chat.participants || []).find(id => id !== user.uid);
+        const pid = (chat.participants || []).find(id => id !== user?.uid);
         const prof = pid ? getProfile(pid) : null;
         return prof.avatarThumbBase64 || prof.avatarBase64 || null;
       };
@@ -6295,13 +6295,13 @@ setSelfDestruct(false);
       const getChatPartnerAvatarFull = (chat) => {
         if (!chat) return null;
         if (isGroupChat(chat)) return chat.avatarBase64 || null;
-        const pid = (chat.participants || []).find(id => id !== user.uid);
+        const pid = (chat.participants || []).find(id => id !== user?.uid);
         const prof = pid ? getProfile(pid) : null;
         return prof.avatarFullBase64 || prof.avatarBase64 || prof.avatarThumbBase64 || null;
       };
 
       const getChatParticipants = (chat) => Array.isArray(chat.participants) ? chat.participants : [];
-      const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user.uid);
+      const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
       
       const exportICS = (exportAll = true) => {
         let eventsToExport = allEvents;
@@ -6323,7 +6323,7 @@ setSelfDestruct(false);
           showToast(`Datei "${file.name}" wird gelesen...`);
           setTimeout(async () => {
             try {
-              await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'events'), {
+              await addDoc(collection(db, 'artifacts', APP_ID, 'users', user?.uid, 'events'), {
                 title: 'Importierter Termin', date: new Date().toISOString().split('T')[0], time: '12:00', type: 'Privat', desc: 'Aus ICS importiert', createdAt: Date.now(), calendarId: 'default'
               });
               showToast('Import abgeschlossen.');
@@ -6332,7 +6332,7 @@ setSelfDestruct(false);
         }
       };
 
-      const getStorageKey = (suffix) => `onyx_${APP_ID}_${user.uid || 'guest'}_${suffix}`;
+      const getStorageKey = (suffix) => `onyx_${APP_ID}_${user?.uid || 'guest'}_${suffix}`;
       useEffect(() => {
         const id = setInterval(() => setFocusTick(Date.now()), 1000);
         return () => clearInterval(id);
@@ -6355,39 +6355,39 @@ setSelfDestruct(false);
           if (rawOrder) setExtrasSlotOrder(normalizeExtrasOrder(JSON.parse(rawOrder)));
           if (rawUpdatedAt) setExtrasUpdatedAt(Number(rawUpdatedAt || 0));
         } catch (_) {}
-      }, [user.uid]);
+      }, [user?.uid]);
       useEffect(() => {
         try { localStorage.setItem(getStorageKey('focusState'), JSON.stringify(focusState || null)); } catch (_) {}
-      }, [focusState, user.uid]);
+      }, [focusState, user?.uid]);
       useEffect(() => {
         try { localStorage.setItem(getStorageKey('focusHistory'), JSON.stringify(focusHistory || [])); } catch (_) {}
-      }, [focusHistory, user.uid]);
+      }, [focusHistory, user?.uid]);
       useEffect(() => {
         try { localStorage.setItem(getStorageKey('quickNotes'), quickNotes || ''); } catch (_) {}
-      }, [quickNotes, user.uid]);
+      }, [quickNotes, user?.uid]);
       useEffect(() => {
         try { localStorage.setItem(getStorageKey('dailyGoals'), JSON.stringify(normalizeDailyGoals(dailyGoals))); } catch (_) {}
-      }, [dailyGoals, user.uid]);
+      }, [dailyGoals, user?.uid]);
       useEffect(() => {
         try { localStorage.setItem(getStorageKey('weeklyTargetHours'), String(weeklyTargetHours || '')); } catch (_) {}
-      }, [weeklyTargetHours, user.uid]);
+      }, [weeklyTargetHours, user?.uid]);
       useEffect(() => {
         try { localStorage.setItem(getStorageKey('extrasSlotOrder'), JSON.stringify(normalizeExtrasOrder(extrasSlotOrder))); } catch (_) {}
-      }, [extrasSlotOrder, user.uid]);
+      }, [extrasSlotOrder, user?.uid]);
       useEffect(() => {
         try { localStorage.setItem(getStorageKey('extrasUpdatedAt'), String(extrasUpdatedAt || 0)); } catch (_) {}
-      }, [extrasUpdatedAt, user.uid]);
+      }, [extrasUpdatedAt, user?.uid]);
       useEffect(() => {
         if (!user) return;
-        const remoteTs = Number(userProfile.extrasUpdatedAt || 0);
+        const remoteTs = Number(userProfile?.extrasUpdatedAt || 0);
         if (!remoteTs || remoteTs <= Number(extrasUpdatedAt || 0)) return;
         try {
-          if (typeof userProfile.quickNotesCloud === 'string') setQuickNotes(String(userProfile.quickNotesCloud || ''));
-          if (Array.isArray(userProfile.dailyGoals)) setDailyGoals(normalizeDailyGoals(userProfile.dailyGoals));
-          if (!weeklyTargetEditingRef.current && userProfile.weeklyTargetHours !== undefined && userProfile.weeklyTargetHours !== null) {
-            setWeeklyTargetHours(String(userProfile.weeklyTargetHours));
+          if (typeof userProfile?.quickNotesCloud === 'string') setQuickNotes(String(userProfile?.quickNotesCloud || ''));
+          if (Array.isArray(userProfile?.dailyGoals)) setDailyGoals(normalizeDailyGoals(userProfile?.dailyGoals));
+          if (!weeklyTargetEditingRef.current && userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) {
+            setWeeklyTargetHours(String(userProfile?.weeklyTargetHours));
           }
-          if (Array.isArray(userProfile.extrasSlotOrder)) setExtrasSlotOrder(normalizeExtrasOrder(userProfile.extrasSlotOrder));
+          if (Array.isArray(userProfile?.extrasSlotOrder)) setExtrasSlotOrder(normalizeExtrasOrder(userProfile?.extrasSlotOrder));
           setExtrasUpdatedAt(remoteTs);
           extrasCloudReadyRef.current = true;
         } catch (_) {}
@@ -6399,7 +6399,7 @@ setSelfDestruct(false);
         extrasCloudTimerRef.current = setTimeout(async () => {
           try {
             const ts = Date.now();
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
               quickNotesCloud: String(quickNotes || ''),
               dailyGoals: normalizeDailyGoals(dailyGoals),
               weeklyTargetHours: Number(String(weeklyTargetHours || '0').replace(',', '.')) || 0,
@@ -6413,7 +6413,7 @@ setSelfDestruct(false);
           }
         }, 700);
         return () => { try { if (extrasCloudTimerRef.current) clearTimeout(extrasCloudTimerRef.current); } catch (_) {} };
-      }, [quickNotes, dailyGoals, weeklyTargetHours, extrasSlotOrder, user.uid]);
+      }, [quickNotes, dailyGoals, weeklyTargetHours, extrasSlotOrder, user?.uid]);
       const getFocusElapsedMs = (state, now = Date.now()) => {
         if (!state.startedAt) return 0;
         const base = Math.max(0, now - Number(state.startedAt || now));
@@ -6717,18 +6717,18 @@ setSelfDestruct(false);
           return todayWeatherAdvice;
         } catch (_) { return todayWeatherAdvice; }
       })();
-      const compactHomeSmartDay = (userProfile.smartDayEnabled !== false) && (userProfile.smartDayHomeEnabled !== false);
-      const compactHomeWorkClock = (userProfile.workClockEnabled === true) && (userProfile.workClockHomeEnabled === true);
-      const extrasEnabled = userProfile.extrasEnabled !== false;
-      const showExtrasSmartDay = extrasEnabled && (userProfile.smartDayEnabled !== false);
-      const showExtrasWorkClock = extrasEnabled && (userProfile.workClockEnabled === true);
-      const showExtrasFocus = extrasEnabled && (userProfile.focusModeEnabled !== false);
-      const showExtrasWeek = extrasEnabled && (userProfile.weeklyOverviewEnabled !== false);
-      const showExtrasNotes = extrasEnabled && (userProfile.quickNotesEnabled !== false);
-      const showExtrasWeather = extrasEnabled && (userProfile.weatherPlannerEnabled !== false);
-      const showExtrasTimeBalance = extrasEnabled && (userProfile.timeBalanceEnabled !== false);
-      const showExtrasFreeWindows = extrasEnabled && (userProfile.freeWindowsEnabled !== false);
-      const showExtrasGoals = extrasEnabled && (userProfile.dailyGoalsEnabled !== false);
+      const compactHomeSmartDay = (userProfile?.smartDayEnabled !== false) && (userProfile?.smartDayHomeEnabled !== false);
+      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled === true);
+      const extrasEnabled = userProfile?.extrasEnabled !== false;
+      const showExtrasSmartDay = extrasEnabled && (userProfile?.smartDayEnabled !== false);
+      const showExtrasWorkClock = extrasEnabled && (userProfile?.workClockEnabled === true);
+      const showExtrasFocus = extrasEnabled && (userProfile?.focusModeEnabled !== false);
+      const showExtrasWeek = extrasEnabled && (userProfile?.weeklyOverviewEnabled !== false);
+      const showExtrasNotes = extrasEnabled && (userProfile?.quickNotesEnabled !== false);
+      const showExtrasWeather = extrasEnabled && (userProfile?.weatherPlannerEnabled !== false);
+      const showExtrasTimeBalance = extrasEnabled && (userProfile?.timeBalanceEnabled !== false);
+      const showExtrasFreeWindows = extrasEnabled && (userProfile?.freeWindowsEnabled !== false);
+      const showExtrasGoals = extrasEnabled && (userProfile?.dailyGoalsEnabled !== false);
       const weeklyTargetMs = Math.max(0, (Number(String(weeklyTargetHours || '0').replace(',', '.')) || 0) * 3600000);
       const weekDeltaMs = weekWorkMs - weeklyTargetMs;
       const weekTargetPct = weeklyTargetMs > 0 ? Math.max(0, Math.min(100, Math.round((weekWorkMs / weeklyTargetMs) * 100))) : 0;
@@ -6793,7 +6793,7 @@ setSelfDestruct(false);
                    <div key={cal.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-neutral-900/50 transition-colors group">
                       <label className="flex items-center gap-3 cursor-pointer flex-1 overflow-hidden">
                         <input type="checkbox" checked={visibleCalendars.includes(cal.id)} onChange={() => toggleCalendarVisibility(cal.id)} className="appearance-none w-4 h-4 border border-neutral-600 rounded-sm checked:bg-white checked:border-white transition-colors cursor-pointer shrink-0" />
-                        <span className="text-sm text-neutral-300 truncate">{cal.name} {cal.ownerId !== user.uid ? '(Geteilt)' : ''}</span>
+                        <span className="text-sm text-neutral-300 truncate">{cal.name} {cal.ownerId !== user?.uid ? '(Geteilt)' : ''}</span>
                       </label>
                       <button onClick={() => setActiveCalendarId(cal.id)} className={`w-3 h-3 rounded-full shrink-0 ${activeCalendarId === cal.id ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-transparent border border-neutral-600 group-hover:border-white'}`} title="Als aktiven Kalender setzen"></button>
                    </div>
@@ -7285,8 +7285,8 @@ setSelfDestruct(false);
                             const canFinalizeNow = !!tally.canFinalizeNow;
                             const winnerId = tally.winnerOptionId;
                             const deadlineLabel = tally.deadlineAt ? formatDeadlineShort(tally.deadlineAt) : '';
-                            const myLegacyVote = (tally.version < 2) ? ((tally.votes || {})[user.uid] || '') : '';
-                            const myRow = (tally.version >= 2 && tally.votes && typeof tally.votes[user.uid] === 'object') ? tally.votes[user.uid] : {};
+                            const myLegacyVote = (tally.version < 2) ? ((tally.votes || {})[user?.uid] || '') : '';
+                            const myRow = (tally.version >= 2 && tally.votes && typeof tally.votes[user?.uid] === 'object') ? tally.votes[user?.uid] : {};
                             const myComplete = (tally.version < 2) ? !!myLegacyVote : ((poll.options || []).every(o => isPollState((myRow || {})[o.id])));
                             const canWrite = canWriteCalendar(ev.calendarId || 'default');
 
@@ -7936,11 +7936,11 @@ setSelfDestruct(false);
                       <span className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Farbe</span>
                       <input
                         type="color"
-                        value={((userProfile && typeof userProfile.defaultCalendarColor === 'string' && userProfile.defaultCalendarColor) ? userProfile.defaultCalendarColor : '#ffffff')}
+                        value={((userProfile && typeof userProfile?.defaultCalendarColor === 'string' && userProfile?.defaultCalendarColor) ? userProfile?.defaultCalendarColor : '#ffffff')}
                         onChange={async (e) => {
                           try {
                             const v = e.target.value;
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultCalendarColor: v }, { merge: true });
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { defaultCalendarColor: v }, { merge: true });
                             showToast('Gespeichert');
                           } catch(_) { showToast('Fehler'); }
                         }}
@@ -7959,7 +7959,7 @@ setSelfDestruct(false);
                     </div>
                   </div>
 
-                  {customCalendars.filter(c => c.ownerId === user.uid).map(cal => (
+                  {customCalendars.filter(c => c.ownerId === user?.uid).map(cal => (
                     <div key={cal.id} className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <p className="font-medium text-white flex items-center gap-2">{cal.name} {cal.type==='shift' && <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-900/50 px-2 py-0.5 rounded-full uppercase">Schichtplan</span>}</p>
@@ -7973,11 +7973,11 @@ setSelfDestruct(false);
                       </div>
                     </div>
                   ))}
-                  {customCalendars.filter(c => c.ownerId !== user.uid).map(cal => (
+                  {customCalendars.filter(c => c.ownerId !== user?.uid).map(cal => (
                     <div key={cal.id} className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between opacity-80">
                       <div>
                         <p className="font-medium text-white flex items-center gap-2">{cal.name} <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Geteilt mit dir</span></p>
-                        <p className="text-xs text-neutral-500 mt-1">Rechte: {cal.sharedWith[user.uid] === 'write' ? 'Lesen & Schreiben' : 'Nur Lesen'}</p>
+                        <p className="text-xs text-neutral-500 mt-1">Rechte: {cal.sharedWith[user?.uid] === 'write' ? 'Lesen & Schreiben' : 'Nur Lesen'}</p>
                       </div>
                     </div>
                   ))}
@@ -8018,7 +8018,7 @@ setSelfDestruct(false);
                             const defaultOn = !['workClockHomeEnabled'].includes(field);
                             const current = (userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn;
                             const next = !(current === true);
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { [field]: next, updatedAt: Date.now() }, { merge: true });
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { [field]: next, updatedAt: Date.now() }, { merge: true });
                             setUserProfile(prev => ({ ...(prev || {}), [field]: next }));
                             showToast(next ? 'Aktiviert' : 'Deaktiviert');
                           } catch (_) { showToast('Fehler'); }
@@ -8039,19 +8039,19 @@ setSelfDestruct(false);
                         type="button"
                         onClick={async () => {
                           try {
-                            const next = !(userProfile.workClockEnabled === true);
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { workClockEnabled: next, updatedAt: Date.now() }, { merge: true });
+                            const next = !(userProfile?.workClockEnabled === true);
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { workClockEnabled: next, updatedAt: Date.now() }, { merge: true });
                             setUserProfile(prev => ({ ...(prev || {}), workClockEnabled: next }));
                             showToast(next ? 'Stempelung aktiviert' : 'Stempelung deaktiviert');
                           } catch (_) { showToast('Fehler'); }
                         }}
-                        className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + ((userProfile.workClockEnabled === true) ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}
+                        className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + ((userProfile?.workClockEnabled === true) ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}
                       >
-                        {(userProfile.workClockEnabled === true) ? 'Aktiv' : 'Aus'}
+                        {(userProfile?.workClockEnabled === true) ? 'Aktiv' : 'Aus'}
                       </button>
                     </div>
 
-                    {(userProfile.workClockEnabled === true) && (
+                    {(userProfile?.workClockEnabled === true) && (
                       <div className="space-y-3">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
@@ -8085,7 +8085,7 @@ setSelfDestruct(false);
                                 try {
                                   const nextPresets = normalizeWorkClockPresets(workClockPresetInput);
                                   setWorkClockPresetInput(nextPresets.join('\n'));
-                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { workClockTaskOptions: nextPresets, updatedAt: Date.now() }, { merge: true });
+                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { workClockTaskOptions: nextPresets, updatedAt: Date.now() }, { merge: true });
                                   setUserProfile(prev => ({ ...(prev || {}), workClockTaskOptions: nextPresets }));
                                   showToast('Dropdown gespeichert');
                                 } catch (_) { showToast('Fehler'); }
@@ -8172,7 +8172,7 @@ setSelfDestruct(false);
                       <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Standard-Erinnerung</label>
                       <select
                         value={(() => {
-                          const v = (userProfile && typeof userProfile.defaultReminderMinutes === 'number') ? String(userProfile.defaultReminderMinutes) : 'none';
+                          const v = (userProfile && typeof userProfile?.defaultReminderMinutes === 'number') ? String(userProfile?.defaultReminderMinutes) : 'none';
                           return v;
                         })()}
                         onChange={async (e) => {
@@ -8180,7 +8180,7 @@ setSelfDestruct(false);
                             const v = e.target.value;
                             const next = (v === 'none') ? null : (parseInt(v, 10) || 0);
                             setUserProfile(prev => ({ ...(prev || {}), defaultReminderMinutes: next }));
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultReminderMinutes: next }, { merge: true });
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { defaultReminderMinutes: next }, { merge: true });
                             showToast('Gespeichert');
                           } catch (err) {
                             showToast('Fehler');
@@ -8204,14 +8204,14 @@ setSelfDestruct(false);
                       <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benachrichtigungston</label>
                       <select
                         value={(() => {
-                          const v = (userProfile && userProfile.notificationSoundMode) ? String(userProfile.notificationSoundMode) : 'system';
+                          const v = (userProfile && userProfile?.notificationSoundMode) ? String(userProfile?.notificationSoundMode) : 'system';
                           return (v === 'silent') ? 'silent' : 'system';
                         })()}
                         onChange={async (e) => {
                           try {
                             const v = e.target.value;
                             setUserProfile(prev => ({ ...(prev || {}), notificationSoundMode: v }));
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { notificationSoundMode: v }, { merge: true });
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { notificationSoundMode: v }, { merge: true });
                             showToast('Gespeichert');
                           } catch (err) {
                             showToast('Fehler');
@@ -8241,7 +8241,7 @@ setSelfDestruct(false);
                       </div>
 
                       <div className="text-[11px] text-neutral-600">
-                        Web Token: <span className="text-neutral-300">{(userProfile && userProfile.fcmTokenWeb) ? 'vorhanden (OK)' : 'nicht gesetzt'}</span>
+                        Web Token: <span className="text-neutral-300">{(userProfile && userProfile?.fcmTokenWeb) ? 'vorhanden (OK)' : 'nicht gesetzt'}</span>
                       </div>
 
                       <div className="text-[11px] text-neutral-600">
@@ -8315,7 +8315,7 @@ setSelfDestruct(false);
       title="Kalender auswählen"
     >
       <option value="default">Privat</option>
-      {(customCalendars || []).filter(c => c.ownerId === user.uid).map(c => (
+      {(customCalendars || []).filter(c => c.ownerId === user?.uid).map(c => (
         <option key={c.id} value={c.id}>{c.name}</option>
       ))}
     </select>
@@ -8788,9 +8788,9 @@ setSelfDestruct(false);
                       <button
                         onClick={() => toggleMuteChat(activeChat.id)}
                         className="text-neutral-500 hover:text-white transition-colors p-2"
-                        title={(Array.isArray(userProfile?.mutedChatIds) && userProfile?.mutedChatIds?.includes(activeChat.id)) ? 'Stumm aus' : 'Stumm schalten'}
+                        title={(Array.isArray(userProfile?.mutedChatIds) && userProfile?.mutedChatIds.includes(activeChat.id)) ? 'Stumm aus' : 'Stumm schalten'}
                       >
-                        {(Array.isArray(userProfile?.mutedChatIds) && userProfile?.mutedChatIds?.includes(activeChat.id)) ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+                        {(Array.isArray(userProfile?.mutedChatIds) && userProfile?.mutedChatIds.includes(activeChat.id)) ? <BellOff className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
                       </button>
                     )}
                     <button onClick={() => hideSecretChatNow()} className="text-red-400 hover:text-red-300 transition-colors p-2" title="Panic Mode">
@@ -8804,7 +8804,7 @@ setSelfDestruct(false);
                   {!userProfile ? (
                     <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">Identität festlegen</h3><p className="text-sm text-neutral-500 mb-6">Wähle einen einzigartigen Benutzernamen.</p>
                     <form onSubmit={saveUsername}>
-                      <input type="text" name="username" defaultValue={userProfile?.displayName || userProfile?.username || user?.email?.split('@')[0] || ''} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
+                      <input type="text" name="username" defaultValue={userProfile?.displayName || userProfile?.username || user?.email.split('@')[0] || ''} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
                       <div className="flex items-center justify-between text-xs text-neutral-500 mb-4">
                         <div>Deine Chat-ID:</div>
                         <div className="flex items-center gap-2">
@@ -8829,7 +8829,7 @@ setSelfDestruct(false);
                               onClick={() => openImageViewer(userProfile?.avatarFullBase64 || userProfile?.avatarBase64 || userProfile?.avatarThumbBase64)}
                             />
                           ) : (
-                            <div className="w-32 h-32 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-4xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile.email || '')}</div>
+                            <div className="w-32 h-32 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-4xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile?.email || '')}</div>
                           )}
                           <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
                             <Camera className="w-4 h-4" />
@@ -8985,10 +8985,10 @@ setSelfDestruct(false);
                             )}
                             {sortedMyChats.map(chat => {
                               const isPinned = pinnedChatIds.includes(chat.id);
-                              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile.mutedChatIds : [];
+                              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
                               const isMuted = mutedChatIds.includes(chat.id);
                               const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
-                              const otherUid = isDm ? chat.participants.find(id => id !== user.uid) : null;
+                              const otherUid = isDm ? chat.participants.find(id => id !== user?.uid) : null;
                               return (
                                 <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
                                   <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
@@ -9003,7 +9003,7 @@ setSelfDestruct(false);
                                   </div>
                                   <div className="flex-1 overflow-hidden">
                                     <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
-                                    {chat.lastMessageSenderId !== user.uid && chat.updatedAt > lastChatVisit ? (
+                                    {chat.lastMessageSenderId !== user?.uid && chat.updatedAt > lastChatVisit ? (
                                       <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
                                     ) : (
                                       <p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>
@@ -9145,7 +9145,7 @@ setSelfDestruct(false);
                         )}
 
                         {(isMessageSearchOpen && messageSearchFilter === 'media') ? null : visibleChatMessages.map((msg) => {
-                          const isMe = msg.senderId === user.uid;
+                          const isMe = msg.senderId === user?.uid;
                           const showActions = selectedMessageId === msg.id;
                           
                           return (
@@ -9240,7 +9240,7 @@ setSelfDestruct(false);
                                           const ids = getChatParticipants(chat);
                                           const lastRead = (activeChatData && activeChatData.lastRead) ? activeChatData.lastRead : (chat && chat.lastRead) ? chat.lastRead : {};
                                           const denom = Math.max(0, ids.length - 1);
-                                          const seenCount = ids.filter(id => id !== user.uid && (lastRead?.[id] || 0) >= (msg.timestamp || 0)).length;
+                                          const seenCount = ids.filter(id => id !== user?.uid && (lastRead?.[id] || 0) >= (msg.timestamp || 0)).length;
                                           if (seenCount > 0) return (mode === 'compact') ? `gesehen ${seenCount}/${denom}` : `gesehen von ${seenCount}/${denom}`;
                                           if (msg.deliveredAt || msg.delivered) return 'zugestellt';
                                           return 'gesendet';
@@ -10256,10 +10256,10 @@ setSelfDestruct(false);
                     >
                       <option value="default">Privat (Standard)</option>
                       {customCalendars
-                        .filter(c => c.type !== 'shift' && (c.ownerId === user.uid || c.sharedWith?.[user.uid] === 'write'))
+                        .filter(c => c.type !== 'shift' && (c.ownerId === user?.uid || c.sharedWith?.[user?.uid] === 'write'))
                         .map(c => (
                           <option key={c.id} value={c.id}>
-                            {c.name}{c.ownerId !== user.uid ? ' (geteilt)' : ''}
+                            {c.name}{c.ownerId !== user?.uid ? ' (geteilt)' : ''}
                           </option>
                         ))
                       }
@@ -10329,9 +10329,9 @@ setSelfDestruct(false);
           ) : eventComments.map((c) => (
             <div
               key={c.id}
-              className={`max-w-[85%] rounded-2xl px-3 py-2 ${c.senderId === user.uid ? 'bg-white text-black ml-auto' : 'bg-neutral-900 text-white'}`}
+              className={`max-w-[85%] rounded-2xl px-3 py-2 ${c.senderId === user?.uid ? 'bg-white text-black ml-auto' : 'bg-neutral-900 text-white'}`}
             >
-              <div className="text-[10px] opacity-70 mb-1">{c.senderId === user.uid ? 'Du' : (c.senderName || 'User')}</div>
+              <div className="text-[10px] opacity-70 mb-1">{c.senderId === user?.uid ? 'Du' : (c.senderName || 'User')}</div>
               <div className="text-sm whitespace-pre-wrap">{c.text}</div>
               <div className="text-[10px] opacity-60 mt-1">{c.timestamp ? new Date(c.timestamp).toLocaleString('de-CH') : ''}</div>
             </div>
@@ -10443,8 +10443,8 @@ setSelfDestruct(false);
               const deadlineLabel = tally.deadlineAt ? formatDeadlineShort(tally.deadlineAt) : '';
               const canFinalizeNow = !!tally.canFinalizeNow;
               const winnerId = tally.winnerOptionId;
-              const myLegacyVote = (tally.version < 2) ? ((tally.votes || {})[user.uid] || '') : '';
-              const myRow = (tally.version >= 2 && tally.votes && typeof tally.votes[user.uid] === 'object') ? tally.votes[user.uid] : {};
+              const myLegacyVote = (tally.version < 2) ? ((tally.votes || {})[user?.uid] || '') : '';
+              const myRow = (tally.version >= 2 && tally.votes && typeof tally.votes[user?.uid] === 'object') ? tally.votes[user?.uid] : {};
               const myComplete = (tally.version < 2) ? !!myLegacyVote : ((poll.options || []).every(o => isPollState((myRow || {})[o.id])));
 
               return (
@@ -10467,7 +10467,7 @@ setSelfDestruct(false);
                   {tally.version < 2 && (
                     <div className="text-[11px] text-yellow-300 border border-yellow-900/30 bg-yellow-900/10 rounded-xl p-3">
                       Diese Abstimmung ist 1.0 (eine Stimme pro Person). Neue Abstimmungen nutzen 2.0 (Fix/Kann/Nein pro Vorschlag).
-                      {(poll.createdBy === user.uid) && (
+                      {(poll.createdBy === user?.uid) && (
                         <div className="mt-2">
                           <button
                             type="button"
@@ -10920,7 +10920,7 @@ setSelfDestruct(false);
                   {(groupMemberSearch || '').trim() !== '' && (
                     <div className="mt-2 max-h-52 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-xl">
                       {allProfiles
-                        .filter(p => p.id !== user.uid)
+                        .filter(p => p.id !== user?.uid)
                         .filter(p => (p.username || '').toLowerCase().includes(groupMemberSearch.toLowerCase()))
                         .filter(p => !(groupDraftMembers || []).includes(p.id))
                         .slice(0, 20)
@@ -10943,7 +10943,7 @@ setSelfDestruct(false);
                             <Plus className="w-4 h-4 text-neutral-400" />
                           </div>
                         ))}
-                      {allProfiles.filter(p => p.id !== user.uid).filter(p => (p.username || '').toLowerCase().includes(groupMemberSearch.toLowerCase())).filter(p => !(groupDraftMembers || []).includes(p.id)).length === 0 && (
+                      {allProfiles.filter(p => p.id !== user?.uid).filter(p => (p.username || '').toLowerCase().includes(groupMemberSearch.toLowerCase())).filter(p => !(groupDraftMembers || []).includes(p.id)).length === 0 && (
                         <div className="p-3 text-neutral-500 text-sm text-center">Kein Treffer</div>
                       )}
                     </div>
@@ -11010,11 +11010,11 @@ setSelfDestruct(false);
                        <>
                          <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
                            <p className="text-xs text-neutral-500 uppercase mb-1">Von Dir</p>
-                           <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId === user.uid).length}</p>
+                           <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId === user?.uid).length}</p>
                          </div>
                          <div className="bg-black border border-neutral-800 p-4 rounded-xl text-center">
                            <p className="text-xs text-neutral-500 uppercase mb-1">Von {safeTrim(getChatPartnerName(activeChat), "Unbekannt").slice(0,6)}.</p>
-                           <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId !== user.uid).length}</p>
+                           <p className="text-2xl font-light text-white">{chatMessages.filter(m => m.senderId !== user?.uid).length}</p>
                          </div>
                        </>
                      )}
@@ -11027,7 +11027,7 @@ setSelfDestruct(false);
                          {getChatParticipants(activeChatData || activeChat).map(uid => {
                            const p = getProfile(uid);
                            const pr = getPresence(uid);
-                           const me = uid === user.uid;
+                           const me = uid === user?.uid;
                            return (
                              <div key={uid} className="flex items-center gap-3 p-2 rounded-lg bg-black/40 border border-neutral-800">
                                <div className="w-9 h-9 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase overflow-hidden shrink-0">
@@ -11062,7 +11062,7 @@ setSelfDestruct(false);
                              {(groupEditSearch || '').trim() !== '' && (
                                <div className="mt-2 max-h-40 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-xl">
                                  {allProfiles
-                                   .filter(p => p.id !== user.uid)
+                                   .filter(p => p.id !== user?.uid)
                                    .filter(p => (p.username || '').toLowerCase().includes(groupEditSearch.toLowerCase()))
                                    .filter(p => !getChatParticipants(activeChatData || activeChat).includes(p.id))
                                    .slice(0, 15)
@@ -11082,7 +11082,7 @@ setSelfDestruct(false);
                                        <Plus className="w-4 h-4 text-neutral-400 ml-auto" />
                                      </div>
                                    ))}
-                                 {allProfiles.filter(p => p.id !== user.uid).filter(p => (p.username || '').toLowerCase().includes(groupEditSearch.toLowerCase())).filter(p => !getChatParticipants(activeChatData || activeChat).includes(p.id)).length === 0 && (
+                                 {allProfiles.filter(p => p.id !== user?.uid).filter(p => (p.username || '').toLowerCase().includes(groupEditSearch.toLowerCase())).filter(p => !getChatParticipants(activeChatData || activeChat).includes(p.id)).length === 0 && (
                                    <div className="p-3 text-neutral-500 text-sm text-center">Kein Treffer</div>
                                  )}
                                </div>

@@ -3885,7 +3885,7 @@ const requestNotificationPermission = async (currentUser) => {
         try {
           // Open-Meteo: add richer daily details + hourly for nicer UI
           const res = await fetch(
-            `https://api.open-meteo.com/v1/forecastlatitude=${location.lat}&longitude=${location.lon}` +
+            `https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}` +
             `&current_weather=true` +
             `&hourly=temperature_2m,precipitation_probability,weathercode,windspeed_10m` +
             `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,windspeed_10m_max,sunrise,sunset` +
@@ -4406,7 +4406,7 @@ const handleAuth = async (e) => {
         e.preventDefault();
         if (!searchQuery) return;
         try {
-          const res = await fetch(`https://geocoding-api.open-meteo.com/v1/searchname=${searchQuery}&count=5&language=de&format=json`);
+          const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${searchQuery}&count=5&language=de&format=json`);
           const data = await res.json();
           setSearchResults(data.results || []);
         } catch (error) {}
@@ -11217,7 +11217,6 @@ setSelfDestruct(false);
 
 
 export default AmoledCalendarApp;
-
 
 
 

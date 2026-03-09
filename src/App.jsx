@@ -385,6 +385,8 @@ function AmoledCalendarApp() {
       const [shoppingQuickItem, setShoppingQuickItem] = useState('');
       const [shoppingPaidAmount, setShoppingPaidAmount] = useState('');
       const [shoppingPaidNote, setShoppingPaidNote] = useState('');
+      const [homeCalendarScope, setHomeCalendarScope] = useState('today');
+      const [homeCalendarCustomDate, setHomeCalendarCustomDate] = useState(() => new Date().toISOString().slice(0, 10));
       const [themeMode, setThemeMode] = useState(() => {
         try {
           const stored = localStorage.getItem('onyx_theme_mode');
@@ -438,6 +440,7 @@ function getSupportedAudioRecorderConfig() {
       const [searchQuery, setSearchQuery] = useState('');
       const [searchResults, setSearchResults] = useState([]);
       const activeShoppingList = shoppingLists.find((row) => row.id === activeShoppingListId) || shoppingLists[0] || null;
+      const pinnedShoppingList = (Array.isArray(shoppingLists) ? shoppingLists : []).find((row) => row.id === userProfile?.pinnedShoppingListId) || null;
 
       // --- BILD-VOLLBILD VIEWER ---
       const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
@@ -3610,6 +3613,15 @@ const requestNotificationPermission = async (currentUser) => {
         const next = normalizeShoppingLists(shoppingLists).filter((list) => list.id !== listId);
         await persistShoppingLists(next);
         setActiveShoppingListId((prev) => prev === listId ? (next[0]?.id || '') : prev);
+      };
+      const togglePinShoppingList = async (listId) => {
+        if (!user || !listId) return;
+        try {
+          const nextPinned = (userProfile?.pinnedShoppingListId === listId) ? '' : listId;
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { pinnedShoppingListId: nextPinned, updatedAt: Date.now() }, { merge: true });
+          setUserProfile(prev => ({ ...(prev || {}), pinnedShoppingListId: nextPinned }));
+          showToast(nextPinned ? 'Einkaufsliste angepinnt' : 'Pin entfernt');
+        } catch (_) { showToast('Fehler'); }
       };
       const addShoppingPurchase = async (listId) => {
         const amount = Number(String(shoppingPaidAmount || '').replace(',', '.').replace(/[^0-9.]/g, ''));
@@ -6805,7 +6817,40 @@ setSelfDestruct(false);
         if (endOfDayMs - cursor >= 30 * 60000) items.push(`${new Date(cursor).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}-23:59`);
         return items.length ? items.slice(0, 4) : ['Keine längeren Fenster'];
       })();
-      const completedGoals = normalizeDailyGoals(dailyGoals).filter((g) => g.done && String(g.text || '').trim()).length;
+      const goalsWithText = normalizeDailyGoals(dailyGoals).filter((g) => String(g.text || '').trim());
+      const completedGoals = goalsWithText.filter((g) => g.done).length;
+      const hasDailyGoalsForHome = goalsWithText.length > 0;
+      const showHomeWorkClockCard = compactHomeWorkClock && !!workClockActive?.startedAt;
+      const shouldShowHomeShoppingCard = !!pinnedShoppingList;
+      const homeCalendarDateLabel = homeCalendarScope === 'today' ? 'Heute' : (homeCalendarScope === 'week' ? 'Diese Woche' : (homeCalendarScope === 'month' ? 'Dieser Monat' : 'Datum'));
+      const homeCalendarEvents = (() => {
+        if (homeCalendarScope === 'today') {
+          return getEventsForDate(todayDateStr).map((event) => ({ ...event, __date: todayDateStr }));
+        }
+        if (homeCalendarScope === 'week') {
+          return weekEventDates.flatMap((d) => getEventsForDate(d).map((event) => ({ ...event, __date: d })));
+        }
+        if (homeCalendarScope === 'month') {
+          const base = new Date(todayDateStr + 'T00:00:00');
+          const y = base.getFullYear();
+          const m = base.getMonth();
+          const daysInMonth = new Date(y, m + 1, 0).getDate();
+          const rows = [];
+          for (let day = 1; day <= daysInMonth; day += 1) {
+            const d = new Date(y, m, day).toISOString().slice(0, 10);
+            rows.push(...getEventsForDate(d).map((event) => ({ ...event, __date: d })));
+          }
+          return rows;
+        }
+        const picked = /^\d{4}-\d{2}-\d{2}$/.test(String(homeCalendarCustomDate || '')) ? homeCalendarCustomDate : todayDateStr;
+        return getEventsForDate(picked).map((event) => ({ ...event, __date: picked }));
+      })();
+      const sortedHomeCalendarEvents = [...homeCalendarEvents].sort((a, b) => {
+        const da = String(a.__date || '');
+        const db = String(b.__date || '');
+        if (da !== db) return da.localeCompare(db);
+        return String(a.time || '').localeCompare(String(b.time || ''));
+      });
       const activeCalForView = getCalendarById(activeCalendarId);
 
       return (
@@ -6938,21 +6983,27 @@ setSelfDestruct(false);
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  <button onClick={() => setCurrentView('shopping')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Einkauf</div>
-                    <div className="text-lg font-semibold text-white">{shoppingLists.length} Listen</div>
-                    <div className="mt-1 text-xs text-neutral-500">{activeShoppingList ? `${activeShoppingList.title} · ${normalizeShoppingItems(activeShoppingList.items).filter(i => !i.done).length} offen` : 'Keine aktive Liste'}</div>
-                  </button>
-                  <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
-                    <div className="text-lg font-semibold text-white">{workClockActive?.startedAt ? 'Aktiv' : 'Inaktiv'}</div>
-                    <div className="mt-1 text-xs text-neutral-500">{workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : `Heute ${formatDurationCompact(todayWorkMs)}`}</div>
-                  </button>
-                  <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Tagesziele</div>
-                    <div className="text-lg font-semibold text-white">{completedGoals}/3 erledigt</div>
-                    <div className="mt-1 text-xs text-neutral-500">Direkt in Extras bearbeiten</div>
-                  </button>
+                  {shouldShowHomeShoppingCard && (
+                    <button onClick={() => setCurrentView('shopping')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
+                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Einkauf</div>
+                      <div className="text-lg font-semibold text-white">{pinnedShoppingList?.title || 'Angepinnte Liste'}</div>
+                      <div className="mt-1 text-xs text-neutral-500">{pinnedShoppingList ? `${normalizeShoppingItems(pinnedShoppingList.items).filter(i => !i.done).length} offen` : ''}</div>
+                    </button>
+                  )}
+                  {showHomeWorkClockCard && (
+                    <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
+                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
+                      <div className="text-lg font-semibold text-white">Aktiv</div>
+                      <div className="mt-1 text-xs text-neutral-500">{formatDurationCompact(activeWorkMs)}</div>
+                    </button>
+                  )}
+                  {hasDailyGoalsForHome && (
+                    <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
+                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Tagesziele</div>
+                      <div className="text-lg font-semibold text-white">{completedGoals}/{goalsWithText.length} erledigt</div>
+                      <div className="mt-1 text-xs text-neutral-500">Direkt in Extras bearbeiten</div>
+                    </button>
+                  )}
                 </div>
 
                 <section className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
@@ -6963,23 +7014,31 @@ setSelfDestruct(false);
                   {hasUnreadMessages && (
                     <div className="mb-4 p-3 border border-neutral-700 bg-neutral-900 rounded-xl text-sm text-neutral-200">Kalender Aktuell: neue Nachrichten vorhanden.</div>
                   )}
+                  <div className="mb-4 flex flex-wrap gap-2">
+                    {[['today','Heute'],['week','Diese Woche'],['month','Dieser Monat'],['custom','Datum']].map(([key,label]) => (
+                      <button key={key} type="button" onClick={() => setHomeCalendarScope(key)} className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${homeCalendarScope === key ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600'}`}>{label}</button>
+                    ))}
+                    {homeCalendarScope === 'custom' && (
+                      <input type="date" value={homeCalendarCustomDate} onChange={(e) => setHomeCalendarCustomDate(e.target.value)} className="px-3 py-1.5 rounded-lg text-xs border border-neutral-800 bg-black text-neutral-200" />
+                    )}
+                  </div>
                   <div className="space-y-3">
-                    {getEventsForDate(todayDateStr).length > 0 ? (
-                      getEventsForDate(todayDateStr).sort((a,b) => (a.time||'').localeCompare(b.time||'')).map(event => (
-                        <button key={event.id} onClick={() => openEditEventModal(event)} className="w-full text-left flex items-center gap-4 p-4 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-xl bg-black">
+                    {sortedHomeCalendarEvents.length > 0 ? (
+                      sortedHomeCalendarEvents.map(event => (
+                        <button key={`${event.__date}_${event.id}`} onClick={() => openEditEventModal(event)} className="w-full text-left flex items-center gap-4 p-4 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-xl bg-black">
                           {event.type === 'shift' ? (
                             <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: event.color }}><Clock className="w-4 h-4 text-black opacity-70" /></div>
                           ) : (
-                            <div className="text-neutral-400 font-mono text-sm w-12 text-right shrink-0">{event.time}</div>
+                            <div className="text-neutral-400 font-mono text-sm w-20 text-right shrink-0">{event.time || 'Ganztägig'}</div>
                           )}
                           <div className="flex-1 overflow-hidden">
                             <p className="font-medium text-white truncate">{event.title}</p>
-                            <p className="text-xs text-neutral-500 mt-1 truncate">{event.type === 'shift' ? (getCalendarById(event.calendarId).name || 'Kalender') : event.type}{event.desc ? ` · ${event.desc}` : ''}</p>
+                            <p className="text-xs text-neutral-500 mt-1 truncate">{new Date((event.__date || todayDateStr) + 'T00:00:00').toLocaleDateString('de-DE')} · {event.type === 'shift' ? (getCalendarById(event.calendarId).name || 'Kalender') : event.type}{event.desc ? ` · ${event.desc}` : ''}</p>
                           </div>
                         </button>
                       ))
                     ) : (
-                      <p className="text-neutral-500 text-sm italic p-4 text-center border border-dashed border-neutral-800 rounded-lg">Keine Termine für heute.</p>
+                      <p className="text-neutral-500 text-sm italic p-4 text-center border border-dashed border-neutral-800 rounded-lg">Keine Termine für {homeCalendarDateLabel.toLowerCase()}.</p>
                     )}
                   </div>
                 </section>
@@ -7522,15 +7581,20 @@ setSelfDestruct(false);
                         const bought = normalizeShoppingItems(list.items).filter((item) => item.done).length;
                         const total = normalizeShoppingItems(list.items).length;
                         return (
-                          <button key={list.id} onClick={() => setActiveShoppingListId(list.id)} className={`w-full text-left rounded-2xl border p-4 transition-colors ${activeShoppingList.id === list.id ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500 bg-black/40'}`}>
+                          <div key={list.id} className={`w-full rounded-2xl border p-4 transition-colors ${activeShoppingList.id === list.id ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500 bg-black/40'}`}>
                             <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
+                              <button onClick={() => setActiveShoppingListId(list.id)} className="text-left min-w-0 flex-1">
                                 <div className="font-semibold text-white truncate">{list.title}</div>
                                 <div className="text-xs text-neutral-500 mt-1">{list.store || 'Ohne Ort'} · {bought}/{total} gekauft</div>
+                              </button>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="text-[11px] text-neutral-400">{formatCurrencyCHF(calcShoppingPaidTotal(list))}</div>
+                                <button type="button" onClick={() => togglePinShoppingList(list.id)} className={`p-2 rounded-lg border ${userProfile?.pinnedShoppingListId === list.id ? 'border-white bg-white text-black' : 'border-neutral-700 text-neutral-300 hover:border-neutral-500'}`} title="Auf Startseite pinnen">
+                                  <Pin className="w-4 h-4" />
+                                </button>
                               </div>
-                              <div className="text-[11px] text-neutral-400">{formatCurrencyCHF(calcShoppingPaidTotal(list))}</div>
                             </div>
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -8039,54 +8103,6 @@ setSelfDestruct(false);
                       </div>
                     </div>
                   ))}
-                </div>
-              </section>
-            </AccordionItem>
-
-            {/* EXTRAS */}
-            <AccordionItem id="notifications">
-              <section id="settings-notifications">
-                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Activity className="w-4 h-4" /> Extras
-                </h3>
-
-                {/* Core settings */}
-                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {[
-                      ['extrasEnabled','Extras-Bereich','Blendet den neuen Extras-Tab ein und aus.'],
-                      ['smartDayEnabled','Smart Day in Extras','Detaillierte Tageskarte im Extras-Bereich.'],
-                      ['smartDayHomeEnabled','Smart Day auf Home','Kompakte Karte auf der Startseite.'],
-                      ['workClockHomeEnabled','Stempeluhr auf Home','Nur kompakte Stempeluhr-Zeile auf Home.'],
-                      ['focusModeEnabled','Fokusmodus','25/50/90-Minuten Fokusblöcke in Extras.'],
-                      ['weeklyOverviewEnabled','Wochenübersicht','Arbeitszeit, Termine und freie Fenster bündeln.'],
-                      ['freeWindowsEnabled','Freie Zeitfenster','Eigene Karte mit freien Blöcken des Tages.'],
-                      ['dailyGoalsEnabled','Tagesziele','Drei Tagesziele mit Häkchen und Cloud-Sync.'],
-                      ['timeBalanceEnabled','Soll-/Ist-Stunden','Wochenziel gegen echte Arbeitszeit vergleichen.'],
-                      ['quickNotesEnabled','Schnellnotizen','Mit Firebase-Sync auf allen Geräten verfügbar.'],
-                      ['weatherPlannerEnabled','Wetter-Planer','Zusätzliche Wetter-/Kleidungs-Hinweise in Extras.']
-                    ].map(([field,label,desc]) => (
-                      <div key={field} className="border border-neutral-800 rounded-xl bg-black p-4 flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-medium text-white">{label}</p>
-                          <p className="text-xs text-neutral-500 mt-1">{desc}</p>
-                        </div>
-                        <button type="button" onClick={async () => {
-                          try {
-                            const defaultOn = !['workClockHomeEnabled'].includes(field);
-                            const current = (userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn;
-                            const next = !(current === true);
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { [field]: next, updatedAt: Date.now() }, { merge: true });
-                            setUserProfile(prev => ({ ...(prev || {}), [field]: next }));
-                            showToast(next ? 'Aktiviert' : 'Deaktiviert');
-                          } catch (_) { showToast('Fehler'); }
-                        }} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + (((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
-                          {(((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true) ? 'Aktiv' : 'Aus'}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
                   <div className="border border-neutral-800 rounded-xl bg-black p-4 space-y-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
@@ -8157,6 +8173,55 @@ setSelfDestruct(false);
                         </div>
                       </div>
                     )}
+                  </div>
+
+
+                </div>
+              </section>
+            </AccordionItem>
+
+            {/* EXTRAS */}
+            <AccordionItem id="notifications">
+              <section id="settings-notifications">
+                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                  <Activity className="w-4 h-4" /> Extras
+                </h3>
+
+                {/* Core settings */}
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      ['extrasEnabled','Extras-Bereich','Blendet den neuen Extras-Tab ein und aus.'],
+                      ['smartDayEnabled','Smart Day in Extras','Detaillierte Tageskarte im Extras-Bereich.'],
+                      ['smartDayHomeEnabled','Smart Day auf Home','Kompakte Karte auf der Startseite.'],
+                      ['workClockHomeEnabled','Stempeluhr auf Home','Nur kompakte Stempeluhr-Zeile auf Home.'],
+                      ['focusModeEnabled','Fokusmodus','25/50/90-Minuten Fokusblöcke in Extras.'],
+                      ['weeklyOverviewEnabled','Wochenübersicht','Arbeitszeit, Termine und freie Fenster bündeln.'],
+                      ['freeWindowsEnabled','Freie Zeitfenster','Eigene Karte mit freien Blöcken des Tages.'],
+                      ['dailyGoalsEnabled','Tagesziele','Drei Tagesziele mit Häkchen und Cloud-Sync.'],
+                      ['timeBalanceEnabled','Soll-/Ist-Stunden','Wochenziel gegen echte Arbeitszeit vergleichen.'],
+                      ['quickNotesEnabled','Schnellnotizen','Mit Firebase-Sync auf allen Geräten verfügbar.'],
+                      ['weatherPlannerEnabled','Wetter-Planer','Zusätzliche Wetter-/Kleidungs-Hinweise in Extras.']
+                    ].map(([field,label,desc]) => (
+                      <div key={field} className="border border-neutral-800 rounded-xl bg-black p-4 flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-white">{label}</p>
+                          <p className="text-xs text-neutral-500 mt-1">{desc}</p>
+                        </div>
+                        <button type="button" onClick={async () => {
+                          try {
+                            const defaultOn = !['workClockHomeEnabled'].includes(field);
+                            const current = (userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn;
+                            const next = !(current === true);
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { [field]: next, updatedAt: Date.now() }, { merge: true });
+                            setUserProfile(prev => ({ ...(prev || {}), [field]: next }));
+                            showToast(next ? 'Aktiviert' : 'Deaktiviert');
+                          } catch (_) { showToast('Fehler'); }
+                        }} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + (((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
+                          {(((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true) ? 'Aktiv' : 'Aus'}
+                        </button>
+                      </div>
+                    ))}
                   </div>
 
                   <div className="border border-neutral-800 rounded-xl bg-black p-4 space-y-4">

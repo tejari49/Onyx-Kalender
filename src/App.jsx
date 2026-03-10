@@ -636,6 +636,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 
       const [myChats, setMyChats] = useState([]);
       const [activeChat, setActiveChat] = useState(null);
+      const activeChatId = activeChat?.id || null;
       const [chatMessages, setChatMessages] = useState([]);
       const [newMessageText, setNewMessageText] = useState('');
       const [editingMessage, setEditingMessage] = useState(null);
@@ -2587,22 +2588,26 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       // --- CHAT MESSAGES SYNC (Pagination: letzte 25 + Infinite Scroll nach oben) ---
       useEffect(() => {
-        if (!activeChat || !user) {
+        if (!activeChatId || !user) {
           lastResetChatIdRef.current = null;
           return;
         }
 
-        // Reset pagination state when switching chats
-        chatOldestCursorRef.current = null;
-        chatLoadedMoreRef.current = false;
-        chatAutoLoadLockRef.current = false;
-        setChatMessages([]);
-        setChatHasMore(false);
-        setChatLoadingMore(false);
-        setChatTotalCount(0);
-        setChatMediaItems([]);
+        const switchedChat = lastResetChatIdRef.current !== activeChatId;
+        if (switchedChat) {
+          // Reset pagination + transient state only on real chat switch (prevents UI blinking on foreground/presence updates)
+          chatOldestCursorRef.current = null;
+          chatLoadedMoreRef.current = false;
+          chatAutoLoadLockRef.current = false;
+          setChatMessages([]);
+          setChatHasMore(false);
+          setChatLoadingMore(false);
+          setChatTotalCount(0);
+          setChatMediaItems([]);
+          lastResetChatIdRef.current = activeChatId;
+        }
 
-        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
+        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages');
         const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
 
         const unsubscribeMessages = onSnapshot(latestQ, (snapshot) => {
@@ -2657,9 +2662,9 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user?.uid) {
               const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
-              const isMuted = mutedChatIds.includes(activeChat.id);
+              const isMuted = mutedChatIds.includes(activeChatId);
               const canNotify = (('Notification' in window) && Notification.permission === 'granted');
-              const key = `onyx_last_notify_${activeChat.id}`;
+              const key = `onyx_last_notify_${activeChatId}`;
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
               if (!isMuted && canNotify && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
@@ -2674,20 +2679,20 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const nowMs = Date.now();
             if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
               lastReadWriteRef.current = nowMs;
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
             }
           }
 
           if (unreadToUpdate.length > 0) {
             unreadToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
             });
           }
 
           if (deliveredToUpdate.length > 0) {
             const deliveredAt = Date.now();
             deliveredToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
             });
           }
 
@@ -2702,7 +2707,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         return () => unsubscribeMessages();
-      }, [activeChat, user, currentView, secretView, userProfile]);
+      }, [activeChatId, activeChat, user, currentView, secretView, userProfile]);
 
       useEffect(() => {
         let cancelled = false;
@@ -2718,7 +2723,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         const loadAllChatMeta = async () => {
           setChatMediaLoading(true);
           try {
-            const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
+            const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages');
             const snap = await getDocs(query(messagesRef, orderBy('timestamp', 'asc')));
             if (cancelled) return;
             const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));

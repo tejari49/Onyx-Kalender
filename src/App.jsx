@@ -636,6 +636,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 
       const [myChats, setMyChats] = useState([]);
       const [activeChat, setActiveChat] = useState(null);
+      const activeChatId = activeChat?.id || null;
       const [chatMessages, setChatMessages] = useState([]);
       const [newMessageText, setNewMessageText] = useState('');
       const [editingMessage, setEditingMessage] = useState(null);
@@ -661,6 +662,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const chatOldestCursorRef = useRef(null);
       const chatLoadedMoreRef = useRef(false);
       const chatAutoLoadLockRef = useRef(false);
+      const lastResetChatIdRef = useRef(null);
       const CHAT_PAGE_SIZE = 25;
       const [chatHasMore, setChatHasMore] = useState(false);
       const [chatLoadingMore, setChatLoadingMore] = useState(false);
@@ -2586,16 +2588,26 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       // --- CHAT MESSAGES SYNC (Pagination: letzte 25 + Infinite Scroll nach oben) ---
       useEffect(() => {
-        if (!activeChat || !user) return;
+        if (!activeChatId || !user) {
+          lastResetChatIdRef.current = null;
+          return;
+        }
 
-        // Reset pagination state when switching chats
-        chatOldestCursorRef.current = null;
-        chatLoadedMoreRef.current = false;
-        chatAutoLoadLockRef.current = false;
-        setChatHasMore(false);
-        setChatLoadingMore(false);
+        const switchedChat = lastResetChatIdRef.current !== activeChatId;
+        if (switchedChat) {
+          // Reset pagination + transient state only on real chat switch (prevents UI blinking on foreground/presence updates)
+          chatOldestCursorRef.current = null;
+          chatLoadedMoreRef.current = false;
+          chatAutoLoadLockRef.current = false;
+          setChatMessages([]);
+          setChatHasMore(false);
+          setChatLoadingMore(false);
+          setChatTotalCount(0);
+          setChatMediaItems([]);
+          lastResetChatIdRef.current = activeChatId;
+        }
 
-        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages');
         const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
 
         const unsubscribeMessages = onSnapshot(latestQ, (snapshot) => {
@@ -2650,9 +2662,9 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user?.uid) {
               const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
-              const isMuted = mutedChatIds.includes(activeChat.id);
+              const isMuted = mutedChatIds.includes(activeChatId);
               const canNotify = (('Notification' in window) && Notification.permission === 'granted');
-              const key = `onyx_last_notify_${activeChat.id}`;
+              const key = `onyx_last_notify_${activeChatId}`;
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
               if (!isMuted && canNotify && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
@@ -2667,20 +2679,20 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const nowMs = Date.now();
             if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
               lastReadWriteRef.current = nowMs;
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
             }
           }
 
           if (unreadToUpdate.length > 0) {
             unreadToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
             });
           }
 
           if (deliveredToUpdate.length > 0) {
             const deliveredAt = Date.now();
             deliveredToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
             });
           }
 
@@ -2695,7 +2707,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         return () => unsubscribeMessages();
-      }, [activeChat, user, currentView, secretView, userProfile]);
+      }, [activeChatId, activeChat, user, currentView, secretView, userProfile]);
 
       useEffect(() => {
         let cancelled = false;
@@ -2711,7 +2723,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         const loadAllChatMeta = async () => {
           setChatMediaLoading(true);
           try {
-            const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
+            const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages');
             const snap = await getDocs(query(messagesRef, orderBy('timestamp', 'asc')));
             if (cancelled) return;
             const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -9062,6 +9074,10 @@ setSelfDestruct(false);
 
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
+                      <div className="mb-4 px-2">
+                        <h3 className="text-sm md:text-base font-semibold text-white">Freunde hinzufügen & verwalten</h3>
+                        <p className="text-xs text-neutral-500 mt-1">Alles für Kontakte liegt jetzt direkt im Secret-Chat-Dashboard.</p>
+                      </div>
                       <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
                         <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
                         
@@ -11369,5 +11385,4 @@ setSelfDestruct(false);
 
 
 export default AmoledCalendarApp;
-
 

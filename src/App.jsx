@@ -438,14 +438,20 @@ function AmoledCalendarApp() {
 
 function getSupportedAudioRecorderConfig() {
   const MR = (typeof window !== 'undefined' && window.MediaRecorder) ? window.MediaRecorder : null;
+  const isIos = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
   const supports = (mime) => {
     try { return !!(MR && MR.isTypeSupported && MR.isTypeSupported(mime)); }
     catch (_) { return false; }
   };
-  if (supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
+
+  // Prefer codecs per platform to avoid short/incomplete playback on some devices.
+  if (isIos) {
+    if (supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
+  }
   if (supports('audio/webm;codecs=opus')) return { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 };
   if (supports('audio/ogg;codecs=opus')) return { mimeType: 'audio/ogg;codecs=opus', audioBitsPerSecond: 128000 };
   if (supports('audio/webm')) return { mimeType: 'audio/webm', audioBitsPerSecond: 96000 };
+  if (supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
   return { mimeType: '', audioBitsPerSecond: 96000 };
 }
 

@@ -100,102 +100,31 @@ Onyx Kalender ist eine moderne, dunkle Kalender‑PWA mit Fokus auf Terminplanun
 
 ## Installation & lokaler Start
 
-```bash
-npm install
-npm run dev
-```
+### Extras
+- Smart Day
+- Stempeluhr
+- Fokusmodus
+- Wochenübersicht
+- Freie Zeitfenster
+- Tagesziele
+- Soll-/Ist-Stunden
+- Schnellnotizen
+- Wetter-Planer
+- Karten in Extras per Drag & Drop sortierbar
 
-Danach ist die App standardmäßig unter der von Vite ausgegebenen lokalen URL erreichbar.
+### Benachrichtigungen / PWA
+- überarbeiteter `firebase-messaging-sw.js`
+- **Raw Push Fallback** zusätzlich zu Firebase `onBackgroundMessage`
+- Dedupe-System gegen doppelte Notifications
+- neues `badge-icon.png` für Android-Badge / Statusleisten-Symbol
+- `requireInteraction` für wichtige Erinnerungen
+- Notification Actions: **Öffnen** und **OK**
+- periodisches FCM-Token-Refresh in `App.jsx`
+- Service-Worker-Update-Check mit `SKIP_WAITING`
+- Manifest um monochromes Badge-Icon ergänzt
 
-## Build & Preview
+- Secret Chat: Medien-Galerie mit allen Bildern als Miniaturen, Vollbild-Viewer und echtem Gesamt-Nachrichtenzähler pro Chat.
+- Voice-Nachrichten: Recorder mit stabileren Audio-Parametern (Opus/WebM bevorzugt, 1 Kanal, Echo-/Noise-Suppression) gegen stotternde Aufnahmen.
 
-```bash
-npm run build
-npm run preview
-```
-
-Hinweis: `vite.config.js` nutzt aktuell `base: '/Onyx-Kalender/'`. Für andere Hosting-Pfade muss dieser Wert ggf. angepasst werden.
-
-## Firebase-Setup
-
-Die App enthält aktuell eine direkte Firebase-Konfiguration im Frontend und im Service Worker. Für produktive Setups empfiehlt sich mittelfristig ein Wechsel auf Umgebungsvariablen (z. B. `VITE_...`).
-
-Wichtige genutzte Firebase-Bereiche:
-
-- Authentication
-- Firestore (`artifacts/{APP_ID}/public/data/...`)
-- Cloud Messaging (Web Push)
-
-## Cloud Functions
-
-Im Ordner `functions/` ist eine Function enthalten, die beim Erstellen eines Testdokuments einen Push-Testversand auslöst.
-
-### Lokal (Emulator)
-
-```bash
-cd functions
-npm install
-npm run serve
-```
-
-### Deploy
-
-```bash
-cd functions
-npm run deploy
-```
-
-⚠️ Vor produktivem Einsatz `APP_LINK` in `functions/index.js` auf die echte App-URL setzen.
-
-## PWA, Push & Service Worker
-
-- Service Worker Registrierung erfolgt im `index.html`
-- Push-Handling und Notification-Fallbacks liegen in `firebase-messaging-sw.js`
-- `manifest.json` wird über den Base-Pfad eingebunden
-
-Wenn Push-Benachrichtigungen nicht zugestellt werden, prüfe:
-
-1. Browser-Berechtigungen für Notifications
-2. Vorhandenes `fcmTokenWeb` im Benutzerprofil
-3. Firestore-Regeln für Test-/Push-Pfade
-4. Blocker (Adblock/Shield), die Firestore oder Messaging blockieren
-
-## Deployment
-
-Typischer Frontend-Flow:
-
-```bash
-npm run build
-```
-
-Das Ergebnis liegt im Ordner `dist/` und kann z. B. auf statischem Hosting (Firebase Hosting, Netlify, Vercel, GitHub Pages) ausgeliefert werden.
-
-Bei GitHub Pages ist der gesetzte Base-Pfad `/Onyx-Kalender/` bereits passend.
-
-## Firestore Rules Hinweise
-
-Im Repository liegen zusätzliche Regel-Beispiele:
-
-- `FIRESTORE_RULES_SHARING.txt` (Public/Busy-only Shares)
-- `FIRESTORE_RULES_EVENT_THREADS.txt` (Kommentare/Polls pro Termin)
-
-Diese Dateien sind **Snippets** und sollten in ein bestehendes, sicheres Gesamt-Regelwerk integriert werden.
-
-## Troubleshooting
-
-- **Leerer/defekter Screen:** Browser-Konsole öffnen, Hard-Reload durchführen, Service Worker aktualisieren.
-- **Push-Test schlägt fehl:** `APP_LINK`, FCM-Token und Firestore-Rechte prüfen.
-- **Daten inkonsistent zwischen Geräten:** Prüfen, ob Benutzer eingeloggt ist und Profil-Sync erfolgreich läuft.
-- **Routing/Assets auf Hosting kaputt:** `base`-Pfad in `vite.config.js` mit Hosting-Pfad abgleichen.
-
-## Roadmap-Ideen
-
-- Umstellung auf `.env`/`VITE_...` Konfiguration
-- Modul-Aufteilung von `App.jsx` in Feature-Bereiche
-- Automatisierte Tests (Unit + E2E)
-- CI/CD Pipeline für Build + Deploy + Lint
-- Internationalisierung (i18n)
-
-## Lizenz
-
-Aktuell ist keine explizite Lizenzdatei vorhanden. Falls das Projekt öffentlich verteilt wird, sollte eine passende Lizenz (z. B. MIT) ergänzt werden.
+### GitHub Pages CI Hinweis
+- Falls der Deploy-Job mit `Unable to resolve action actions/deploy-pages@v5` fehlschlägt, verwende in `.github/workflows/Page.yml` die gültige Version `actions/deploy-pages@v4`.

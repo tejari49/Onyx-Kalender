@@ -693,6 +693,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [messageMatchIndex, setMessageMatchIndex] = useState(0);
       const [messageSearchFilter, setMessageSearchFilter] = useState('all');
       const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+      const chatRetryTimersRef = useRef({});
 
       const [chatMetaPrefs, setChatMetaPrefs] = useState(() => {
         try {
@@ -2797,6 +2798,32 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         loadAllChatMeta();
         return () => { cancelled = true; };
       }, [activeChat?.id, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
+
+      useEffect(() => {
+        if (!activeChat?.id || !user?.uid) return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        const failedMine = (chatMessages || []).filter((m) => m && m.failed && m.senderId === user?.uid && m.clientMsgId);
+        if (failedMine.length === 0) return;
+        failedMine.forEach((m) => {
+          const key = String(m.clientMsgId || '');
+          if (!key) return;
+          if (chatRetryTimersRef.current[key]) return;
+          const retryCount = Number(m.retryCount || 0);
+          if (retryCount >= 3) return;
+          chatRetryTimersRef.current[key] = setTimeout(async () => {
+            try {
+              await retryFailedMessage(m, { silent: true });
+            } finally {
+              try { clearTimeout(chatRetryTimersRef.current[key]); } catch (_) {}
+              delete chatRetryTimersRef.current[key];
+            }
+          }, 5000);
+        });
+        return () => {
+          Object.values(chatRetryTimersRef.current || {}).forEach((t) => { try { clearTimeout(t); } catch (_) {} });
+          chatRetryTimersRef.current = {};
+        };
+      }, [chatMessages, activeChat?.id, user?.uid]);
 
       const loadMoreChatMessages = async () => {
         try {
@@ -6213,10 +6240,66 @@ setSelfDestruct(false);
           localStorage.setItem('onyx_last_chat_visit', now.toString());
         } catch (error) {
           console.error('sendMessage failed', error);
-          // Optimistic rollback
-          setChatMessages(prev => (prev || []).filter(m => m.clientMsgId !== clientMsgId));
+          // Keep failed message in chat so user can retry manually/automatically.
+          setChatMessages(prev => (prev || []).map(m => {
+            if (!m || m.clientMsgId !== clientMsgId) return m;
+            return {
+              ...m,
+              pending: false,
+              failed: true,
+              failedAt: Date.now(),
+              retryCount: Number(m.retryCount || 0)
+            };
+          }));
           showToast('Senden fehlgeschlagen');
           refocusChatInput();
+        }
+      };
+
+      const retryFailedMessage = async (msg, opts = {}) => {
+        if (!activeChat || !user || !msg?.clientMsgId) return;
+        if (msg.deleted || String(msg.id || '').startsWith('local_') === false && !msg.failed) return;
+        const localId = String(msg.id || `local_${msg.clientMsgId}`);
+        const nextRetryCount = Number(msg.retryCount || 0) + 1;
+
+        const payload = {
+          clientMsgId: msg.clientMsgId,
+          senderId: msg.senderId || user?.uid,
+          text: String(msg.text || ''),
+          image: msg.image || null,
+          audio: msg.audio || null,
+          event: msg.event || null,
+          replyTo: msg.replyTo || null,
+          reactions: msg.reactions && typeof msg.reactions === 'object' ? msg.reactions : {},
+          starredBy: Array.isArray(msg.starredBy) ? msg.starredBy : [],
+          selfDestruct: !!msg.selfDestruct,
+          timestamp: Number(msg.timestamp || Date.now()) || Date.now(),
+          createdAt: serverTimestamp(),
+          read: false
+        };
+
+        setChatMessages(prev => (prev || []).map(m => {
+          if (!m || String(m.id || '') !== localId) return m;
+          return { ...m, pending: true, failed: false, retryCount: nextRetryCount, retrying: true };
+        }));
+
+        try {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+            updatedAt: Date.now(),
+            lastMessageSenderId: user?.uid,
+            messageCount: increment(1),
+            mediaCount: msg.image ? increment(1) : increment(0),
+            [`typing.${user?.uid}`]: false,
+            [`typingAt.${user?.uid}`]: Date.now()
+          }).catch(()=>{});
+        } catch (error) {
+          console.error('retryFailedMessage failed', error);
+          setChatMessages(prev => (prev || []).map(m => {
+            if (!m || String(m.id || '') !== localId) return m;
+            return { ...m, pending: false, failed: true, failedAt: Date.now(), retrying: false, retryCount: nextRetryCount };
+          }));
+          if (!opts.silent) showToast('Erneut senden fehlgeschlagen');
         }
       };
 
@@ -9489,6 +9572,8 @@ SpÃ¤ter
                                   {isMe && chatMetaPrefs.receipts !== 'off' && (
                                     <span className="text-[10px] ml-1">
                                       {(() => {
+                                        if (msg.failed) return 'Fehler';
+                                        if (msg.pending || msg.retrying) return 'wird versendet…';
                                         const mode = chatMetaPrefs.receipts;
                                         const chat = activeChatData || activeChat;
                                         const group = isGroupChat(chat);
@@ -9498,18 +9583,30 @@ SpÃ¤ter
                                           const denom = Math.max(0, ids.length - 1);
                                           const seenCount = ids.filter(id => id !== user?.uid && (lastRead?.[id] || 0) >= (msg.timestamp || 0)).length;
                                           if (seenCount > 0) return (mode === 'compact') ? `gesehen ${seenCount}/${denom}` : `gesehen von ${seenCount}/${denom}`;
-                                          if (msg.deliveredAt || msg.delivered) return 'zugestellt';
-                                          return 'gesendet';
+                                          if (msg.deliveredAt || msg.delivered) return 'angekommen';
+                                          return 'versendet';
                                         }
-                                        if (msg.readAt) return mode === 'full' ? `gesehen ${formatTime(msg.readAt)}`.trim() : 'gesehen';
-                                        if (msg.read) return 'gesehen';
-                                        if (msg.deliveredAt) return mode === 'full' ? `zugestellt ${formatTime(msg.deliveredAt)}`.trim() : 'zugestellt';
-                                        if (msg.delivered) return 'zugestellt';
-                                        return 'gesendet';
+                                        if (msg.readAt) return mode === 'full' ? `gelesen ${formatTime(msg.readAt)}`.trim() : 'gelesen';
+                                        if (msg.read) return 'gelesen';
+                                        if (msg.deliveredAt) return mode === 'full' ? `angekommen ${formatTime(msg.deliveredAt)}`.trim() : 'angekommen';
+                                        if (msg.delivered) return 'angekommen';
+                                        return 'versendet';
                                       })()}
                                     </span>
                                   )}
                                 </div>
+
+                                {isMe && msg.failed && (
+                                  <div className="mt-2 flex items-center justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); retryFailedMessage(msg); }}
+                                      className="px-2.5 py-1 rounded-full text-[11px] border border-red-500/60 text-red-300 hover:bg-red-500/10"
+                                    >
+                                      Erneut senden
+                                    </button>
+                                  </div>
+                                )}
 
                                 {showActions && (
                                   <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>

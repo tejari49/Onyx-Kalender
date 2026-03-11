@@ -694,6 +694,16 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [messageMatchIndex, setMessageMatchIndex] = useState(0);
       const [messageSearchFilter, setMessageSearchFilter] = useState('all');
       const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+      const reactionKeyForEmoji = (emoji) => `u${Array.from(String(emoji || '')).map(ch => ch.codePointAt(0).toString(16)).join('_')}`;
+      const reactionEmojiFromKey = (key) => {
+        const raw = String(key || '');
+        if (!raw.startsWith('u')) return raw;
+        try {
+          const parts = raw.slice(1).split('_').filter(Boolean);
+          if (!parts.length) return raw;
+          return String.fromCodePoint(...parts.map((p) => parseInt(p, 16)).filter((n) => Number.isFinite(n)));
+        } catch (_) { return raw; }
+      };
       const chatRetryTimersRef = useRef({});
 
       const [chatMetaPrefs, setChatMetaPrefs] = useState(() => {
@@ -739,6 +749,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [pullDistance, setPullDistance] = useState(0);
       const touchStartY = useRef(0);
       const touchCurrentY = useRef(0);
+      const chatSearchScrollTargetRef = useRef('');
 
 
 // --- PULL TO REFRESH (GLOBAL TOUCH) ---
@@ -747,6 +758,13 @@ const canPullRef = useRef(false);
 
 const handleGlobalTouchStart = (e) => {
   if (!e.touches || e.touches.length === 0) return;
+
+  // Pull-to-refresh nur im Dashboard auslösen, nicht in Chat/Settings/Formularen.
+  if (currentView !== 'dashboard') { canPullRef.current = false; return; }
+  const target = e?.target;
+  const isInteractive = !!(target && typeof target.closest === 'function' && target.closest('input, textarea, select, button, [contenteditable="true"], [data-no-pull-refresh="true"]'));
+  if (isInteractive) { canPullRef.current = false; return; }
+
   touchStartY.current = e.touches[0].clientY;
   touchCurrentY.current = touchStartY.current;
   setPullDistance(0);
@@ -2294,6 +2312,9 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         if (!matchesForScroll || matchesForScroll.length === 0) return;
         const idx = Math.max(0, Math.min(messageMatchIndex, matchesForScroll.length - 1));
         const id = matchesForScroll[idx].id;
+        const key = `${id}|${idx}|${q}|${messageSearchFilter}`;
+        if (chatSearchScrollTargetRef.current === key) return;
+        chatSearchScrollTargetRef.current = key;
         setTimeout(() => {
           const el = document.getElementById(`msg-${id}`);
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -6409,8 +6430,11 @@ setSelfDestruct(false);
       const toggleMessageReaction = async (msg, emoji) => {
         if (!activeChat || !user || !msg?.id || !emoji) return;
         if (msg.deleted || msg.pending || String(msg.id || '').startsWith('local_')) return;
-        const path = `reactions.${emoji}`;
-        const mine = Array.isArray(msg?.reactions?.[emoji]) ? msg.reactions[emoji] : [];
+        const encodedKey = reactionKeyForEmoji(emoji);
+        const path = `reactions.${encodedKey}`;
+        const mineLegacy = Array.isArray(msg?.reactions?.[emoji]) ? msg.reactions[emoji] : [];
+        const mineEncoded = Array.isArray(msg?.reactions?.[encodedKey]) ? msg.reactions[encodedKey] : [];
+        const mine = [...new Set([...(mineLegacy || []), ...(mineEncoded || [])])];
         const already = mine.includes(user?.uid);
         try {
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msg.id), {
@@ -9533,9 +9557,18 @@ Später
                           const showActions = selectedMessageId === msg?.id;
                           const isFavorite = Array.isArray(msg?.starredBy) && msg.starredBy.includes(user?.uid);
                           const showReactionPicker = messageReactionPickerFor === msg?.id;
-                          const reactionRows = Object.entries(msg?.reactions || {})
-                            .map(([emoji, uids]) => ({ emoji, uids: Array.isArray(uids) ? uids.filter(Boolean) : [] }))
-                            .filter((row) => row.emoji && row.uids.length > 0);
+                          const reactionRows = Object.entries(msg?.reactions || {}).reduce((acc, [rawKey, uids]) => {
+                            const emoji = reactionEmojiFromKey(rawKey);
+                            const list = Array.isArray(uids) ? uids.filter(Boolean) : [];
+                            if (!emoji || list.length === 0) return acc;
+                            const found = acc.find((row) => row.emoji === emoji);
+                            if (!found) {
+                              acc.push({ emoji, uids: [...new Set(list)] });
+                            } else {
+                              found.uids = [...new Set([...(found.uids || []), ...list])];
+                            }
+                            return acc;
+                          }, []).filter((row) => row.emoji && row.uids.length > 0);
                           
                           return (
                             <div key={msg.id} id={`msg-${msg.id}`} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
@@ -9741,7 +9774,8 @@ Später
                                 {showActions && showReactionPicker && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                   <div className={`absolute top-full mt-12 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
                                     {quickReactionEmojis.map((emoji) => {
-                                      const mine = Array.isArray(msg?.reactions?.[emoji]) && msg.reactions[emoji].includes(user?.uid);
+                                      const key = reactionKeyForEmoji(emoji);
+                                      const mine = (Array.isArray(msg?.reactions?.[emoji]) && msg.reactions[emoji].includes(user?.uid)) || (Array.isArray(msg?.reactions?.[key]) && msg.reactions[key].includes(user?.uid));
                                       return (
                                         <button
                                           key={`${msg.id}_react_${emoji}`}

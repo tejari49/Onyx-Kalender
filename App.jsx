@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     import { 
       Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
-      Copy, Link2, History, UserMinus
+      Copy, Link2, History, UserMinus, Star
     } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
@@ -692,6 +692,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [messageSearchQuery, setMessageSearchQuery] = useState('');
       const [messageMatchIndex, setMessageMatchIndex] = useState(0);
       const [messageSearchFilter, setMessageSearchFilter] = useState('all');
+      const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+      const chatRetryTimersRef = useRef({});
 
       const [chatMetaPrefs, setChatMetaPrefs] = useState(() => {
         try {
@@ -2100,6 +2102,7 @@ const handleTouchEnd = () => {
         if (f === 'media') return !!(m.image);
         if (f === 'audio') return !!m.audio;
         if (f === 'links') return messageHasLink(m);
+        if (f === 'favorites') return Array.isArray(m?.starredBy) && m.starredBy.includes(user?.uid);
         return true;
       };
 
@@ -2795,6 +2798,32 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         loadAllChatMeta();
         return () => { cancelled = true; };
       }, [activeChat?.id, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
+
+      useEffect(() => {
+        if (!activeChat?.id || !user?.uid) return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        const failedMine = (chatMessages || []).filter((m) => m && m.failed && m.senderId === user?.uid && m.clientMsgId);
+        if (failedMine.length === 0) return;
+        failedMine.forEach((m) => {
+          const key = String(m.clientMsgId || '');
+          if (!key) return;
+          if (chatRetryTimersRef.current[key]) return;
+          const retryCount = Number(m.retryCount || 0);
+          if (retryCount >= 3) return;
+          chatRetryTimersRef.current[key] = setTimeout(async () => {
+            try {
+              await retryFailedMessage(m, { silent: true });
+            } finally {
+              try { clearTimeout(chatRetryTimersRef.current[key]); } catch (_) {}
+              delete chatRetryTimersRef.current[key];
+            }
+          }, 5000);
+        });
+        return () => {
+          Object.values(chatRetryTimersRef.current || {}).forEach((t) => { try { clearTimeout(t); } catch (_) {} });
+          chatRetryTimersRef.current = {};
+        };
+      }, [chatMessages, activeChat?.id, user?.uid]);
 
       const loadMoreChatMessages = async () => {
         try {
@@ -6170,6 +6199,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           audio: audioBase64,
           event: eventDetails,
           replyTo: replyTo,
+          reactions: {},
+          starredBy: [],
           selfDestruct: !!selfDestruct,
           timestamp: Date.now(),
           createdAt: serverTimestamp(),
@@ -6209,10 +6240,66 @@ setSelfDestruct(false);
           localStorage.setItem('onyx_last_chat_visit', now.toString());
         } catch (error) {
           console.error('sendMessage failed', error);
-          // Optimistic rollback
-          setChatMessages(prev => (prev || []).filter(m => m.clientMsgId !== clientMsgId));
+          // Keep failed message in chat so user can retry manually/automatically.
+          setChatMessages(prev => (prev || []).map(m => {
+            if (!m || m.clientMsgId !== clientMsgId) return m;
+            return {
+              ...m,
+              pending: false,
+              failed: true,
+              failedAt: Date.now(),
+              retryCount: Number(m.retryCount || 0)
+            };
+          }));
           showToast('Senden fehlgeschlagen');
           refocusChatInput();
+        }
+      };
+
+      const retryFailedMessage = async (msg, opts = {}) => {
+        if (!activeChat || !user || !msg?.clientMsgId) return;
+        if (msg.deleted || String(msg.id || '').startsWith('local_') === false && !msg.failed) return;
+        const localId = String(msg.id || `local_${msg.clientMsgId}`);
+        const nextRetryCount = Number(msg.retryCount || 0) + 1;
+
+        const payload = {
+          clientMsgId: msg.clientMsgId,
+          senderId: msg.senderId || user?.uid,
+          text: String(msg.text || ''),
+          image: msg.image || null,
+          audio: msg.audio || null,
+          event: msg.event || null,
+          replyTo: msg.replyTo || null,
+          reactions: msg.reactions && typeof msg.reactions === 'object' ? msg.reactions : {},
+          starredBy: Array.isArray(msg.starredBy) ? msg.starredBy : [],
+          selfDestruct: !!msg.selfDestruct,
+          timestamp: Number(msg.timestamp || Date.now()) || Date.now(),
+          createdAt: serverTimestamp(),
+          read: false
+        };
+
+        setChatMessages(prev => (prev || []).map(m => {
+          if (!m || String(m.id || '') !== localId) return m;
+          return { ...m, pending: true, failed: false, retryCount: nextRetryCount, retrying: true };
+        }));
+
+        try {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+            updatedAt: Date.now(),
+            lastMessageSenderId: user?.uid,
+            messageCount: increment(1),
+            mediaCount: msg.image ? increment(1) : increment(0),
+            [`typing.${user?.uid}`]: false,
+            [`typingAt.${user?.uid}`]: Date.now()
+          }).catch(()=>{});
+        } catch (error) {
+          console.error('retryFailedMessage failed', error);
+          setChatMessages(prev => (prev || []).map(m => {
+            if (!m || String(m.id || '') !== localId) return m;
+            return { ...m, pending: false, failed: true, failedAt: Date.now(), retrying: false, retryCount: nextRetryCount };
+          }));
+          if (!opts.silent) showToast('Erneut senden fehlgeschlagen');
         }
       };
 
@@ -6248,6 +6335,37 @@ setSelfDestruct(false);
           refocusChatInput();
         } catch (error) { showToast("Fehler beim LÃ¶schen"); }
       };
+
+      const toggleMessageReaction = async (msg, emoji) => {
+        if (!activeChat || !user || !msg?.id || !emoji) return;
+        if (msg.deleted || msg.pending || String(msg.id || '').startsWith('local_')) return;
+        const path = `reactions.${emoji}`;
+        const mine = Array.isArray(msg?.reactions?.[emoji]) ? msg.reactions[emoji] : [];
+        const already = mine.includes(user?.uid);
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msg.id), {
+            [path]: already ? arrayRemove(user?.uid) : arrayUnion(user?.uid)
+          });
+        } catch (error) {
+          showToast('Reaktion fehlgeschlagen');
+        }
+      };
+
+      const toggleMessageFavorite = async (msg) => {
+        if (!activeChat || !user || !msg?.id) return;
+        if (msg.deleted || msg.pending || String(msg.id || '').startsWith('local_')) return;
+        const mine = Array.isArray(msg?.starredBy) ? msg.starredBy : [];
+        const already = mine.includes(user?.uid);
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msg.id), {
+            starredBy: already ? arrayRemove(user?.uid) : arrayUnion(user?.uid)
+          });
+          showToast(already ? 'Favorit entfernt' : 'Zu Favoriten hinzugefügt');
+        } catch (error) {
+          showToast('Favorit fehlgeschlagen');
+        }
+      };
+
       const handleImageUpload = async (e) => {
         const file0 = e?.target?.files && e.target.files[0];
         if (!file0) return;
@@ -9276,6 +9394,8 @@ SpÃ¤ter
 
                             <button onClick={() => { setMessageSearchFilter('links'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'links' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Links</button>
 
+                            <button onClick={() => { setMessageSearchFilter('favorites'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'favorites' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Favoriten</button>
+
                           </div>
 
                         </div>
@@ -9343,6 +9463,10 @@ SpÃ¤ter
                           if (!msg) return null;
                           const isMe = msg?.senderId === user?.uid;
                           const showActions = selectedMessageId === msg?.id;
+                          const isFavorite = Array.isArray(msg?.starredBy) && msg.starredBy.includes(user?.uid);
+                          const reactionRows = Object.entries(msg?.reactions || {})
+                            .map(([emoji, uids]) => ({ emoji, uids: Array.isArray(uids) ? uids.filter(Boolean) : [] }))
+                            .filter((row) => row.emoji && row.uids.length > 0);
                           
                           return (
                             <div key={msg.id} id={`msg-${msg.id}`} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
@@ -9417,6 +9541,25 @@ SpÃ¤ter
                                 ) : (
                                   msg.text && <p className="text-sm whitespace-pre-wrap">{(isMessageSearchOpen && String(messageSearchQuery || '').trim()) ? renderHighlightedText(msg.text, messageSearchQuery, { isMe, active: String(currentMatchId) === String(msg.id) }) : msg.text}</p>
                                 )}
+
+                                {!msg.deleted && reactionRows.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {reactionRows.map((row) => {
+                                      const mine = row.uids.includes(user?.uid);
+                                      return (
+                                        <button
+                                          key={`${msg.id}_${row.emoji}`}
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); toggleMessageReaction(msg, row.emoji); }}
+                                          className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${mine ? 'bg-white text-black border-white' : (isMe ? 'bg-black/15 border-black/20 text-black/80' : 'bg-black/40 border-neutral-700 text-neutral-200')}`}
+                                          title={mine ? 'Reaktion entfernen' : 'Reagieren'}
+                                        >
+                                          {row.emoji} {row.uids.length}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                                 
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
                                   {msg.deleted && <span className="text-[9px] mr-1">(gelÃ¶scht)</span>}
@@ -9429,6 +9572,8 @@ SpÃ¤ter
                                   {isMe && chatMetaPrefs.receipts !== 'off' && (
                                     <span className="text-[10px] ml-1">
                                       {(() => {
+                                        if (msg.failed) return 'Fehler';
+                                        if (msg.pending || msg.retrying) return 'wird versendet…';
                                         const mode = chatMetaPrefs.receipts;
                                         const chat = activeChatData || activeChat;
                                         const group = isGroupChat(chat);
@@ -9438,18 +9583,30 @@ SpÃ¤ter
                                           const denom = Math.max(0, ids.length - 1);
                                           const seenCount = ids.filter(id => id !== user?.uid && (lastRead?.[id] || 0) >= (msg.timestamp || 0)).length;
                                           if (seenCount > 0) return (mode === 'compact') ? `gesehen ${seenCount}/${denom}` : `gesehen von ${seenCount}/${denom}`;
-                                          if (msg.deliveredAt || msg.delivered) return 'zugestellt';
-                                          return 'gesendet';
+                                          if (msg.deliveredAt || msg.delivered) return 'angekommen';
+                                          return 'versendet';
                                         }
-                                        if (msg.readAt) return mode === 'full' ? `gesehen ${formatTime(msg.readAt)}`.trim() : 'gesehen';
-                                        if (msg.read) return 'gesehen';
-                                        if (msg.deliveredAt) return mode === 'full' ? `zugestellt ${formatTime(msg.deliveredAt)}`.trim() : 'zugestellt';
-                                        if (msg.delivered) return 'zugestellt';
-                                        return 'gesendet';
+                                        if (msg.readAt) return mode === 'full' ? `gelesen ${formatTime(msg.readAt)}`.trim() : 'gelesen';
+                                        if (msg.read) return 'gelesen';
+                                        if (msg.deliveredAt) return mode === 'full' ? `angekommen ${formatTime(msg.deliveredAt)}`.trim() : 'angekommen';
+                                        if (msg.delivered) return 'angekommen';
+                                        return 'versendet';
                                       })()}
                                     </span>
                                   )}
                                 </div>
+
+                                {isMe && msg.failed && (
+                                  <div className="mt-2 flex items-center justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); retryFailedMessage(msg); }}
+                                      className="px-2.5 py-1 rounded-full text-[11px] border border-red-500/60 text-red-300 hover:bg-red-500/10"
+                                    >
+                                      Erneut senden
+                                    </button>
+                                  </div>
+                                )}
 
                                 {showActions && (
                                   <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
@@ -9476,6 +9633,30 @@ SpÃ¤ter
                                         <CornerUpLeft className="w-4 h-4" />
                                       </button>
                                     )}
+
+                                    {!msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleMessageFavorite(msg); setSelectedMessageId(null); }}
+                                        className={`p-2 rounded-md ${isFavorite ? 'text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20' : 'text-white hover:bg-neutral-700'}`}
+                                        title={isFavorite ? 'Favorit entfernen' : 'Als Favorit markieren'}
+                                      >
+                                        <Star className="w-4 h-4" />
+                                      </button>
+                                    )}
+
+                                    {!msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && quickReactionEmojis.map((emoji) => {
+                                      const mine = Array.isArray(msg?.reactions?.[emoji]) && msg.reactions[emoji].includes(user?.uid);
+                                      return (
+                                        <button
+                                          key={`${msg.id}_react_${emoji}`}
+                                          onClick={(e) => { e.stopPropagation(); toggleMessageReaction(msg, emoji); setSelectedMessageId(null); }}
+                                          className={`px-2 py-1 rounded-md text-sm ${mine ? 'bg-white text-black' : 'text-white hover:bg-neutral-700'}`}
+                                          title={`Mit ${emoji} reagieren`}
+                                        >
+                                          {emoji}
+                                        </button>
+                                      );
+                                    })}
                                     
                                     {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
                                       <button onClick={(e) => { e.stopPropagation(); setReplyToMessage(null); setEditingMessage(msg); setNewMessageText(msg.text); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>

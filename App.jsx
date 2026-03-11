@@ -132,6 +132,19 @@ import React, { useState, useEffect, useRef } from 'react';
 
     const PASTEL_COLORS = ['#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#E8BAFF', '#D3D3D3', '#FFC8DD'];
 
+    function repairMojibakeText(input) {
+      const raw = String(input || '');
+      if (!raw) return raw;
+      if (!/(Ã.|Â.|â.|ðŸ|â€|â€“|â€”)/.test(raw)) return raw;
+      try {
+        // Re-decode common UTF-8-as-Latin1 mojibake sequences.
+        const fixed = decodeURIComponent(escape(raw));
+        return String(fixed || raw);
+      } catch (_) {
+        return raw;
+      }
+    }
+
     
     const QUOTES_URL = 'quotes.json';
 
@@ -2304,6 +2317,31 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       useEffect(() => {
         setIsPaintbrushActive(false);
       }, [activeCalendarId]);
+
+      useEffect(() => {
+        const root = document.getElementById('root');
+        if (!root) return;
+
+        const normalizeDomText = () => {
+          try {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            const touched = [];
+            while (walker.nextNode()) touched.push(walker.currentNode);
+            touched.forEach((node) => {
+              const src = node?.nodeValue || '';
+              const fixed = repairMojibakeText(src);
+              if (fixed !== src) node.nodeValue = fixed;
+            });
+          } catch (_) {}
+        };
+
+        normalizeDomText();
+        const observer = new MutationObserver(() => normalizeDomText());
+        observer.observe(root, { childList: true, subtree: true, characterData: true });
+        return () => {
+          try { observer.disconnect(); } catch (_) {}
+        };
+      }, []);
 
       // --- Hash routing for public shares (#/share/<token>?k=<magicKey>) ---
       useEffect(() => {
@@ -7012,7 +7050,7 @@ setSelfDestruct(false);
 
       return (
         <div 
-          className={`flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)' }}
+          className={`flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)' }}
           onTouchStart={handleGlobalTouchStart}
           onTouchMove={handleGlobalTouchMove}
           onTouchEnd={handleGlobalTouchEnd}
@@ -7063,7 +7101,7 @@ setSelfDestruct(false);
             </div>
           </aside>
 
-          <nav className="md:hidden fixed bottom-0 left-0 w-full h-16 bg-black border-t border-neutral-800 flex items-center justify-around z-40 px-2 pb-safe">
+          <nav className="md:hidden fixed bottom-0 left-0 w-full h-[calc(4rem+env(safe-area-inset-bottom))] bg-black border-t border-neutral-800 flex items-start justify-around z-40 px-2 pt-1 pb-[env(safe-area-inset-bottom)]">
             <button onClick={() => setCurrentView('dashboard')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-6 h-6" /></button>
             <button onClick={() => setCurrentView('calendar')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-6 h-6" /></button>
             <button onClick={() => setPlusMenuOpen(true)} className="p-3 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg"><Plus className="w-6 h-6" /></button>
@@ -7071,7 +7109,7 @@ setSelfDestruct(false);
             <button onClick={() => setCurrentView('settings')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-6 h-6" /></button>
           </nav>
 
-          <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative">
+          <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
             {currentView === 'dashboard' && (
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
                 <header className="flex justify-between items-center mb-8 md:mb-10">

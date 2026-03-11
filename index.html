@@ -26,13 +26,13 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('%BASE_URL%firebase-messaging-sw.js')
+        navigator.serviceWorker.register('%BASE_URL%firebase-messaging-sw.js?v=37')
           .then(reg => console.log('ServiceWorker registriert:', reg.scope))
           .catch(err => console.log('ServiceWorker Registrierung fehlgeschlagen:', err));
       });
     }
   </script>
 
-  <script type="module" src="/src/main.jsx"></script>
+  <script type="module" src="/main.jsx"></script>
 </body>
 </html>

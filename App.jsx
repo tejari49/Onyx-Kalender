@@ -132,29 +132,16 @@ import React, { useState, useEffect, useRef } from 'react';
 
     const PASTEL_COLORS = ['#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#E8BAFF', '#D3D3D3', '#FFC8DD'];
 
-    function repairMojibakeText(input) {
-      const raw = String(input || '');
-      if (!raw) return raw;
-      if (!/(Ã.|Â.|â.|ðŸ|â€|â€“|â€”)/.test(raw)) return raw;
-      try {
-        // Re-decode common UTF-8-as-Latin1 mojibake sequences.
-        const fixed = decodeURIComponent(escape(raw));
-        return String(fixed || raw);
-      } catch (_) {
-        return raw;
-      }
-    }
 
-    
     const QUOTES_URL = 'quotes.json';
 
     // Fallback quotes (wird genutzt, falls quotes.json nicht geladen werden kann)
     const DEFAULT_QUOTES = [
       "Struktur bringt Ruhe.",
       "Fokus ist eine Entscheidung.",
-      "Kleine Schritte, groÃŸe Wirkung.",
+      "Kleine Schritte, große Wirkung.",
       "Wenn&apos;s brennt: Wasser. Wenn&apos;s chaotisch ist: Kalender.",
-      "Planung ist die halbe Miete â€“ die andere HÃ¤lfte ist Kaffee."
+      "Planung ist die halbe Miete – die andere Hälfte ist Kaffee."
     ];
 
     const stableHash = (str) => {
@@ -206,7 +193,7 @@ import React, { useState, useEffect, useRef } from 'react';
     };
 
 
-    const MONATE = ["Januar", "Februar", "MÃ¤rz", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+    const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
     const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
     
@@ -227,9 +214,9 @@ import React, { useState, useEffect, useRef } from 'react';
           return (
             <div className="absolute inset-0 bg-black text-white flex items-center justify-center p-6">
               <div className="max-w-md w-full border border-neutral-800 rounded-2xl p-6 bg-neutral-950/60">
-                <h3 className="text-lg font-semibold mb-2">Ups â€“ ein Fehler ist passiert</h3>
+                <h3 className="text-lg font-semibold mb-2">Ups – ein Fehler ist passiert</h3>
                 <p className="text-sm text-neutral-400 mb-4">
-                  Die Ansicht konnte nicht gerendert werden. Du kannst zurÃ¼ckgehen oder neu laden.
+                  Die Ansicht konnte nicht gerendert werden. Du kannst zurückgehen oder neu laden.
                 </p>
                 <div className="flex gap-3">
                   <button
@@ -239,7 +226,7 @@ import React, { useState, useEffect, useRef } from 'react';
                       try { this.props.onReset && this.props.onReset(); } catch (e) {}
                     }}
                   >
-                    ZurÃ¼ck
+                    Zurück
                   </button>
                   <button
                     className="flex-1 bg-neutral-800 text-white font-semibold py-2 rounded-xl hover:bg-neutral-700 transition-colors"
@@ -358,14 +345,14 @@ function AmoledCalendarApp() {
       const [dailyForecast, setDailyForecast] = useState(null);
       const [hourlyForecast, setHourlyForecast] = useState(null);
       const [selectedForecastDay, setSelectedForecastDay] = useState(null);
-      const [location, setLocation] = useState({ name: 'OberbÃ¼ren, SG', lat: 47.45, lon: 9.11 });
+      const [location, setLocation] = useState({ name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 });
       const [workClockActive, setWorkClockActive] = useState(null);
       const [workClockSessions, setWorkClockSessions] = useState([]);
       const [workClockTick, setWorkClockTick] = useState(Date.now());
       const [workClockModalOpen, setWorkClockModalOpen] = useState(false);
       const [workClockDraftTitle, setWorkClockDraftTitle] = useState('');
       const [workClockDraftUsePreset, setWorkClockDraftUsePreset] = useState(true);
-      const [workClockPresetInput, setWorkClockPresetInput] = useState('BÃ¼ro\nBaustelle\nSupport');
+      const [workClockPresetInput, setWorkClockPresetInput] = useState('Büro\nBaustelle\nSupport');
       const [workClockDraftLevel, setWorkClockDraftLevel] = useState('mittel');
       const [workClockSaving, setWorkClockSaving] = useState(false);
       const [workClockEditOpen, setWorkClockEditOpen] = useState(false);
@@ -585,7 +572,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       });
 
 
-      // --- NATÃœRLICHE SPRACHE / SCHNELLEINGABE (Event) ---
+      // --- NATÜRLICHE SPRACHE / SCHNELLEINGABE (Event) ---
       const [quickEventText, setQuickEventText] = useState('');
       const [quickEventPreview, setQuickEventPreview] = useState(null);
 
@@ -628,7 +615,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [auditCalId, setAuditCalId] = useState('default');
       const [auditCalEntries, setAuditCalEntries] = useState([]);
 
-      // NEU: Pinsel Tool & Langes DrÃ¼cken
+      // NEU: Pinsel Tool & Langes Drücken
       const [isPaintbrushActive, setIsPaintbrushActive] = useState(false);
       const [selectedPaintShift, setSelectedPaintShift] = useState(null);
       const [shiftModalData, setShiftModalData] = useState(null); // { dateStr, calId, shifts }
@@ -778,7 +765,7 @@ const handleGlobalTouchMove = (e) => {
 
   if (delta > 0) {
     // iOS / mobile: verhindern, dass der Browser selbst "bounce" scrollt
-    // React registriert Touch-Events oft als passive -> preventDefault wÃ¼rde warnen
+    // React registriert Touch-Events oft als passive -> preventDefault würde warnen
     const cancelable = (e?.cancelable ?? e?.nativeEvent?.cancelable);
     if (cancelable !== false && typeof e.preventDefault === 'function') e.preventDefault();
     setPullDistance(Math.min(delta, 120));
@@ -902,7 +889,7 @@ const persistDisplayName = async (rawName, opts = {}) => {
       if (dataToSave.username) localStorage.setItem(`onyx_username_${user?.uid}`, dataToSave.username);
     } catch (_) {}
 
-    // Best-effort: displayName in bestehenden Chats aktualisieren (damit es Ã¼berall konsistent ist)
+    // Best-effort: displayName in bestehenden Chats aktualisieren (damit es überall konsistent ist)
     try {
       const updates = myChats.slice(0, 75).map(c => {
         if (!c?.id) return null;
@@ -989,10 +976,10 @@ const hasPasswordProvider = () => {
 const doSendPasswordReset = async () => {
   try {
     const u = auth.currentUser;
-    if (!u || !u.email) return showToast('Keine Eâ€‘Mail');
+    if (!u || !u.email) return showToast('Keine E‑Mail');
     await sendPasswordResetEmail(auth, u.email);
     setPwResetSent(true);
-    showToast('Resetâ€‘Mail gesendet');
+    showToast('Reset‑Mail gesendet');
   } catch (e) {
     console.warn('sendPasswordResetEmail failed', e);
     showToast('Reset fehlgeschlagen');
@@ -1009,7 +996,7 @@ const doChangePassword = async () => {
     const n1 = String(pwNew || '');
     const n2 = String(pwNew2 || '');
     if (n1.length < 6) { setPwError('Neues Passwort zu kurz (min. 6 Zeichen)'); return; }
-    if (n1 !== n2) { setPwError('PasswÃ¶rter stimmen nicht Ã¼berein'); return; }
+    if (n1 !== n2) { setPwError('Passwörter stimmen nicht überein'); return; }
     if (!cur) { setPwError('Aktuelles Passwort fehlt'); return; }
 
     const cred = EmailAuthProvider.credential(u.email, cur);
@@ -1023,9 +1010,9 @@ const doChangePassword = async () => {
     console.warn('doChangePassword failed', e);
     const msg = String(e?.code || e?.message || e);
     if (msg.includes('auth/wrong-password')) setPwError('Aktuelles Passwort ist falsch');
-    else if (msg.includes('auth/too-many-requests')) setPwError('Zu viele Versuche â€“ spÃ¤ter erneut');
+    else if (msg.includes('auth/too-many-requests')) setPwError('Zu viele Versuche – später erneut');
     else if (msg.includes('auth/requires-recent-login')) setPwError('Bitte neu anmelden und erneut versuchen');
-    else setPwError('Ã„nderung fehlgeschlagen');
+    else setPwError('Änderung fehlgeschlagen');
   } finally {
     try { setPwSaving(false); } catch (_) {}
   }
@@ -1063,7 +1050,7 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
       updatedAt: Date.now(),
       pushTarget: 'web',
     };
-    // displayName setzen (fÃ¼r BegrÃ¼ÃŸung). Nur Ã¼berschreiben, wenn leer/kurz.
+    // displayName setzen (für Begrüßung). Nur überschreiben, wenn leer/kurz.
     const desiredName = (opts && opts.fullName) ? String(opts.fullName).trim() : '';
     if (desiredName && desiredName.length >= 2 && (!existing || !existing.displayName || String(existing.displayName).trim().length < 2)) {
       next.displayName = desiredName.slice(0, 40);
@@ -1100,7 +1087,7 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
           const msg = String(e?.message || '');
           // Wenn friendCodes wegen Rules nicht erlaubt ist, fallback auf random ohne Reservierung
           if (code === 'permission-denied' || msg.toLowerCase().includes('permission')) {
-            // friendCodes-Registry nicht erlaubt -> uniqueness best-effort Ã¼ber profiles Query
+            // friendCodes-Registry nicht erlaubt -> uniqueness best-effort über profiles Query
             try {
               const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
               const q2 = query(profilesCol, where('friendCode', '==', candidate), limit(1));
@@ -1313,7 +1300,7 @@ const computePollVoterIdsForEvent = (ev) => {
   const voters = new Set();
   if (cal && cal.ownerId) voters.add(cal.ownerId);
 
-  // Nur "write" Mitglieder voten lassen, damit Firestore Rules nicht geÃ¶ffnet werden mÃ¼ssen
+  // Nur "write" Mitglieder voten lassen, damit Firestore Rules nicht geöffnet werden müssen
   if (cal && cal.sharedWith && typeof cal.sharedWith === 'object') {
     for (const [uid, perm] of Object.entries(cal.sharedWith)) {
       if (perm === 'write') voters.add(uid);
@@ -1399,7 +1386,7 @@ const createPollForEvent = async () => {
     time: (o?.time || '').trim(),
   })).filter(o => o.date && o.time);
 
-  if (opts.length < 2) return showToast("Bitte mind. 2 VorschlÃ¤ge");
+  if (opts.length < 2) return showToast("Bitte mind. 2 Vorschläge");
 
   const voterIds = computePollVoterIdsForEvent(eventToEdit);
   const deadlineAt = makeDeadlineAt(pollDeadlineDate, pollDeadlineTime);
@@ -1526,7 +1513,7 @@ const finalizePollForEvent = async () => {
         'poll.autoFinalized': false
       });
     });
-    showToast("Gewinner Ã¼bernommen");
+    showToast("Gewinner übernommen");
   } catch (e) {
     showToast("Finalisieren fehlgeschlagen");
   } finally {
@@ -1596,7 +1583,7 @@ const finalizePollForSpecificEvent = async (ev) => {
         'poll.autoFinalized': false
       });
     });
-    showToast("Gewinner Ã¼bernommen");
+    showToast("Gewinner übernommen");
   } catch (e) {
     showToast("Finalisieren fehlgeschlagen");
   } finally {
@@ -1704,7 +1691,7 @@ const saveEvent = async (e) => {
   const isRecurring = !!(baseRec && baseRec.freq && baseRec.freq !== 'NONE');
   const isInstance = !!(isEditing && isRecurring && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date);
 
-  // Nur dieses Vorkommen Ã¤ndern (Override)
+  // Nur dieses Vorkommen ändern (Override)
   if (isInstance && eventEditScope === 'single') {
     const fromCalId = eventToEdit.calendarId || 'default';
     if (!canWriteCalendar(fromCalId)) return showToast("Keine Schreibrechte");
@@ -1726,7 +1713,7 @@ const saveEvent = async (e) => {
       const ex = Array.isArray(eventToEdit.exDates) ? eventToEdit.exDates : [];
       const nextEx = ex.filter(d => d !== selectedDateForEvent);
       await updateDoc(eventDocRefFor(fromCalId, eventToEdit.id), { overrides: nextOverrides, exDates: nextEx, updatedAt: Date.now() });
-      await writeAudit({ calId: fromCalId, action: 'event.update.instance', targetType: 'event', targetId: eventToEdit.id, summary: `Termin geÃ¤ndert (nur ${selectedDateForEvent}): ${title}` });
+      await writeAudit({ calId: fromCalId, action: 'event.update.instance', targetType: 'event', targetId: eventToEdit.id, summary: `Termin geändert (nur ${selectedDateForEvent}): ${title}` });
       showToast("Vorkommen gespeichert");
       closeEventModal();
     } catch (err) {
@@ -1761,7 +1748,7 @@ const saveEvent = async (e) => {
       time: (o?.time || '').trim(),
     })).filter(o => o.date && o.time);
 
-    if (opts.length < 2) return showToast("Bitte mind. 2 VorschlÃ¤ge");
+    if (opts.length < 2) return showToast("Bitte mind. 2 Vorschläge");
 
     const voterIds = computePollVoterIdsForEvent({ calendarId: targetCalId });
     const deadlineAt = makeDeadlineAt(pollDeadlineDate, pollDeadlineTime);
@@ -1806,7 +1793,7 @@ const saveEvent = async (e) => {
           movedAt: Date.now()
         });
         await deleteDoc(eventDocRefFor(fromCalId, eventToEdit.id));
-        await writeAudit({ calId: fromCalId, action: 'event.move', targetType: 'event', targetId: eventToEdit.id, summary: `Termin verschoben: ${title} â†’ ${getCalendarById(toCalId)?.name || toCalId}`, details: { toCalId, newEventId: newRef?.id || null } });
+        await writeAudit({ calId: fromCalId, action: 'event.move', targetType: 'event', targetId: eventToEdit.id, summary: `Termin verschoben: ${title} → ${getCalendarById(toCalId)?.name || toCalId}`, details: { toCalId, newEventId: newRef?.id || null } });
         showToast("Termin verschoben");
         setActiveCalendarId(toCalId);
       }
@@ -1836,30 +1823,30 @@ const deleteEvent = async (mode = null) => {
   const effectiveMode = mode || (isInstance ? eventEditScope : 'series');
 
   if (isInstance && effectiveMode === 'single') {
-    if (!confirm("Dieses Vorkommen lÃ¶schen?")) return;
+    if (!confirm("Dieses Vorkommen löschen?")) return;
     try {
       const ex = Array.isArray(eventToEdit.exDates) ? eventToEdit.exDates : [];
       const nextEx = ex.includes(selectedDateForEvent) ? ex : [...ex, selectedDateForEvent];
       const existingOverrides = (eventToEdit.overrides && typeof eventToEdit.overrides === 'object') ? eventToEdit.overrides : {};
       const { [selectedDateForEvent]: _removed, ...rest } = existingOverrides || {};
       await updateDoc(eventDocRefFor(calId, eventToEdit.id), { exDates: nextEx, overrides: rest, updatedAt: Date.now() });
-      await writeAudit({ calId, action: 'event.delete.instance', targetType: 'event', targetId: eventToEdit.id, summary: `Vorkommen gelÃ¶scht (${selectedDateForEvent}): ${eventToEdit.title || ''}` });
-      showToast("Vorkommen gelÃ¶scht");
+      await writeAudit({ calId, action: 'event.delete.instance', targetType: 'event', targetId: eventToEdit.id, summary: `Vorkommen gelöscht (${selectedDateForEvent}): ${eventToEdit.title || ''}` });
+      showToast("Vorkommen gelöscht");
       closeEventModal();
     } catch (err) {
-      showToast("Fehler beim LÃ¶schen");
+      showToast("Fehler beim Löschen");
     }
     return;
   }
 
-  if (!confirm("Termin lÃ¶schen?")) return;
+  if (!confirm("Termin löschen?")) return;
   try {
     await deleteDoc(eventDocRefFor(calId, eventToEdit.id));
-    await writeAudit({ calId, action: 'event.delete', targetType: 'event', targetId: eventToEdit.id, summary: `Termin gelÃ¶scht: ${eventToEdit.title || ''}` });
-    showToast("Termin gelÃ¶scht");
+    await writeAudit({ calId, action: 'event.delete', targetType: 'event', targetId: eventToEdit.id, summary: `Termin gelöscht: ${eventToEdit.title || ''}` });
+    showToast("Termin gelöscht");
     closeEventModal();
   } catch (err) {
-    showToast("Fehler beim LÃ¶schen");
+    showToast("Fehler beim Löschen");
   }
 };
 
@@ -1874,7 +1861,7 @@ const openShiftPicker = (dateStr) => {
   setShiftModalData({ dateStr, calId: activeCal.id, shifts: activeCal.shifts });
 };
 
-// --- GEHEIMER CHAT (Long Press auf Tag-Zahl 5 fÃ¼r 3s) ---
+// --- GEHEIMER CHAT (Long Press auf Tag-Zahl 5 für 3s) ---
 const revealSecretChat = () => {
   setSelectedMessageId(null);
   setIsMessageSearchOpen(false);
@@ -1926,7 +1913,7 @@ const verifySecretPinAndEnter = async () => {
     revealSecretChat();
   } catch (e) {
     console.warn('verifySecretPinAndEnter failed', e);
-    setSecretPinError('PIN konnte nicht geprÃ¼ft werden');
+    setSecretPinError('PIN konnte nicht geprüft werden');
   } finally {
     setSecretPinBusy(false);
   }
@@ -1940,7 +1927,7 @@ const saveSecretPinSettings = async () => {
   const hasExistingPin = !!(userProfile?.secretPinEnabled && userProfile?.secretPinHash);
 
   if (!/^\d{4,8}$/.test(nextPin)) return showToast('PIN muss 4 bis 8 Ziffern haben');
-  if (nextPin !== confirmPin) return showToast('PIN-BestÃ¤tigung stimmt nicht Ã¼berein');
+  if (nextPin !== confirmPin) return showToast('PIN-Bestätigung stimmt nicht überein');
   if (hasExistingPin) {
     if (!/^\d{4,8}$/.test(currentPin)) return showToast('Aktuelle PIN eingeben');
     const currentHash = await sha256Hex(currentPin);
@@ -1956,7 +1943,7 @@ const saveSecretPinSettings = async () => {
     setSecretPinSetupCurrent('');
     setSecretPinSetupNew('');
     setSecretPinSetupConfirm('');
-    showToast(hasExistingPin ? 'Secret PIN geÃ¤ndert' : 'Secret PIN aktiviert');
+    showToast(hasExistingPin ? 'Secret PIN geändert' : 'Secret PIN aktiviert');
   } catch (e) {
     console.warn('saveSecretPinSettings failed', e);
     showToast('PIN konnte nicht gespeichert werden');
@@ -2545,8 +2532,8 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
         const calRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars');
 
-        // ðŸ”’ Wichtig fÃ¼r sichere Firestore Rules:
-        // Wir dÃ¼rfen NICHT die komplette calendars Collection lesen und client-side filtern,
+        // 🔒 Wichtig für sichere Firestore Rules:
+        // Wir dürfen NICHT die komplette calendars Collection lesen und client-side filtern,
         // sonst scheitert die Query mit permission-denied.
         const ownerQ = query(calRef, where('ownerId', '==', user?.uid));
         const sharedQ = query(calRef, where('sharedWith.' + user?.uid, 'in', ['read', 'write']));
@@ -2750,7 +2737,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             return merged;
           });
 
-          // System-Notification fÃ¼r neue eingehende Nachrichten (wenn App nicht im Vordergrund ist)
+          // System-Notification für neue eingehende Nachrichten (wenn App nicht im Vordergrund ist)
           try {
             const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user?.uid) {
@@ -2767,7 +2754,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             }
           } catch (e) {}
 
-          // lastRead (fÃ¼r Gruppen-Read-Receipts)
+          // lastRead (für Gruppen-Read-Receipts)
           if (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible') {
             const nowMs = Date.now();
             if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
@@ -3051,13 +3038,13 @@ const requestNotificationPermission = async (currentUser) => {
   };
 
   if (!isStandaloneNow()) {
-    showToast(isIosUA ? 'iPhone/iPad: Teilen â†’ â€žZum Home-Bildschirmâ€œ installieren, dann Benachrichtigungen aktivieren.' : 'Bitte als PWA installieren, dann Benachrichtigungen aktivieren.');
+    showToast(isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren, dann Benachrichtigungen aktivieren.' : 'Bitte als PWA installieren, dann Benachrichtigungen aktivieren.');
     return;
   }
 
   try {
     await ensureWebPushToken(currentUser, { forcePrompt: true });
-    showToast('Benachrichtigungen aktiviert âœ…');
+    showToast('Benachrichtigungen aktiviert ✅');
   } catch (err) {
     console.log('FCM Error', err);
     showToast('Benachrichtigungen konnten nicht aktiviert werden');
@@ -3076,7 +3063,7 @@ const requestNotificationPermission = async (currentUser) => {
 	            const incomingTitle = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
 	            const incomingBody = payload?.data?.body || payload?.notification?.body || '';
 	            const tag = payload?.data?.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
-	            const notifTitle = (kind === 'chat') ? 'Kalender Aktuell ðŸ”' : incomingTitle;
+	            const notifTitle = (kind === 'chat') ? 'Kalender Aktuell 🔏' : incomingTitle;
 
 	            // Diagnostics: mark push as received even in foreground (SW only fires in background)
 	            try {
@@ -3111,12 +3098,12 @@ const requestNotificationPermission = async (currentUser) => {
 
 	            // Toast als Feedback
 	            try {
-	              const toastMsg = (kind === 'chat') ? 'Kalender Aktuell ðŸ”' : (incomingBody ? `${notifTitle}: ${incomingBody}` : notifTitle);
+	              const toastMsg = (kind === 'chat') ? 'Kalender Aktuell 🔏' : (incomingBody ? `${notifTitle}: ${incomingBody}` : notifTitle);
 	              showToast(toastMsg);
 	            } catch (_) {}
 
 	            // System-Notification im Vordergrund nur bei Test/forceShow oder wenn Tab nicht sichtbar.
-	            // Optional: auch fÃ¼r Chat im Vordergrund, falls aktiviert.
+	            // Optional: auch für Chat im Vordergrund, falls aktiviert.
 	            try {
 	              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
 	              const forceShow = String(payload?.data?.forceShow || '') === '1' || kind === 'test';
@@ -3125,7 +3112,7 @@ const requestNotificationPermission = async (currentUser) => {
 	              // Always show a real OS notification for incoming messages (unless the user is currently inside that conversation).
 	              if (kind === 'chat' && chatId && !__isOpenChat) {
 	                // Privacy: Chat OS notification should not show preview/body
-	                showSystemNotification('Kalender Aktuell ðŸ”', null, tag);
+	                showSystemNotification('Kalender Aktuell 🔏', null, tag);
 	                return;
 	              }
 
@@ -3206,7 +3193,7 @@ const requestNotificationPermission = async (currentUser) => {
       }
 
       function getDefaultWorkClockPresets() {
-        return ['BÃ¼ro', 'Baustelle', 'Support'];
+        return ['Büro', 'Baustelle', 'Support'];
       }
 
       function normalizeWorkClockPresets(input) {
@@ -3358,7 +3345,7 @@ const requestNotificationPermission = async (currentUser) => {
           next.pausedAccumulatedMs = Number(next.pausedAccumulatedMs || 0) + Math.max(0, now - Number(next.pauseStartedAt || now));
           next.pauseStartedAt = null;
           next.isPaused = false;
-          showToast('Arbeitszeit lÃ¤uft weiter');
+          showToast('Arbeitszeit läuft weiter');
         } else {
           next.isPaused = true;
           next.pauseStartedAt = now;
@@ -3451,7 +3438,7 @@ const requestNotificationPermission = async (currentUser) => {
           const nextStart = parseDateTimeInputValue(workClockEditStartValue);
           const nextEnd = parseDateTimeInputValue(workClockEditEndValue);
           if (!Number.isFinite(nextStart) || !Number.isFinite(nextEnd) || nextEnd <= nextStart) {
-            showToast('Start und Ende prÃ¼fen');
+            showToast('Start und Ende prüfen');
             return;
           }
           const previousPauseMs = Math.max(0, Number(workClockEditingSession?.pauseMs || 0));
@@ -3501,7 +3488,7 @@ const requestNotificationPermission = async (currentUser) => {
       const deleteWorkClockSession = async (session) => {
         if (!user?.uid || !session) return;
         const label = String(session?.title || 'Arbeit');
-        if (!window.confirm(`Session â€ž${label}â€œ lÃ¶schen?`)) return;
+        if (!window.confirm(`Session „${label}“ löschen?`)) return;
         const deleteKey = String(session?.localId || session?.id || '');
         try {
           setWorkClockDeletingId(deleteKey);
@@ -3514,10 +3501,10 @@ const requestNotificationPermission = async (currentUser) => {
           } catch (remoteErr) {
             console.warn('deleteWorkClockSession remote delete skipped', remoteErr);
           }
-          showToast('Session gelÃ¶scht');
+          showToast('Session gelöscht');
         } catch (err) {
           console.error('deleteWorkClockSession failed', err);
-          showToast('LÃ¶schen fehlgeschlagen');
+          showToast('Löschen fehlgeschlagen');
         } finally {
           setWorkClockDeletingId('');
         }
@@ -3527,7 +3514,7 @@ const requestNotificationPermission = async (currentUser) => {
         try {
           const rows = [...weekSessions].sort((a, b) => Number(a?.startedAt || 0) - Number(b?.startedAt || 0));
           if (!rows.length) {
-            showToast('Keine Sessions fÃ¼r diese Woche');
+            showToast('Keine Sessions für diese Woche');
             return;
           }
           const header = ['Datum','Start','Ende','Arbeit','Level','Arbeitszeit Minuten','Pausenzeit Minuten','Total Minuten'];
@@ -3555,7 +3542,7 @@ const requestNotificationPermission = async (currentUser) => {
         try {
           const rows = [...monthSessions].sort((a, b) => Number(a?.startedAt || 0) - Number(b?.startedAt || 0));
           if (!rows.length) {
-            showToast('Keine Sessions fÃ¼r diesen Monat');
+            showToast('Keine Sessions für diesen Monat');
             return;
           }
           const header = ['Datum','Start','Ende','Arbeit','Level','Arbeitszeit Minuten','Pausenzeit Minuten','Total Minuten'];
@@ -3755,7 +3742,7 @@ const requestNotificationPermission = async (currentUser) => {
       function getWeatherAdviceForDay(dayIndex = 0) {
         try {
           const dayStr = dailyForecast?.time?.[dayIndex];
-          if (!dayStr) return 'Wetterdaten werden geladenâ€¦';
+          if (!dayStr) return 'Wetterdaten werden geladen…';
 
           const maxTemp = Math.round(dailyForecast?.temperature_2m_max?.[dayIndex] ?? weather?.temperature ?? 0);
           const minTemp = Math.round(dailyForecast?.temperature_2m_min?.[dayIndex] ?? weather?.temperature ?? 0);
@@ -3766,7 +3753,7 @@ const requestNotificationPermission = async (currentUser) => {
 
           const getPartOfDayLabel = (hour) => {
             if (hour >= 5 && hour < 11) return 'am Morgen';
-            if (hour >= 11 && hour < 14) return 'Ã¼ber Mittag';
+            if (hour >= 11 && hour < 14) return 'über Mittag';
             if (hour >= 14 && hour < 18) return 'am Nachmittag';
             if (hour >= 18 && hour < 23) return 'am Abend';
             return 'in der Nacht';
@@ -3774,14 +3761,14 @@ const requestNotificationPermission = async (currentUser) => {
 
           const isMostlySunnyCode = (code) => [0, 1, 2].includes(Number(code ?? -1));
           const rainIntensityText = (prob) => {
-            if (prob >= 85) return 'krÃ¤ftiger Regen';
-            if (prob >= 70) return 'spÃ¼rbarer Regen';
+            if (prob >= 85) return 'kräftiger Regen';
+            if (prob >= 70) return 'spürbarer Regen';
             return 'leichter Regen';
           };
           const windText = (speed) => {
-            if (speed >= 55) return 'stÃ¼rmisch';
+            if (speed >= 55) return 'stürmisch';
             if (speed >= 40) return 'recht windig';
-            if (speed >= 30) return 'spÃ¼rbar windig';
+            if (speed >= 30) return 'spürbar windig';
             return 'eher ruhig';
           };
 
@@ -3820,32 +3807,32 @@ const requestNotificationPermission = async (currentUser) => {
                 const rainTimeLabel = formatHourLabel(hourlyForecast?.time?.[firstRainIdx4h]);
                 const startsLater = firstRainIdx4h !== firstIdx;
                 if (startsLater) {
-                  return `Bis ${rainTimeLabel} bleibt es meist trocken, danach ist ${rainLabel} mÃ¶glich â€“ Regenschirm mitnehmen.`;
+                  return `Bis ${rainTimeLabel} bleibt es meist trocken, danach ist ${rainLabel} möglich – Regenschirm mitnehmen.`;
                 }
-                return `Ab jetzt bis ${untilLabel} ist ${rainLabel} mÃ¶glich â€“ Regenschirm sinnvoll.`;
+                return `Ab jetzt bis ${untilLabel} ist ${rainLabel} möglich – Regenschirm sinnvoll.`;
               }
 
               if (firstWindIdx4h != null && maxWind4h >= 30) {
                 const windTimeLabel = formatHourLabel(hourlyForecast?.time?.[firstWindIdx4h]);
                 if (tempMin4h <= 11) {
-                  return `Bis ${untilLabel} wird es ${windText(maxWind4h)} â€“ ab ${windTimeLabel} lieber mit Jacke raus.`;
+                  return `Bis ${untilLabel} wird es ${windText(maxWind4h)} – ab ${windTimeLabel} lieber mit Jacke raus.`;
                 }
-                return `Bis ${untilLabel} wird es ${windText(maxWind4h)} â€“ draussen kann es ab ${windTimeLabel} ungemÃ¼tlich werden.`;
+                return `Bis ${untilLabel} wird es ${windText(maxWind4h)} – draussen kann es ab ${windTimeLabel} ungemütlich werden.`;
               }
 
               if (tempMin4h <= 8 && tempMax4h <= 13) {
-                return `${nowPhase} bleibt es bis ${untilLabel} frisch bei etwa ${tempMin4h}â€“${tempMax4h}Â° â€“ Jacke sinnvoll.`;
+                return `${nowPhase} bleibt es bis ${untilLabel} frisch bei etwa ${tempMin4h}–${tempMax4h}° – Jacke sinnvoll.`;
               }
 
               if (tempMin4h <= 10 && tempMax4h - tempMin4h >= 5) {
-                return `${nowPhase} noch eher kÃ¼hl, bis ${untilLabel} wird es milder â€“ Jacke jetzt sinnvoll, ${laterPhase} eher weniger.`;
+                return `${nowPhase} noch eher kühl, bis ${untilLabel} wird es milder – Jacke jetzt sinnvoll, ${laterPhase} eher weniger.`;
               }
 
               if (mostlySunny) {
-                return `Bis ${untilLabel} bleibt es trocken mit etwas Sonnenschein â€“ aktuell keine Jacke und kein Schirm nÃ¶tig.`;
+                return `Bis ${untilLabel} bleibt es trocken mit etwas Sonnenschein – aktuell keine Jacke und kein Schirm nötig.`;
               }
 
-              return `Bis ${untilLabel} bleibt es Ã¼berwiegend trocken bei ${tempMin4h}â€“${tempMax4h}Â° â€“ insgesamt ruhiges Wetter.`;
+              return `Bis ${untilLabel} bleibt es überwiegend trocken bei ${tempMin4h}–${tempMax4h}° – insgesamt ruhiges Wetter.`;
             }
           }
 
@@ -3866,18 +3853,18 @@ const requestNotificationPermission = async (currentUser) => {
 
           if (firstStrongRainIdx != null || rainProb >= 75 || rainSum >= 4) {
             const idx = firstStrongRainIdx != null ? firstStrongRainIdx : firstRainIdx;
-            const when = idx != null ? ` â€“ ab ${formatHourLabel(hourlyForecast?.time?.[idx])} ist krÃ¤ftiger Regen mÃ¶glich.` : '.';
+            const when = idx != null ? ` – ab ${formatHourLabel(hourlyForecast?.time?.[idx])} ist kräftiger Regen möglich.` : '.';
             return `Nimm einen Regenschirm mit${when}`;
           }
 
           if (firstRainIdx != null || rainProb >= 55 || rainSum >= 1.2) {
             const idx = firstRainIdx != null ? firstRainIdx : firstStrongRainIdx;
-            const when = idx != null ? ` â€“ ab ${formatHourLabel(hourlyForecast?.time?.[idx])} steigt die Regenchance.` : '.';
+            const when = idx != null ? ` – ab ${formatHourLabel(hourlyForecast?.time?.[idx])} steigt die Regenchance.` : '.';
             return `Leichte Regengefahr${when}`;
           }
 
           if (morningTemp >= 17 && afternoonTemp <= 12) {
-            return `Am Morgen brauchst du eher keine Jacke, spÃ¤ter wird es kÃ¼hler.`;
+            return `Am Morgen brauchst du eher keine Jacke, später wird es kühler.`;
           }
 
           if (morningTemp <= 11 && afternoonTemp >= 18) {
@@ -3885,28 +3872,28 @@ const requestNotificationPermission = async (currentUser) => {
           }
 
           if (firstCoolIdx != null && maxTemp - minTemp >= 6) {
-            return `Zwiebellook lohnt sich â€“ ab ${formatHourLabel(hourlyForecast?.time?.[firstCoolIdx])} wird es spÃ¼rbar kÃ¼hler.`;
+            return `Zwiebellook lohnt sich – ab ${formatHourLabel(hourlyForecast?.time?.[firstCoolIdx])} wird es spürbar kühler.`;
           }
 
           if (windMax >= 35) {
-            return `Heute wird es ${windText(windMax)} â€“ draussen lieber etwas WÃ¤rmeres einplanen.`;
+            return `Heute wird es ${windText(windMax)} – draussen lieber etwas Wärmeres einplanen.`;
           }
 
           if (maxTemp >= 28) {
-            return `Sehr warm heute â€“ Wasser mitnehmen und eher leichte Kleidung tragen.`;
+            return `Sehr warm heute – Wasser mitnehmen und eher leichte Kleidung tragen.`;
           }
 
           if (minTemp <= 5) {
-            return `KÃ¼hler Start in den Tag â€“ Jacke am Morgen sinnvoll.`;
+            return `Kühler Start in den Tag – Jacke am Morgen sinnvoll.`;
           }
 
           if ([0,1].includes(dayCode) && maxTemp >= 20 && firstWarmIdx != null) {
-            return `Freundliches Wetter â€“ ab ${formatHourLabel(hourlyForecast?.time?.[firstWarmIdx])} wird es angenehm mild.`;
+            return `Freundliches Wetter – ab ${formatHourLabel(hourlyForecast?.time?.[firstWarmIdx])} wird es angenehm mild.`;
           }
 
-          return `Heute zwischen ${minTemp}Â° und ${maxTemp}Â° â€“ insgesamt eher ruhiges Wetter.`;
+          return `Heute zwischen ${minTemp}° und ${maxTemp}° – insgesamt eher ruhiges Wetter.`;
         } catch (_) {
-          return 'Wetterdaten werden geladenâ€¦';
+          return 'Wetterdaten werden geladen…';
         }
       }
 
@@ -3920,30 +3907,30 @@ const requestNotificationPermission = async (currentUser) => {
           const timeLabel = hourMatch ? hourMatch[1] : null;
           if (lower.includes('regen') || lower.includes('schirm')) {
             return {
-              icon: 'â˜”',
+              icon: '☔',
               tone: 'border-amber-700/50 bg-amber-950/30 text-amber-200',
               text: timeLabel ? (lower.includes('bis') ? `Trocken bis ${timeLabel}` : `Regen ab ${timeLabel}`) : 'Regenschirm sinnvoll'
             };
           }
-          if (lower.includes('windig') || lower.includes('stÃ¼rmisch')) {
+          if (lower.includes('windig') || lower.includes('stürmisch')) {
             return {
-              icon: 'ðŸŒ¬ï¸',
+              icon: '🌬️',
               tone: 'border-neutral-700 bg-slate-950/40 text-slate-200',
               text: timeLabel ? `Windig bis ${timeLabel}` : 'Windiger Abschnitt'
             };
           }
-          if (lower.includes('jacke') || lower.includes('kÃ¼hl') || lower.includes('frisch')) {
+          if (lower.includes('jacke') || lower.includes('kühl') || lower.includes('frisch')) {
             return {
-              icon: 'ðŸ§¥',
+              icon: '🧥',
               tone: 'border-sky-800/50 bg-sky-950/30 text-sky-200',
               text: timeLabel ? `Jacke bis ${timeLabel}` : 'Jacke sinnvoll'
             };
           }
           if (lower.includes('milder') || lower.includes('angenehm')) {
             return {
-              icon: 'ðŸŒ“',
+              icon: '🌓',
               tone: 'border-emerald-800/50 bg-emerald-950/30 text-emerald-200',
-              text: timeLabel ? `SpÃ¤ter milder bis ${timeLabel}` : 'SpÃ¤ter angenehmer'
+              text: timeLabel ? `Später milder bis ${timeLabel}` : 'Später angenehmer'
             };
           }
           return {
@@ -4133,17 +4120,17 @@ const requestNotificationPermission = async (currentUser) => {
 const promptInstallPwa = async () => {
   try {
     if (!deferredInstallPrompt) {
-      showToast(isIosUA ? 'iPhone/iPad: Teilen â†’ â€žZum Home-Bildschirmâ€œ installieren.' : 'Installation ist gerade nicht verfÃ¼gbar.');
+      showToast(isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren.' : 'Installation ist gerade nicht verfügbar.');
       return;
     }
     deferredInstallPrompt.prompt();
     const choice = await deferredInstallPrompt.userChoice;
     setDeferredInstallPrompt(null);
     setCanInstallPwa(false);
-    if (choice && choice.outcome === 'accepted') showToast('Installiert âœ…');
+    if (choice && choice.outcome === 'accepted') showToast('Installiert ✅');
     else showToast('Installation abgebrochen');
   } catch (e) {
-    showToast('Installation nicht mÃ¶glich');
+    showToast('Installation nicht möglich');
   }
 };
 
@@ -4304,7 +4291,7 @@ Kalender aktuell` : 'Kalender aktuell';
             }
           }
 
-          // Fallback (falls kein SW verfÃ¼gbar ist)
+          // Fallback (falls kein SW verfügbar ist)
           // eslint-disable-next-line no-new
           new Notification(title, options);
         } catch (e) {}
@@ -4314,10 +4301,10 @@ Kalender aktuell` : 'Kalender aktuell';
         try {
           const canNotify = ('Notification' in window) && Notification.permission === 'granted';
           if (!canNotify) {
-            showToast('Keine Berechtigung fÃ¼r Benachrichtigungen');
+            showToast('Keine Berechtigung für Benachrichtigungen');
             return;
           }
-          await showSystemNotification('ðŸ”” Onyx Test', 'Wenn du das siehst: OS-Notification funktioniert âœ…', 'onyx_test_local');
+          await showSystemNotification('🔔 Onyx Test', 'Wenn du das siehst: OS-Notification funktioniert ✅', 'onyx_test_local');
         } catch (e) {
           showToast('Test fehlgeschlagen');
         }
@@ -4340,7 +4327,7 @@ Kalender aktuell` : 'Kalender aktuell';
             },
             { merge: true }
           );
-          showToast('Server-Test ausgelÃ¶st (oxynoti)');
+          showToast('Server-Test ausgelöst (oxynoti)');
         } catch (e) {
           showToast('Server-Test fehlgeschlagen');
         }
@@ -4365,7 +4352,7 @@ Kalender aktuell` : 'Kalender aktuell';
               }
               if (status === 'sent') {
                 // Let SW handle the visible notification; this toast is just feedback.
-                showToast('Server-Test gesendet âœ…');
+                showToast('Server-Test gesendet ✅');
               }
             } catch (_) {}
           });
@@ -4430,14 +4417,14 @@ const handleAuth = async (e) => {
 
     switch (code) {
       case 'auth/email-already-in-use': setAuthError('Diese E-Mail wird bereits verwendet.'); break;
-      case 'auth/invalid-email': setAuthError('UngÃ¼ltige E-Mail-Adresse.'); break;
+      case 'auth/invalid-email': setAuthError('Ungültige E-Mail-Adresse.'); break;
       case 'auth/invalid-credential':
       case 'auth/user-not-found':
       case 'auth/wrong-password': setAuthError('E-Mail oder Passwort falsch.'); break;
       case 'auth/weak-password': setAuthError('Passwort min. 6 Zeichen.'); break;
-      case 'auth/operation-not-allowed': setAuthError('Email/Passwort Login ist in Firebase Auth deaktiviert. Bitte in Firebase â†’ Authentication â†’ Sign-in method aktivieren.'); break;
-      case 'auth/unauthorized-domain': setAuthError('Domain nicht autorisiert. In Firebase Auth â†’ Settings â†’ Authorized domains muss tejari49.github.io erlaubt sein.'); break;
-      case 'auth/network-request-failed': setAuthError('Netzwerkfehler. Bitte Internet prÃ¼fen.'); break;
+      case 'auth/operation-not-allowed': setAuthError('Email/Passwort Login ist in Firebase Auth deaktiviert. Bitte in Firebase → Authentication → Sign-in method aktivieren.'); break;
+      case 'auth/unauthorized-domain': setAuthError('Domain nicht autorisiert. In Firebase Auth → Settings → Authorized domains muss tejari49.github.io erlaubt sein.'); break;
+      case 'auth/network-request-failed': setAuthError('Netzwerkfehler. Bitte Internet prüfen.'); break;
       default:
         setAuthError('Fehler: ' + (code || msg || 'Unbekannt'));
     }
@@ -4479,19 +4466,19 @@ const handleAuth = async (e) => {
       const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
       const goToToday = () => setCurrentDate(new Date());
 
-      // Alle Events kombiniert fÃ¼r die Ansicht
+      // Alle Events kombiniert für die Ansicht
       const allEvents = [
         ...events, 
         ...Object.values(sharedEventsMap).flat()
       ].filter(e => visibleCalendars.includes(e.calendarId));
 
-// Aktuelles Event im Modal aus der neuesten allEvents Liste (fÃ¼r Live Poll/Kommentare)
+// Aktuelles Event im Modal aus der neuesten allEvents Liste (für Live Poll/Kommentare)
 const modalEvent = eventToEdit
   ? (allEvents.find(e => e.id === eventToEdit.id && (e.calendarId || 'default') === (eventToEdit.calendarId || 'default')) || eventToEdit)
   : null;
 
 
-// Auto-finalize abgelaufene Abstimmungen (clientseitig, sobald jemand mit Schreibrecht die App Ã¶ffnet)
+// Auto-finalize abgelaufene Abstimmungen (clientseitig, sobald jemand mit Schreibrecht die App öffnet)
 useEffect(() => {
   if (!user) return;
 
@@ -4599,7 +4586,7 @@ useEffect(() => {
         return new Date(y, (m || 1) - 1, dd || 1);
       }
 
-      // --- NATÃœRLICHE SPRACHE: Parse Text -> Event Felder ---
+      // --- NATÜRLICHE SPRACHE: Parse Text -> Event Felder ---
       const toIsoDate = (d) => {
         try {
           const y = d.getFullYear();
@@ -4675,13 +4662,13 @@ useEffect(() => {
           }
         }
 
-        // 3) Datum (heute/morgen/Ã¼bermorgen, ISO, DD.MM)
+        // 3) Datum (heute/morgen/übermorgen, ISO, DD.MM)
         const lower = s.toLowerCase();
-        if (lower.includes('Ã¼bermorgen')) {
+        if (lower.includes('übermorgen')) {
           const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
           d.setDate(d.getDate() + 2);
           dateStr = toIsoDate(d);
-          s = s.replace(/Ã¼bermorgen/i, ' ').replace(/\s+/g, ' ').trim();
+          s = s.replace(/übermorgen/i, ' ').replace(/\s+/g, ' ').trim();
         } else if (lower.includes('morgen')) {
           const d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
           d.setDate(d.getDate() + 1);
@@ -4713,7 +4700,7 @@ useEffect(() => {
           if (yy < 100) yy = 2000 + yy;
           if (dd && mm && yy) {
             const candidate = new Date(yy, mm - 1, dd);
-            // falls ohne Jahr und in der Vergangenheit: nÃ¤chstes Jahr
+            // falls ohne Jahr und in der Vergangenheit: nächstes Jahr
             if (!dmM[3]) {
               const base0 = new Date(base.getFullYear(), base.getMonth(), base.getDate());
               if (candidate.getTime() < base0.getTime() - 3600000) {
@@ -4790,7 +4777,7 @@ useEffect(() => {
           location: (typeof parsed.location === 'string' && parsed.location) ? parsed.location : prev.location,
           durationMinutes: (parsed.durationMinutes !== null && typeof parsed.durationMinutes !== 'undefined') ? parsed.durationMinutes : prev.durationMinutes,
         }));
-        showToast('Ãœbernommen');
+        showToast('Übernommen');
       };
 
       function addDaysStr(s, days) {
@@ -4996,16 +4983,16 @@ useEffect(() => {
           localStorage.setItem(firedKey, String(Date.now()));
 
           const calName = (item.calendarId === 'default') ? 'Privat' : (getCalendarById(item.calendarId)?.name || 'Kalender');
-          const body = `${item.title}${item.time ? ' â€¢ ' + item.time : ''} â€¢ ${calName}`;
+          const body = `${item.title}${item.time ? ' • ' + item.time : ''} • ${calName}`;
 
           // In-App Hinweis immer
-          showToast(`â° ${body}`);
+          showToast(`⏰ ${body}`);
 
           // System Notification falls erlaubt
           try {
             // Wichtig: oft existiert zwar ein Web-Token, aber der Server-Worker (oxynoti)
             // ist nicht aktiv oder sendet nicht an Web. Daher IMMER lokal als Fallback.
-            // Tag ist kompatibel mit oxynoti (dedupe Ã¼ber `tag`).
+            // Tag ist kompatibel mit oxynoti (dedupe über `tag`).
             const canNotify = ('Notification' in window) && Notification.permission === 'granted';
             if (canNotify) {
               const dedupeKey = `${user?.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;
@@ -5070,7 +5057,7 @@ useEffect(() => {
       }, [currentView, userProfile?.secretPanicOnHide]);
 
 
-      // --- NEU: PINSEL & LANGES DRÃœCKEN LOGIK ---
+      // --- NEU: PINSEL & LANGES DRÜCKEN LOGIK ---
       const handleDayContextMenu = (e, dateStr) => {
          e.preventDefault();
          const activeCal = getCalendarById(activeCalendarId);
@@ -5157,7 +5144,7 @@ useEffect(() => {
          isPaintingRef.current = false;
       };
 
-      // RegulÃ¤rer Klick auf Tag
+      // Regulärer Klick auf Tag
       const handleDayClick = async (dateStr) => {
          if (isLongPressAction.current) { isLongPressAction.current = false; return; }
          
@@ -5284,13 +5271,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       };
 
       const deleteCalendar = async (calId) => {
-         if(!confirm("Kalender wirklich lÃ¶schen? Alle Termine gehen verloren.")) return;
+         if(!confirm("Kalender wirklich löschen? Alle Termine gehen verloren.")) return;
          try {
              await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId));
-             await writeAudit({ calId, action: 'calendar.delete', targetType: 'calendar', targetId: calId, summary: `Kalender gelÃ¶scht: ${getCalendarById(calId)?.name || calId}` });
+             await writeAudit({ calId, action: 'calendar.delete', targetType: 'calendar', targetId: calId, summary: `Kalender gelöscht: ${getCalendarById(calId)?.name || calId}` });
              if (activeCalendarId === calId) setActiveCalendarId('default');
-             showToast("Kalender gelÃ¶scht");
-         } catch(e) { showToast("Fehler beim LÃ¶schen"); }
+             showToast("Kalender gelöscht");
+         } catch(e) { showToast("Fehler beim Löschen"); }
       };
 
       const addShiftToForm = () => {
@@ -5315,9 +5302,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           e.preventDefault();
           if(!shareCalData) return;
           const email = shareUsername.trim().toLowerCase();
-          // Kalender-Freunde werden Ã¼ber E-Mail hinzugefÃ¼gt (nicht Ã¼ber Username)
+          // Kalender-Freunde werden über E-Mail hinzugefügt (nicht über Username)
           const targetProfile = await findProfileByEmailLower(email);
-          if(!targetProfile) return showToast("Nutzer nicht gefunden (E-Mail prÃ¼fen)");
+          if(!targetProfile) return showToast("Nutzer nicht gefunden (E-Mail prüfen)");
           if(targetProfile.id === user?.uid) return showToast("Das bist du selbst.");
 
 
@@ -5325,7 +5312,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', shareCalData.id), {
                  [`sharedWith.${targetProfile.id}`]: sharePerm
              });
-             await writeAudit({ calId: shareCalData.id, action: 'calendar.share', targetType: 'calendar', targetId: shareCalData.id, summary: `Kalender geteilt (${sharePerm}): ${shareCalData.name} â†’ ${targetProfile.email || targetProfile.username || shortId(targetProfile.id,6)}`, details: { targetUid: targetProfile.id, perm: sharePerm } });
+             await writeAudit({ calId: shareCalData.id, action: 'calendar.share', targetType: 'calendar', targetId: shareCalData.id, summary: `Kalender geteilt (${sharePerm}): ${shareCalData.name} → ${targetProfile.email || targetProfile.username || shortId(targetProfile.id,6)}`, details: { targetUid: targetProfile.id, perm: sharePerm } });
              showToast(`Geteilt mit ${targetProfile.email || targetProfile.username || "Nutzer"} (${sharePerm})`);
              setShareCalData(prev => prev && prev.id === shareCalData.id ? { ...prev, sharedWith: { ...(prev.sharedWith || {}), [targetProfile.id]: sharePerm } } : prev);
              setShareUsername('');
@@ -5340,7 +5327,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
              const newShared = { ...(cal.sharedWith || {}) };
              delete newShared[targetUid];
              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId), { sharedWith: newShared });
-             await writeAudit({ calId, action: 'calendar.unshare', targetType: 'calendar', targetId: calId, summary: `Freigabe entfernt: ${cal?.name || calId} â†’ ${getProfile(targetUid)?.username || shortId(targetUid,6)}`, details: { targetUid } });
+             await writeAudit({ calId, action: 'calendar.unshare', targetType: 'calendar', targetId: calId, summary: `Freigabe entfernt: ${cal?.name || calId} → ${getProfile(targetUid)?.username || shortId(targetUid,6)}`, details: { targetUid } });
              setShareCalData(prev => prev && prev.id === calId ? { ...prev, sharedWith: newShared } : prev);
              showToast("Freigabe entfernt");
           } catch(err) {}
@@ -5502,7 +5489,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           passcodeSalt = randomToken(8);
           passcodeHash = await sha256Hex(`${passcodeSalt}|${pc}`);
         } else if (d.protection === 'magic') {
-          // Magic-Link = nur der zufÃ¤llige Token (keine zusÃ¤tzliche Eingabe)
+          // Magic-Link = nur der zufällige Token (keine zusätzliche Eingabe)
           magicKey = '';
           magicHash = null;
         }
@@ -5719,7 +5706,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         try { e.target.value = ''; } catch (_) {}
 
         if (!isProbablyImageFile(file0)) {
-          showToast('Nur Bilder unterstÃ¼tzt');
+          showToast('Nur Bilder unterstützt');
           return;
         }
 
@@ -5733,7 +5720,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               avatarThumbBase64: thumb,
               avatarFullBase64: full
             }, { merge: true });
-            showToast('Avatar geÃ¤ndert');
+            showToast('Avatar geändert');
           }
         } catch (err) {
           console.warn('avatar compress/upload failed', err);
@@ -5768,7 +5755,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             const d = snap.docs[0].data() || {};
             return { id: snap.docs[0].id, ...d };
           }
-          // Fallback: alte Profile hatten friendCode evtl. als Number â†’ suche Ã¼ber local allProfiles
+          // Fallback: alte Profile hatten friendCode evtl. als Number → suche über local allProfiles
           const local = (allProfiles || []).find(p => String(p.friendCode || '').padStart(5, '0') === code);
           return local || null;
         } catch (e) {
@@ -5936,7 +5923,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             const patch = { friends: arrayUnion(targetUserId), removedFriendIds: arrayRemove(targetUserId) };
             if (dmId) patch.hiddenChats = arrayRemove(dmId);
             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
-            await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefÃ¼gt: ${targetProfile?.displayName || targetProfile?.username || targetProfile?.email || shortId(targetUserId,6)}` });
+            await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${targetProfile?.displayName || targetProfile?.username || targetProfile?.email || shortId(targetUserId,6)}` });
           } catch (_) {}
           setActiveChat(existingChat);
           setChatSearchQuery('');
@@ -5964,7 +5951,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           // Save to friends
           try {
             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { friends: arrayUnion(targetUserId), removedFriendIds: arrayRemove(targetUserId) }, { merge: true });
-            await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefÃ¼gt: ${otherName}` });
+            await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${otherName}` });
           } catch (_) {}
 
           setActiveChat({ id: newChat.id, type: 'dm', participants: [user?.uid, targetUserId], displayNames, updatedAt: Date.now(), lastMessageSenderId: user?.uid });
@@ -5982,7 +5969,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         if (!user) return;
         const title = (groupDraftName || '').trim() || 'Gruppe';
         const members = Array.from(new Set([user?.uid, ...(groupDraftMembers || [])])).filter(Boolean);
-        if (members.length < 3) return showToast('WÃ¤hle mindestens 2 Mitglieder aus');
+        if (members.length < 3) return showToast('Wähle mindestens 2 Mitglieder aus');
         try {
           const newChat = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats'), {
             type: 'group', title, participants: members, admins: [user?.uid], createdAt: Date.now(), updatedAt: Date.now(), lastMessageSenderId: user?.uid,
@@ -6058,7 +6045,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         if (!user || !chat || !memberId) return;
         try {
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chat.id), { participants: arrayUnion(memberId), updatedAt: Date.now() });
-          showToast('Mitglied hinzugefÃ¼gt');
+          showToast('Mitglied hinzugefügt');
         } catch(e) { showToast('Fehler'); }
       };
 
@@ -6185,12 +6172,12 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       function messagePreviewText(m) {
         if (!m) return '';
-        if (m.deleted) return 'Nachricht gelÃ¶scht';
+        if (m.deleted) return 'Nachricht gelöscht';
         const t = String(m.text || '').trim();
-        if (t) return t.length > 140 ? `${t.slice(0, 140)}â€¦` : t;
-        if (m.image) return 'ðŸ“· Bild';
-        if (m.audio) return 'ðŸŽ¤ Sprachnachricht';
-        if (m.event) return `ðŸ“… ${String(m.event.title || 'Termin')}`;
+        if (t) return t.length > 140 ? `${t.slice(0, 140)}…` : t;
+        if (m.image) return '📷 Bild';
+        if (m.audio) return '🎤 Sprachnachricht';
+        if (m.event) return `📅 ${String(m.event.title || 'Termin')}`;
         return '';
       }
 
@@ -6391,7 +6378,7 @@ setSelfDestruct(false);
       const deleteMessage = async (msgId) => {
         if (!activeChat || !user) return;
         try {
-          // Soft-delete: keep message visible with a "gelÃ¶scht" hint instead of removing it.
+          // Soft-delete: keep message visible with a "gelöscht" hint instead of removing it.
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), {
             deleted: true,
             deletedAt: Date.now(),
@@ -6406,9 +6393,9 @@ setSelfDestruct(false);
             lastMessageSenderId: user?.uid
           }).catch(()=>{});
           setSelectedMessageId(null);
-          showToast("Nachricht gelÃ¶scht");
+          showToast("Nachricht gelöscht");
           refocusChatInput();
-        } catch (error) { showToast("Fehler beim LÃ¶schen"); }
+        } catch (error) { showToast("Fehler beim Löschen"); }
       };
 
       const toggleMessageReaction = async (msg, emoji) => {
@@ -6447,7 +6434,7 @@ setSelfDestruct(false);
         try { e.target.value = ''; } catch (_) {}
 
         if (!isProbablyImageFile(file0)) {
-          showToast('Nur Bilder unterstÃ¼tzt');
+          showToast('Nur Bilder unterstützt');
           return;
         }
 
@@ -6730,7 +6717,7 @@ setSelfDestruct(false);
         const now = Date.now();
         if (focusState?.isPaused) {
           setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev?.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev?.pauseStartedAt || now)), pauseStartedAt: null }));
-          showToast('Fokus weitergefÃ¼hrt');
+          showToast('Fokus weitergeführt');
         } else {
           setFocusState(prev => ({ ...(prev || {}), isPaused: true, pauseStartedAt: now }));
           showToast('Fokus pausiert');
@@ -6756,7 +6743,7 @@ setSelfDestruct(false);
       if (!isAppReady) {
         return (
           <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4" style={{ height: 'var(--app-height, 100vh)' }}>
-            <div className="flex flex-col items-center animate-pulse"><div className="w-12 h-12 bg-white rounded-sm mb-6"></div><h1 className="text-xl tracking-widest text-neutral-500">ONYX LÃ„DT...</h1></div>
+            <div className="flex flex-col items-center animate-pulse"><div className="w-12 h-12 bg-white rounded-sm mb-6"></div><h1 className="text-xl tracking-widest text-neutral-500">ONYX LÄDT...</h1></div>
           </div>
         );
       }
@@ -6815,7 +6802,7 @@ setSelfDestruct(false);
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 bg-white rounded-sm"></div>
                   <div>
-                    <div className="text-xs text-neutral-500 uppercase tracking-widest">ONYX â€¢ Public Share</div>
+                    <div className="text-xs text-neutral-500 uppercase tracking-widest">ONYX • Public Share</div>
                     <div className="text-lg font-medium text-white">{d.kind === 'calendar' ? (d.calName || 'Kalender') : (d.eventSnapshot?.title || 'Termin')}</div>
                   </div>
                 </div>
@@ -6830,38 +6817,38 @@ setSelfDestruct(false);
 
               <div className="mt-6">
                 {publicShareLoading ? (
-                  <div className="text-sm text-neutral-500">Ladeâ€¦</div>
+                  <div className="text-sm text-neutral-500">Lade…</div>
                 ) : publicShareError ? (
                   <div className="text-sm text-red-400">{publicShareError}</div>
                 ) : !publicShareDoc ? (
-                  <div className="text-sm text-neutral-500">â€”</div>
+                  <div className="text-sm text-neutral-500">—</div>
                 ) : !canView ? (
                   <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
-                    <div className="flex items-center gap-2 text-sm text-white font-medium"><Lock className="w-4 h-4" /> GeschÃ¼tzt</div>
+                    <div className="flex items-center gap-2 text-sm text-white font-medium"><Lock className="w-4 h-4" /> Geschützt</div>
                     {needsPasscode ? (
                       <>
                         <p className="mt-2 text-xs text-neutral-500">Bitte Passcode eingeben.</p>
                         <div className="mt-3 flex gap-2">
                           <input value={publicSharePasscode} onChange={(e) => setPublicSharePasscode(e.target.value)} placeholder="Passcode" className="flex-1 bg-black border border-neutral-800 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                          <button type="button" onClick={verifyPublicSharePasscode} className="px-4 py-2 rounded-lg bg-white text-black font-semibold hover:bg-gray-200">Ã–ffnen</button>
+                          <button type="button" onClick={verifyPublicSharePasscode} className="px-4 py-2 rounded-lg bg-white text-black font-semibold hover:bg-gray-200">Öffnen</button>
                         </div>
                       </>
                     ) : (
-                      <p className="mt-2 text-xs text-neutral-500">Dieser Link ist geschÃ¼tzt.</p>
+                      <p className="mt-2 text-xs text-neutral-500">Dieser Link ist geschützt.</p>
                     )}
                   </div>
                 ) : (
                   <>
                     {d.expiresAtMs ? (
-                      <div className="text-[11px] text-neutral-500">LÃ¤uft ab: {new Date(d.expiresAtMs).toLocaleString('de-CH')}</div>
+                      <div className="text-[11px] text-neutral-500">Läuft ab: {new Date(d.expiresAtMs).toLocaleString('de-CH')}</div>
                     ) : (
                       <div className="text-[11px] text-neutral-500">Ohne Ablaufdatum</div>
                     )}
 
                     {d.kind === 'calendar' ? (
                       <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
-                        <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Busyâ€‘Only</div>
-                        <div className="text-[11px] text-neutral-500 mb-4">Zeigt nur belegte Zeiten (ohne Titel/Ort). Range: {d.rangeStart} â†’ {d.rangeEnd}</div>
+                        <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Busy‑Only</div>
+                        <div className="text-[11px] text-neutral-500 mb-4">Zeigt nur belegte Zeiten (ohne Titel/Ort). Range: {d.rangeStart} → {d.rangeEnd}</div>
 
                         {Array.isArray(d.busyBlocks) && d.busyBlocks.length ? (
                           <div className="space-y-3 max-h-[52vh] overflow-y-auto no-scrollbar pr-1">
@@ -6871,7 +6858,7 @@ setSelfDestruct(false);
                                 <div className="mt-2 space-y-1">
                                   {day.blocks.map((b, idx) => (
                                     <div key={idx} className="text-xs text-neutral-300 tabular-nums">
-                                      {new Date(b.startMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })} â€“ {new Date(b.endMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}
+                                      {new Date(b.startMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })} – {new Date(b.endMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}
                                     </div>
                                   ))}
                                 </div>
@@ -6886,8 +6873,8 @@ setSelfDestruct(false);
                       <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
                         <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Event</div>
                         <div className="text-lg text-white font-medium">{d.eventSnapshot?.title || 'Termin'}</div>
-                        <div className="mt-1 text-sm text-neutral-300 tabular-nums">{d.eventSnapshot?.date}{d.eventSnapshot?.time ? ` â€¢ ${d.eventSnapshot?.time}` : ''}</div>
-                        {d.eventSnapshot?.location ? <div className="mt-2 text-sm text-neutral-400">ðŸ“ {d.eventSnapshot.location}</div> : null}
+                        <div className="mt-1 text-sm text-neutral-300 tabular-nums">{d.eventSnapshot?.date}{d.eventSnapshot?.time ? ` • ${d.eventSnapshot?.time}` : ''}</div>
+                        {d.eventSnapshot?.location ? <div className="mt-2 text-sm text-neutral-400">📍 {d.eventSnapshot.location}</div> : null}
                         {d.eventSnapshot?.desc ? <div className="mt-3 text-sm text-neutral-300 whitespace-pre-wrap">{d.eventSnapshot.desc}</div> : null}
                         <div className="mt-4 flex gap-2">
                           <button type="button" onClick={downloadIcsForSharedEvent} className="flex-1 py-2.5 rounded-xl bg-white text-black font-semibold hover:bg-gray-200">ICS Download</button>
@@ -6959,7 +6946,7 @@ setSelfDestruct(false);
         if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
         return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
       })();
-      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} Â· ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
+      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
       const weatherBadgeMeta = getWeatherBadgeMeta();
 
       const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
@@ -6988,13 +6975,13 @@ setSelfDestruct(false);
       const nextFreeBlock = (() => {
         if (!timedEventsToday.length) return 'Ganzer Tag frei';
         const first = timedEventsToday[0];
-        if (Number.isFinite(first?.startMs) && first.startMs > nowMs + 45 * 60000) return `Aktuell frei bis ${first.event?.time || 'spÃ¤ter'}`;
+        if (Number.isFinite(first?.startMs) && first.startMs > nowMs + 45 * 60000) return `Aktuell frei bis ${first.event?.time || 'später'}`;
         for (let i = 0; i < timedEventsToday.length - 1; i += 1) {
           const a = timedEventsToday[i];
           const b = timedEventsToday[i + 1];
           if (Number.isFinite(a?.startMs) && Number.isFinite(b?.startMs)) {
             const gapMin = Math.round((b.startMs - a.startMs) / 60000) - 60;
-            if (gapMin >= 45) return `${a.event?.time || ''}â€“${b.event?.time || ''} frei`;
+            if (gapMin >= 45) return `${a.event?.time || ''}–${b.event?.time || ''} frei`;
           }
         }
         return freeWindowText;
@@ -7005,7 +6992,7 @@ setSelfDestruct(false);
           const times = hourlyForecast?.time || [];
           const rain = hourlyForecast?.precipitation_probability || [];
           const temps = hourlyForecast?.temperature_2m || [];
-          if (!times.length) return 'Aktuell keine 4h-Tendenz verfÃ¼gbar';
+          if (!times.length) return 'Aktuell keine 4h-Tendenz verfügbar';
           const now = Date.now();
           const next = times.map((t, i) => ({ t, idx: i, ms: Date.parse(t), rain: Number(rain?.[i] || 0), temp: Number(temps?.[i] || 0) })).filter(x => Number.isFinite(x.ms) && x.ms >= now).slice(0, 8);
           const dry = next.filter(x => x.rain < 35);
@@ -7038,12 +7025,12 @@ setSelfDestruct(false);
         if (!blocks.length) return ['Ganzer Tag frei'];
         for (const block of blocks) {
           if (block.startMs - cursor >= 30 * 60000) {
-            items.push(`${new Date(cursor).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}â€“${new Date(block.startMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}`);
+            items.push(`${new Date(cursor).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}–${new Date(block.startMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}`);
           }
           cursor = Math.max(cursor, block.endMs);
         }
-        if (endOfDayMs - cursor >= 30 * 60000) items.push(`${new Date(cursor).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}â€“23:59`);
-        return items.length ? items.slice(0, 4) : ['Keine lÃ¤ngeren Fenster'];
+        if (endOfDayMs - cursor >= 30 * 60000) items.push(`${new Date(cursor).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}–23:59`);
+        return items.length ? items.slice(0, 4) : ['Keine längeren Fenster'];
       })();
       const completedGoals = normalizeDailyGoals(dailyGoals).filter((g) => g.done && String(g.text || '').trim()).length;
       const activeCalForView = getCalendarById(activeCalendarId);
@@ -7128,14 +7115,14 @@ setSelfDestruct(false);
                   <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between gap-4 cursor-pointer hover:border-neutral-600 transition-colors group">
                     <div className="min-w-0 flex-1">
                       <h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider mb-1 flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {location.name}</h3>
-                      <p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}Â°` : '--Â°'}</p>
+                      <p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
                       <p className="mt-2 text-sm text-neutral-400 leading-relaxed max-w-[32rem]">{todayWeatherAdvice}</p>
                     </div>
                     <div className="shrink-0">{getWeatherIcon(weather?.weathercode, "w-10 h-10 md:w-12 md:h-12 text-white")}</div>
                   </div>
                   <div className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-start gap-4">
                     <Info className="w-5 h-5 md:w-6 md:h-6 text-neutral-400 shrink-0 mt-1" />
-                    <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-xl md:text-2xl font-semibold text-neutral-100 leading-snug">â€œ{dailyFact}â€</p></div>
+                    <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-xl md:text-2xl font-semibold text-neutral-100 leading-snug">“{dailyFact}”</p></div>
                   </div>
                 </div>
 
@@ -7147,9 +7134,9 @@ setSelfDestruct(false);
                           <div>
                             <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Smart Day</div>
                             <div className="text-lg md:text-xl font-semibold text-white">{nextEventLabel}</div>
-                            <div className="mt-2 text-sm text-neutral-400">{nextEventCountdownText} Â· {freeWindowText}</div>
+                            <div className="mt-2 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
                           </div>
-                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Ã–ffnen</button>
+                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
                         </div>
                       </div>
                     )}
@@ -7159,16 +7146,16 @@ setSelfDestruct(false);
                           <div>
                             <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
                             <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
-                            <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'LÃ¤uft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
+                            <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
                           </div>
-                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Ã–ffnen</button>
+                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
                         </div>
                       </div>
                     )}
                   </div>
                 )}
                 <div>
-                  <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda fÃ¼r heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
+                  <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda für heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
                   {hasUnreadMessages && (
                     <div className="mb-4 p-4 border border-neutral-700 bg-neutral-900 rounded-xl flex items-center justify-center transition-colors animate-fade-in">
                       <div className="flex items-center gap-3"><div className="w-2 h-2 bg-white rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]"></div><span className="font-medium text-white uppercase tracking-widest text-sm">Kalender Aktuell</span></div>
@@ -7191,11 +7178,11 @@ setSelfDestruct(false);
                                <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
                                <span className="truncate">{event.title}</span>
                              </p>
-                             <p className="text-xs text-neutral-500 mt-0.5 truncate">{event.type === 'shift' ? getCalendarById(event.calendarId)?.name : event.type} {event.desc && `â€¢ ${event.desc}`}</p>
+                             <p className="text-xs text-neutral-500 mt-0.5 truncate">{event.type === 'shift' ? getCalendarById(event.calendarId)?.name : event.type} {event.desc && `• ${event.desc}`}</p>
                           </div>
                         </div>
                       ))
-                    ) : (<p className="text-neutral-500 text-sm italic p-4 text-center border border-dashed border-neutral-800 rounded-lg">Keine Termine fÃ¼r heute.</p>)}
+                    ) : (<p className="text-neutral-500 text-sm italic p-4 text-center border border-dashed border-neutral-800 rounded-lg">Keine Termine für heute.</p>)}
                   </div>
                 </div>
               </div>
@@ -7282,8 +7269,8 @@ setSelfDestruct(false);
                   {calendarViewMode === 'agenda' ? (
                     <div className="flex items-center gap-2 flex-1 justify-end min-w-[220px]">
                       <select value={agendaRange} onChange={(e) => setAgendaRange(e.target.value)} className="bg-black border border-neutral-800 text-white text-xs rounded-md px-2 py-2 focus:outline-none">
-                        <option value="7">NÃ¤chste 7 Tage</option>
-                        <option value="30">NÃ¤chste 30 Tage</option>
+                        <option value="7">Nächste 7 Tage</option>
+                        <option value="30">Nächste 30 Tage</option>
                         <option value="month">Dieser Monat</option>
                       </select>
                       <div className="relative flex-1 max-w-xs">
@@ -7319,13 +7306,13 @@ setSelfDestruct(false);
                            <select 
                               value={selectedPaintShift.id} 
                               onChange={e => {
-                                 if (e.target.value === 'delete') setSelectedPaintShift({ id: 'delete', name: 'LÃ¶schen' });
+                                 if (e.target.value === 'delete') setSelectedPaintShift({ id: 'delete', name: 'Löschen' });
                                  else setSelectedPaintShift(activeCalForView.shifts.find(s => s.id === e.target.value));
                               }}
                               className="bg-black border border-neutral-700 text-white text-xs rounded-md px-2 py-1.5 focus:outline-none"
                            >
                               {(activeCalForView?.shifts || []).filter(Boolean).map(s => <option key={s?.id} value={s?.id}>{s?.name || 'Schicht'}</option>)}
-                              <option value="delete">Frei / LÃ¶schen</option>
+                              <option value="delete">Frei / Löschen</option>
                            </select>
                         )}
                      </div>
@@ -7404,7 +7391,7 @@ setSelfDestruct(false);
                                  >
                                    <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
                                    <span className="text-neutral-500 mr-1">{event.time}</span>
-                                   {event.poll && event.poll.status === 'open' && <span className="mr-1">ðŸ—³ï¸</span>}
+                                   {event.poll && event.poll.status === 'open' && <span className="mr-1">🗳️</span>}
                                    <span className="truncate">{event.title}</span>
                                  </div>
                               )
@@ -7453,7 +7440,7 @@ setSelfDestruct(false);
                           <div>
                             <p className="text-[10px] uppercase tracking-widest text-neutral-500">Agenda</p>
                             <h3 className="text-lg md:text-xl font-medium text-white">
-                              {agendaRange === 'month' ? `${MONATE[currentDate.getMonth()]} ${currentDate.getFullYear()}` : `${start} â€“ ${end}`}
+                              {agendaRange === 'month' ? `${MONATE[currentDate.getMonth()]} ${currentDate.getFullYear()}` : `${start} – ${end}`}
                             </h3>
                           </div>
                           <button onClick={() => openNewEventModal()} className="text-xs bg-white text-black px-3 py-2 rounded-md font-medium hover:bg-gray-200 transition-colors flex items-center gap-2">
@@ -7493,9 +7480,9 @@ setSelfDestruct(false);
                                         )}
                                       </div>
                                       <div className="text-xs text-neutral-500 mt-1 truncate">
-                                        {ev.type === 'shift' ? 'Schicht' : (ev.time ? `${ev.time} Â· ` : '')}{ev.type || 'Privat'}{ev.desc ? ` Â· ${ev.desc}` : ''}
+                                        {ev.type === 'shift' ? 'Schicht' : (ev.time ? `${ev.time} · ` : '')}{ev.type || 'Privat'}{ev.desc ? ` · ${ev.desc}` : ''}
                                         {ev.calendarId && (
-                                          <span className="text-neutral-600"> Â· {getCalendarById(ev.calendarId)?.name || 'Kalender'}</span>
+                                          <span className="text-neutral-600"> · {getCalendarById(ev.calendarId)?.name || 'Kalender'}</span>
                                         )}
                                       </div>
                                     </div>
@@ -7535,13 +7522,13 @@ setSelfDestruct(false);
                           <p className="text-[10px] uppercase tracking-widest text-neutral-500">Kalender-Feed</p>
                           <h3 className="text-sm font-medium text-white">{feedTitle}</h3>
                         </div>
-                        <div className="text-[11px] text-neutral-500">ðŸ—³ï¸ {openPollEvents.length} â€¢ ðŸ’¬ {commentEvents.length}</div>
+                        <div className="text-[11px] text-neutral-500">🗳️ {openPollEvents.length} • 💬 {commentEvents.length}</div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-semibold text-white">ðŸ—³ï¸ Abstimmungen</div>
+                            <div className="text-xs font-semibold text-white">🗳️ Abstimmungen</div>
                             {openPollEvents.some(x => !canWriteCalendar(x.calendarId || 'default')) && (
                               <div className="text-[10px] text-neutral-600">teilweise nur Lesen</div>
                             )}
@@ -7572,10 +7559,10 @@ setSelfDestruct(false);
                                     className="text-left min-w-0"
                                   >
                                     <div className="text-sm font-medium text-white truncate">{ev.title}</div>
-                                    <div className="text-[11px] text-neutral-500">{votesCount}/{totalVoters || 'â€“'} Antworten</div>
+                                    <div className="text-[11px] text-neutral-500">{votesCount}/{totalVoters || '–'} Antworten</div>
                                     <div className="text-[10px] text-neutral-600 flex items-center gap-2 mt-1">
                                       <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(ev.calendarId || 'default') }} />
-                                      <span className="truncate">{getCalendarById(ev.calendarId || 'default')?.name || 'Privat'}{canWrite ? '' : ' Â· nur Lesen'}</span>
+                                      <span className="truncate">{getCalendarById(ev.calendarId || 'default')?.name || 'Privat'}{canWrite ? '' : ' · nur Lesen'}</span>
                                     </div>
                                   </button>
                                   <button
@@ -7583,7 +7570,7 @@ setSelfDestruct(false);
                                     onClick={() => openEditEventModal(ev, null, { openPoll: true })}
                                     className="px-2 py-1 rounded-lg border border-neutral-800 text-neutral-300 text-[11px] hover:border-neutral-500"
                                   >
-                                    Ã–ffnen
+                                    Öffnen
                                   </button>
                                 </div>
 
@@ -7604,7 +7591,7 @@ setSelfDestruct(false);
                                           className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800') + (!canWrite ? ' opacity-60' : '')}
                                         >
                                           <div className="flex items-center justify-between gap-2">
-                                            <div className="text-xs text-white">{opt.date} â€¢ {opt.time}{isWinner ? ' â­' : ''}</div>
+                                            <div className="text-xs text-white">{opt.date} • {opt.time}{isWinner ? ' ⭐' : ''}</div>
                                             <div className="flex items-center gap-1">
                                               <button
                                                 type="button"
@@ -7613,7 +7600,7 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)}
                                                 title="Fix"
                                               >
-                                                âœ…
+                                                ✅
                                               </button>
                                               <button
                                                 type="button"
@@ -7622,7 +7609,7 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)}
                                                 title="Kann"
                                               >
-                                                ðŸ¤·
+                                                🤷
                                               </button>
                                               <button
                                                 type="button"
@@ -7631,11 +7618,11 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)}
                                                 title="Nein"
                                               >
-                                                âŒ
+                                                ❌
                                               </button>
                                             </div>
                                           </div>
-                                          <div className="mt-1 text-[10px] text-neutral-500 tabular-nums">âœ…{t.yes} &nbsp; ðŸ¤·{t.maybe} &nbsp; âŒ{t.no}</div>
+                                          <div className="mt-1 text-[10px] text-neutral-500 tabular-nums">✅{t.yes} &nbsp; 🤷{t.maybe} &nbsp; ❌{t.no}</div>
                                         </div>
                                       );
                                     }
@@ -7652,7 +7639,7 @@ setSelfDestruct(false);
                                         className={"w-full text-left border rounded-xl px-3 py-2 transition-colors " + (voted ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500') + (!canWrite ? ' opacity-60 cursor-not-allowed' : '')}
                                       >
                                         <div className="flex items-center justify-between">
-                                          <div className="text-xs text-white">{opt.date} â€¢ {opt.time}</div>
+                                          <div className="text-xs text-white">{opt.date} • {opt.time}</div>
                                           <div className="text-[10px] text-neutral-400">{c}</div>
                                         </div>
                                       </button>
@@ -7662,7 +7649,7 @@ setSelfDestruct(false);
 
                                 <div className="mt-2 flex items-center justify-between">
                                   <div className="text-[11px] text-neutral-500">
-                                    {myComplete ? 'Du: fertig âœ…' : 'Du: offen'}{deadlineLabel ? ` Â· Deadline: ${deadlineLabel}` : ''}
+                                    {myComplete ? 'Du: fertig ✅' : 'Du: offen'}{deadlineLabel ? ` · Deadline: ${deadlineLabel}` : ''}
                                   </div>
                                   {canWrite && (
                                     <button
@@ -7670,7 +7657,7 @@ setSelfDestruct(false);
                                       disabled={!canFinalizeNow || pollBusy}
                                       onClick={() => finalizePollForSpecificEvent(ev)}
                                       className={"px-2 py-1 rounded-lg font-semibold text-[11px] " + ((!canFinalizeNow || pollBusy) ? 'bg-neutral-900 border border-neutral-800 text-neutral-500 cursor-not-allowed' : 'bg-white text-black')}
-                                      title={canFinalizeNow ? 'Gewinner Ã¼bernehmen' : 'Warten bis alle fertig sind oder Deadline'}
+                                      title={canFinalizeNow ? 'Gewinner übernehmen' : 'Warten bis alle fertig sind oder Deadline'}
                                     >
                                       Finalisieren
                                     </button>
@@ -7684,7 +7671,7 @@ setSelfDestruct(false);
 
                         <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-semibold text-white">ðŸ’¬ Kommentare</div>
+                            <div className="text-xs font-semibold text-white">💬 Kommentare</div>
                             <div className="text-[10px] text-neutral-600">letzte</div>
                           </div>
 
@@ -7743,7 +7730,7 @@ setSelfDestruct(false);
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="font-semibold text-white truncate">{list.title}</div>
-                                <div className="text-xs text-neutral-500 mt-1">{list.store || 'Ohne Ort'} Â· {bought}/{total} gekauft</div>
+                                <div className="text-xs text-neutral-500 mt-1">{list.store || 'Ohne Ort'} · {bought}/{total} gekauft</div>
                               </div>
                               <div className="text-[11px] text-neutral-400">{formatCurrencyCHF(calcShoppingListTotal(list, true))}</div>
                             </div>
@@ -7754,24 +7741,24 @@ setSelfDestruct(false);
                   </aside>
                   <section className="flex-1 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-6">
                     {!activeShoppingList ? (
-                      <div className="h-full min-h-[22rem] flex items-center justify-center text-neutral-500 text-sm">Liste auswÃ¤hlen oder neue Einkaufsliste erstellen.</div>
+                      <div className="h-full min-h-[22rem] flex items-center justify-center text-neutral-500 text-sm">Liste auswählen oder neue Einkaufsliste erstellen.</div>
                     ) : (
                       <>
                         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
                           <div>
                             <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-1">Aktive Liste</div>
                             <h3 className="text-2xl font-semibold text-white">{activeShoppingList.title}</h3>
-                            <p className="text-sm text-neutral-500 mt-1">{activeShoppingList.store || 'Ohne Ort'} Â· {normalizeShoppingItems(activeShoppingList.items).length} Positionen</p>
+                            <p className="text-sm text-neutral-500 mt-1">{activeShoppingList.store || 'Ohne Ort'} · {normalizeShoppingItems(activeShoppingList.items).length} Positionen</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <div className="px-3 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300">Offen {normalizeShoppingItems(activeShoppingList.items).filter((item) => !item.done).length}</div>
                             <div className="px-3 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300">Gekauft {formatCurrencyCHF(calcShoppingListTotal(activeShoppingList, true))}</div>
-                            <button onClick={() => deleteShoppingList(activeShoppingList.id)} className="px-3 py-2 rounded-xl border border-red-900/60 text-sm text-red-300 hover:bg-red-950/40 transition-colors">Liste lÃ¶schen</button>
+                            <button onClick={() => deleteShoppingList(activeShoppingList.id)} className="px-3 py-2 rounded-xl border border-red-900/60 text-sm text-red-300 hover:bg-red-950/40 transition-colors">Liste löschen</button>
                           </div>
                         </div>
                         <div className="flex flex-col md:flex-row gap-3 mb-5">
-                          <input value={shoppingQuickItem} onChange={(e) => setShoppingQuickItem(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addShoppingItem(activeShoppingList.id); }} placeholder="Artikel hinzufÃ¼gen, z. B. Milch" className="flex-1 bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                          <button onClick={() => addShoppingItem(activeShoppingList.id)} className="px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-neutral-200 transition-colors">HinzufÃ¼gen</button>
+                          <input value={shoppingQuickItem} onChange={(e) => setShoppingQuickItem(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addShoppingItem(activeShoppingList.id); }} placeholder="Artikel hinzufügen, z. B. Milch" className="flex-1 bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                          <button onClick={() => addShoppingItem(activeShoppingList.id)} className="px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-neutral-200 transition-colors">Hinzufügen</button>
                         </div>
                         <div className="space-y-3">
                           {normalizeShoppingItems(activeShoppingList.items).length === 0 ? (
@@ -7828,9 +7815,9 @@ setSelfDestruct(false);
                 extraCards.push({ key: 'smartday', node: slotChrome('smartday', 'Smart Day', 'Tageskarte mit Termin, Wetter und freiem Fenster.', (
                   <>
                     <div className="text-xl md:text-2xl font-semibold text-white">{nextEventLabel}</div>
-                    <div className="mt-1 text-sm text-neutral-400">{nextEventCountdownText} Â· {freeWindowText}</div>
+                    <div className="mt-1 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">NÃ¤chster Termin</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextTimedEvent ? (nextTimedEvent.event.time || 'Heute') : 'Keiner mehr'}</div></div>
+                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Nächster Termin</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextTimedEvent ? (nextTimedEvent.event.time || 'Heute') : 'Keiner mehr'}</div></div>
                       <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Freies Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
                       <div className={`px-3 py-2 rounded-xl border ${weatherBadgeMeta.tone}`}><div className="text-[10px] uppercase tracking-widest text-current/70">Wetter-Hinweis</div><div className="mt-1 text-sm font-medium flex items-center gap-2"><span>{weatherBadgeMeta.icon}</span><span>{weatherBadgeMeta.text}</span></div></div>
                     </div>
@@ -7844,7 +7831,7 @@ setSelfDestruct(false);
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       <div>
                         <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv â€“ Arbeitszeit steht' : 'Arbeitszeit lÃ¤uft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
+                        <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv – Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {!workClockActive?.startedAt ? (
@@ -7861,9 +7848,9 @@ setSelfDestruct(false);
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ã˜ {formatDurationVerbose(weekAvgMs)}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ø {formatDurationVerbose(weekAvgMs)}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' Â· ')}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
                     </div>
                     {(workClockSessions || []).length > 0 && (
                       <div className="space-y-2">
@@ -7871,7 +7858,7 @@ setSelfDestruct(false);
                           <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
                             <div className="min-w-0 flex-1">
                               <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
-                              <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} Â· {s.level || 'mittel'}</div>
+                              <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
@@ -7886,12 +7873,12 @@ setSelfDestruct(false);
               }
 
               if (showExtrasFocus) {
-                extraCards.push({ key: 'focus', node: slotChrome('focus', 'Fokusmodus', '25/50/90-Minuten FokusblÃ¶cke mit Verlauf.', (
+                extraCards.push({ key: 'focus', node: slotChrome('focus', 'Fokusmodus', '25/50/90-Minuten Fokusblöcke mit Verlauf.', (
                   <>
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="text-xl font-semibold text-white">{focusState?.startedAt ? formatDurationCompact(focusRemainingMs) : `${focusDurationMin} Min.`}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{focusState?.startedAt ? (focusState?.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block lÃ¤uft') : 'Starte einen Fokusblock fÃ¼r ruhiges Arbeiten.'}</div>
+                        <div className="mt-2 text-sm text-neutral-400">{focusState?.startedAt ? (focusState?.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block läuft') : 'Starte einen Fokusblock für ruhiges Arbeiten.'}</div>
                       </div>
                       <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-sm text-neutral-300">Heute {formatDurationVerbose(focusTodayMs)}</div>
                     </div>
@@ -7910,34 +7897,34 @@ setSelfDestruct(false);
                         </>
                       )}
                     </div>
-                    <div className="text-[11px] text-neutral-500">Letzte FokusblÃ¶cke: {(focusHistory || []).slice(0, 3).map((x) => `${formatDurationCompact(x.elapsedMs || 0)} am ${new Date(x.startedAt).toLocaleDateString('de-CH')}`).join(' Â· ') || 'Noch keine'}</div>
+                    <div className="text-[11px] text-neutral-500">Letzte Fokusblöcke: {(focusHistory || []).slice(0, 3).map((x) => `${formatDurationCompact(x.elapsedMs || 0)} am ${new Date(x.startedAt).toLocaleDateString('de-CH')}`).join(' · ') || 'Noch keine'}</div>
                   </>
                 ))});
               }
 
               if (showExtrasWeek) {
-                extraCards.push({ key: 'week', node: slotChrome('week', 'WochenÃ¼bersicht', 'Termine, Arbeit und nÃ¤chste FreiflÃ¤chen in einer Karte.', (
+                extraCards.push({ key: 'week', node: slotChrome('week', 'Wochenübersicht', 'Termine, Arbeit und nächste Freiflächen in einer Karte.', (
                   <>
-                    <div className="text-xl font-semibold text-white">{weekEventCount} Termine Â· {formatDurationVerbose(weekWorkMs)} Arbeit</div>
-                    <div className="mt-2 text-sm text-neutral-400">{nextFreeBlock} Â· {workLevelSummary.map(x => `${x.level}: ${x.count}`).join(' Â· ')}</div>
+                    <div className="text-xl font-semibold text-white">{weekEventCount} Termine · {formatDurationVerbose(weekWorkMs)} Arbeit</div>
+                    <div className="mt-2 text-sm text-neutral-400">{nextFreeBlock} · {workLevelSummary.map(x => `${x.level}: ${x.count}`).join(' · ')}</div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute Termine</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayEventCount}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Frei-Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</div><div className="mt-1 text-sm font-medium text-neutral-100">{weatherBadgeMeta.text}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ã˜ pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ø pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
                     </div>
                   </>
                 ))});
               }
 
               if (showExtrasFreeWindows) {
-                extraCards.push({ key: 'freewindows', node: slotChrome('freewindows', 'Freie Zeitfenster', 'Zeigt die nÃ¤chsten freien BlÃ¶cke des heutigen Tages.', (
+                extraCards.push({ key: 'freewindows', node: slotChrome('freewindows', 'Freie Zeitfenster', 'Zeigt die nächsten freien Blöcke des heutigen Tages.', (
                   <div className="space-y-2">
                     {freeWindowsToday.map((slot, idx) => (
                       <div key={`${slot}_${idx}`} className="px-3 py-3 rounded-xl border border-neutral-800 bg-black flex items-center justify-between gap-3">
                         <div>
                           <div className="text-sm font-medium text-neutral-100">{slot}</div>
-                          <div className="text-[11px] text-neutral-500">Ideal fÃ¼r Fokus, Aufgaben oder Pause</div>
+                          <div className="text-[11px] text-neutral-500">Ideal für Fokus, Aufgaben oder Pause</div>
                         </div>
                         <Clock className="w-4 h-4 text-neutral-500" />
                       </div>
@@ -7947,11 +7934,11 @@ setSelfDestruct(false);
               }
 
               if (showExtrasGoals) {
-                extraCards.push({ key: 'goals', node: slotChrome('goals', 'Tagesziele', 'Drei wichtige Ziele fÃ¼r heute â€“ mit Cloud-Sync.', (
+                extraCards.push({ key: 'goals', node: slotChrome('goals', 'Tagesziele', 'Drei wichtige Ziele für heute – mit Cloud-Sync.', (
                   <>
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-xl font-semibold text-white">{completedGoals}/3 erledigt</div>
-                      <button onClick={() => setDailyGoals(normalizeDailyGoals([]))} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">ZurÃ¼cksetzen</button>
+                      <button onClick={() => setDailyGoals(normalizeDailyGoals([]))} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Zurücksetzen</button>
                     </div>
                     <div className="space-y-3">
                       {normalizeDailyGoals(dailyGoals).slice(0, 3).map((goal, idx) => (
@@ -7986,16 +7973,16 @@ setSelfDestruct(false);
               }
 
               if (showExtrasNotes) {
-                extraCards.push({ key: 'notes', node: slotChrome('notes', 'Schnellnotizen', 'Mit Firebase-Sync â€“ dieselben Notizen auf allen GerÃ¤ten.', (
+                extraCards.push({ key: 'notes', node: slotChrome('notes', 'Schnellnotizen', 'Mit Firebase-Sync – dieselben Notizen auf allen Geräten.', (
                   <>
-                    <div className="text-sm text-neutral-400">Cloud-Sync aktiv. Ã„nderungen werden automatisch Ã¼bernommen.</div>
+                    <div className="text-sm text-neutral-400">Cloud-Sync aktiv. Änderungen werden automatisch übernommen.</div>
                     <textarea value={quickNotes} onChange={(e) => setQuickNotes(e.target.value)} rows={10} placeholder={`Heute
 - ...
 
 Morgen
 - ...
 
-SpÃ¤ter
+Später
 - ...`} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                   </>
                 ))});
@@ -8024,7 +8011,7 @@ SpÃ¤ter
                   <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
                     <div>
                       <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
-                      <p className="text-sm text-neutral-500 mt-2">NÃ¼tzliche Werkzeuge getrennt von der Startseite â€“ jetzt zusÃ¤tzlich frei sortierbar per Drag & Drop.</p>
+                      <p className="text-sm text-neutral-500 mt-2">Nützliche Werkzeuge getrennt von der Startseite – jetzt zusätzlich frei sortierbar per Drag & Drop.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -8208,7 +8195,7 @@ SpÃ¤ter
                   <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                       <p className="font-medium text-white flex items-center gap-2">Privat <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full uppercase">Standard</span></p>
-                      <p className="text-xs text-neutral-500 mt-1">Dein persÃ¶nlicher Standard-Kalender.</p>
+                      <p className="text-xs text-neutral-500 mt-1">Dein persönlicher Standard-Kalender.</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Farbe</span>
@@ -8230,7 +8217,7 @@ SpÃ¤ter
                         type="button"
                         onClick={() => openShareLinkModalForCalendar({ id: 'default', name: 'Privat' })}
                         className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-                        title="Public Busyâ€‘Only Link"
+                        title="Public Busy‑Only Link"
                       >
                         <Lock className="w-4 h-4" />
                       </button>
@@ -8241,10 +8228,10 @@ SpÃ¤ter
                     <div key={cal.id} className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <p className="font-medium text-white flex items-center gap-2">{cal.name} {cal.type==='shift' && <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-900/50 px-2 py-0.5 rounded-full uppercase">Schichtplan</span>}</p>
-                        <p className="text-xs text-neutral-500 mt-1">Freigegeben fÃ¼r: {Object.keys(cal.sharedWith || {}).length} Nutzer</p>
+                        <p className="text-xs text-neutral-500 mt-1">Freigegeben für: {Object.keys(cal.sharedWith || {}).length} Nutzer</p>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busyâ€‘Only Link"><Lock className="w-4 h-4"/></button>
+                        <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busy‑Only Link"><Lock className="w-4 h-4"/></button>
                         <button onClick={() => { setShareCalData(cal); setIsShareCalModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Share2 className="w-4 h-4"/></button>
                         <button onClick={() => { setCalForm({ ...cal, color: (cal.color || calendarTint(cal.id)) }); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
                         <button onClick={() => deleteCalendar(cal.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 className="w-4 h-4"/></button>
@@ -8328,14 +8315,14 @@ SpÃ¤ter
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="font-medium text-white">Push & Erinnerungen</p>
-                        <p className="text-xs text-neutral-500 mt-1">Ehemaliger Benachrichtigungsbereich â€“ liegt jetzt gesammelt unter Extras. Notizen, Tagesziele und Reihenfolge der Karten werden ebenfalls synchronisiert.</p>
+                        <p className="text-xs text-neutral-500 mt-1">Ehemaliger Benachrichtigungsbereich – liegt jetzt gesammelt unter Extras. Notizen, Tagesziele und Reihenfolge der Karten werden ebenfalls synchronisiert.</p>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-medium text-white">Kalender-Erinnerungen</p>
-                      <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt fÃ¼r neue Termine (und fÃ¼r Termine mit â€žStandardâ€œ). Pro Termin kannst du es im Termin-Modal Ã¼berschreiben.</p>
+                      <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit „Standard“). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
                     </div>
                     <div className="flex gap-2">
                       {!isStandalone && canInstallPwa && (
@@ -8352,7 +8339,7 @@ SpÃ¤ter
                         disabled={!isStandalone}
                         onClick={() => { try { requestNotificationPermission(user); } catch(e) {} }}
                         className={"px-4 py-2 rounded-md text-sm transition-colors " + (isStandalone ? "bg-neutral-900 border border-neutral-800 hover:text-white" : "bg-neutral-950 border border-neutral-900 text-neutral-600 cursor-not-allowed")}
-                        title={isStandalone ? "Benachrichtigungen aktivieren" : (isIosUA ? "iPhone/iPad: Teilen â†’ Zum Home-Bildschirm" : "Bitte zuerst installieren")}
+                        title={isStandalone ? "Benachrichtigungen aktivieren" : (isIosUA ? "iPhone/iPad: Teilen → Zum Home-Bildschirm" : "Bitte zuerst installieren")}
                       >
                         Erlauben
                       </button>
@@ -8412,7 +8399,7 @@ SpÃ¤ter
                         <option value="system">System (Standard)</option>
                         <option value="silent">Stumm</option>
                       </select>
-                      <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton mÃ¶glich â€“ du kannst nur Systemton nutzen oder stumm schalten.</p>
+                      <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – du kannst nur Systemton nutzen oder stumm schalten.</p>
                     </div>
                   </div>
 
@@ -8429,7 +8416,7 @@ SpÃ¤ter
                         <input value={weeklyTargetHours} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                       </div>
                       <div className="flex items-end">
-                        <button type="button" onClick={() => { setExtrasSlotOrder(normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER)); showToast('Extras-Reihenfolge zurÃ¼ckgesetzt'); }} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Reihenfolge zurÃ¼cksetzen</button>
+                        <button type="button" onClick={() => { setExtrasSlotOrder(normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER)); showToast('Extras-Reihenfolge zurückgesetzt'); }} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Reihenfolge zurücksetzen</button>
                       </div>
                     </div>
                   </div>
@@ -8438,7 +8425,7 @@ SpÃ¤ter
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="font-medium text-white flex items-center gap-2"><Briefcase className="w-4 h-4" /> Stempelung</p>
-                        <p className="text-xs text-neutral-500 mt-1">Aktiviert die Stempeluhr im Extras-Bereich. Optional kann sie zusÃ¤tzlich kompakt auf der Startseite erscheinen.</p>
+                        <p className="text-xs text-neutral-500 mt-1">Aktiviert die Stempeluhr im Extras-Bereich. Optional kann sie zusätzlich kompakt auf der Startseite erscheinen.</p>
                       </div>
                       <button
                         type="button"
@@ -8473,12 +8460,12 @@ SpÃ¤ter
                           </div>
                         </div>
                         <div>
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">TÃ¤tigkeiten im Dropdown</label>
+                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Tätigkeiten im Dropdown</label>
                           <textarea
                             value={workClockPresetInput}
                             onChange={(e) => setWorkClockPresetInput(e.target.value)}
                             rows={4}
-                            placeholder={"BÃ¼ro\nBaustelle\nSupport"}
+                            placeholder={"Büro\nBaustelle\nSupport"}
                             className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
                           />
                           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -8497,7 +8484,7 @@ SpÃ¤ter
                             >
                               Dropdown speichern
                             </button>
-                            <span className="text-[11px] text-neutral-500">Eine TÃ¤tigkeit pro Zeile. Diese Auswahl erscheint beim Stopp der Stempelung.</span>
+                            <span className="text-[11px] text-neutral-500">Eine Tätigkeit pro Zeile. Diese Auswahl erscheint beim Stopp der Stempelung.</span>
                           </div>
                         </div>
                       </div>
@@ -8591,15 +8578,15 @@ SpÃ¤ter
                   
 <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
   <div className="flex-1 min-w-0">
-    <div className="text-sm text-white font-medium">Busyâ€‘Only Links</div>
-    <div className="text-[11px] text-neutral-500 mt-1">Externe sehen nur belegte ZeitblÃ¶cke (keine Titel/Orte). Optional mit Ablauf & Passcode.</div>
+    <div className="text-sm text-white font-medium">Busy‑Only Links</div>
+    <div className="text-[11px] text-neutral-500 mt-1">Externe sehen nur belegte Zeitblöcke (keine Titel/Orte). Optional mit Ablauf & Passcode.</div>
   </div>
   <div className="flex flex-col sm:flex-row gap-2">
     <select
       value={settingsShareCalId}
       onChange={(e) => setSettingsShareCalId(e.target.value)}
       className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
-      title="Kalender auswÃ¤hlen"
+      title="Kalender auswählen"
     >
       <option value="default">Privat</option>
       {(customCalendars || []).filter(Boolean).filter(c => c?.ownerId === user?.uid).map(c => (
@@ -8632,18 +8619,18 @@ SpÃ¤ter
 
   const renderItem = (l) => {
     const url = makeShareUrl(l.id);
-    const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : 'â€”';
+    const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '—';
     const calName = (l.calName || (l.calId === 'default' ? 'Privat' : (customCalendars || []).find(c => c.id === l.calId)?.name) || 'Kalender');
     const prot = (l.protection || 'magic');
-    const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magicâ€‘Link');
+    const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magic‑Link');
     return (
       <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
         <div className="min-w-0">
           <div className="text-sm text-white font-medium truncate">
-            {l.kind === 'event' ? 'Event' : 'Kalender'} â€¢ {calName}
+            {l.kind === 'event' ? 'Event' : 'Kalender'} • {calName}
           </div>
           <div className="mt-0.5 text-[11px] text-neutral-500">
-            Ablauf: {exp} Â· Schutz: {protLabel}
+            Ablauf: {exp} · Schutz: {protLabel}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -8671,7 +8658,7 @@ SpÃ¤ter
   if (active.length === 0 && expired.length === 0) {
     return (
       <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
-        Noch keine Links. Erstelle einen Link Ã¼ber <span className="text-neutral-300">Link erstellen</span> oder das <span className="text-neutral-300">ðŸ”’</span> Icon am Kalender.
+        Noch keine Links. Erstelle einen Link über <span className="text-neutral-300">Link erstellen</span> oder das <span className="text-neutral-300">🔒</span> Icon am Kalender.
       </div>
     );
   }
@@ -8698,7 +8685,7 @@ SpÃ¤ter
             </AccordionItem>
 
             {/* AUDIT LOG */}
-            <AccordionItem id="audit" label="Audit" icon={History} keys={['audit','log','verlauf','Ã¤nderung','wer']} >
+            <AccordionItem id="audit" label="Audit" icon={History} keys={['audit','log','verlauf','änderung','wer']} >
               <section id="settings-audit">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <History className="w-4 h-4" /> Audit Log
@@ -8711,7 +8698,7 @@ SpÃ¤ter
                       <div>
                         <div className="text-xs text-neutral-400 mb-2 font-semibold">Meine Aktionen</div>
                         {(auditEntries || []).length === 0 ? (
-                          <div className="text-sm text-neutral-500">Noch keine EintrÃ¤ge.</div>
+                          <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
                         ) : (
                           <div className="space-y-2 max-h-[34vh] overflow-y-auto no-scrollbar pr-1">
                             {(auditEntries || []).slice(0, 50).map(a => (
@@ -8726,13 +8713,13 @@ SpÃ¤ter
 
                       <div className="border-t border-neutral-800 pt-4">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-xs text-neutral-400 font-semibold">Kalenderâ€‘Audit</div>
+                          <div className="text-xs text-neutral-400 font-semibold">Kalender‑Audit</div>
                           <select
                             value={auditCalId || 'default'}
                             onChange={(e) => setAuditCalId(e.target.value)}
                             className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
                           >
-                            <option value="default">Privat (nur â€žMeine Aktionenâ€œ)</option>
+                            <option value="default">Privat (nur „Meine Aktionen“)</option>
                             {(customCalendars || []).filter(Boolean).map(c => (
                               <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
@@ -8741,15 +8728,15 @@ SpÃ¤ter
 
                         <div className="mt-3">
                           {auditCalId === 'default' ? (
-                            <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalenderâ€‘Audit (siehe â€žMeine Aktionenâ€œ).</div>
+                            <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalender‑Audit (siehe „Meine Aktionen“).</div>
                           ) : (auditCalEntries || []).length === 0 ? (
-                            <div className="text-sm text-neutral-500">Noch keine EintrÃ¤ge.</div>
+                            <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
                           ) : (
                             <div className="space-y-2 max-h-[34vh] overflow-y-auto no-scrollbar pr-1">
                               {(auditCalEntries || []).slice(0, 50).map(a => (
                                 <div key={a.id} className="border border-neutral-800 rounded-xl p-3 bg-black">
                                   <div className="text-xs text-neutral-300">{a.summary || a.action}</div>
-                                  <div className="mt-1 text-[10px] text-neutral-600 tabular-nums">{a.tsMs ? new Date(a.tsMs).toLocaleString('de-CH') : ''} Â· {a.uid ? (getProfile(a.uid)?.username || shortId(a.uid, 6)) : ''}</div>
+                                  <div className="mt-1 text-[10px] text-neutral-600 tabular-nums">{a.tsMs ? new Date(a.tsMs).toLocaleString('de-CH') : ''} · {a.uid ? (getProfile(a.uid)?.username || shortId(a.uid, 6)) : ''}</div>
                                 </div>
                               ))}
                             </div>
@@ -8782,7 +8769,7 @@ SpÃ¤ter
                             type="button"
                             onClick={() => { setAliasDraft(userProfile?.username || ''); setAliasEditError(''); setAliasEditOpen(true); }}
                             className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors"
-                            title="Alias Ã¤ndern"
+                            title="Alias ändern"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
@@ -8790,7 +8777,7 @@ SpÃ¤ter
 
                         {aliasEditOpen && (
                           <div className="mt-3 border border-neutral-800 rounded-xl p-3 bg-black space-y-2">
-                            <div className="text-xs text-neutral-500">Alias Ã¤ndern (2â€“20 Zeichen). Erlaubt: aâ€“z, 0â€“9, <span className="font-mono">._-</span>. Leerzeichen â†’ <span className="font-mono">_</span>.</div>
+                            <div className="text-xs text-neutral-500">Alias ändern (2–20 Zeichen). Erlaubt: a–z, 0–9, <span className="font-mono">._-</span>. Leerzeichen → <span className="font-mono">_</span>.</div>
                             <input
                               value={aliasDraft}
                               onChange={(e) => { setAliasDraft(e.target.value); setAliasEditError(''); }}
@@ -8807,7 +8794,7 @@ SpÃ¤ter
                                 disabled={aliasSaving}
                                 className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
                               >
-                                {aliasSaving ? 'Speichernâ€¦' : 'Speichern'}
+                                {aliasSaving ? 'Speichern…' : 'Speichern'}
                               </button>
                               <button
                                 type="button"
@@ -8831,8 +8818,8 @@ SpÃ¤ter
                       <p className="font-medium text-white">Passwort</p>
                       <p className="text-xs text-neutral-500 mt-1">
                         {hasPasswordProvider()
-                          ? 'Passwort Ã¤ndern (mit aktuellem Passwort bestÃ¤tigen).'
-                          : 'Dieses Konto nutzt keinen Passwortâ€‘Login. Du kannst dir eine Resetâ€‘Mail senden, um ein Passwort zu setzen/Ã¤ndern.'}
+                          ? 'Passwort ändern (mit aktuellem Passwort bestätigen).'
+                          : 'Dieses Konto nutzt keinen Passwort‑Login. Du kannst dir eine Reset‑Mail senden, um ein Passwort zu setzen/ändern.'}
                       </p>
                     </div>
 
@@ -8843,7 +8830,7 @@ SpÃ¤ter
                           onClick={() => { setPwEditOpen(v => !v); setPwError(''); setPwResetSent(false); }}
                           className={"px-3 py-2 rounded-md text-xs font-semibold border transition-colors " + (pwEditOpen ? "bg-white text-black border-white hover:bg-gray-200" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
                         >
-                          {pwEditOpen ? 'SchlieÃŸen' : 'Ã„ndern'}
+                          {pwEditOpen ? 'Schließen' : 'Ändern'}
                         </button>
                       )}
 
@@ -8851,15 +8838,15 @@ SpÃ¤ter
                         type="button"
                         onClick={() => doSendPasswordReset()}
                         className="px-3 py-2 rounded-md text-xs font-semibold bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-800"
-                        title="Resetâ€‘Mail senden"
+                        title="Reset‑Mail senden"
                       >
-                        Resetâ€‘Mail
+                        Reset‑Mail
                       </button>
                     </div>
                   </div>
 
                   {pwResetSent && (
-                    <div className="mt-3 text-xs text-neutral-300">Resetâ€‘Mail gesendet âœ…</div>
+                    <div className="mt-3 text-xs text-neutral-300">Reset‑Mail gesendet ✅</div>
                   )}
 
                   {hasPasswordProvider() && pwEditOpen && (
@@ -8901,7 +8888,7 @@ SpÃ¤ter
                           disabled={pwSaving}
                           className="px-4 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
                         >
-                          {pwSaving ? 'Speichernâ€¦' : 'Speichern'}
+                          {pwSaving ? 'Speichern…' : 'Speichern'}
                         </button>
                         <button
                           type="button"
@@ -8913,7 +8900,7 @@ SpÃ¤ter
                       </div>
 
                       <div className="text-[11px] text-neutral-600">
-                        Tipp: Wenn du dein aktuelles Passwort nicht mehr weiÃŸt, nutze â€žResetâ€‘Mailâ€œ.
+                        Tipp: Wenn du dein aktuelles Passwort nicht mehr weißt, nutze „Reset‑Mail“.
                       </div>
                     </div>
                   )}
@@ -8941,9 +8928,9 @@ SpÃ¤ter
                   <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 relative overflow-hidden group">
                     <Upload className="w-6 h-6 text-white mb-4" />
                     <h4 className="font-medium text-white mb-1">Datei importieren</h4>
-                    <p className="text-xs text-neutral-500 mb-4 h-8">FÃ¼ge Termine aus einer externen .ics Datei hinzu.</p>
+                    <p className="text-xs text-neutral-500 mb-4 h-8">Füge Termine aus einer externen .ics Datei hinzu.</p>
                     <div className="relative">
-                      <button className="w-full px-3 py-2 bg-white text-black rounded-md text-sm font-medium group-hover:bg-gray-200 transition-colors text-center">Datei auswÃ¤hlen</button>
+                      <button className="w-full px-3 py-2 bg-white text-black rounded-md text-sm font-medium group-hover:bg-gray-200 transition-colors text-center">Datei auswählen</button>
                       <input type="file" accept=".ics" onChange={handleImportICS} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                     </div>
                   </div>
@@ -8954,7 +8941,7 @@ SpÃ¤ter
             {/* If search yields nothing */}
             {q && visibleTabs.length === 0 && (
               <div className="border border-neutral-800 rounded-2xl p-6 bg-neutral-950/50 text-sm text-neutral-500">
-                Keine Treffer fÃ¼r â€ž{settingsQuery}â€œ.
+                Keine Treffer für „{settingsQuery}“.
               </div>
             )}
           </main>
@@ -8989,7 +8976,7 @@ SpÃ¤ter
                              </span>
                           ) : (
                              <span className="text-[11px] text-neutral-500">
-                               {isGroupChat(activeChatData) ? (() => { const ids = getChatParticipants(activeChatData); const onlineCount = ids.filter(id => getPresence(id).online).length; return `${onlineCount} online â€¢ ${ids.length} Mitglieder`; })() : (() => { const pr = getPresence(partnerId); if (pr.online) return 'online'; if (pr.lastSeen) return `zuletzt gesehen ${formatTime(pr.lastSeen)}`; return 'offline'; })()}
+                               {isGroupChat(activeChatData) ? (() => { const ids = getChatParticipants(activeChatData); const onlineCount = ids.filter(id => getPresence(id).online).length; return `${onlineCount} online • ${ids.length} Mitglieder`; })() : (() => { const pr = getPresence(partnerId); if (pr.online) return 'online'; if (pr.lastSeen) return `zuletzt gesehen ${formatTime(pr.lastSeen)}`; return 'offline'; })()}
                              </span>
                           )}
                         </div>
@@ -9066,7 +9053,7 @@ SpÃ¤ter
 
                 <div className="flex-1 overflow-hidden flex flex-col">
                   {!userProfile ? (
-                    <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">IdentitÃ¤t festlegen</h3><p className="text-sm text-neutral-500 mb-6">WÃ¤hle einen einzigartigen Benutzernamen.</p>
+                    <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">Identität festlegen</h3><p className="text-sm text-neutral-500 mb-6">Wähle einen einzigartigen Benutzernamen.</p>
                     <form onSubmit={saveUsername}>
                       <input type="text" name="username" defaultValue={userProfile?.displayName || userProfile?.username || user?.email?.split('@')[0] || ''} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
                       <div className="flex items-center justify-between text-xs text-neutral-500 mb-4">
@@ -9077,7 +9064,7 @@ SpÃ¤ter
                         </div>
                       </div>
 
-                      <button type="submit" className="w-full bg-white text-black font-medium py-3 rounded-lg hover:bg-gray-200 transition-colors">BestÃ¤tigen</button>
+                      <button type="submit" className="w-full bg-white text-black font-medium py-3 rounded-lg hover:bg-gray-200 transition-colors">Bestätigen</button>
                     </form>
                     </div></div>
                   
@@ -9104,14 +9091,14 @@ SpÃ¤ter
                           <input type="text" name="displayName" defaultValue={userProfile?.displayName || userProfile?.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
                           <div className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                             <div className="flex flex-col">
-                              <span className="text-[10px] uppercase tracking-widest text-neutral-500">Chatâ€‘ID (5â€‘stellig)</span>
+                              <span className="text-[10px] uppercase tracking-widest text-neutral-500">Chat‑ID (5‑stellig)</span>
                               <span className="font-mono text-white text-sm">{userProfile?.friendCode || '-----'}</span>
                             </div>
                             <button type="button" onClick={() => { const v = String(userProfile?.friendCode||''); if (v && v !== '-----') { navigator.clipboard?.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors">
                               Kopieren
                             </button>
                           </div>
-                          <p className="text-[11px] text-neutral-500 text-center">Freunde im Chat fÃ¼gst du Ã¼ber diese Chatâ€‘ID hinzu. Kalenderâ€‘Freunde werden per Eâ€‘Mail geteilt.</p>
+                          <p className="text-[11px] text-neutral-500 text-center">Freunde im Chat fügst du über diese Chat‑ID hinzu. Kalender‑Freunde werden per E‑Mail geteilt.</p>
 
                           <button type="submit" className="w-full bg-neutral-800 text-white font-medium py-3 rounded-lg hover:bg-neutral-700 transition-colors">Profil speichern</button>
                         </form>
@@ -9311,13 +9298,13 @@ SpÃ¤ter
                             maxLength={8}
                             value={secretPinSetupConfirm}
                             onChange={(e) => setSecretPinSetupConfirm(String(e.target.value || '').replace(/\D/g, '').slice(0, 8))}
-                            placeholder="PIN bestÃ¤tigen"
+                            placeholder="PIN bestätigen"
                             className="w-full bg-black border border-neutral-800 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-neutral-600"
                           />
                         </div>
                         <div className="flex flex-wrap gap-3">
                           <button type="button" onClick={saveSecretPinSettings} disabled={secretPinActionBusy} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">
-                            {secretPinActionBusy ? 'Speichernâ€¦' : ((userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'PIN Ã¤ndern' : 'PIN aktivieren')}
+                            {secretPinActionBusy ? 'Speichern…' : ((userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'PIN ändern' : 'PIN aktivieren')}
                           </button>
                           {(userProfile?.secretPinEnabled && userProfile?.secretPinHash) && (
                             <button type="button" onClick={disableSecretPin} disabled={secretPinActionBusy} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-300 text-sm font-semibold hover:bg-red-950/60 transition-colors disabled:opacity-60">
@@ -9394,7 +9381,7 @@ SpÃ¤ter
                                       <p className="text-xs text-neutral-500 truncate mt-0.5">
                                         {isDm
                                           ? (otherPresence?.online ? 'online' : (otherPresence?.lastSeen ? `zuletzt ${formatTime(otherPresence.lastSeen)}` : 'offline'))
-                                          : 'Tippen zum Ã–ffnen...'}
+                                          : 'Tippen zum Öffnen...'}
                                       </p>
                                     )}
                                   </div>
@@ -9498,7 +9485,7 @@ SpÃ¤ter
                         {chatHasMore && (
                           <div className="-mt-2 mb-2 flex items-center justify-center">
                             <div className="px-3 py-1.5 rounded-full border border-neutral-800 bg-neutral-950 text-[11px] text-neutral-400">
-                              {chatLoadingMore ? "Lade Ã¤ltere Nachrichtenâ€¦" : "Scroll nach oben fÃ¼r mehr"}
+                              {chatLoadingMore ? "Lade ältere Nachrichten…" : "Scroll nach oben für mehr"}
                             </div>
                           </div>
                         )}
@@ -9506,8 +9493,8 @@ SpÃ¤ter
                         {(isMessageSearchOpen && messageSearchFilter === 'media') && (
                           <div className="mb-4">
                             <div className="flex items-center justify-between mb-3 text-xs text-neutral-500">
-                              <span>{chatMediaLoading ? 'Lade Medienâ€¦' : `${mediaSearchResults.length} Medien`}</span>
-                              <span>Tippe auf ein Bild fÃ¼r Vollbild</span>
+                              <span>{chatMediaLoading ? 'Lade Medien…' : `${mediaSearchResults.length} Medien`}</span>
+                              <span>Tippe auf ein Bild für Vollbild</span>
                             </div>
                             {mediaSearchResults.length === 0 ? (
                               <div className="p-6 rounded-2xl border border-dashed border-neutral-800 text-center text-sm text-neutral-500 bg-neutral-950/60">Keine Medien gefunden.</div>
@@ -9551,10 +9538,10 @@ SpÃ¤ter
                                 }}
                                 className={`max-w-[85%] rounded-2xl p-3 cursor-pointer transition-colors relative ${isMe ? 'bg-white text-black rounded-tr-sm hover:bg-gray-200' : 'bg-neutral-900 border border-neutral-800 text-white rounded-tl-sm hover:bg-neutral-800'}${isMessageSearchOpen && currentMatchId && String(currentMatchId) === String(msg.id) ? ' ring-2 ring-white/70' : ''}`}
                               >
-                                {/* SelbstzerstÃ¶rungs-Indikator */}
+                                {/* Selbstzerstörungs-Indikator */}
                                 {msg.selfDestruct && (
                                   <div className="text-[10px] text-red-500 font-bold mb-2 flex items-center gap-1">
-                                    <Bomb className="w-3 h-3" /> ZerstÃ¶rt sich nach Lesen
+                                    <Bomb className="w-3 h-3" /> Zerstört sich nach Lesen
                                   </div>
                                 )}
                                 {!msg.deleted && msg.replyTo && (
@@ -9562,7 +9549,7 @@ SpÃ¤ter
                                     const refId = msg.replyTo?.id;
                                     const refMsg = refId ? (chatMessages || []).find(m => m && m.id === refId) : null;
                                     const label = senderLabelFromId(refMsg?.senderId || msg.replyTo?.senderId);
-                                    const preview = (refMsg ? messagePreviewText(refMsg) : String(msg.replyTo?.preview || '').trim()) || 'â€”';
+                                    const preview = (refMsg ? messagePreviewText(refMsg) : String(msg.replyTo?.preview || '').trim()) || '—';
                                     return (
                                       <button
                                         type="button"
@@ -9613,7 +9600,7 @@ SpÃ¤ter
 
                                 {msg.deleted ? (
                                   <p className={`text-sm italic whitespace-pre-wrap ${isMe ? 'text-neutral-600' : 'text-neutral-500'}`}>
-                                    Nachricht gelÃ¶scht
+                                    Nachricht gelöscht
                                   </p>
                                 ) : (
                                   msg.text && <p className="text-sm whitespace-pre-wrap">{(isMessageSearchOpen && String(messageSearchQuery || '').trim()) ? renderHighlightedText(msg.text, messageSearchQuery, { isMe, active: String(currentMatchId) === String(msg.id) }) : msg.text}</p>
@@ -9639,7 +9626,7 @@ SpÃ¤ter
                                 )}
                                 
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
-                                  {msg.deleted && <span className="text-[9px] mr-1">(gelÃ¶scht)</span>}
+                                  {msg.deleted && <span className="text-[9px] mr-1">(gelöscht)</span>}
                                   {!msg.deleted && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
                                   {!msg.deleted && isFavorite && <Star className={`w-3 h-3 mr-1 ${isMe ? 'text-black/70' : 'text-yellow-300/90'}`} />}
                                   {chatMetaPrefs.showTime && (
@@ -9736,7 +9723,7 @@ SpÃ¤ter
                                       <button onClick={(e) => { e.stopPropagation(); setReplyToMessage(null); setEditingMessage(msg); setNewMessageText(msg.text); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
                                     )}
                                     {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
-                                      <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="LÃ¶schen"><Trash2 className="w-4 h-4" /></button>
+                                      <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="Löschen"><Trash2 className="w-4 h-4" /></button>
                                     )}
                                   </div>
                                 )}
@@ -9783,7 +9770,7 @@ SpÃ¤ter
                               <div className="text-[10px] uppercase tracking-widest text-neutral-500">Zitieren</div>
                               <div className="truncate">
                                 <span className="text-neutral-300 font-semibold">{senderLabelFromId(replyToMessage?.senderId)}</span>
-                                <span className="text-neutral-600 mx-2">â€¢</span>
+                                <span className="text-neutral-600 mx-2">•</span>
                                 <span className="text-neutral-400">{messagePreviewText(replyToMessage)}</span>
                               </div>
                             </div>
@@ -9825,7 +9812,7 @@ SpÃ¤ter
                           <div className="flex-1 relative">
                             {isRecording ? (
                               <div className="w-full bg-red-950 border border-red-900 text-red-500 rounded-2xl pl-4 pr-12 py-3 flex items-center justify-between animate-pulse">
-                                <span className="text-sm font-medium">Aufnahme lÃ¤uft...</span>
+                                <span className="text-sm font-medium">Aufnahme läuft...</span>
                               </div>
                             ) : (
                               <textarea 
@@ -9882,7 +9869,7 @@ SpÃ¤ter
                   <div className="w-10 h-10 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white"><Edit2 className="w-5 h-5" /></div>
                   <div>
                     <h3 className="text-lg font-semibold text-white">Session bearbeiten</h3>
-                    <p className="text-xs text-neutral-500">TÃ¤tigkeit und Belastung lassen sich nachtrÃ¤glich anpassen.</p>
+                    <p className="text-xs text-neutral-500">Tätigkeit und Belastung lassen sich nachträglich anpassen.</p>
                   </div>
                 </div>
                 <div className="space-y-3">
@@ -9906,13 +9893,13 @@ SpÃ¤ter
                           {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
                             <option key={preset} value={preset}>{preset}</option>
                           ))}
-                          <option value="__other__">Andere TÃ¤tigkeitâ€¦</option>
+                          <option value="__other__">Andere Tätigkeit…</option>
                         </select>
-                        <button type="button" onClick={() => { setWorkClockEditUsePreset(false); setWorkClockEditTitle(workClockEditingSession?.title || ''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene TÃ¤tigkeit eingeben</button>
+                        <button type="button" onClick={() => { setWorkClockEditUsePreset(false); setWorkClockEditTitle(workClockEditingSession?.title || ''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene Tätigkeit eingeben</button>
                       </div>
                     ) : (
                       <div className="mt-1 space-y-2">
-                        <input value={workClockEditTitle} onChange={(e) => setWorkClockEditTitle(e.target.value)} placeholder="z. B. BÃ¼ro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                        <input value={workClockEditTitle} onChange={(e) => setWorkClockEditTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                         <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockEditUsePreset(true); setWorkClockEditTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
                       </div>
                     )}
@@ -9938,7 +9925,7 @@ SpÃ¤ter
                     </div>
                   </div>
                   <div className="rounded-xl border border-neutral-800 bg-black px-4 py-3 text-sm text-neutral-300">
-                    {workClockEditingSession?.startedAt ? new Date(workClockEditingSession.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} Â· <span className="text-white font-medium">Pausen: {formatDurationVerbose(workClockEditingSession?.pauseMs || 0)}</span>
+                    {workClockEditingSession?.startedAt ? new Date(workClockEditingSession.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · <span className="text-white font-medium">Pausen: {formatDurationVerbose(workClockEditingSession?.pauseMs || 0)}</span>
                   </div>
                 </div>
                 <div className="mt-5 flex flex-wrap gap-2">
@@ -9956,7 +9943,7 @@ SpÃ¤ter
                   <div className="w-10 h-10 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white"><Briefcase className="w-5 h-5" /></div>
                   <div>
                     <h3 className="text-lg font-semibold text-white">Arbeitszeit abschliessen</h3>
-                    <p className="text-xs text-neutral-500">Erfasse kurz die TÃ¤tigkeit und die Belastung.</p>
+                    <p className="text-xs text-neutral-500">Erfasse kurz die Tätigkeit und die Belastung.</p>
                   </div>
                 </div>
                 <div className="space-y-3">
@@ -9980,13 +9967,13 @@ SpÃ¤ter
                           {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
                             <option key={preset} value={preset}>{preset}</option>
                           ))}
-                          <option value="__other__">Andere TÃ¤tigkeitâ€¦</option>
+                          <option value="__other__">Andere Tätigkeit…</option>
                         </select>
-                        <button type="button" onClick={() => { setWorkClockDraftUsePreset(false); setWorkClockDraftTitle(''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene TÃ¤tigkeit eingeben</button>
+                        <button type="button" onClick={() => { setWorkClockDraftUsePreset(false); setWorkClockDraftTitle(''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene Tätigkeit eingeben</button>
                       </div>
                     ) : (
                       <div className="mt-1 space-y-2">
-                        <input value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="z. B. BÃ¼ro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                        <input value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                         <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockDraftUsePreset(true); setWorkClockDraftTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
                       </div>
                     )}
@@ -10006,9 +9993,9 @@ SpÃ¤ter
                   </div>
                 </div>
                 <div className="mt-5 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => setWorkClockModalOpen(false)} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">ZurÃ¼ck</button>
+                  <button type="button" onClick={() => setWorkClockModalOpen(false)} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Zurück</button>
                   <button type="button" onClick={cancelWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors">Verwerfen</button>
-                  <button type="button" onClick={finishWorkClock} disabled={workClockSaving} className="ml-auto px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">{workClockSaving ? 'Speichernâ€¦' : 'Speichern'}</button>
+                  <button type="button" onClick={finishWorkClock} disabled={workClockSaving} className="ml-auto px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">{workClockSaving ? 'Speichern…' : 'Speichern'}</button>
                 </div>
               </div>
             </div>
@@ -10021,7 +10008,7 @@ SpÃ¤ter
                   <Lock className="w-5 h-5 text-white" />
                   <div>
                     <h3 className="text-lg font-semibold text-white">Secret PIN</h3>
-                    <p className="text-xs text-neutral-500">Gib deine PIN ein, um den Secret Chat zu Ã¶ffnen.</p>
+                    <p className="text-xs text-neutral-500">Gib deine PIN ein, um den Secret Chat zu öffnen.</p>
                   </div>
                 </div>
                 <input
@@ -10039,7 +10026,7 @@ SpÃ¤ter
                 {secretPinError ? <div className="mt-3 text-sm text-red-400">{secretPinError}</div> : <div className="mt-3 text-xs text-neutral-500">4 bis 8 Ziffern.</div>}
                 <div className="mt-5 flex gap-3">
                   <button type="button" onClick={() => { setSecretPinModalOpen(false); setSecretPinInput(''); setSecretPinError(''); }} className="flex-1 px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-800 transition-colors">Abbrechen</button>
-                  <button type="button" onClick={verifySecretPinAndEnter} disabled={secretPinBusy} className="flex-1 px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">{secretPinBusy ? 'PrÃ¼feâ€¦' : 'Ã–ffnen'}</button>
+                  <button type="button" onClick={verifySecretPinAndEnter} disabled={secretPinBusy} className="flex-1 px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">{secretPinBusy ? 'Prüfe…' : 'Öffnen'}</button>
                 </div>
               </div>
             </div>
@@ -10094,16 +10081,16 @@ SpÃ¤ter
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</p>
                     <h3 className="text-lg font-medium text-white flex items-center gap-2"><MapPin className="w-4 h-4 text-neutral-400" /> {location.name}</h3>
                   </div>
-                  <button onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="SchlieÃŸen">
+                  <button onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
                 <div className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}Â°` : '--Â°'}</p>
+                    <p className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
                     <p className="text-xs text-neutral-500 mt-1">
-                      {weather ? `Wind ${Math.round(weather.windspeed || 0)} km/h` : 'Lade Datenâ€¦'}
+                      {weather ? `Wind ${Math.round(weather.windspeed || 0)} km/h` : 'Lade Daten…'}
                     </p>
                     <p className="mt-3 text-sm text-neutral-300 leading-relaxed">{todayWeatherAdvice}</p>
                   </div>
@@ -10131,13 +10118,13 @@ SpÃ¤ter
                           </div>
                           <div className="flex items-center gap-3">
                             <div className="hidden sm:flex items-center gap-2 text-[11px] text-neutral-400">
-                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">ðŸ’§ {Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}%</span>
-                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">ðŸŒ¬ï¸ {Math.round(dailyForecast?.windspeed_10m_max?.[i] ?? 0)} km/h</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">💧 {Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}%</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">🌬️ {Math.round(dailyForecast?.windspeed_10m_max?.[i] ?? 0)} km/h</span>
                             </div>
                             <div className="text-sm tabular-nums">
-                              <span className="text-white">{Math.round(dailyForecast?.temperature_2m_max?.[i] ?? 0)}Â°</span>
+                              <span className="text-white">{Math.round(dailyForecast?.temperature_2m_max?.[i] ?? 0)}°</span>
                               <span className="text-neutral-600 mx-1">/</span>
-                              <span className="text-neutral-400">{Math.round(dailyForecast?.temperature_2m_min?.[i] ?? 0)}Â°</span>
+                              <span className="text-neutral-400">{Math.round(dailyForecast?.temperature_2m_min?.[i] ?? 0)}°</span>
                             </div>
                             <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform ${selectedForecastDay === i ? 'rotate-180' : ''}`} />
                           </div>
@@ -10148,7 +10135,7 @@ SpÃ¤ter
                             <div className="grid grid-cols-2 gap-2">
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Regen</div>
-                                <div className="mt-1 text-sm">{Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}% â€¢ {Math.round(dailyForecast?.precipitation_sum?.[i] ?? 0)} mm</div>
+                                <div className="mt-1 text-sm">{Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}% • {Math.round(dailyForecast?.precipitation_sum?.[i] ?? 0)} mm</div>
                               </div>
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Wind</div>
@@ -10156,18 +10143,18 @@ SpÃ¤ter
                               </div>
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Sonnenaufgang</div>
-                                <div className="mt-1 text-sm">{dailyForecast?.sunrise?.[i] ? new Date(dailyForecast.sunrise[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : 'â€”'}</div>
+                                <div className="mt-1 text-sm">{dailyForecast?.sunrise?.[i] ? new Date(dailyForecast.sunrise[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '—'}</div>
                               </div>
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Sonnenuntergang</div>
-                                <div className="mt-1 text-sm">{dailyForecast?.sunset?.[i] ? new Date(dailyForecast.sunset[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : 'â€”'}</div>
+                                <div className="mt-1 text-sm">{dailyForecast?.sunset?.[i] ? new Date(dailyForecast.sunset[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '—'}</div>
                               </div>
                             </div>
 
                             {/* Optional: mini hourly for this day (first ~8 hours) */}
                             {Array.isArray(hourlyForecast?.time) && (
                               <div className="mt-3">
-                                <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">StÃ¼ndlich</div>
+                                <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Stündlich</div>
                                 <div className="flex gap-2 overflow-x-auto no-scrollbar">
                                   {(() => {
                                     try {
@@ -10179,8 +10166,8 @@ SpÃ¤ter
                                       return idxs.slice(0, 8).map((k) => (
                                         <div key={hourlyForecast.time[k]} className="min-w-[64px] rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-2 text-center">
                                           <div className="text-[11px] text-neutral-400">{new Date(hourlyForecast.time[k]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}</div>
-                                          <div className="mt-1 text-sm font-medium text-white tabular-nums">{Math.round(hourlyForecast?.temperature_2m?.[k] ?? 0)}Â°</div>
-                                          <div className="mt-1 text-[11px] text-neutral-400">ðŸ’§ {Math.round(hourlyForecast?.precipitation_probability?.[k] ?? 0)}%</div>
+                                          <div className="mt-1 text-sm font-medium text-white tabular-nums">{Math.round(hourlyForecast?.temperature_2m?.[k] ?? 0)}°</div>
+                                          <div className="mt-1 text-[11px] text-neutral-400">💧 {Math.round(hourlyForecast?.precipitation_probability?.[k] ?? 0)}%</div>
                                         </div>
                                       ));
                                     } catch (_) { return null; }
@@ -10201,7 +10188,7 @@ SpÃ¤ter
                     <input
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Ort (z.B. ZÃ¼rich)â€¦"
+                      placeholder="Ort (z.B. Zürich)…"
                       className="flex-1 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
                     />
                     <button type="submit" className="px-4 py-3 bg-white text-black rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
@@ -10218,7 +10205,7 @@ SpÃ¤ter
                           className="w-full text-left px-4 py-3 text-sm hover:bg-neutral-900 transition-colors border-b border-neutral-900 last:border-0"
                         >
                           <span className="text-white font-medium">{loc.name}</span>
-                          <span className="text-neutral-500 text-xs ml-2">{loc.admin1 ? `${loc.admin1}` : ''} {loc.country ? `â€¢ ${loc.country}` : ''}</span>
+                          <span className="text-neutral-500 text-xs ml-2">{loc.admin1 ? `${loc.admin1}` : ''} {loc.country ? `• ${loc.country}` : ''}</span>
                         </button>
                       ))}
                     </div>
@@ -10238,7 +10225,7 @@ SpÃ¤ter
                     onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }}
                     className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors"
                   >
-                    SchlieÃŸen
+                    Schließen
                   </button>
                 </div>
               </div>
@@ -10295,12 +10282,12 @@ SpÃ¤ter
                         type="button"
                         onClick={backToEventViewMode}
                         className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
-                        title="ZurÃ¼ck"
+                        title="Zurück"
                       >
                         <CornerUpLeft className="w-5 h-5" />
                       </button>
                     )}
-                    <button onClick={closeEventModal} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="SchlieÃŸen">
+                    <button onClick={closeEventModal} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
                       <X className="w-5 h-5" />
                     </button>
                   </div>
@@ -10309,7 +10296,7 @@ SpÃ¤ter
 
                 {eventToEdit && eventModalMode !== 'view' && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && (
                   <div className="mb-4 p-4 bg-black border border-neutral-800 rounded-2xl">
-                    <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold mb-2">Ã„nderung gilt fÃ¼r</p>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold mb-2">Änderung gilt für</p>
                     <div className="flex gap-2">
                       <button type="button" onClick={() => { setEventEditScope('single'); setEventForm(prev => ({ ...prev, date: selectedDateForEvent })); }} className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${eventEditScope === 'single' ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}>Nur dieses Datum</button>
                       <button type="button" onClick={() => { setEventEditScope('series'); setEventForm(prev => ({ ...prev, date: eventToEdit.date })); }} className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${eventEditScope === 'series' ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}>Ganze Serie</button>
@@ -10324,14 +10311,14 @@ SpÃ¤ter
                       <div className="text-white text-lg font-medium">{eventForm.title || 'Termin'}</div>
                       <div className="mt-1 text-sm text-neutral-300">
                         <span className="tabular-nums">{eventForm.date}</span>
-                        {eventForm.time ? <span className="text-neutral-600 mx-2">â€¢</span> : null}
+                        {eventForm.time ? <span className="text-neutral-600 mx-2">•</span> : null}
                         {eventForm.time ? <span className="tabular-nums">{eventForm.time}</span> : null}
                       </div>
 
                       <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                         <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kategorie</div>
-                          <div className="mt-1 text-neutral-200">{eventForm.type || 'â€”'}</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.type || '—'}</div>
                         </div>
                         <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kalender</div>
@@ -10339,11 +10326,11 @@ SpÃ¤ter
                         </div>
                                               <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Ort</div>
-                          <div className="mt-1 text-neutral-200">{eventForm.location ? eventForm.location : 'â€”'}</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.location ? eventForm.location : '—'}</div>
                         </div>
                         <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Dauer</div>
-                          <div className="mt-1 text-neutral-200">{(eventForm.durationMinutes !== null && typeof eventForm.durationMinutes !== 'undefined' && String(eventForm.durationMinutes).trim() !== '') ? `${eventForm.durationMinutes} min` : 'â€”'}</div>
+                          <div className="mt-1 text-neutral-200">{(eventForm.durationMinutes !== null && typeof eventForm.durationMinutes !== 'undefined' && String(eventForm.durationMinutes).trim() !== '') ? `${eventForm.durationMinutes} min` : '—'}</div>
                         </div>
 </div>
 
@@ -10351,9 +10338,9 @@ SpÃ¤ter
                         <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wiederholung</div>
                           <div className="mt-1 text-neutral-200">
-                            {eventForm.recurrenceFreq === 'DAILY' ? 'TÃ¤glich' : eventForm.recurrenceFreq === 'WEEKLY' ? 'WÃ¶chentlich' : eventForm.recurrenceFreq === 'MONTHLY' ? 'Monatlich' : eventForm.recurrenceFreq}
-                            {eventForm.recurrenceInterval && eventForm.recurrenceInterval > 1 ? ` â€¢ alle ${eventForm.recurrenceInterval}` : ''}
-                            {eventForm.recurrenceUntil ? ` â€¢ bis ${eventForm.recurrenceUntil}` : ''}
+                            {eventForm.recurrenceFreq === 'DAILY' ? 'Täglich' : eventForm.recurrenceFreq === 'WEEKLY' ? 'Wöchentlich' : eventForm.recurrenceFreq === 'MONTHLY' ? 'Monatlich' : eventForm.recurrenceFreq}
+                            {eventForm.recurrenceInterval && eventForm.recurrenceInterval > 1 ? ` • alle ${eventForm.recurrenceInterval}` : ''}
+                            {eventForm.recurrenceUntil ? ` • bis ${eventForm.recurrenceUntil}` : ''}
                           </div>
                         </div>
                       )}
@@ -10383,7 +10370,7 @@ SpÃ¤ter
                       onClick={closeEventModal}
                       className="w-full py-3 rounded-lg text-sm text-neutral-400 bg-neutral-900 border border-neutral-800 hover:text-white transition-colors"
                     >
-                      SchlieÃŸen
+                      Schließen
                     </button>
                   </div>
                 )}
@@ -10391,7 +10378,7 @@ SpÃ¤ter
                 {!(eventToEdit && eventModalMode === 'view') && (
                   <form onSubmit={saveEvent} className="space-y-3">
                   <div className="bg-black border border-neutral-800 rounded-2xl p-4">
-                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">âš¡ Schnelleingabe</label>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">⚡ Schnelleingabe</label>
                     <textarea
                       value={quickEventText}
                       onChange={(e) => updateQuickEventText(e.target.value)}
@@ -10401,8 +10388,8 @@ SpÃ¤ter
                     />
                     {quickEventPreview && (
                       <div className="mt-2 text-[11px] text-neutral-500">
-                        Erkannt: <span className="text-neutral-300">{quickEventPreview.date || (selectedDateForEvent || eventForm.date)}{quickEventPreview.time ? ` â€¢ ${quickEventPreview.time}` : ''}{(quickEventPreview.durationMinutes !== null && typeof quickEventPreview.durationMinutes !== 'undefined') ? ` â€¢ ${quickEventPreview.durationMinutes}min` : ''}{quickEventPreview.location ? ` â€¢ Ort: ${quickEventPreview.location}` : ''}</span>
-                        <span className="text-neutral-600"> â€” </span><span className="text-white">{quickEventPreview.title}</span>
+                        Erkannt: <span className="text-neutral-300">{quickEventPreview.date || (selectedDateForEvent || eventForm.date)}{quickEventPreview.time ? ` • ${quickEventPreview.time}` : ''}{(quickEventPreview.durationMinutes !== null && typeof quickEventPreview.durationMinutes !== 'undefined') ? ` • ${quickEventPreview.durationMinutes}min` : ''}{quickEventPreview.location ? ` • Ort: ${quickEventPreview.location}` : ''}</span>
+                        <span className="text-neutral-600"> — </span><span className="text-white">{quickEventPreview.title}</span>
                       </div>
                     )}
                     <div className="flex gap-2 mt-3">
@@ -10411,7 +10398,7 @@ SpÃ¤ter
                         onClick={applyQuickEventToForm}
                         className="flex-1 py-2 rounded-lg text-sm font-semibold bg-white text-black hover:bg-gray-200 transition-colors"
                       >
-                        Ãœbernehmen
+                        Übernehmen
                       </button>
                       <button
                         type="button"
@@ -10463,7 +10450,7 @@ SpÃ¤ter
                       <input
                         value={eventForm.location || ''}
                         onChange={(e) => setEventForm(prev => ({ ...prev, location: e.target.value }))}
-                        placeholder="z.B. BÃ¼ro / Dr. X"
+                        placeholder="z.B. Büro / Dr. X"
                         className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
                       />
                     </div>
@@ -10484,8 +10471,8 @@ SpÃ¤ter
                     <div className="bg-black border border-neutral-800 rounded-2xl p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">ðŸ—³ï¸ Abstimmung</label>
-                          <p className="mt-1 text-[11px] text-neutral-500">Beim Speichern werden ZeitvorschlÃ¤ge an Mitglieder mit Schreibrecht gesendet.</p>
+                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">🗳️ Abstimmung</label>
+                          <p className="mt-1 text-[11px] text-neutral-500">Beim Speichern werden Zeitvorschläge an Mitglieder mit Schreibrecht gesendet.</p>
                         </div>
                         <button
                           type="button"
@@ -10504,7 +10491,7 @@ SpÃ¤ter
 
                       {createPollOnSave && (
                         <div className="mt-3 space-y-3">
-                          <div className="text-xs text-neutral-400">VorschlÃ¤ge (mind. 2):</div>
+                          <div className="text-xs text-neutral-400">Vorschläge (mind. 2):</div>
                           {[0,1,2].map((i) => (
                             <div key={i} className="flex gap-2">
                               <input
@@ -10550,7 +10537,7 @@ SpÃ¤ter
                                 {pollAutoFinalize ? 'An' : 'Aus'}
                               </button>
                             </div>
-                            <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: âœ… Fix Â· ðŸ¤· Kann Â· âŒ Nein (pro Vorschlag)</div>
+                            <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: ✅ Fix · 🤷 Kann · ❌ Nein (pro Vorschlag)</div>
                           </div>
 <div className="flex gap-2">
                             <button
@@ -10570,7 +10557,7 @@ SpÃ¤ter
                               }}
                               className="flex-1 px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 text-sm hover:border-neutral-500"
                             >
-                              1. Vorschlag Ã¼bernehmen
+                              1. Vorschlag übernehmen
                             </button>
                           </div>
                         </div>
@@ -10581,7 +10568,7 @@ SpÃ¤ter
                   <div className="bg-black border border-neutral-800 rounded-2xl p-4">
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Erinnerung</label>
-                      {!eventForm.time && <span className="text-[10px] text-neutral-500">benÃ¶tigt Uhrzeit</span>}
+                      {!eventForm.time && <span className="text-[10px] text-neutral-500">benötigt Uhrzeit</span>}
                     </div>
                     <select
                       value={(eventForm.reminderMode === 'custom') ? String(eventForm.reminderMinutes ?? 15) : (eventForm.reminderMode === 'none' ? 'none' : 'default')}
@@ -10609,7 +10596,7 @@ SpÃ¤ter
                       <option value="120">2 Stunden vorher</option>
                       <option value="1440">1 Tag vorher</option>
                     </select>
-                    <p className="mt-2 text-[11px] text-neutral-500">Hinweis: In der PWA funktionieren Erinnerungen zuverlÃ¤ssig, wenn Benachrichtigungen erlaubt sind und Onyx mindestens im Hintergrund aktiv ist.</p>
+                    <p className="mt-2 text-[11px] text-neutral-500">Hinweis: In der PWA funktionieren Erinnerungen zuverlässig, wenn Benachrichtigungen erlaubt sind und Onyx mindestens im Hintergrund aktiv ist.</p>
                   </div>
 
 
@@ -10617,7 +10604,7 @@ SpÃ¤ter
                     <div className="flex items-center justify-between mb-2">
                       <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wiederholung</label>
                       {eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' && (
-                        <span className="text-[10px] text-neutral-500">nur in Serie Ã¤nderbar</span>
+                        <span className="text-[10px] text-neutral-500">nur in Serie änderbar</span>
                       )}
                     </div>
                     <select
@@ -10645,8 +10632,8 @@ SpÃ¤ter
                       className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
                     >
                       <option value="NONE">Keine</option>
-                      <option value="DAILY">TÃ¤glich</option>
-                      <option value="WEEKLY">WÃ¶chentlich</option>
+                      <option value="DAILY">Täglich</option>
+                      <option value="WEEKLY">Wöchentlich</option>
                       <option value="MONTHLY">Monatlich</option>
                     </select>
 
@@ -10725,7 +10712,7 @@ SpÃ¤ter
                     <textarea
                       value={eventForm.desc}
                       onChange={(e) => setEventForm(prev => ({ ...prev, desc: e.target.value }))}
-                      placeholder="Optionalâ€¦"
+                      placeholder="Optional…"
                       rows={3}
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none"
                     />
@@ -10749,7 +10736,7 @@ SpÃ¤ter
                         ))
                       }
                     </select>
-                    <p className="mt-1 text-[11px] text-neutral-500">{(eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single') ? 'Hinweis: Einzelnes Vorkommen kann nicht in einen anderen Kalender verschoben werden.' : 'SchichtplÃ¤ne kÃ¶nnen nur Ã¼ber die Tagesauswahl bearbeitet werden.'}</p>
+                    <p className="mt-1 text-[11px] text-neutral-500">{(eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single') ? 'Hinweis: Einzelnes Vorkommen kann nicht in einen anderen Kalender verschoben werden.' : 'Schichtpläne können nur über die Tagesauswahl bearbeitet werden.'}</p>
                   </div>
 
                   <div className="flex gap-2 pt-2">
@@ -10765,7 +10752,7 @@ SpÃ¤ter
                         </>
                       ) : (
                         <button type="button" onClick={() => deleteEvent('series')} className="py-3 px-4 rounded-lg text-sm text-red-500 bg-red-500/10 border border-red-900/40 hover:bg-red-500/20 transition-colors">
-                          LÃ¶schen
+                          Löschen
                         </button>
                       )
                     ) : (
@@ -10780,7 +10767,7 @@ SpÃ¤ter
 
                   {eventToEdit && (
                     <button type="button" onClick={closeEventModal} className="w-full py-3 rounded-lg text-sm text-neutral-400 bg-neutral-900 border border-neutral-800 hover:text-white transition-colors">
-                      SchlieÃŸen
+                      Schließen
                     </button>
                   )}
                 </form>
@@ -10795,14 +10782,14 @@ SpÃ¤ter
         onClick={() => { setShowEventComments(v => !v); setShowEventPoll(false); }}
         className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${showEventComments ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
       >
-        ðŸ’¬ Kommentare
+        💬 Kommentare
       </button>
       <button
         type="button"
         onClick={() => { setShowEventPoll(v => !v); setShowEventComments(false); initPollDraftFromEvent(modalEvent || eventToEdit); }}
         className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${showEventPoll ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
       >
-        ðŸ—³ï¸ Abstimmung
+        🗳️ Abstimmung
       </button>
     </div>
 
@@ -10844,14 +10831,14 @@ SpÃ¤ter
       <div className="bg-black border border-neutral-800 rounded-2xl p-3 space-y-3">
         {modalEvent && modalEvent.poll && modalEvent.poll.status === 'closed' && (
           <div className="text-xs text-neutral-400">
-            Letzte Abstimmung geschlossen âœ…
+            Letzte Abstimmung geschlossen ✅
           </div>
         )}
 
         {(!modalEvent || !modalEvent.poll || modalEvent.poll.status !== 'open') ? (
           <div className="space-y-3">
             <p className="text-xs text-neutral-400">
-              3 VorschlÃ¤ge senden â†’ Mitglieder mit <span className="text-white">Schreibrecht</span> im Kalender stimmen ab. Gewinner wird automatisch gesetzt.
+              3 Vorschläge senden → Mitglieder mit <span className="text-white">Schreibrecht</span> im Kalender stimmen ab. Gewinner wird automatisch gesetzt.
             </p>
 
             {[0,1,2].map((i) => (
@@ -10897,7 +10884,7 @@ SpÃ¤ter
                   {pollAutoFinalize ? 'An' : 'Aus'}
                 </button>
               </div>
-              <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: âœ… Fix Â· ðŸ¤· Kann Â· âŒ Nein (pro Vorschlag)</div>
+              <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: ✅ Fix · 🤷 Kann · ❌ Nein (pro Vorschlag)</div>
             </div>
 
 
@@ -10908,7 +10895,7 @@ SpÃ¤ter
                 onClick={createPollForEvent}
                 className={`flex-1 px-3 py-2 rounded-lg font-semibold text-sm ${pollBusy ? 'bg-neutral-700 text-neutral-300' : 'bg-white text-black'}`}
               >
-                VorschlÃ¤ge senden
+                Vorschläge senden
               </button>
               <button
                 type="button"
@@ -10936,22 +10923,22 @@ SpÃ¤ter
                 <>
                   <div className="flex items-center justify-between">
                     <div className="text-xs text-neutral-400">
-                      Abstimmung lÃ¤uft â€¢ {tally.respondedCount}/{tally.totalVoters || (poll.voterIds || []).length} Antworten{deadlineLabel ? ` Â· Deadline: ${deadlineLabel}` : ''}
+                      Abstimmung läuft • {tally.respondedCount}/{tally.totalVoters || (poll.voterIds || []).length} Antworten{deadlineLabel ? ` · Deadline: ${deadlineLabel}` : ''}
                     </div>
                     <button
                       type="button"
                       disabled={!canFinalizeNow || pollBusy}
                       onClick={finalizePollForEvent}
                       className={"px-3 py-2 rounded-lg font-semibold text-xs " + ((!canFinalizeNow || pollBusy) ? 'bg-neutral-900 border border-neutral-800 text-neutral-500 cursor-not-allowed' : 'bg-white text-black')}
-                      title={canFinalizeNow ? 'Gewinner Ã¼bernehmen' : 'Warten bis alle fertig sind oder Deadline'}
+                      title={canFinalizeNow ? 'Gewinner übernehmen' : 'Warten bis alle fertig sind oder Deadline'}
                     >
-                      Gewinner Ã¼bernehmen
+                      Gewinner übernehmen
                     </button>
                   </div>
 
                   {tally.version < 2 && (
                     <div className="text-[11px] text-yellow-300 border border-yellow-900/30 bg-yellow-900/10 rounded-xl p-3">
-                      Diese Abstimmung ist 1.0 (eine Stimme pro Person). Neue Abstimmungen nutzen 2.0 (âœ…/ðŸ¤·/âŒ pro Vorschlag).
+                      Diese Abstimmung ist 1.0 (eine Stimme pro Person). Neue Abstimmungen nutzen 2.0 (✅/🤷/❌ pro Vorschlag).
                       {(poll.createdBy === user?.uid) && (
                         <div className="mt-2">
                           <button
@@ -10984,14 +10971,14 @@ SpÃ¤ter
                             className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800')}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <div className="text-sm text-white">{opt.date} â€¢ {opt.time}{isWinner ? ' â­' : ''}</div>
+                              <div className="text-sm text-white">{opt.date} • {opt.time}{isWinner ? ' ⭐' : ''}</div>
                               <div className="flex items-center gap-1">
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.YES)} className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)} title="Fix">âœ…</button>
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.MAYBE)} className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)} title="Kann">ðŸ¤·</button>
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.NO)} className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)} title="Nein">âŒ</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.YES)} className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)} title="Fix">✅</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.MAYBE)} className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)} title="Kann">🤷</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.NO)} className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)} title="Nein">❌</button>
                               </div>
                             </div>
-                            <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">âœ…{t.yes} &nbsp; ðŸ¤·{t.maybe} &nbsp; âŒ{t.no}</div>
+                            <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">✅{t.yes} &nbsp; 🤷{t.maybe} &nbsp; ❌{t.no}</div>
                           </div>
                         );
                       }
@@ -11008,7 +10995,7 @@ SpÃ¤ter
                           className={"w-full text-left border rounded-xl px-3 py-2 " + (voted ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500')}
                         >
                           <div className="flex items-center justify-between">
-                            <div className="text-sm text-white">{opt.date} â€¢ {opt.time}</div>
+                            <div className="text-sm text-white">{opt.date} • {opt.time}</div>
                             <div className="text-xs text-neutral-400">{c} Vote{c === 1 ? '' : 's'}</div>
                           </div>
                         </button>
@@ -11017,7 +11004,7 @@ SpÃ¤ter
                   </div>
 
                   <div className="text-[11px] text-neutral-500">
-                    {myComplete ? 'Du: fertig âœ…' : 'Du: offen'}
+                    {myComplete ? 'Du: fertig ✅' : 'Du: offen'}
                   </div>
                 </>
               );
@@ -11041,7 +11028,7 @@ SpÃ¤ter
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500">{calForm?.id ? 'Bearbeiten' : 'Neu'}</p>
                     <h3 className="text-lg font-medium text-white">{calForm?.id ? 'Kalender bearbeiten' : 'Neuer Kalender'}</h3>
                   </div>
-                  <button onClick={() => setIsCalManageModalOpen(false)} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="SchlieÃŸen">
+                  <button onClick={() => setIsCalManageModalOpen(false)} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -11061,7 +11048,7 @@ SpÃ¤ter
                   <div className="flex items-center justify-between bg-black border border-neutral-800 rounded-2xl p-4">
                     <div>
                       <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Farbe</div>
-                      <div className="mt-1 text-xs text-neutral-500">Wird fÃ¼r Marker/Rand im Kalender genutzt.</div>
+                      <div className="mt-1 text-xs text-neutral-500">Wird für Marker/Rand im Kalender genutzt.</div>
                     </div>
                     <input
                       type="color"
@@ -11082,7 +11069,7 @@ SpÃ¤ter
                       <option value="normal">Normal (Termine)</option>
                       <option value="shift">Schichtplan (Farben)</option>
                     </select>
-                    <p className="mt-1 text-[11px] text-neutral-500">Schichtplan: Tippen wechselt Schichten, lang drÃ¼cken Ã¶ffnet Auswahl, â€žPinselâ€œ malt mehrere Tage.</p>
+                    <p className="mt-1 text-[11px] text-neutral-500">Schichtplan: Tippen wechselt Schichten, lang drücken öffnet Auswahl, „Pinsel“ malt mehrere Tage.</p>
                   </div>
 
                   {calForm?.type === 'shift' && (
@@ -11096,7 +11083,7 @@ SpÃ¤ter
 
                       {(calForm.shifts || []).length === 0 ? (
                         <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
-                          Noch keine Schichten. FÃ¼ge mindestens eine hinzu.
+                          Noch keine Schichten. Füge mindestens eine hinzu.
                         </div>
                       ) : (
                         <div className="space-y-3 max-h-[45vh] overflow-y-auto no-scrollbar pr-1">
@@ -11113,7 +11100,7 @@ SpÃ¤ter
                                 <input
                                   value={sh.name || ''}
                                   onChange={(e) => updateShiftInForm(sh.id, 'name', e.target.value)}
-                                  placeholder="Name (z.B. FrÃ¼h)"
+                                  placeholder="Name (z.B. Früh)"
                                   className="flex-1 bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
                                 />
                                 <button type="button" onClick={() => removeShiftFromForm(sh.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors" title="Entfernen">
@@ -11158,7 +11145,7 @@ SpÃ¤ter
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500">Teilen</p>
                     <h3 className="text-lg font-medium text-white">{shareCalData.name}</h3>
                   </div>
-                  <button onClick={() => { setIsShareCalModalOpen(false); setShareUsername(''); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="SchlieÃŸen">
+                  <button onClick={() => { setIsShareCalModalOpen(false); setShareUsername(''); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -11173,7 +11160,7 @@ SpÃ¤ter
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
                       required
                     />
-                    <p className="mt-1 text-[11px] text-neutral-500">Hinweis: Der andere Nutzer muss sich einmal registriert haben, damit sein Profil Ã¼ber E-Mail gefunden wird.</p>
+                    <p className="mt-1 text-[11px] text-neutral-500">Hinweis: Der andere Nutzer muss sich einmal registriert haben, damit sein Profil über E-Mail gefunden wird.</p>
                   </div>
 
                   <div>
@@ -11222,7 +11209,7 @@ SpÃ¤ter
                     onClick={() => { setIsShareCalModalOpen(false); setShareUsername(''); }}
                     className="w-full py-3 rounded-lg text-sm bg-neutral-900 border border-neutral-800 hover:border-neutral-500 text-neutral-300 hover:text-white transition-colors"
                   >
-                    SchlieÃŸen
+                    Schließen
                   </button>
                 </div>
               </div>
@@ -11238,18 +11225,18 @@ SpÃ¤ter
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500">Privacy-first Sharing</p>
                     <h3 className="text-lg font-medium text-white">Public Link</h3>
                     <p className="text-[11px] text-neutral-500 mt-1">
-                      {shareLinkDraft.kind === 'calendar' ? `Busyâ€‘Only: ${shareLinkDraft.calName || 'Kalender'}` : `Event: ${(shareLinkDraft.eventSnapshot?.title || 'Termin')}`}
+                      {shareLinkDraft.kind === 'calendar' ? `Busy‑Only: ${shareLinkDraft.calName || 'Kalender'}` : `Event: ${(shareLinkDraft.eventSnapshot?.title || 'Termin')}`}
                     </p>
                   </div>
-                  <button onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="SchlieÃŸen">
+                  <button onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
                 {shareLinkDraft.kind === 'calendar' && (
                   <div className="bg-black border border-neutral-800 rounded-xl p-4 mb-4">
-                    <div className="text-xs font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Busyâ€‘Only</div>
-                    <div className="mt-1 text-[11px] text-neutral-500">Extern sieht nur ZeitblÃ¶cke (keine Titel/Orte).</div>
+                    <div className="text-xs font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Busy‑Only</div>
+                    <div className="mt-1 text-[11px] text-neutral-500">Extern sieht nur Zeitblöcke (keine Titel/Orte).</div>
                   </div>
                 )}
 
@@ -11261,7 +11248,7 @@ SpÃ¤ter
                       onChange={(e) => setShareLinkDraft(prev => ({ ...prev, protection: e.target.value, passcode: '' }))}
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
                     >
-                      <option value="magic">Magicâ€‘Link (ohne Eingabe)</option>
+                      <option value="magic">Magic‑Link (ohne Eingabe)</option>
                       <option value="passcode">Passcode</option>
                       <option value="none">Offen (nicht empfohlen)</option>
                     </select>
@@ -11303,7 +11290,7 @@ SpÃ¤ter
                     Link erstellen
                   </button>
                   <button type="button" onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }} className="px-4 py-3 rounded-lg text-sm bg-neutral-900 border border-neutral-800 text-neutral-300 hover:border-neutral-500">
-                    SchlieÃŸen
+                    Schließen
                   </button>
                 </div>
 
@@ -11316,7 +11303,7 @@ SpÃ¤ter
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
-                    <div className="mt-2 text-[11px] text-neutral-500">Hinweis: Externe Links benÃ¶tigen passende Firestoreâ€‘Rules fÃ¼r <span className="font-mono text-neutral-300">shares</span>.</div>
+                    <div className="mt-2 text-[11px] text-neutral-500">Hinweis: Externe Links benötigen passende Firestore‑Rules für <span className="font-mono text-neutral-300">shares</span>.</div>
                   </div>
                 )}
 
@@ -11341,11 +11328,11 @@ SpÃ¤ter
                       <div className="space-y-2 max-h-[32vh] overflow-y-auto no-scrollbar pr-1">
                         {relevant.slice(0, 20).map(l => {
                           const url = makeShareUrl(l.id || l.token || l.shareId || l._id || l.docId || l.id, '');
-                          const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : 'â€”';
+                          const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '—';
                           return (
                             <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
                               <div className="min-w-0">
-                                <div className="text-sm text-white font-medium truncate">{l.kind === 'calendar' ? 'Busyâ€‘Only' : 'Event'} â€¢ {shareLinkDraft.calName}</div>
+                                <div className="text-sm text-white font-medium truncate">{l.kind === 'calendar' ? 'Busy‑Only' : 'Event'} • {shareLinkDraft.calName}</div>
                                 <div className="text-[11px] text-neutral-500">Ablauf: {exp}</div>
                               </div>
                               <div className="flex items-center gap-2">
@@ -11364,11 +11351,11 @@ SpÃ¤ter
           )}
 
 
-          {/* SCHICHT AUSWAHL MODAL (Langes DrÃ¼cken) */}
+          {/* SCHICHT AUSWAHL MODAL (Langes Drücken) */}
           {shiftModalData && (
              <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => setShiftModalData(null)}>
                 <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-xs rounded-t-2xl sm:rounded-xl p-4 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
-                   <h3 className="text-white font-medium mb-1 text-center">Schicht wÃ¤hlen</h3>
+                   <h3 className="text-white font-medium mb-1 text-center">Schicht wählen</h3>
                    <p className="text-neutral-500 text-xs text-center mb-4 border-b border-neutral-800 pb-3">{new Date(shiftModalData.dateStr).toLocaleDateString('de-DE')}</p>
                    
                    <div className="space-y-2 max-h-[50vh] overflow-y-auto no-scrollbar">
@@ -11378,7 +11365,7 @@ SpÃ¤ter
                          </button>
                       ))}
                       <button onClick={() => handleShiftModalSelect('delete')} className="w-full py-3 rounded-xl text-sm font-medium text-red-500 bg-red-500/10 border border-red-900/50 hover:bg-red-500/20 mt-4 transition-colors">
-                         Frei / LÃ¶schen
+                         Frei / Löschen
                       </button>
                    </div>
                 </div>
@@ -11393,13 +11380,13 @@ SpÃ¤ter
                 <p className="text-xs text-neutral-500 mb-6">Mindestens 3 Teilnehmer (du + 2)</p>
 
                 <label className="text-xs text-neutral-400">Gruppenname</label>
-                <input value={groupDraftName} onChange={(e) => setGroupDraftName(e.target.value)} placeholder="z.B. Team, Familieâ€¦" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500 mt-2" />
+                <input value={groupDraftName} onChange={(e) => setGroupDraftName(e.target.value)} placeholder="z.B. Team, Familie…" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500 mt-2" />
 
                 <div className="mt-5">
-                  <label className="text-xs text-neutral-400">Mitglieder hinzufÃ¼gen</label>
+                  <label className="text-xs text-neutral-400">Mitglieder hinzufügen</label>
                   <div className="relative mt-2">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
-                    <input value={groupMemberSearch} onChange={(e) => setGroupMemberSearch(e.target.value)} placeholder="Name suchenâ€¦" className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
+                    <input value={groupMemberSearch} onChange={(e) => setGroupMemberSearch(e.target.value)} placeholder="Name suchen…" className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
                   </div>
 
                   {(groupMemberSearch || '').trim() !== '' && (
@@ -11441,7 +11428,7 @@ SpÃ¤ter
                         return (
                           <span key={id} className="inline-flex items-center gap-2 bg-neutral-900 border border-neutral-800 text-white text-xs px-3 py-1.5 rounded-full">
                             {(p?.username || 'User').substring(0, 18)}
-                            <button onClick={(e) => { e.stopPropagation(); setGroupDraftMembers(prev => (prev || []).filter(x => x !== id)); }} className="text-neutral-400 hover:text-white">Ã—</button>
+                            <button onClick={(e) => { e.stopPropagation(); setGroupDraftMembers(prev => (prev || []).filter(x => x !== id)); }} className="text-neutral-400 hover:text-white">×</button>
                           </span>
                         );
                       })}
@@ -11542,7 +11529,7 @@ SpÃ¤ter
                            <div className="mt-3">
                              <div className="relative">
                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
-                               <input value={groupEditSearch} onChange={(e) => setGroupEditSearch(e.target.value)} placeholder="Mitglied hinzufÃ¼genâ€¦" className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
+                               <input value={groupEditSearch} onChange={(e) => setGroupEditSearch(e.target.value)} placeholder="Mitglied hinzufügen…" className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
                              </div>
                              {(groupEditSearch || '').trim() !== '' && (
                                <div className="mt-2 max-h-40 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-xl">
@@ -11589,9 +11576,9 @@ SpÃ¤ter
                      <div className="flex items-center justify-between gap-3 mb-3">
                        <div>
                          <div className="text-xs uppercase tracking-widest text-neutral-500">Medien</div>
-                         <div className="text-sm text-neutral-300">{chatMediaLoading ? 'Ladeâ€¦' : `${chatMediaItems.length} Bilder im Chat`}</div>
+                         <div className="text-sm text-neutral-300">{chatMediaLoading ? 'Lade…' : `${chatMediaItems.length} Bilder im Chat`}</div>
                        </div>
-                       <button type="button" onClick={() => openChatMediaViewer(0)} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-50" disabled={!chatMediaItems.length}>Galerie Ã¶ffnen</button>
+                       <button type="button" onClick={() => openChatMediaViewer(0)} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-50" disabled={!chatMediaItems.length}>Galerie öffnen</button>
                      </div>
                      {chatMediaItems.length > 0 ? (
                        <div className="grid grid-cols-4 gap-2">
@@ -11682,8 +11669,8 @@ SpÃ¤ter
               <button
                 onClick={(e) => { e.stopPropagation(); closeImageViewer(); }}
                 className="absolute top-4 right-4 p-2 rounded-full bg-neutral-900/70 border border-neutral-700 text-white hover:bg-neutral-800 transition-colors"
-                aria-label="SchlieÃŸen"
-                title="SchlieÃŸen"
+                aria-label="Schließen"
+                title="Schließen"
               >
                 <X className="w-5 h-5" />
               </button>

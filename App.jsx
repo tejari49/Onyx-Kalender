@@ -7037,7 +7037,7 @@ setSelfDestruct(false);
 
       return (
         <div 
-          className={`flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)' }}
+          className={`flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)' }}
           onTouchStart={handleGlobalTouchStart}
           onTouchMove={handleGlobalTouchMove}
           onTouchEnd={handleGlobalTouchEnd}
@@ -7088,15 +7088,15 @@ setSelfDestruct(false);
             </div>
           </aside>
 
-          <nav className="md:hidden fixed bottom-0 left-0 w-full h-[calc(4rem+env(safe-area-inset-bottom))] bg-black border-t border-neutral-800 flex items-start justify-around z-40 px-2 pt-1 pb-[env(safe-area-inset-bottom)]">
-            <button onClick={() => setCurrentView('dashboard')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-6 h-6" /></button>
-            <button onClick={() => setCurrentView('calendar')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-6 h-6" /></button>
-            <button onClick={() => setPlusMenuOpen(true)} className="p-3 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg"><Plus className="w-6 h-6" /></button>
-            <button onClick={() => setCurrentView('extras')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`}><Activity className="w-6 h-6" /></button>
-            <button onClick={() => setCurrentView('settings')} className={`p-3 rounded-xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-6 h-6" /></button>
+          <nav className="md:hidden fixed bottom-0 left-0 w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 flex items-start justify-around z-40 px-2.5 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
+            <button onClick={() => setCurrentView('dashboard')} className={`p-3.5 rounded-2xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
+            <button onClick={() => setCurrentView('calendar')} className={`p-3.5 rounded-2xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
+            <button onClick={() => setPlusMenuOpen(true)} className="p-4 bg-white text-black rounded-full -mt-7 border-4 border-black shadow-lg"><Plus className="w-7 h-7" /></button>
+            <button onClick={() => setCurrentView('extras')} className={`p-3.5 rounded-2xl flex flex-col items-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`}><Activity className="w-7 h-7" /></button>
+            <button onClick={() => setCurrentView('settings')} className={`p-3.5 rounded-2xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
           </nav>
 
-          <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
+          <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
             {currentView === 'dashboard' && (
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
                 <header className="flex justify-between items-center mb-8 md:mb-10">
@@ -8101,7 +8101,7 @@ Später
               </div>
               <p className="mt-2 text-sm text-neutral-400">Alle Einstellungen zentral, klar gruppiert und direkt durchsuchbar.</p>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+            <div className="hidden md:grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
               <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Tab</div><div className="text-neutral-200 mt-1">{activeTab?.label || 'Kalender'}</div></div>
               <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Extras aktiv</div><div className="text-neutral-200 mt-1">{enabledExtraCount}</div></div>
               <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Push</div><div className="text-neutral-200 mt-1">{isStandalone ? 'PWA' : 'Browser'}</div></div>
@@ -8124,7 +8124,7 @@ Später
           </div>
         </section>
 
-        <div className="lg:hidden overflow-x-auto no-scrollbar -mx-1 px-1">
+        <div className="hidden overflow-x-auto no-scrollbar -mx-1 px-1">
           <div className="flex gap-2 min-w-max">
             {visibleTabs.map((t) => {
               const Icon = t.icon;

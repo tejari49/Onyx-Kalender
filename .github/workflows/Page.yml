@@ -19,6 +19,8 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
     steps:
+      # NOTE: v5 tags for checkout/setup-node/deploy-pages are not available here.
+      # Keep these pinned to v4/v3 to avoid "unable to find version `v5`".
       - name: Checkout
         uses: actions/checkout@v5
 

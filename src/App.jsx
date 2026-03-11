@@ -28,7 +28,15 @@ import React, { useState, useEffect, useRef } from 'react';
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const DEFAULT_EXTRAS_ORDER = ['smartday','workclock','focus','week','freewindows','goals','sollist','notes','weather'];
+	    const DEFAULT_EXTRAS_ORDER = ['smartday','workclock','focus','week','freewindows','goals','sollist','notes','weather'];
+	    const APP_VIEWS = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
+
+	    function normalizeAppView(input) {
+	      const raw = String(input || '').trim();
+	      if (!APP_VIEWS.has(raw)) return 'dashboard';
+	      // Secret chat should never auto-open on app restart.
+	      return raw === 'secret_chat' ? 'calendar' : raw;
+	    }
 
     function normalizeShoppingItems(input) {
       const rows = Array.isArray(input) ? input.filter(Boolean) : [];
@@ -333,7 +341,14 @@ function AmoledCalendarApp() {
       const [fullName, setFullName] = useState('');
       const [authError, setAuthError] = useState('');
       
-      const [currentView, setCurrentView] = useState('dashboard');
+      const [currentView, setCurrentView] = useState(() => {
+        try {
+          const saved = localStorage.getItem('onyx_last_view');
+          return normalizeAppView(saved);
+        } catch (_) {
+          return 'dashboard';
+        }
+      });
       const [settingsTab, setSettingsTab] = useState('account');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
@@ -427,9 +442,9 @@ function getSupportedAudioRecorderConfig() {
     try { return !!(MR && MR.isTypeSupported && MR.isTypeSupported(mime)); }
     catch (_) { return false; }
   };
+  if (supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
   if (supports('audio/webm;codecs=opus')) return { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 };
   if (supports('audio/ogg;codecs=opus')) return { mimeType: 'audio/ogg;codecs=opus', audioBitsPerSecond: 128000 };
-  if (supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
   if (supports('audio/webm')) return { mimeType: 'audio/webm', audioBitsPerSecond: 96000 };
   return { mimeType: '', audioBitsPerSecond: 96000 };
 }
@@ -637,6 +652,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [myChats, setMyChats] = useState([]);
       const [activeChat, setActiveChat] = useState(null);
       const activeChatId = activeChat?.id || null;
+      const pendingOutgoingRef = useRef([]);
+      const pendingFlushInFlightRef = useRef(false);
       const [chatMessages, setChatMessages] = useState([]);
       const [newMessageText, setNewMessageText] = useState('');
       const [editingMessage, setEditingMessage] = useState(null);
@@ -648,6 +665,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       
       const [isRecording, setIsRecording] = useState(false);
       const mediaRecorderRef = useRef(null);
+      const recordingStreamRef = useRef(null);
       const audioChunksRef = useRef([]);
 
       const typingTimeoutRef = useRef(null);
@@ -2149,6 +2167,10 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           setSecretView('list');
           setActiveChat(null);
         }
+
+        try {
+          localStorage.setItem('onyx_last_view', normalizeAppView(currentView));
+        } catch (_) {}
       }, [currentView]);
 
       // Message Search Reset
@@ -2742,7 +2764,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const currentCount = Number(activeChatData.messageCount || activeChat.messageCount || 0);
             const currentMedia = Number(activeChatData.mediaCount || activeChat.mediaCount || 0);
             if (all.length !== currentCount || media.length !== currentMedia) {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), {
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), {
                 messageCount: all.length,
                 mediaCount: media.length,
                 statsUpdatedAt: Date.now(),
@@ -2756,11 +2778,11 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         };
         loadAllChatMeta();
         return () => { cancelled = true; };
-      }, [activeChat?.id, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
+      }, [activeChatId, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
 
       const loadMoreChatMessages = async () => {
         try {
-          if (!activeChat || !user) return;
+          if (!activeChatId || !user) return;
           if (chatLoadingMore) return;
           if (!chatHasMore) return;
 
@@ -2773,7 +2795,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           // Mark as prepending so the "scroll-to-bottom" effect does not fire
           chatIsPrependingRef.current = true;
 
-          const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+          const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages');
           const nextQ = query(messagesRef, orderBy('timestamp', 'desc'), startAfter(cursor), limit(CHAT_PAGE_SIZE));
 
           const snap = await getDocs(nextQ);
@@ -6019,6 +6041,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               channelCount: 1,
             }
           });
+          recordingStreamRef.current = stream;
           const recorderCfg = getSupportedAudioRecorderConfig();
           const recorderOpts = {};
           if (recorderCfg.mimeType) recorderOpts.mimeType = recorderCfg.mimeType;
@@ -6028,12 +6051,22 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
           };
           mediaRecorderRef.current.onstop = () => {
-            const finalMime = mediaRecorderRef.current.mimeType || recorderCfg.mimeType || 'audio/webm';
-            const audioBlob = new Blob(audioChunksRef.current, { type: finalMime });
-            audioChunksRef.current = [];
-            const reader = new FileReader();
-            reader.readAsDataURL(audioBlob);
-            reader.onloadend = () => { sendMessage(null, null, reader.result); };
+            try {
+              const finalMime = mediaRecorderRef.current?.mimeType || recorderCfg.mimeType || 'audio/webm';
+              const audioBlob = new Blob(audioChunksRef.current, { type: finalMime });
+              audioChunksRef.current = [];
+              if (!audioBlob || audioBlob.size === 0) {
+                showToast('Aufnahme war leer');
+                return;
+              }
+              const reader = new FileReader();
+              reader.readAsDataURL(audioBlob);
+              reader.onloadend = () => { sendMessage(null, null, reader.result); };
+            } finally {
+              const s = recordingStreamRef.current;
+              if (s) s.getTracks().forEach(track => track.stop());
+              recordingStreamRef.current = null;
+            }
           };
           audioChunksRef.current = [];
           mediaRecorderRef.current.start(250);
@@ -6043,8 +6076,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const stopRecording = () => {
         if (mediaRecorderRef.current && isRecording) {
+          try { mediaRecorderRef.current.requestData(); } catch (_) {}
           mediaRecorderRef.current.stop();
-          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
           setIsRecording(false);
         }
       };
@@ -6052,11 +6085,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       function handleTyping(e) {
          const value = e.target.value;
          setNewMessageText(value);
-         if (!activeChat || !user) return;
-         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user?.uid}`]: value.length > 0, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
+         if (!activeChatId || !user) return;
+         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: value.length > 0, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
          typingTimeoutRef.current = setTimeout(() => {
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user?.uid}`]: false, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
+            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: false, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
          }, 2200);
       }
 
@@ -6123,15 +6156,72 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const visibleChatMessages = ((isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media') ? baseByType : (chatMessages || [])).filter(Boolean);
 
+      const enqueuePendingMessage = (entry) => {
+        pendingOutgoingRef.current = [...pendingOutgoingRef.current, entry];
+      };
+
+      const flushPendingMessages = async () => {
+        if (!user || !navigator.onLine) return;
+        if (pendingFlushInFlightRef.current) return;
+        const queue = pendingOutgoingRef.current;
+        if (!Array.isArray(queue) || queue.length === 0) return;
+
+        pendingFlushInFlightRef.current = true;
+        try {
+          for (const entry of [...queue]) {
+            const chatId = entry?.chatId;
+            const payload = entry?.payload;
+            if (!chatId || !payload) continue;
+            try {
+              await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages'), payload);
+              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), {
+                updatedAt: Date.now(),
+                lastMessageSenderId: user?.uid,
+                messageCount: increment(1),
+                mediaCount: payload.image ? increment(1) : increment(0),
+                [`typing.${user?.uid}`]: false,
+                [`typingAt.${user?.uid}`]: Date.now()
+              });
+              pendingOutgoingRef.current = pendingOutgoingRef.current.filter(m => m?.clientMsgId !== entry?.clientMsgId);
+              const now = Date.now();
+              setLastChatVisit(now);
+              localStorage.setItem('onyx_last_chat_visit', now.toString());
+            } catch (error) {
+              console.error('flushPendingMessages failed', error);
+            }
+          }
+          if (pendingOutgoingRef.current.length === 0) showToast('Ausstehende Nachrichten wurden gesendet');
+        } finally {
+          pendingFlushInFlightRef.current = false;
+        }
+      };
+
+      useEffect(() => {
+        if (!user?.uid) {
+          pendingOutgoingRef.current = [];
+          return;
+        }
+
+        const tryFlush = () => {
+          flushPendingMessages().catch((error) => {
+            console.error('tryFlush pending failed', error);
+          });
+        };
+
+        window.addEventListener('online', tryFlush);
+        if (navigator.onLine) tryFlush();
+        return () => window.removeEventListener('online', tryFlush);
+      }, [user?.uid, activeChatId]);
+
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
         if (e) e.preventDefault();
 
-        if (!activeChat || !user) return;
+        if (!activeChatId || !user) return;
 
         // Edit existing
         if (editingMessage) {
           try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', editingMessage.id), {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', editingMessage.id), {
               text: (newMessageText || '').trim(),
               edited: true,
               editedAt: Date.now()
@@ -6190,8 +6280,8 @@ setSelfDestruct(false);
         refocusChatInput();
 
         try {
-          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages'), payload);
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), {
             updatedAt: Date.now(),
             lastMessageSenderId: user?.uid,
             messageCount: increment(1),
@@ -6205,9 +6295,12 @@ setSelfDestruct(false);
           localStorage.setItem('onyx_last_chat_visit', now.toString());
         } catch (error) {
           console.error('sendMessage failed', error);
-          // Optimistic rollback
-          setChatMessages(prev => (prev || []).filter(m => m.clientMsgId !== clientMsgId));
-          showToast('Senden fehlgeschlagen');
+          enqueuePendingMessage({
+            clientMsgId,
+            chatId: activeChatId,
+            payload,
+          });
+          showToast('Offline gespeichert – wird automatisch gesendet');
           refocusChatInput();
         }
       };
@@ -11385,4 +11478,3 @@ setSelfDestruct(false);
 
 
 export default AmoledCalendarApp;
-

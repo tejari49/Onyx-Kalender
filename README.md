@@ -148,3 +148,6 @@ Die folgenden Extras-Daten werden jetzt im Firebase-Profil mitgespeichert und st
 
 - Secret Chat: Medien-Galerie mit allen Bildern als Miniaturen, Vollbild-Viewer und echtem Gesamt-Nachrichtenzähler pro Chat.
 - Voice-Nachrichten: Recorder mit stabileren Audio-Parametern (Opus/WebM bevorzugt, 1 Kanal, Echo-/Noise-Suppression) gegen stotternde Aufnahmen.
+
+### GitHub Pages CI Hinweis
+- Falls der Deploy-Job mit `Unable to resolve action actions/deploy-pages@v5` fehlschlägt, verwende in `.github/workflows/Page.yml` die gültige Version `actions/deploy-pages@v4`.

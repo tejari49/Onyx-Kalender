@@ -6082,6 +6082,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const stopRecording = () => {
         if (mediaRecorderRef.current && isRecording) {
+          try { mediaRecorderRef.current.requestData(); } catch (_) {}
           mediaRecorderRef.current.stop();
           setIsRecording(false);
         }

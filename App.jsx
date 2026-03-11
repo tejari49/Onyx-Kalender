@@ -2305,6 +2305,31 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setIsPaintbrushActive(false);
       }, [activeCalendarId]);
 
+      useEffect(() => {
+        const root = document.getElementById('root');
+        if (!root) return;
+
+        const normalizeDomText = () => {
+          try {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            const touched = [];
+            while (walker.nextNode()) touched.push(walker.currentNode);
+            touched.forEach((node) => {
+              const src = node?.nodeValue || '';
+              const fixed = repairMojibakeText(src);
+              if (fixed !== src) node.nodeValue = fixed;
+            });
+          } catch (_) {}
+        };
+
+        normalizeDomText();
+        const observer = new MutationObserver(() => normalizeDomText());
+        observer.observe(root, { childList: true, subtree: true, characterData: true });
+        return () => {
+          try { observer.disconnect(); } catch (_) {}
+        };
+      }, []);
+
       // --- Hash routing for public shares (#/share/<token>?k=<magicKey>) ---
       useEffect(() => {
         const parseHash = () => {

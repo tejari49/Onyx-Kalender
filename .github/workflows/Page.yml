@@ -1,61 +1,55 @@
-diff --git a/.github/workflows/Page.yml b/.github/workflows/Page.yml
-index 258f126a6503b5f1f7a5289c835a4594371ab271..513bd92d8fdbb306fa9b31bd2946c9f29a48f799 100644
---- a/.github/workflows/Page.yml
-+++ b/.github/workflows/Page.yml
-@@ -1,49 +1,55 @@
- name: pages-build-deployment 2.0
- 
- on:
-   push:
-     branches: ["main"]
- 
- permissions:
-   contents: read
-   pages: write
-   id-token: write
- 
- concurrency:
-   group: "pages"
-   cancel-in-progress: true
- 
- jobs:
-   build:
-     runs-on: ubuntu-latest
-+    env:
-+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-     steps:
-+      # NOTE: v5 tags for checkout/setup-node/deploy-pages are not available here.
-+      # Keep these pinned to v4/v3 to avoid "unable to find version `v5`".
-       - name: Checkout
-         uses: actions/checkout@v4
- 
-       - name: Setup Node
-         uses: actions/setup-node@v4
-         with:
--          node-version: 20
-+          node-version: 24
- 
-       - name: Install
-         run: npm install
- 
-       - name: Build
-         run: npm run build
- 
-       - name: Disable Jekyll
-         run: touch dist/.nojekyll
- 
-       - name: Upload artifact
-         uses: actions/upload-pages-artifact@v3
-         with:
-           path: dist
- 
-   deploy:
-     runs-on: ubuntu-latest
-     needs: build
-+    env:
-+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-     environment:
-       name: github-pages
-     steps:
-       - name: Deploy
-         uses: actions/deploy-pages@v4
+name: pages-build-deployment 2.0
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+    steps:
+      # NOTE: v5 tags for checkout/setup-node/deploy-pages are not available here.
+      # Keep these pinned to v4/v3 to avoid "unable to find version `v5`".
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Disable Jekyll
+        run: touch dist/.nojekyll
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+    environment:
+      name: github-pages
+    steps:
+      - name: Deploy
+        uses: actions/deploy-pages@v4

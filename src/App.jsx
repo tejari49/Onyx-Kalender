@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
       Copy, Link2, History, UserMinus, UserPlus
     } from 'lucide-react';
 
@@ -28,7 +28,15 @@ import React, { useState, useEffect, useRef } from 'react';
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const DEFAULT_EXTRAS_ORDER = ['smartday','workclock','focus','week','freewindows','goals','sollist','notes','weather'];
+	    const DEFAULT_EXTRAS_ORDER = ['smartday','workclock','focus','week','freewindows','goals','sollist','notes','weather'];
+	    const APP_VIEWS = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
+
+	    function normalizeAppView(input) {
+	      const raw = String(input || '').trim();
+	      if (!APP_VIEWS.has(raw)) return 'dashboard';
+	      // Secret chat should never auto-open on app restart.
+	      return raw === 'secret_chat' ? 'calendar' : raw;
+	    }
 
     function normalizeShoppingItems(input) {
       const rows = Array.isArray(input) ? input.filter(Boolean) : [];
@@ -333,7 +341,14 @@ function AmoledCalendarApp() {
       const [fullName, setFullName] = useState('');
       const [authError, setAuthError] = useState('');
       
-      const [currentView, setCurrentView] = useState('dashboard');
+      const [currentView, setCurrentView] = useState(() => {
+        try {
+          const saved = localStorage.getItem('onyx_last_view');
+          return normalizeAppView(saved);
+        } catch (_) {
+          return 'dashboard';
+        }
+      });
       const [settingsTab, setSettingsTab] = useState('account');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
@@ -420,19 +435,6 @@ function AmoledCalendarApp() {
 
 
 
-
-function getSupportedAudioRecorderConfig() {
-  const MR = (typeof window !== 'undefined' && window.MediaRecorder) ? window.MediaRecorder : null;
-  const supports = (mime) => {
-    try { return !!(MR && MR.isTypeSupported && MR.isTypeSupported(mime)); }
-    catch (_) { return false; }
-  };
-  if (supports('audio/webm;codecs=opus')) return { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 };
-  if (supports('audio/ogg;codecs=opus')) return { mimeType: 'audio/ogg;codecs=opus', audioBitsPerSecond: 128000 };
-  if (supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
-  if (supports('audio/webm')) return { mimeType: 'audio/webm', audioBitsPerSecond: 96000 };
-  return { mimeType: '', audioBitsPerSecond: 96000 };
-}
 
       const isIosUA = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
       
@@ -636,6 +638,9 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 
       const [myChats, setMyChats] = useState([]);
       const [activeChat, setActiveChat] = useState(null);
+      const activeChatId = activeChat?.id || null;
+      const pendingOutgoingRef = useRef([]);
+      const pendingFlushInFlightRef = useRef(false);
       const [chatMessages, setChatMessages] = useState([]);
       const [newMessageText, setNewMessageText] = useState('');
       const [editingMessage, setEditingMessage] = useState(null);
@@ -645,9 +650,6 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [selfDestruct, setSelfDestruct] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
       
-      const [isRecording, setIsRecording] = useState(false);
-      const mediaRecorderRef = useRef(null);
-      const audioChunksRef = useRef([]);
 
       const typingTimeoutRef = useRef(null);
       const messagesEndRef = useRef(null);
@@ -661,6 +663,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const chatOldestCursorRef = useRef(null);
       const chatLoadedMoreRef = useRef(false);
       const chatAutoLoadLockRef = useRef(false);
+      const lastResetChatIdRef = useRef(null);
       const CHAT_PAGE_SIZE = 25;
       const [chatHasMore, setChatHasMore] = useState(false);
       const [chatLoadingMore, setChatLoadingMore] = useState(false);
@@ -2147,6 +2150,10 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           setSecretView('list');
           setActiveChat(null);
         }
+
+        try {
+          localStorage.setItem('onyx_last_view', normalizeAppView(currentView));
+        } catch (_) {}
       }, [currentView]);
 
       // Message Search Reset
@@ -2586,16 +2593,26 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       // --- CHAT MESSAGES SYNC (Pagination: letzte 25 + Infinite Scroll nach oben) ---
       useEffect(() => {
-        if (!activeChat || !user) return;
+        if (!activeChatId || !user) {
+          lastResetChatIdRef.current = null;
+          return;
+        }
 
-        // Reset pagination state when switching chats
-        chatOldestCursorRef.current = null;
-        chatLoadedMoreRef.current = false;
-        chatAutoLoadLockRef.current = false;
-        setChatHasMore(false);
-        setChatLoadingMore(false);
+        const switchedChat = lastResetChatIdRef.current !== activeChatId;
+        if (switchedChat) {
+          // Reset pagination + transient state only on real chat switch (prevents UI blinking on foreground/presence updates)
+          chatOldestCursorRef.current = null;
+          chatLoadedMoreRef.current = false;
+          chatAutoLoadLockRef.current = false;
+          setChatMessages([]);
+          setChatHasMore(false);
+          setChatLoadingMore(false);
+          setChatTotalCount(0);
+          setChatMediaItems([]);
+          lastResetChatIdRef.current = activeChatId;
+        }
 
-        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages');
         const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
 
         const unsubscribeMessages = onSnapshot(latestQ, (snapshot) => {
@@ -2650,9 +2667,9 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user?.uid) {
               const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
-              const isMuted = mutedChatIds.includes(activeChat.id);
+              const isMuted = mutedChatIds.includes(activeChatId);
               const canNotify = (('Notification' in window) && Notification.permission === 'granted');
-              const key = `onyx_last_notify_${activeChat.id}`;
+              const key = `onyx_last_notify_${activeChatId}`;
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
               if (!isMuted && canNotify && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
@@ -2667,20 +2684,20 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const nowMs = Date.now();
             if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
               lastReadWriteRef.current = nowMs;
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
             }
           }
 
           if (unreadToUpdate.length > 0) {
             unreadToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
             });
           }
 
           if (deliveredToUpdate.length > 0) {
             const deliveredAt = Date.now();
             deliveredToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
             });
           }
 
@@ -2695,7 +2712,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         return () => unsubscribeMessages();
-      }, [activeChat, user, currentView, secretView, userProfile]);
+      }, [activeChatId, activeChat, user, currentView, secretView, userProfile]);
 
       useEffect(() => {
         let cancelled = false;
@@ -2711,7 +2728,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         const loadAllChatMeta = async () => {
           setChatMediaLoading(true);
           try {
-            const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
+            const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages');
             const snap = await getDocs(query(messagesRef, orderBy('timestamp', 'asc')));
             if (cancelled) return;
             const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -2730,7 +2747,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const currentCount = Number(activeChatData.messageCount || activeChat.messageCount || 0);
             const currentMedia = Number(activeChatData.mediaCount || activeChat.mediaCount || 0);
             if (all.length !== currentCount || media.length !== currentMedia) {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), {
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), {
                 messageCount: all.length,
                 mediaCount: media.length,
                 statsUpdatedAt: Date.now(),
@@ -2744,11 +2761,11 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         };
         loadAllChatMeta();
         return () => { cancelled = true; };
-      }, [activeChat?.id, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
+      }, [activeChatId, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
 
       const loadMoreChatMessages = async () => {
         try {
-          if (!activeChat || !user) return;
+          if (!activeChatId || !user) return;
           if (chatLoadingMore) return;
           if (!chatHasMore) return;
 
@@ -2761,7 +2778,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           // Mark as prepending so the "scroll-to-bottom" effect does not fire
           chatIsPrependingRef.current = true;
 
-          const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+          const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages');
           const nextQ = query(messagesRef, orderBy('timestamp', 'desc'), startAfter(cursor), limit(CHAT_PAGE_SIZE));
 
           const snap = await getDocs(nextQ);
@@ -5997,54 +6014,16 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       };
 
 
-      const startRecording = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              channelCount: 1,
-            }
-          });
-          const recorderCfg = getSupportedAudioRecorderConfig();
-          const recorderOpts = {};
-          if (recorderCfg.mimeType) recorderOpts.mimeType = recorderCfg.mimeType;
-          if (recorderCfg.audioBitsPerSecond) recorderOpts.audioBitsPerSecond = recorderCfg.audioBitsPerSecond;
-          mediaRecorderRef.current = new MediaRecorder(stream, recorderOpts);
-          mediaRecorderRef.current.ondataavailable = (e) => {
-            if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
-          };
-          mediaRecorderRef.current.onstop = () => {
-            const finalMime = mediaRecorderRef.current.mimeType || recorderCfg.mimeType || 'audio/webm';
-            const audioBlob = new Blob(audioChunksRef.current, { type: finalMime });
-            audioChunksRef.current = [];
-            const reader = new FileReader();
-            reader.readAsDataURL(audioBlob);
-            reader.onloadend = () => { sendMessage(null, null, reader.result); };
-          };
-          audioChunksRef.current = [];
-          mediaRecorderRef.current.start(250);
-          setIsRecording(true);
-        } catch (err) { showToast("Mikrofon-Zugriff verweigert"); }
-      };
 
-      const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-          mediaRecorderRef.current.stop();
-          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-          setIsRecording(false);
-        }
-      };
 
       function handleTyping(e) {
          const value = e.target.value;
          setNewMessageText(value);
-         if (!activeChat || !user) return;
-         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user?.uid}`]: value.length > 0, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
+         if (!activeChatId || !user) return;
+         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: value.length > 0, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
          typingTimeoutRef.current = setTimeout(() => {
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user?.uid}`]: false, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
+            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: false, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
          }, 2200);
       }
 
@@ -6111,15 +6090,72 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const visibleChatMessages = ((isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media') ? baseByType : (chatMessages || [])).filter(Boolean);
 
+      const enqueuePendingMessage = (entry) => {
+        pendingOutgoingRef.current = [...pendingOutgoingRef.current, entry];
+      };
+
+      const flushPendingMessages = async () => {
+        if (!user || !navigator.onLine) return;
+        if (pendingFlushInFlightRef.current) return;
+        const queue = pendingOutgoingRef.current;
+        if (!Array.isArray(queue) || queue.length === 0) return;
+
+        pendingFlushInFlightRef.current = true;
+        try {
+          for (const entry of [...queue]) {
+            const chatId = entry?.chatId;
+            const payload = entry?.payload;
+            if (!chatId || !payload) continue;
+            try {
+              await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages'), payload);
+              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), {
+                updatedAt: Date.now(),
+                lastMessageSenderId: user?.uid,
+                messageCount: increment(1),
+                mediaCount: payload.image ? increment(1) : increment(0),
+                [`typing.${user?.uid}`]: false,
+                [`typingAt.${user?.uid}`]: Date.now()
+              });
+              pendingOutgoingRef.current = pendingOutgoingRef.current.filter(m => m?.clientMsgId !== entry?.clientMsgId);
+              const now = Date.now();
+              setLastChatVisit(now);
+              localStorage.setItem('onyx_last_chat_visit', now.toString());
+            } catch (error) {
+              console.error('flushPendingMessages failed', error);
+            }
+          }
+          if (pendingOutgoingRef.current.length === 0) showToast('Ausstehende Nachrichten wurden gesendet');
+        } finally {
+          pendingFlushInFlightRef.current = false;
+        }
+      };
+
+      useEffect(() => {
+        if (!user?.uid) {
+          pendingOutgoingRef.current = [];
+          return;
+        }
+
+        const tryFlush = () => {
+          flushPendingMessages().catch((error) => {
+            console.error('tryFlush pending failed', error);
+          });
+        };
+
+        window.addEventListener('online', tryFlush);
+        if (navigator.onLine) tryFlush();
+        return () => window.removeEventListener('online', tryFlush);
+      }, [user?.uid, activeChatId]);
+
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
         if (e) e.preventDefault();
 
-        if (!activeChat || !user) return;
+        if (!activeChatId || !user) return;
 
         // Edit existing
         if (editingMessage) {
           try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', editingMessage.id), {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', editingMessage.id), {
               text: (newMessageText || '').trim(),
               edited: true,
               editedAt: Date.now()
@@ -6178,8 +6214,8 @@ setSelfDestruct(false);
         refocusChatInput();
 
         try {
-          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages'), payload);
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), {
             updatedAt: Date.now(),
             lastMessageSenderId: user?.uid,
             messageCount: increment(1),
@@ -6193,9 +6229,12 @@ setSelfDestruct(false);
           localStorage.setItem('onyx_last_chat_visit', now.toString());
         } catch (error) {
           console.error('sendMessage failed', error);
-          // Optimistic rollback
-          setChatMessages(prev => (prev || []).filter(m => m.clientMsgId !== clientMsgId));
-          showToast('Senden fehlgeschlagen');
+          enqueuePendingMessage({
+            clientMsgId,
+            chatId: activeChatId,
+            payload,
+          });
+          showToast('Offline gespeichert – wird automatisch gesendet');
           refocusChatInput();
         }
       };
@@ -6334,7 +6373,7 @@ setSelfDestruct(false);
                 <span>{formatAudioClock(duration || 0)}</span>
               </div>
             </div>
-            <audio ref={audioRef} src={src} preload="metadata" />
+            <audio ref={audioRef} src={src} preload="metadata" playsInline onError={() => { setPlayingAudioId(null); showToast('Audio kann auf diesem Gerät nicht abgespielt werden'); }} />
           </div>
         );
       };
@@ -9062,6 +9101,14 @@ setSelfDestruct(false);
 
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
+                      <div className="mb-4 px-2">
+                        <h3 className="text-sm md:text-base font-semibold text-white">Freunde hinzufügen & verwalten</h3>
+                        <p className="text-xs text-neutral-500 mt-1">Alles für Kontakte liegt jetzt direkt im Secret-Chat-Dashboard.</p>
+                        <div className="mt-3 p-3 rounded-xl border border-neutral-800 bg-neutral-950/40 text-xs text-neutral-300">
+                          <p className="font-medium text-white">Freundesliste bearbeiten</p>
+                          <p className="mt-1 text-neutral-400">Lang auf einen Chat drücken für Optionen wie Entfernen/Stummschalten/Pinnen. Entfernte Freunde erscheinen unten bei „Kürzlich entfernte Freunde" zum Wiederherstellen.</p>
+                        </div>
+                      </div>
                       <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
                         <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
                         
@@ -9491,11 +9538,6 @@ setSelfDestruct(false);
                           </div>
                           
                           <div className="flex-1 relative">
-                            {isRecording ? (
-                              <div className="w-full bg-red-950 border border-red-900 text-red-500 rounded-2xl pl-4 pr-12 py-3 flex items-center justify-between animate-pulse">
-                                <span className="text-sm font-medium">Aufnahme läuft...</span>
-                              </div>
-                            ) : (
                               <textarea 
                                 id="chatInput"
                                 value={newMessageText} 
@@ -9506,20 +9548,9 @@ setSelfDestruct(false);
                                 className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(editingMessage || replyToMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
                                 style={{ minHeight: '44px', maxHeight: '120px' }} 
                               />
-                            )}
                             
                             <div className="absolute right-1 bottom-1 flex items-center">
-                              {!newMessageText.trim() && !editingMessage && (
-                                <button 
-                                  type="button" 
-                                  onClick={isRecording ? stopRecording : startRecording} 
-                                  className={`p-2 rounded-full transition-colors ${isRecording ? 'text-red-500 hover:bg-red-900/30' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
-                                >
-                                  {isRecording ? <Square className="w-5 h-5" fill="currentColor" /> : <Mic className="w-5 h-5" />}
-                                </button>
-                              )}
-                              
-                              {(!isRecording && (newMessageText.trim() || editingMessage)) && (
+                              {(newMessageText.trim() || editingMessage) && (
                                 <button
                                   type="submit"
                                   onMouseDown={(e) => e.preventDefault()}
@@ -11369,5 +11400,3 @@ setSelfDestruct(false);
 
 
 export default AmoledCalendarApp;
-
-

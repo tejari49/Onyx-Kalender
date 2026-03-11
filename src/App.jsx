@@ -444,14 +444,10 @@ function getSupportedAudioRecorderConfig() {
     catch (_) { return false; }
   };
 
-  // Prefer codecs per platform to avoid short/incomplete playback on some devices.
-  if (isIos) {
-    if (supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
-  }
-  if (supports('audio/webm;codecs=opus')) return { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 };
-  if (supports('audio/ogg;codecs=opus')) return { mimeType: 'audio/ogg;codecs=opus', audioBitsPerSecond: 128000 };
-  if (supports('audio/webm')) return { mimeType: 'audio/webm', audioBitsPerSecond: 96000 };
-  if (supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
+  // Most reliable without backend/storage transcoding:
+  // - iOS prefers mp4
+  // - other browsers work best when the UA chooses default container/codec
+  if (isIos && supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
   return { mimeType: '', audioBitsPerSecond: 96000 };
 }
 
@@ -6075,7 +6071,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             }
           };
           audioChunksRef.current = [];
-          mediaRecorderRef.current.start(250);
+          mediaRecorderRef.current.start();
           setIsRecording(true);
         } catch (err) { showToast("Mikrofon-Zugriff verweigert"); }
       };
@@ -6445,7 +6441,7 @@ setSelfDestruct(false);
                 <span>{formatAudioClock(duration || 0)}</span>
               </div>
             </div>
-            <audio ref={audioRef} src={src} preload="metadata" />
+            <audio ref={audioRef} src={src} preload="metadata" playsInline onError={() => { setPlayingAudioId(null); showToast('Audio kann auf diesem Gerät nicht abgespielt werden'); }} />
           </div>
         );
       };

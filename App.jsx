@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     import { 
       Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
-      Copy, Link2, History, UserMinus
+      Copy, Link2, History, Star, SmilePlus
     } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
@@ -643,6 +643,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [replyToMessage, setReplyToMessage] = useState(null); // { id, senderId, text, image, audio, event }
       const [playingAudioId, setPlayingAudioId] = useState(null);
       const [selectedMessageId, setSelectedMessageId] = useState(null); 
+      const [messageReactionPickerFor, setMessageReactionPickerFor] = useState(null);
       const [selfDestruct, setSelfDestruct] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
       
@@ -692,6 +693,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [messageSearchQuery, setMessageSearchQuery] = useState('');
       const [messageMatchIndex, setMessageMatchIndex] = useState(0);
       const [messageSearchFilter, setMessageSearchFilter] = useState('all');
+      const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+      const chatRetryTimersRef = useRef({});
 
       const [chatMetaPrefs, setChatMetaPrefs] = useState(() => {
         try {
@@ -2071,6 +2074,7 @@ const handleTouchEnd = () => {
       const pinnedChatIds = (userProfile && Array.isArray(userProfile?.pinnedChats)) ? userProfile?.pinnedChats : [];
       const hiddenChatIds = (userProfile && Array.isArray(userProfile?.hiddenChats)) ? userProfile?.hiddenChats : [];
       const friendIds = (userProfile && Array.isArray(userProfile?.friends)) ? userProfile?.friends : [];
+      const removedFriendIds = (userProfile && Array.isArray(userProfile?.removedFriendIds)) ? userProfile?.removedFriendIds : [];
       const blockedUserIds = (userProfile && Array.isArray(userProfile?.blockedUsers)) ? userProfile?.blockedUsers : [];
       const friendRequestIncomingIds = (userProfile && Array.isArray(userProfile?.friendRequestsIncoming)) ? userProfile?.friendRequestsIncoming : [];
       const friendRequestSentIds = (userProfile && Array.isArray(userProfile?.friendRequestsSent)) ? userProfile?.friendRequestsSent : [];
@@ -2100,6 +2104,7 @@ const handleTouchEnd = () => {
         if (f === 'media') return !!(m.image);
         if (f === 'audio') return !!m.audio;
         if (f === 'links') return messageHasLink(m);
+        if (f === 'favorites') return Array.isArray(m?.starredBy) && m.starredBy.includes(user?.uid);
         return true;
       };
 
@@ -2795,6 +2800,32 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         loadAllChatMeta();
         return () => { cancelled = true; };
       }, [activeChat?.id, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
+
+      useEffect(() => {
+        if (!activeChat?.id || !user?.uid) return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        const failedMine = (chatMessages || []).filter((m) => m && m.failed && m.senderId === user?.uid && m.clientMsgId);
+        if (failedMine.length === 0) return;
+        failedMine.forEach((m) => {
+          const key = String(m.clientMsgId || '');
+          if (!key) return;
+          if (chatRetryTimersRef.current[key]) return;
+          const retryCount = Number(m.retryCount || 0);
+          if (retryCount >= 3) return;
+          chatRetryTimersRef.current[key] = setTimeout(async () => {
+            try {
+              await retryFailedMessage(m, { silent: true });
+            } finally {
+              try { clearTimeout(chatRetryTimersRef.current[key]); } catch (_) {}
+              delete chatRetryTimersRef.current[key];
+            }
+          }, 5000);
+        });
+        return () => {
+          Object.values(chatRetryTimersRef.current || {}).forEach((t) => { try { clearTimeout(t); } catch (_) {} });
+          chatRetryTimersRef.current = {};
+        };
+      }, [chatMessages, activeChat?.id, user?.uid]);
 
       const loadMoreChatMessages = async () => {
         try {
@@ -4073,7 +4104,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=36`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=37`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -5762,6 +5793,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         try {
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
             friends: arrayUnion(targetUid),
+            removedFriendIds: arrayRemove(targetUid),
             friendRequestsIncoming: arrayRemove(targetUid),
             friendRequestsSent: arrayRemove(targetUid),
             blockedUsers: arrayRemove(targetUid),
@@ -5850,7 +5882,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         if (existingChat) {
           // Track as friend (so user can manage/remove later)
           try {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
+            const dmId = existingChat?.id || null;
+            const patch = { friends: arrayUnion(targetUserId), removedFriendIds: arrayRemove(targetUserId) };
+            if (dmId) patch.hiddenChats = arrayRemove(dmId);
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
             await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefÃ¼gt: ${targetProfile?.displayName || targetProfile?.username || targetProfile?.email || shortId(targetUserId,6)}` });
           } catch (_) {}
           setActiveChat(existingChat);
@@ -5878,7 +5913,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
           // Save to friends
           try {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { friends: arrayUnion(targetUserId), removedFriendIds: arrayRemove(targetUserId) }, { merge: true });
             await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefÃ¼gt: ${otherName}` });
           } catch (_) {}
 
@@ -5922,6 +5957,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           const dm = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(friendUid));
           const updates = {
             friends: arrayRemove(friendUid),
+            removedFriendIds: arrayUnion(friendUid),
             friendRequestsIncoming: arrayRemove(friendUid),
             friendRequestsSent: arrayRemove(friendUid),
             updatedAt: Date.now()
@@ -5938,6 +5974,24 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           showToast('Freund entfernt');
         } catch (e) {
           console.warn('removeFriend failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const restoreRemovedFriend = async (friendUid) => {
+        if (!user || !friendUid) return;
+        try {
+          const dm = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(friendUid));
+          const patch = {
+            friends: arrayUnion(friendUid),
+            removedFriendIds: arrayRemove(friendUid),
+            updatedAt: Date.now()
+          };
+          if (dm?.id) patch.hiddenChats = arrayRemove(dm.id);
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
+          showToast('Freund wiederhergestellt');
+        } catch (e) {
+          console.warn('restoreRemovedFriend failed', e);
           showToast('Fehler');
         }
       };
@@ -6170,6 +6224,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           audio: audioBase64,
           event: eventDetails,
           replyTo: replyTo,
+          reactions: {},
+          starredBy: [],
           selfDestruct: !!selfDestruct,
           timestamp: Date.now(),
           createdAt: serverTimestamp(),
@@ -6209,10 +6265,66 @@ setSelfDestruct(false);
           localStorage.setItem('onyx_last_chat_visit', now.toString());
         } catch (error) {
           console.error('sendMessage failed', error);
-          // Optimistic rollback
-          setChatMessages(prev => (prev || []).filter(m => m.clientMsgId !== clientMsgId));
+          // Keep failed message in chat so user can retry manually/automatically.
+          setChatMessages(prev => (prev || []).map(m => {
+            if (!m || m.clientMsgId !== clientMsgId) return m;
+            return {
+              ...m,
+              pending: false,
+              failed: true,
+              failedAt: Date.now(),
+              retryCount: Number(m.retryCount || 0)
+            };
+          }));
           showToast('Senden fehlgeschlagen');
           refocusChatInput();
+        }
+      };
+
+      const retryFailedMessage = async (msg, opts = {}) => {
+        if (!activeChat || !user || !msg?.clientMsgId) return;
+        if (msg.deleted || String(msg.id || '').startsWith('local_') === false && !msg.failed) return;
+        const localId = String(msg.id || `local_${msg.clientMsgId}`);
+        const nextRetryCount = Number(msg.retryCount || 0) + 1;
+
+        const payload = {
+          clientMsgId: msg.clientMsgId,
+          senderId: msg.senderId || user?.uid,
+          text: String(msg.text || ''),
+          image: msg.image || null,
+          audio: msg.audio || null,
+          event: msg.event || null,
+          replyTo: msg.replyTo || null,
+          reactions: msg.reactions && typeof msg.reactions === 'object' ? msg.reactions : {},
+          starredBy: Array.isArray(msg.starredBy) ? msg.starredBy : [],
+          selfDestruct: !!msg.selfDestruct,
+          timestamp: Number(msg.timestamp || Date.now()) || Date.now(),
+          createdAt: serverTimestamp(),
+          read: false
+        };
+
+        setChatMessages(prev => (prev || []).map(m => {
+          if (!m || String(m.id || '') !== localId) return m;
+          return { ...m, pending: true, failed: false, retryCount: nextRetryCount, retrying: true };
+        }));
+
+        try {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+            updatedAt: Date.now(),
+            lastMessageSenderId: user?.uid,
+            messageCount: increment(1),
+            mediaCount: msg.image ? increment(1) : increment(0),
+            [`typing.${user?.uid}`]: false,
+            [`typingAt.${user?.uid}`]: Date.now()
+          }).catch(()=>{});
+        } catch (error) {
+          console.error('retryFailedMessage failed', error);
+          setChatMessages(prev => (prev || []).map(m => {
+            if (!m || String(m.id || '') !== localId) return m;
+            return { ...m, pending: false, failed: true, failedAt: Date.now(), retrying: false, retryCount: nextRetryCount };
+          }));
+          if (!opts.silent) showToast('Erneut senden fehlgeschlagen');
         }
       };
 
@@ -6248,6 +6360,37 @@ setSelfDestruct(false);
           refocusChatInput();
         } catch (error) { showToast("Fehler beim LÃ¶schen"); }
       };
+
+      const toggleMessageReaction = async (msg, emoji) => {
+        if (!activeChat || !user || !msg?.id || !emoji) return;
+        if (msg.deleted || msg.pending || String(msg.id || '').startsWith('local_')) return;
+        const path = `reactions.${emoji}`;
+        const mine = Array.isArray(msg?.reactions?.[emoji]) ? msg.reactions[emoji] : [];
+        const already = mine.includes(user?.uid);
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msg.id), {
+            [path]: already ? arrayRemove(user?.uid) : arrayUnion(user?.uid)
+          });
+        } catch (error) {
+          showToast('Reaktion fehlgeschlagen');
+        }
+      };
+
+      const toggleMessageFavorite = async (msg) => {
+        if (!activeChat || !user || !msg?.id) return;
+        if (msg.deleted || msg.pending || String(msg.id || '').startsWith('local_')) return;
+        const mine = Array.isArray(msg?.starredBy) ? msg.starredBy : [];
+        const already = mine.includes(user?.uid);
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msg.id), {
+            starredBy: already ? arrayRemove(user?.uid) : arrayUnion(user?.uid)
+          });
+          showToast(already ? 'Favorit entfernt' : 'Zu Favoriten hinzugefügt');
+        } catch (error) {
+          showToast('Favorit fehlgeschlagen');
+        }
+      };
+
       const handleImageUpload = async (e) => {
         const file0 = e?.target?.files && e.target.files[0];
         if (!file0) return;
@@ -8927,8 +9070,8 @@ SpÃ¤ter
                       <div className="border border-neutral-800 rounded-xl p-6 bg-neutral-950/50 space-y-5">
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <h4 className="text-sm font-semibold text-white flex items-center gap-2"><Users className="w-4 h-4" /> Freunde verwalten</h4>
-                            <p className="text-xs text-neutral-500 mt-1">Anfragen annehmen/ablehnen, Kontakte blockieren oder entfernen.</p>
+                            <h4 className="text-sm font-semibold text-white flex items-center gap-2"><Users className="w-4 h-4" /> Freunde</h4>
+                            <p className="text-xs text-neutral-500 mt-1">Freunde hinzufügen, entfernen und entfernte Kontakte im Überblick behalten.</p>
                           </div>
                         </div>
 
@@ -8937,6 +9080,67 @@ SpÃ¤ter
                           <div className="border border-neutral-800 rounded-xl p-3 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Eingehend</div><div className="text-lg text-white mt-1">{friendRequestIncomingIds.length}</div></div>
                           <div className="border border-neutral-800 rounded-xl p-3 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Gesendet</div><div className="text-lg text-white mt-1">{friendRequestSentIds.length}</div></div>
                           <div className="border border-neutral-800 rounded-xl p-3 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Blockiert</div><div className="text-lg text-white mt-1">{blockedUserIds.length}</div></div>
+                        </div>
+
+                        <div className="relative">
+                          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
+                          <input
+                            type="text"
+                            placeholder="Freund hinzufügen (5-stellige Chat-ID)..."
+                            value={chatSearchQuery}
+                            onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))}
+                            className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors"
+                          />
+                          <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein.</div>
+
+                          {chatFriendLoading && (
+                            <div className="mt-3 px-4 text-xs text-neutral-500">Suche...</div>
+                          )}
+                          {!chatFriendLoading && chatFriendError && (
+                            <div className="mt-3 px-4 text-xs text-red-400">{chatFriendError}</div>
+                          )}
+                          {!chatFriendLoading && chatFriendResult && (
+                            <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">
+                              <div className="p-4 hover:bg-neutral-800 flex items-center gap-3">
+                                <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
+                                  {chatFriendResult.avatarBase64 ? (
+                                    <img
+                                      src={chatFriendResult.avatarThumbBase64 || chatFriendResult.avatarBase64}
+                                      className="w-full h-full object-cover cursor-zoom-in"
+                                      alt="Profilbild"
+                                      onClick={(e) => { e.stopPropagation(); openImageViewer(chatFriendResult.avatarFullBase64 || chatFriendResult.avatarBase64 || chatFriendResult.avatarThumbBase64); }}
+                                    />
+                                  ) : initialsFrom(chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email || '')}
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-white">{chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email}</span>
+                                  <span className="text-[11px] text-neutral-500 font-mono">Chat-ID: {String(chatFriendResult.friendCode || '').padStart(5,'0')}</span>
+                                </div>
+                                <div className="ml-auto flex items-center gap-2">
+                                  {(() => {
+                                    const uid = chatFriendResult.id;
+                                    const isBlocked = blockedUserIds.includes(uid);
+                                    const isFriend = friendIds.includes(uid);
+                                    const incoming = friendRequestIncomingIds.includes(uid);
+                                    const outgoing = friendRequestSentIds.includes(uid);
+                                    const blockedBy = isBlockedByUser(uid);
+                                    if (isBlocked) return <button type="button" onClick={(e) => { e.stopPropagation(); unblockUser(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Entblocken</button>;
+                                    if (blockedBy) return <span className="text-[11px] text-red-300">Kontakt blockiert dich</span>;
+                                    if (isFriend) return <button type="button" onClick={(e) => { e.stopPropagation(); startChatWithProfile(chatFriendResult); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Chat</button>;
+                                    if (incoming) return <><button type="button" onClick={(e) => { e.stopPropagation(); acceptFriendRequest(uid); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Annehmen</button><button type="button" onClick={(e) => { e.stopPropagation(); rejectFriendRequest(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Ablehnen</button></>;
+                                    if (outgoing) return <button type="button" onClick={(e) => { e.stopPropagation(); cancelFriendRequest(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Zurückziehen</button>;
+                                    return <button type="button" onClick={(e) => { e.stopPropagation(); sendFriendRequest(uid); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Anfragen</button>;
+                                  })()}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-end">
+                          <button onClick={() => { setShowCreateGroup(true); setGroupDraftName(''); setGroupDraftMembers([]); setGroupMemberSearch(''); }} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">
+                            <Users className="w-4 h-4" /> Gruppe erstellen
+                          </button>
                         </div>
 
                         {friendRequestIncomingIds.length > 0 && (
@@ -8971,12 +9175,30 @@ SpÃ¤ter
                             <div className="text-[10px] uppercase tracking-widest text-neutral-500">Freunde</div>
                             {friendIds.slice(0, 60).map((uid) => (
                               <div key={`fri_ok_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
-                                <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                <div className="min-w-0">
+                                  <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                  <div className="text-[11px] text-neutral-500">{getPresence(uid).online ? 'online' : (getPresence(uid).lastSeen ? `zuletzt ${formatTime(getPresence(uid).lastSeen)}` : 'offline')}</div>
+                                </div>
                                 <div className="flex items-center gap-2">
                                   <button type="button" onClick={() => startChatWithProfile(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Chat</button>
                                   <button type="button" onClick={() => blockUser(uid)} className="px-3 py-2 rounded-lg border border-red-900/50 text-red-300 text-xs hover:bg-red-950/40">Blockieren</button>
                                   <button type="button" onClick={() => removeFriend(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Entfernen</button>
                                 </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {removedFriendIds.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Entfernte Freunde</div>
+                            {removedFriendIds.slice(0, 60).map((uid) => (
+                              <div key={`fri_removed_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="min-w-0">
+                                  <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                  <div className="text-[11px] text-neutral-500">{getPresence(uid).online ? 'online' : (getPresence(uid).lastSeen ? `zuletzt ${formatTime(getPresence(uid).lastSeen)}` : 'offline')}</div>
+                                </div>
+                                <button type="button" onClick={() => restoreRemovedFriend(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Wiederherstellen</button>
                               </div>
                             ))}
                           </div>
@@ -8994,7 +9216,7 @@ SpÃ¤ter
                           </div>
                         )}
 
-                        {(friendIds.length + friendRequestIncomingIds.length + friendRequestSentIds.length + blockedUserIds.length === 0) && (
+                        {(friendIds.length + friendRequestIncomingIds.length + friendRequestSentIds.length + blockedUserIds.length + removedFriendIds.length === 0) && (
                           <div className="text-xs text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-3">Noch keine Kontakte verwaltet.</div>
                         )}
                       </div>
@@ -9085,90 +9307,7 @@ SpÃ¤ter
 
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
-                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
-                        <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine VorschlÃ¤ge angezeigt.</div>
-                        
-                        {chatFriendLoading && (
-                          <div className="mt-3 px-4 text-xs text-neutral-500">Suche...</div>
-                        )}
-                        {!chatFriendLoading && chatFriendError && (
-                          <div className="mt-3 px-4 text-xs text-red-400">{chatFriendError}</div>
-                        )}
-                        {!chatFriendLoading && chatFriendResult && (
-                          <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">
-                            <div className="p-4 hover:bg-neutral-800 flex items-center gap-3">
-                              <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
-                                {chatFriendResult.avatarBase64 ? (
-                                  <img
-                                    src={chatFriendResult.avatarThumbBase64 || chatFriendResult.avatarBase64}
-                                    className="w-full h-full object-cover cursor-zoom-in"
-                                    alt="Profilbild"
-                                    onClick={(e) => { e.stopPropagation(); openImageViewer(chatFriendResult.avatarFullBase64 || chatFriendResult.avatarBase64 || chatFriendResult.avatarThumbBase64); }}
-                                  />
-                                ) : initialsFrom(chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email || '')}
-                              </div>
-                              <div className="flex flex-col">
-                                <span className="font-medium text-white">{chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email}</span>
-                                <span className="text-[11px] text-neutral-500 font-mono">Chat-ID: {String(chatFriendResult.friendCode || '').padStart(5,'0')}</span>
-                              </div>
-                              <div className="ml-auto flex items-center gap-2">
-                                {(() => {
-                                  const uid = chatFriendResult.id;
-                                  const isBlocked = blockedUserIds.includes(uid);
-                                  const isFriend = friendIds.includes(uid);
-                                  const incoming = friendRequestIncomingIds.includes(uid);
-                                  const outgoing = friendRequestSentIds.includes(uid);
-                                  const blockedBy = isBlockedByUser(uid);
-                                  if (isBlocked) {
-                                    return (
-                                      <button type="button" onClick={(e) => { e.stopPropagation(); unblockUser(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">
-                                        Entblocken
-                                      </button>
-                                    );
-                                  }
-                                  if (blockedBy) {
-                                    return <span className="text-[11px] text-red-300">Kontakt blockiert dich</span>;
-                                  }
-                                  if (isFriend) {
-                                    return (
-                                      <>
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); startChatWithProfile(chatFriendResult); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Chat</button>
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); blockUser(uid); }} className="px-3 py-2 rounded-lg border border-red-900/50 text-red-300 text-xs hover:bg-red-950/40">Blockieren</button>
-                                      </>
-                                    );
-                                  }
-                                  if (incoming) {
-                                    return (
-                                      <>
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); acceptFriendRequest(uid); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Annehmen</button>
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); rejectFriendRequest(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Ablehnen</button>
-                                      </>
-                                    );
-                                  }
-                                  if (outgoing) {
-                                    return (
-                                      <button type="button" onClick={(e) => { e.stopPropagation(); cancelFriendRequest(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">
-                                        Anfrage zurückziehen
-                                      </button>
-                                    );
-                                  }
-                                  return (
-                                    <>
-                                      <button type="button" onClick={(e) => { e.stopPropagation(); sendFriendRequest(uid); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Anfragen</button>
-                                      <button type="button" onClick={(e) => { e.stopPropagation(); startChatWithProfile(chatFriendResult); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Direkt Chat</button>
-                                    </>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-end mb-6 px-2">
-                        <button onClick={() => { setShowCreateGroup(true); setGroupDraftName(''); setGroupDraftMembers([]); setGroupMemberSearch(''); }} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">
-                          <Users className="w-4 h-4" /> Gruppe erstellen
-                        </button>
-                      </div>
+                      <div className="mb-6 px-2 text-xs text-neutral-500">Freunde hinzufügen/entfernen findest du unter <span className="text-neutral-300">Secret Chat → Einstellungen → Freunde</span>.</div>
                       <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-4 font-semibold px-2">Verlauf</h4>
                       <div className="space-y-2">
                         {sortedMyChats.length === 0 ? (
@@ -9184,6 +9323,7 @@ SpÃ¤ter
                               const isMuted = mutedChatIds.includes(chat.id);
                               const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
                               const otherUid = isDm ? chat.participants.find(id => id !== user?.uid) : null;
+                              const otherPresence = otherUid ? getPresence(otherUid) : null;
                               return (
                                 <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
                                   <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
@@ -9201,17 +9341,16 @@ SpÃ¤ter
                                     {chat.lastMessageSenderId !== user?.uid && chat.updatedAt > lastChatVisit ? (
                                       <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
                                     ) : (
-                                      <p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Ã–ffnen...</p>
+                                      <p className="text-xs text-neutral-500 truncate mt-0.5">
+                                        {isDm
+                                          ? (otherPresence?.online ? 'online' : (otherPresence?.lastSeen ? `zuletzt ${formatTime(otherPresence.lastSeen)}` : 'offline'))
+                                          : 'Tippen zum Ã–ffnen...'}
+                                      </p>
                                     )}
                                   </div>
                                   <button onClick={(e) => { e.stopPropagation(); toggleMuteChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isMuted ? 'bg-neutral-950 text-white border-neutral-500' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isMuted ? 'Stumm aus' : 'Stumm schalten'}>
                                     {isMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
                                   </button>
-                                  {isDm && otherUid && (
-                                    <button onClick={(e) => { e.stopPropagation(); if (confirm('Freund entfernen und Chat ausblenden?')) removeFriend(otherUid); }} className="p-2 rounded-lg border border-red-900/30 bg-red-900/10 text-red-400 hover:bg-red-900/30" title="Freund entfernen">
-                                      <UserMinus className="w-4 h-4" />
-                                    </button>
-                                  )}
                                   <button onClick={(e) => { e.stopPropagation(); togglePinChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isPinned ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isPinned ? 'Unpin' : 'Pin'}>
                                     <Pin className="w-4 h-4" />
                                   </button>
@@ -9223,7 +9362,7 @@ SpÃ¤ter
                       </div>
                     </div>
                   ) : (
-                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => setSelectedMessageId(null)}>
+                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => { setSelectedMessageId(null); setMessageReactionPickerFor(null); }}>
                       {isMessageSearchOpen && (
 
                         <div className="px-4 py-2 bg-neutral-950 border-b border-neutral-900 flex flex-col gap-2 shrink-0">
@@ -9275,6 +9414,8 @@ SpÃ¤ter
                             <button onClick={() => { setMessageSearchFilter('audio'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'audio' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Audio</button>
 
                             <button onClick={() => { setMessageSearchFilter('links'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'links' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Links</button>
+
+                            <button onClick={() => { setMessageSearchFilter('favorites'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'favorites' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Favoriten</button>
 
                           </div>
 
@@ -9343,11 +9484,21 @@ SpÃ¤ter
                           if (!msg) return null;
                           const isMe = msg?.senderId === user?.uid;
                           const showActions = selectedMessageId === msg?.id;
+                          const isFavorite = Array.isArray(msg?.starredBy) && msg.starredBy.includes(user?.uid);
+                          const showReactionPicker = messageReactionPickerFor === msg?.id;
+                          const reactionRows = Object.entries(msg?.reactions || {})
+                            .map(([emoji, uids]) => ({ emoji, uids: Array.isArray(uids) ? uids.filter(Boolean) : [] }))
+                            .filter((row) => row.emoji && row.uids.length > 0);
                           
                           return (
                             <div key={msg.id} id={`msg-${msg.id}`} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                               <div 
-                                onClick={(e) => { e.stopPropagation(); setSelectedMessageId(showActions ? null : msg.id); }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const nextId = showActions ? null : msg.id;
+                                  setSelectedMessageId(nextId);
+                                  if (!nextId) setMessageReactionPickerFor(null);
+                                }}
                                 className={`max-w-[85%] rounded-2xl p-3 cursor-pointer transition-colors relative ${isMe ? 'bg-white text-black rounded-tr-sm hover:bg-gray-200' : 'bg-neutral-900 border border-neutral-800 text-white rounded-tl-sm hover:bg-neutral-800'}${isMessageSearchOpen && currentMatchId && String(currentMatchId) === String(msg.id) ? ' ring-2 ring-white/70' : ''}`}
                               >
                                 {/* SelbstzerstÃ¶rungs-Indikator */}
@@ -9417,10 +9568,30 @@ SpÃ¤ter
                                 ) : (
                                   msg.text && <p className="text-sm whitespace-pre-wrap">{(isMessageSearchOpen && String(messageSearchQuery || '').trim()) ? renderHighlightedText(msg.text, messageSearchQuery, { isMe, active: String(currentMatchId) === String(msg.id) }) : msg.text}</p>
                                 )}
+
+                                {!msg.deleted && reactionRows.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {reactionRows.map((row) => {
+                                      const mine = row.uids.includes(user?.uid);
+                                      return (
+                                        <button
+                                          key={`${msg.id}_${row.emoji}`}
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); toggleMessageReaction(msg, row.emoji); }}
+                                          className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${mine ? 'bg-white text-black border-white' : (isMe ? 'bg-black/15 border-black/20 text-black/80' : 'bg-black/40 border-neutral-700 text-neutral-200')}`}
+                                          title={mine ? 'Reaktion entfernen' : 'Reagieren'}
+                                        >
+                                          {row.emoji} {row.uids.length}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                                 
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
                                   {msg.deleted && <span className="text-[9px] mr-1">(gelÃ¶scht)</span>}
                                   {!msg.deleted && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
+                                  {!msg.deleted && isFavorite && <Star className={`w-3 h-3 mr-1 ${isMe ? 'text-black/70' : 'text-yellow-300/90'}`} />}
                                   {chatMetaPrefs.showTime && (
                                     <span className="text-[10px] block text-right">
                                       {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -9429,6 +9600,8 @@ SpÃ¤ter
                                   {isMe && chatMetaPrefs.receipts !== 'off' && (
                                     <span className="text-[10px] ml-1">
                                       {(() => {
+                                        if (msg.failed) return 'Fehler';
+                                        if (msg.pending || msg.retrying) return 'wird versendet…';
                                         const mode = chatMetaPrefs.receipts;
                                         const chat = activeChatData || activeChat;
                                         const group = isGroupChat(chat);
@@ -9438,21 +9611,43 @@ SpÃ¤ter
                                           const denom = Math.max(0, ids.length - 1);
                                           const seenCount = ids.filter(id => id !== user?.uid && (lastRead?.[id] || 0) >= (msg.timestamp || 0)).length;
                                           if (seenCount > 0) return (mode === 'compact') ? `gesehen ${seenCount}/${denom}` : `gesehen von ${seenCount}/${denom}`;
-                                          if (msg.deliveredAt || msg.delivered) return 'zugestellt';
-                                          return 'gesendet';
+                                          if (msg.deliveredAt || msg.delivered) return 'angekommen';
+                                          return 'versendet';
                                         }
-                                        if (msg.readAt) return mode === 'full' ? `gesehen ${formatTime(msg.readAt)}`.trim() : 'gesehen';
-                                        if (msg.read) return 'gesehen';
-                                        if (msg.deliveredAt) return mode === 'full' ? `zugestellt ${formatTime(msg.deliveredAt)}`.trim() : 'zugestellt';
-                                        if (msg.delivered) return 'zugestellt';
-                                        return 'gesendet';
+                                        if (msg.readAt) return mode === 'full' ? `gelesen ${formatTime(msg.readAt)}`.trim() : 'gelesen';
+                                        if (msg.read) return 'gelesen';
+                                        if (msg.deliveredAt) return mode === 'full' ? `angekommen ${formatTime(msg.deliveredAt)}`.trim() : 'angekommen';
+                                        if (msg.delivered) return 'angekommen';
+                                        return 'versendet';
                                       })()}
                                     </span>
                                   )}
                                 </div>
 
+                                {isMe && msg.failed && (
+                                  <div className="mt-2 flex items-center justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); retryFailedMessage(msg); }}
+                                      className="px-2.5 py-1 rounded-full text-[11px] border border-red-500/60 text-red-300 hover:bg-red-500/10"
+                                    >
+                                      Erneut senden
+                                    </button>
+                                  </div>
+                                )}
+
                                 {showActions && (
                                   <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
+                                    {!msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setMessageReactionPickerFor(showReactionPicker ? null : msg.id); }}
+                                        className={`p-2 rounded-md ${showReactionPicker ? 'bg-white text-black' : 'text-white hover:bg-neutral-700'}`}
+                                        title="Emoji auswählen"
+                                      >
+                                        <SmilePlus className="w-4 h-4" />
+                                      </button>
+                                    )}
+
                                     {!msg.deleted && (
                                       <button
                                         onClick={(e) => {
@@ -9476,6 +9671,16 @@ SpÃ¤ter
                                         <CornerUpLeft className="w-4 h-4" />
                                       </button>
                                     )}
+
+                                    {!msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleMessageFavorite(msg); }}
+                                        className={`p-2 rounded-md ${isFavorite ? 'text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20' : 'text-white hover:bg-neutral-700'}`}
+                                        title={isFavorite ? 'Favorit entfernen' : 'Als Favorit markieren'}
+                                      >
+                                        <Star className="w-4 h-4" />
+                                      </button>
+                                    )}
                                     
                                     {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
                                       <button onClick={(e) => { e.stopPropagation(); setReplyToMessage(null); setEditingMessage(msg); setNewMessageText(msg.text); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
@@ -9483,6 +9688,28 @@ SpÃ¤ter
                                     {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="LÃ¶schen"><Trash2 className="w-4 h-4" /></button>
                                     )}
+                                  </div>
+                                )}
+
+                                {showActions && showReactionPicker && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                  <div className={`absolute top-full mt-12 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
+                                    {quickReactionEmojis.map((emoji) => {
+                                      const mine = Array.isArray(msg?.reactions?.[emoji]) && msg.reactions[emoji].includes(user?.uid);
+                                      return (
+                                        <button
+                                          key={`${msg.id}_react_${emoji}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleMessageReaction(msg, emoji);
+                                            setMessageReactionPickerFor(null);
+                                          }}
+                                          className={`px-2 py-1 rounded-md text-sm ${mine ? 'bg-white text-black' : 'text-white hover:bg-neutral-700'}`}
+                                          title={`Mit ${emoji} reagieren`}
+                                        >
+                                          {emoji}
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>

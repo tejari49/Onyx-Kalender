@@ -2279,14 +2279,26 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       useEffect(() => {
         if (!isMessageSearchOpen) return;
-        if (!messageMatches || messageMatches.length === 0) return;
-        const idx = Math.max(0, Math.min(messageMatchIndex, messageMatches.length - 1));
-        const id = messageMatches[idx].id;
+        const q = String(messageSearchQuery || '').trim().toLowerCase();
+        const matchesForScroll = ((chatMessages || []).filter(Boolean))
+          .filter((m) => {
+            if (messageSearchFilter === 'media') {
+              if (!m?.image) return false;
+              if (!q) return true;
+              return String(m?.text || '').toLowerCase().includes(q);
+            }
+            if (!messageTypeMatchesFilter(m, messageSearchFilter)) return false;
+            if (!q) return true;
+            return String(m?.text || '').toLowerCase().includes(q);
+          });
+        if (!matchesForScroll || matchesForScroll.length === 0) return;
+        const idx = Math.max(0, Math.min(messageMatchIndex, matchesForScroll.length - 1));
+        const id = matchesForScroll[idx].id;
         setTimeout(() => {
           const el = document.getElementById(`msg-${id}`);
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 0);
-      }, [messageMatchIndex, messageSearchQuery, messageSearchFilter, isMessageSearchOpen, messageMatches]);
+      }, [messageMatchIndex, messageSearchQuery, messageSearchFilter, isMessageSearchOpen, chatMessages]);
 
 
       useEffect(() => {

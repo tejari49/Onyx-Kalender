@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     import { 
       Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
-      Copy, Link2, History, UserMinus, Star
+      Copy, Link2, History, UserMinus, Star, SmilePlus
     } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
@@ -643,6 +643,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [replyToMessage, setReplyToMessage] = useState(null); // { id, senderId, text, image, audio, event }
       const [playingAudioId, setPlayingAudioId] = useState(null);
       const [selectedMessageId, setSelectedMessageId] = useState(null); 
+      const [messageReactionPickerFor, setMessageReactionPickerFor] = useState(null);
       const [selfDestruct, setSelfDestruct] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
       
@@ -9341,7 +9342,7 @@ SpÃ¤ter
                       </div>
                     </div>
                   ) : (
-                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => setSelectedMessageId(null)}>
+                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => { setSelectedMessageId(null); setMessageReactionPickerFor(null); }}>
                       {isMessageSearchOpen && (
 
                         <div className="px-4 py-2 bg-neutral-950 border-b border-neutral-900 flex flex-col gap-2 shrink-0">
@@ -9464,6 +9465,7 @@ SpÃ¤ter
                           const isMe = msg?.senderId === user?.uid;
                           const showActions = selectedMessageId === msg?.id;
                           const isFavorite = Array.isArray(msg?.starredBy) && msg.starredBy.includes(user?.uid);
+                          const showReactionPicker = messageReactionPickerFor === msg?.id;
                           const reactionRows = Object.entries(msg?.reactions || {})
                             .map(([emoji, uids]) => ({ emoji, uids: Array.isArray(uids) ? uids.filter(Boolean) : [] }))
                             .filter((row) => row.emoji && row.uids.length > 0);
@@ -9471,7 +9473,12 @@ SpÃ¤ter
                           return (
                             <div key={msg.id} id={`msg-${msg.id}`} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                               <div 
-                                onClick={(e) => { e.stopPropagation(); setSelectedMessageId(showActions ? null : msg.id); }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const nextId = showActions ? null : msg.id;
+                                  setSelectedMessageId(nextId);
+                                  if (!nextId) setMessageReactionPickerFor(null);
+                                }}
                                 className={`max-w-[85%] rounded-2xl p-3 cursor-pointer transition-colors relative ${isMe ? 'bg-white text-black rounded-tr-sm hover:bg-gray-200' : 'bg-neutral-900 border border-neutral-800 text-white rounded-tl-sm hover:bg-neutral-800'}${isMessageSearchOpen && currentMatchId && String(currentMatchId) === String(msg.id) ? ' ring-2 ring-white/70' : ''}`}
                               >
                                 {/* SelbstzerstÃ¶rungs-Indikator */}
@@ -9564,6 +9571,7 @@ SpÃ¤ter
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
                                   {msg.deleted && <span className="text-[9px] mr-1">(gelÃ¶scht)</span>}
                                   {!msg.deleted && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
+                                  {!msg.deleted && isFavorite && <Star className={`w-3 h-3 mr-1 ${isMe ? 'text-black/70' : 'text-yellow-300/90'}`} />}
                                   {chatMetaPrefs.showTime && (
                                     <span className="text-[10px] block text-right">
                                       {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -9610,6 +9618,16 @@ SpÃ¤ter
 
                                 {showActions && (
                                   <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
+                                    {!msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setMessageReactionPickerFor(showReactionPicker ? null : msg.id); }}
+                                        className={`p-2 rounded-md ${showReactionPicker ? 'bg-white text-black' : 'text-white hover:bg-neutral-700'}`}
+                                        title="Emoji auswählen"
+                                      >
+                                        <SmilePlus className="w-4 h-4" />
+                                      </button>
+                                    )}
+
                                     {!msg.deleted && (
                                       <button
                                         onClick={(e) => {
@@ -9636,27 +9654,13 @@ SpÃ¤ter
 
                                     {!msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button
-                                        onClick={(e) => { e.stopPropagation(); toggleMessageFavorite(msg); setSelectedMessageId(null); }}
+                                        onClick={(e) => { e.stopPropagation(); toggleMessageFavorite(msg); }}
                                         className={`p-2 rounded-md ${isFavorite ? 'text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20' : 'text-white hover:bg-neutral-700'}`}
                                         title={isFavorite ? 'Favorit entfernen' : 'Als Favorit markieren'}
                                       >
                                         <Star className="w-4 h-4" />
                                       </button>
                                     )}
-
-                                    {!msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && quickReactionEmojis.map((emoji) => {
-                                      const mine = Array.isArray(msg?.reactions?.[emoji]) && msg.reactions[emoji].includes(user?.uid);
-                                      return (
-                                        <button
-                                          key={`${msg.id}_react_${emoji}`}
-                                          onClick={(e) => { e.stopPropagation(); toggleMessageReaction(msg, emoji); setSelectedMessageId(null); }}
-                                          className={`px-2 py-1 rounded-md text-sm ${mine ? 'bg-white text-black' : 'text-white hover:bg-neutral-700'}`}
-                                          title={`Mit ${emoji} reagieren`}
-                                        >
-                                          {emoji}
-                                        </button>
-                                      );
-                                    })}
                                     
                                     {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
                                       <button onClick={(e) => { e.stopPropagation(); setReplyToMessage(null); setEditingMessage(msg); setNewMessageText(msg.text); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
@@ -9664,6 +9668,28 @@ SpÃ¤ter
                                     {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="LÃ¶schen"><Trash2 className="w-4 h-4" /></button>
                                     )}
+                                  </div>
+                                )}
+
+                                {showActions && showReactionPicker && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                  <div className={`absolute top-full mt-12 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
+                                    {quickReactionEmojis.map((emoji) => {
+                                      const mine = Array.isArray(msg?.reactions?.[emoji]) && msg.reactions[emoji].includes(user?.uid);
+                                      return (
+                                        <button
+                                          key={`${msg.id}_react_${emoji}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleMessageReaction(msg, emoji);
+                                            setMessageReactionPickerFor(null);
+                                          }}
+                                          className={`px-2 py-1 rounded-md text-sm ${mine ? 'bg-white text-black' : 'text-white hover:bg-neutral-700'}`}
+                                          title={`Mit ${emoji} reagieren`}
+                                        >
+                                          {emoji}
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>

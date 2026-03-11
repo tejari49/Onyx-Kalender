@@ -7096,12 +7096,14 @@ setSelfDestruct(false);
             </div>
           </aside>
 
-          <nav className="md:hidden fixed bottom-0 left-0 right-0 w-screen h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 grid grid-cols-5 items-start z-40 px-2.5 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
-            <button onClick={() => setCurrentView('dashboard')} className={`w-full p-3.5 rounded-2xl flex flex-col items-center justify-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
-            <button onClick={() => setCurrentView('calendar')} className={`w-full p-3.5 rounded-2xl flex flex-col items-center justify-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
-            <button onClick={() => setPlusMenuOpen(true)} className="mx-auto p-4 bg-white text-black rounded-full -mt-7 border-4 border-black shadow-lg"><Plus className="w-7 h-7" /></button>
-            <button onClick={() => setCurrentView('extras')} className={`w-full p-3.5 rounded-2xl flex flex-col items-center justify-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`}><Activity className="w-7 h-7" /></button>
-            <button onClick={() => setCurrentView('settings')} className={`w-full p-3.5 rounded-2xl flex flex-col items-center justify-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
+          <nav className="md:hidden fixed bottom-0 inset-x-0 w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 flex items-center justify-between gap-1 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]">
+            <button onClick={() => setCurrentView('dashboard')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
+            <button onClick={() => setCurrentView('calendar')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
+            <div className="flex-1 min-w-0 flex items-center justify-center">
+              <button onClick={() => setPlusMenuOpen(true)} className="p-4 bg-white text-black rounded-full -mt-7 border-4 border-black shadow-lg"><Plus className="w-7 h-7" /></button>
+            </div>
+            <button onClick={() => setCurrentView('extras')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`}><Activity className="w-7 h-7" /></button>
+            <button onClick={() => setCurrentView('settings')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
           </nav>
 
           <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">

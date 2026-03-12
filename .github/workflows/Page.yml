@@ -16,14 +16,18 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
     steps:
+      # NOTE: v5 tags for checkout/setup-node/deploy-pages are not available here.
+      # Keep these pinned to v4/v3 to avoid "unable to find version `v5`".
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install
         run: npm install
@@ -42,6 +46,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
     environment:
       name: github-pages
     steps:

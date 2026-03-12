@@ -7296,14 +7296,27 @@ setSelfDestruct(false);
                       </div>
                     )}
                     {compactHomeWorkClock && (
-                      <div onClick={() => setCurrentView('extras')} className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 cursor-pointer hover:border-neutral-500 transition-colors">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
-                            <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
-                            <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
+                      <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
+                              <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
+                              <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
+                            </div>
+                            <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Historie</button>
                           </div>
-                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
+
+                          <div className="flex flex-wrap gap-2">
+                            {!workClockActive?.startedAt ? (
+                              <button onClick={startWorkClock} className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
+                            ) : (
+                              <>
+                                <button onClick={toggleWorkClockPause} className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-xs font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Pause fertig' : 'Pause'}</button>
+                                <button onClick={requestStopWorkClock} className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -8007,22 +8020,27 @@ setSelfDestruct(false);
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
                     </div>
-                    {(workClockSessions || []).length > 0 && (
-                      <div className="space-y-2">
-                        {(workClockSessions || []).slice(0, 4).map((s) => (
-                          <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
-                            <div className="min-w-0 flex-1">
-                              <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
-                              <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500 mb-2">Historie</div>
+                      {(workClockSessions || []).length === 0 ? (
+                        <div className="text-sm text-neutral-500 border border-neutral-800 rounded-xl px-3 py-4 bg-black">Noch keine Einträge.</div>
+                      ) : (
+                        <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                          {(workClockSessions || []).slice(0, 20).map((s) => (
+                            <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
+                              <div className="min-w-0 flex-1">
+                                <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
+                                <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
+                                <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
-                              <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </>
                 ), 'xl:col-span-2')});
               }

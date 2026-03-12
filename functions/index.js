@@ -4,7 +4,16 @@ const admin = require("firebase-admin");
 admin.initializeApp();
 
 const REGION = "europe-west6";
-const APP_LINK = "https://DEINE-RENDER-URL.onrender.com"; // <- anpassen
+const APP_LINK = process.env.APP_LINK || ""; // optional, z.B. https://deine-domain.tld
+
+const isValidHttpsUrl = (value) => {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "https:";
+  } catch (_) {
+    return false;
+  }
+};
 
 exports.sendPushTestOnCreate = onDocumentCreated(
   {
@@ -39,7 +48,7 @@ exports.sendPushTestOnCreate = onDocumentCreated(
         return;
       }
 
-      const message = {
+      const baseMessage = {
         token,
         notification: {
           title: "Onyx Test",
@@ -52,13 +61,34 @@ exports.sendPushTestOnCreate = onDocumentCreated(
           title: "Onyx Test",
           body: "Server-Push funktioniert",
         },
+      };
+
+      const hasLink = isValidHttpsUrl(APP_LINK);
+      const firstTryMessage = hasLink ? {
+        ...baseMessage,
         webpush: {
           fcmOptions: { link: APP_LINK },
           headers: { Urgency: "high" },
         },
+      } : {
+        ...baseMessage,
+        webpush: {
+          headers: { Urgency: "high" },
+        },
       };
 
-      const msgId = await admin.messaging().send(message);
+      let msgId = "";
+      try {
+        msgId = await admin.messaging().send(firstTryMessage);
+      } catch (sendErr) {
+        const sendCode = String(sendErr?.code || "");
+        const sendMsg = String(sendErr?.message || sendErr || "");
+        const isInternal = sendCode.includes("messaging/internal-error") || sendMsg.includes("messaging/internal-error");
+        if (!isInternal) throw sendErr;
+
+        // Fallback für sporadische FCM/Internal-Errors: ohne webpush-Optionen erneut senden.
+        msgId = await admin.messaging().send(baseMessage);
+      }
 
       await testRef.set(
         { status: "sent", fcmMessageId: msgId, updatedAt: Date.now() },
@@ -66,7 +96,7 @@ exports.sendPushTestOnCreate = onDocumentCreated(
       );
     } catch (e) {
       await testRef.set(
-        { status: "error", lastError: String(e?.message || e), updatedAt: Date.now() },
+        { status: "error", lastError: `${String(e?.code || "unknown")}: ${String(e?.message || e)}`.slice(0, 500), updatedAt: Date.now() },
         { merge: true }
       );
     }

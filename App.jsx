@@ -4465,8 +4465,14 @@ Kalender aktuell` : 'Kalender aktuell';
               }
             } catch (_) {}
           }, (err) => {
-            setPushTest((prev) => ({ ...prev, status: 'error', lastError: `SNAPSHOT_ERROR: ${err?.code || err?.message || 'unknown'}`, updatedAt: Date.now() }));
-            setPushDiag((prev) => ({ ...prev, lastError: `SERVER_TEST_SNAPSHOT_ERROR: ${err?.code || err?.message || 'unknown'}` }));
+            const code = String(err?.code || err?.message || 'unknown');
+            if (code === 'permission-denied') {
+              setPushTest((prev) => ({ ...prev, status: 'submitted', lastError: 'READ_BLOCKED_BY_RULES', updatedAt: Date.now() }));
+              setPushDiag((prev) => ({ ...prev, lastError: 'SERVER_TEST_READ_BLOCKED: Firestore Rules erlauben kein Lesen von pushTests' }));
+            } else {
+              setPushTest((prev) => ({ ...prev, status: 'error', lastError: `SNAPSHOT_ERROR: ${code}`, updatedAt: Date.now() }));
+              setPushDiag((prev) => ({ ...prev, lastError: `SERVER_TEST_SNAPSHOT_ERROR: ${code}` }));
+            }
             try { if (pushTestWatchdogRef.current) { clearTimeout(pushTestWatchdogRef.current); pushTestWatchdogRef.current = null; } } catch (_) {}
           });
           return () => { try { unsub(); } catch (_) {} };
@@ -8685,7 +8691,7 @@ Später
 
                       {!!pushTest?.id && (
                         <div className="text-[11px] text-neutral-600 break-words">
-                          Server-Test Status: <span className="text-neutral-300">{(() => { const st = String(pushTest.status || 'pending'); if (st === 'timeout') return 'timeout (keine Rückmeldung)'; return st; })()}</span>
+                          Server-Test Status: <span className="text-neutral-300">{(() => { const st = String(pushTest.status || 'pending'); if (st === 'timeout') return 'timeout (keine Rückmeldung)'; if (st === 'submitted') return 'übermittelt (kein Leserecht auf Status)'; return st; })()}</span>
                           {pushTest.lastError ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
                           {String(pushTest.status || '').toLowerCase() === 'timeout' ? <div className="mt-1 text-[11px] text-amber-300">Server hat nicht geantwortet. Bitte Adblock/Shield deaktivieren und Push-Cloud-Function prüfen.</div> : null}
                         </div>
@@ -8721,7 +8727,7 @@ Später
                       </div>
 
                       <div className="text-[11px] text-neutral-600 leading-relaxed">
-                        Hinweis: Wenn "Test (Server)" sofort fehlschlaegt, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create</span>.
+                        Hinweis: Wenn "Test (Server)" fehlschlaegt oder auf "kein Leserecht" steht, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create/read</span> nicht.
                       </div>
                     </div>
                     )}

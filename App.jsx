@@ -687,6 +687,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const extrasCloudReadyRef = useRef(false);
       const extrasCloudTimerRef = useRef(null);
       const activeChatIdRef = useRef(null);
+      const chatSubscribedIdRef = useRef('');
       const currentViewRef = useRef(null);
       const lastChatPingRef = useRef({});
       const myChatsRef = useRef([]);
@@ -2735,6 +2736,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         if (!activeChat || !user) return;
 
         const chatId = String(activeChat.id || '');
+        const participantCount = Array.isArray(activeChat?.participants) ? activeChat.participants.length : 0;
 
         // Reset pagination state when switching chats
         chatOldestCursorRef.current = null;
@@ -2742,8 +2744,11 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         chatAutoLoadLockRef.current = false;
         setChatHasMore(false);
         setChatLoadingMore(false);
-        // Wichtig: alte Nachrichten sofort leeren, damit beim Chatwechsel nichts vermischt wird.
-        setChatMessages([]);
+        // Nur beim echten Chatwechsel leeren (sonst flackert es bei jedem Re-Subscribe).
+        if (chatSubscribedIdRef.current !== chatId) {
+          setChatMessages([]);
+          chatSubscribedIdRef.current = chatId;
+        }
 
         const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
         const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
@@ -2770,10 +2775,10 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           // Read/delivered marking only for messages in latest window
           for (const docSnap of snapshot.docs) {
             const data = docSnap.data() || {};
-            if (data.senderId !== user?.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
+            if (data.senderId !== user?.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (participantCount <= 2)) {
               unreadToUpdate.push(docSnap.id);
             }
-            if (data.senderId !== user?.uid && !data.deliveredAt && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
+            if (data.senderId !== user?.uid && !data.deliveredAt && (participantCount <= 2)) {
               deliveredToUpdate.push(docSnap.id);
             }
           }
@@ -2808,7 +2813,8 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           try {
             const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user?.uid) {
-              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
+              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+              const mutedChatIds = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
               const isMuted = mutedChatIds.includes(chatId);
               const canNotify = (('Notification' in window) && Notification.permission === 'granted');
               const key = `onyx_last_notify_${chatId}`;
@@ -2854,7 +2860,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         return () => unsubscribeMessages();
-      }, [activeChat, user, currentView, secretView, userProfile]);
+      }, [activeChat?.id, user?.uid, currentView, secretView]);
 
       useEffect(() => {
         let cancelled = false;
@@ -9337,7 +9343,8 @@ setSelfDestruct(false);
                             )}
                             {sortedMyChats.map(chat => {
                               const isPinned = pinnedChatIds.includes(chat.id);
-                              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
+                              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+              const mutedChatIds = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
                               const isMuted = mutedChatIds.includes(chat.id);
                               const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
                               const otherUid = isDm ? chat.participants.find(id => id !== user?.uid) : null;

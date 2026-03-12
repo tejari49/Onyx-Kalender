@@ -314,7 +314,7 @@ function AmoledCalendarApp() {
       const [authError, setAuthError] = useState('');
       
       const [currentView, setCurrentView] = useState('dashboard');
-      const [settingsTab, setSettingsTab] = useState('calendars');
+      const [settingsTab, setSettingsTab] = useState('account');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
       const [uiTheme, setUiTheme] = useState(() => {
@@ -709,6 +709,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
         } catch (_) { return raw; }
       };
       const chatRetryTimersRef = useRef({});
+      const pushTestWatchdogRef = useRef(null);
 
       const [chatMetaPrefs, setChatMetaPrefs] = useState(() => {
         try {
@@ -3094,71 +3095,71 @@ const requestNotificationPermission = async (currentUser) => {
         (async () => {
           const messaging = await getMessagingSafe();
           if (!messaging) return;
-          unsubscribeMessage = onMessage(messaging, (payload) => {
-            const data = payload?.data || {};
-            const kind = data.kind || '';
-            const chatId = data.chatId || '';
-            const incomingTitle = data.title || payload?.notification?.title || 'Neue Benachrichtigung!';
-            const incomingBody = data.body || payload?.notification?.body || '';
-            const payloadTs = Number(data.timestamp || data.sentAt || data.createdAtMs || Date.now()) || Date.now();
-            const allowChatNotify = !(kind === 'chat' && chatId) || consumeChatNotificationSlot(chatId, payloadTs);
-            const privateCopy = { title: 'Kalender Aktuell', body: pickNextNotificationQuote() };
-            const tag = data.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
-            const notifTitle = (kind === 'chat') ? privateCopy.title : incomingTitle;
-            const notifBody = (kind === 'chat') ? privateCopy.body : incomingBody;
+	          unsubscribeMessage = onMessage(messaging, (payload) => {
+	            const kind = payload?.data?.kind || '';
+	            const chatId = payload?.data?.chatId || '';
+	            const incomingTitle = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
+	            const incomingBody = payload?.data?.body || payload?.notification?.body || '';
+	            const tag = payload?.data?.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
+	            const notifTitle = (kind === 'chat') ? 'Kalender Aktuell 🔏' : incomingTitle;
 
-            try {
-              setPushDiag((prev) => ({
-                ...prev,
-                lastReceivedAt: Date.now(),
-                lastReceivedTitle: String(notifTitle || '')
-              }));
-            } catch (_) {}
+	            // Diagnostics: mark push as received even in foreground (SW only fires in background)
+	            try {
+	              setPushDiag((prev) => ({
+	                ...prev,
+	                lastReceivedAt: Date.now(),
+	                lastReceivedTitle: String(notifTitle || '')
+	              }));
+	            } catch (_) {}
 
-            try {
-              const muted = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
-              if (kind === 'chat' && chatId && muted.includes(chatId)) return;
-            } catch (_) {}
+	            // Wenn Chat stummgeschaltet ist: keine In-App Benachrichtigung
+	            try {
+	              const muted = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
+	              if (kind === 'chat' && chatId && muted.includes(chatId)) return;
+	            } catch (_) {}
 
-            let isOpenChat = false;
-            try {
-              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
-              isOpenChat = (kind === 'chat' && chatId && (currentViewRef?.current === 'secret_chat') && (activeChatIdRef?.current === chatId));
-              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !isOpenChat && allowChatNotify) {
-                const enableSound = !(prof && prof.inAppChatSound === false);
-                const enableVibe = !(prof && prof.inAppChatVibrate === false);
-                if (enableSound || enableVibe) {
-                  try { lastChatPingRef.current[chatId] = Math.max(lastChatPingRef.current[chatId] || 0, Date.now()); } catch (_) {}
-                  try { pingInApp({ sound: enableSound, vibrate: enableVibe }); } catch (_) {}
-                }
-              }
-            } catch (_) {}
+	            // Foreground: UI aktualisiert sich via Firestore Listener.
+	            // Chat: optional In-App Ping (Sound/Vibration) wenn App sichtbar ist.
+	            let __isOpenChat = false;
+	            try {
+	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+	              __isOpenChat = (kind === 'chat' && chatId && (currentViewRef?.current === 'secret_chat') && (activeChatIdRef?.current === chatId));
+	              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !__isOpenChat) {
+	                const enableSound = !(prof && prof.inAppChatSound === false);
+	                const enableVibe = !(prof && prof.inAppChatVibrate === false);
+	                if (enableSound || enableVibe) {
+	                  try { lastChatPingRef.current[chatId] = Math.max(lastChatPingRef.current[chatId] || 0, Date.now()); } catch (_) {}
+	                  try { pingInApp({ sound: enableSound, vibrate: enableVibe }); } catch (_) {}
+	                }
+	              }
+	            } catch (_) {}
 
-            try {
-              if (!(kind === 'chat' && isOpenChat)) {
-                const allowToast = !(kind === 'chat' && chatId) || allowChatNotify;
-                if (allowToast) {
-                  const toastMsg = notifBody ? `${notifTitle}: ${notifBody}` : notifTitle;
-                  showToast(toastMsg);
-                }
-              }
-            } catch (_) {}
+	            // Toast als Feedback
+	            try {
+	              const toastMsg = (kind === 'chat') ? 'Kalender Aktuell 🔏' : (incomingBody ? `${notifTitle}: ${incomingBody}` : notifTitle);
+	              showToast(toastMsg);
+	            } catch (_) {}
 
-            try {
-              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
-              const forceShow = String(data.forceShow || '') === '1' || kind === 'test';
-              if (!canNotify) return;
+	            // System-Notification im Vordergrund nur bei Test/forceShow oder wenn Tab nicht sichtbar.
+	            // Optional: auch für Chat im Vordergrund, falls aktiviert.
+	            try {
+	              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
+	              const forceShow = String(payload?.data?.forceShow || '') === '1' || kind === 'test';
+	              if (!canNotify) return;
 
-              if (kind === 'chat' && chatId && !isOpenChat && allowChatNotify) {
-                showSystemNotification(notifTitle || 'Kalender Aktuell', notifBody || null, tag);
-                return;
-              }
+	              // Always show a real OS notification for incoming chat messages (also while app is open).
+	              if (kind === 'chat' && chatId) {
+	                // Privacy: Chat OS notification should not show preview/body
+	                showSystemNotification('Kalender Aktuell 🔏', null, tag);
+	                return;
+	              }
 
-              if (forceShow || document.visibilityState !== 'visible') {
-                showSystemNotification(notifTitle, notifBody, tag);
-              }
-            } catch (_) {}
-          });
+	              // Non-chat pushes (tests, reminders, etc.)
+	              if (forceShow || document.visibilityState !== 'visible') {
+	                showSystemNotification(notifTitle, (kind === 'chat') ? null : incomingBody, tag);
+	              }
+	            } catch (_) {}
+	          });
         })();
 
         return () => {
@@ -4247,6 +4248,12 @@ useEffect(() => {
 }, [user]);
 
 useEffect(() => {
+  return () => {
+    try { if (pushTestWatchdogRef.current) clearTimeout(pushTestWatchdogRef.current); } catch (_) {}
+  };
+}, []);
+
+useEffect(() => {
   if (!('serviceWorker' in navigator)) return;
   const checkForUpdate = async () => {
     try {
@@ -4373,33 +4380,60 @@ Kalender aktuell` : 'Kalender aktuell';
       const sendServerPushTest = async () => {
         try {
           if (!user) return;
+
+          const canNotify = ('Notification' in window) && Notification.permission === 'granted';
+          if (!canNotify) {
+            showToast('Keine Benachrichtigungs-Berechtigung');
+            setPushDiag((prev) => ({ ...prev, lastError: 'NOTIFICATION_PERMISSION_NOT_GRANTED' }));
+            return;
+          }
+
+          try { await ensureWebPushToken(user, { forcePrompt: false }); } catch (_) {}
+          const tokenPresent = !!((userProfileRef?.current && userProfileRef.current?.fcmTokenWeb) || userProfile?.fcmTokenWeb);
+          if (!tokenPresent) {
+            showToast('Kein Web-Token vorhanden');
+            setPushDiag((prev) => ({ ...prev, lastError: 'NO_WEB_PUSH_TOKEN' }));
+            return;
+          }
+
           const id = `${user?.uid}_${Date.now()}`;
-          try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {}
-          setPushTest({ id, status: 'pending', lastError: '', updatedAt: Date.now() });
+          const startedAt = Date.now();
+          setPushTest({ id, status: 'pending', lastError: '', updatedAt: startedAt });
           await setDoc(
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', id),
             {
               uid: user?.uid,
               createdAt: serverTimestamp(),
-              createdAtMs: Date.now(),
+              createdAtMs: startedAt,
               status: 'pending',
               platform: 'web',
+              tokenPresent: true,
               ua: String((typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '').slice(0, 220)
             },
             { merge: true }
           );
-          showToast('Server-Test ausgelöst (oxynoti)');
-          pushTestTimeoutRef.current = setTimeout(() => {
-            try {
-              setPushTest((prev) => {
-                if (String(prev?.id || '') !== id) return prev;
-                const st = String(prev?.status || '').toLowerCase();
-                if (st && st !== 'pending') return prev;
-                return { ...prev, status: 'timeout', lastError: 'Keine Server-Rückmeldung (Timeout)', updatedAt: Date.now() };
-              });
-            } catch (_) {}
+
+          try { if (pushTestWatchdogRef.current) clearTimeout(pushTestWatchdogRef.current); } catch (_) {}
+          pushTestWatchdogRef.current = setTimeout(() => {
+            setPushTest((prev) => {
+              if (!prev || prev.id !== id) return prev;
+              if (String(prev.status || '').toLowerCase() !== 'pending') return prev;
+              return {
+                ...prev,
+                status: 'timeout',
+                lastError: prev.lastError || 'SERVER_TEST_TIMEOUT',
+                updatedAt: Date.now()
+              };
+            });
+            setPushDiag((prev) => ({
+              ...prev,
+              lastError: prev.lastError || 'SERVER_TEST_TIMEOUT: Keine Server-Rückmeldung (Rules/Adblock/Function prüfen)'
+            }));
           }, 25000);
+
+          showToast('Server-Test ausgelöst (oxynoti)');
         } catch (e) {
+          setPushDiag((prev) => ({ ...prev, lastError: `SERVER_TEST_CREATE_FAILED: ${e?.message || String(e)}` }));
           showToast('Server-Test fehlgeschlagen');
         }
       };
@@ -4426,7 +4460,14 @@ Kalender aktuell` : 'Kalender aktuell';
                 // Let SW handle the visible notification; this toast is just feedback.
                 showToast('Server-Test gesendet ✅');
               }
+              if (status && status !== 'pending') {
+                try { if (pushTestWatchdogRef.current) { clearTimeout(pushTestWatchdogRef.current); pushTestWatchdogRef.current = null; } } catch (_) {}
+              }
             } catch (_) {}
+          }, (err) => {
+            setPushTest((prev) => ({ ...prev, status: 'error', lastError: `SNAPSHOT_ERROR: ${err?.code || err?.message || 'unknown'}`, updatedAt: Date.now() }));
+            setPushDiag((prev) => ({ ...prev, lastError: `SERVER_TEST_SNAPSHOT_ERROR: ${err?.code || err?.message || 'unknown'}` }));
+            try { if (pushTestWatchdogRef.current) { clearTimeout(pushTestWatchdogRef.current); pushTestWatchdogRef.current = null; } } catch (_) {}
           });
           return () => { try { unsub(); } catch (_) {} };
         } catch (_) {}
@@ -7241,14 +7282,7 @@ setSelfDestruct(false);
                             <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
                             <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
                           </div>
-                          {!workClockActive?.startedAt ? (
-                            <button type="button" onClick={(e) => { e.stopPropagation(); startWorkClock(); }} className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-1.5"><Play className="w-3.5 h-3.5" /> Start</button>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <button type="button" onClick={(e) => { e.stopPropagation(); toggleWorkClockPause(); }} className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-colors flex items-center gap-1.5 ${workClockActive.isPaused ? 'bg-amber-300/20 border-amber-300/60 text-amber-100 hover:bg-amber-300/25' : 'bg-neutral-900 border-neutral-800 text-white hover:border-neutral-500'}`}>{workClockActive.isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}{workClockActive.isPaused ? 'Pause Ende' : 'Kaffee'}</button>
-                              <button type="button" onClick={(e) => { e.stopPropagation(); requestStopWorkClock(); }} className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-1.5"><StopCircle className="w-3.5 h-3.5" /> Ende</button>
-                            </div>
-                          )}
+                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
                         </div>
                       </div>
                     )}
@@ -8143,12 +8177,12 @@ Später
       return all.some((k) => k.includes(q));
     };
     const TABS = [
-      { id: 'calendars', label: 'Kalender', subtitle: 'Farben, Freigaben und Schichtplaene', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
-      { id: 'notifications', label: 'Extras', subtitle: 'Module, Erinnerungen und Push', icon: Activity, keys: ['extras', 'smart day', 'stempelung', 'fokus', 'notiz', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
+      { id: 'account', label: 'Account & Sicherheit', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'sicherheit', 'datenschutz', 'abmelden', 'email'] },
+      { id: 'calendars', label: 'Kalender & Freigaben', subtitle: 'Farben, Schichtpläne und Teilen', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
+      { id: 'notifications', label: 'Produktivität & Push', subtitle: 'Extras, Stempeluhr, Erinnerungen, Push', icon: Activity, keys: ['extras', 'smart day', 'stempelung', 'fokus', 'notiz', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
       { id: 'links', label: 'Public Links', subtitle: 'Busy-only Links und Ablauf', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
-      { id: 'audit', label: 'Audit', subtitle: 'Aktionsprotokoll und Kalenderhistorie', icon: History, keys: ['audit', 'verlauf', 'log', 'aenderung', 'wer'] },
-      { id: 'account', label: 'Account', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'datenschutz', 'abmelden', 'email'] },
       { id: 'ics', label: 'Import/Export', subtitle: 'ICS Export und Import', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
+      { id: 'audit', label: 'Audit & Verlauf', subtitle: 'Aktionsprotokoll und Kalenderhistorie', icon: History, keys: ['audit', 'verlauf', 'log', 'aenderung', 'wer'] },
     ];
     const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
     const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
@@ -8160,18 +8194,22 @@ Später
       const visible = !q || match(keys);
       if (!visible) return null;
       const open = q ? true : (settingsTab === id);
+      const tabMeta = TABS.find((t) => t.id === id);
       const toggle = () => {
         if (q) return;
         setSettingsTab((prev) => (prev === id ? '' : id));
       };
       return (
         <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
-          <button type="button" onClick={toggle} className="settings-section-trigger w-full px-5 py-4 border-b border-neutral-900/80 flex items-center justify-between hover:bg-neutral-900/40 transition-colors">
-            <div className="flex items-center gap-3">
-              {Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}
-              <span className="text-sm font-semibold text-white">{label}</span>
+          <button type="button" onClick={toggle} className="settings-section-trigger w-full px-5 py-4 border-b border-neutral-900/80 flex items-center justify-between hover:bg-neutral-900/40 transition-colors text-left">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="mt-0.5">{Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}</div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-white truncate">{label}</div>
+                <div className="text-[11px] text-neutral-500 truncate">{tabMeta?.subtitle || ''}</div>
+              </div>
             </div>
-            <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform " + (open ? 'rotate-90' : '')} />
+            <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform shrink-0 " + (open ? 'rotate-90' : '')} />
           </button>
           {open && (
             <div className="settings-section-body px-5 py-4">
@@ -8224,8 +8262,32 @@ Später
           </div>
         </section>
 
-        <div className="hidden overflow-x-auto no-scrollbar -mx-1 px-1">
-          <div className="flex gap-2 min-w-max">
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/50 p-3 md:p-4">
+          <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">Schnellzugriff</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {TABS.map((t) => {
+              const Icon = t.icon;
+              const active = settingsTab === t.id && !q;
+              return (
+                <button
+                  key={`quick_${t.id}`}
+                  type="button"
+                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
+                  className={"text-left rounded-xl border p-3 transition-colors " + (active ? "bg-white text-black border-white" : "bg-black text-neutral-200 border-neutral-800 hover:border-neutral-600")}
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon className="w-4 h-4" />
+                    <span className="text-sm font-semibold truncate">{t.label}</span>
+                  </div>
+                  <div className={"mt-1 text-[11px] " + (active ? "text-black/70" : "text-neutral-500")}>{t.subtitle}</div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <div className="lg:hidden -mx-1 px-1">
+          <div className="grid grid-cols-2 gap-2">
             {visibleTabs.map((t) => {
               const Icon = t.icon;
               const active = settingsTab === t.id && !q;
@@ -8351,10 +8413,10 @@ Später
             </AccordionItem>
 
             {/* EXTRAS */}
-            <AccordionItem id="notifications" label="Extras" icon={Activity} keys={['extras','smart day','stempelung','fokus','notiz','tagesziel','soll ist','freie zeitfenster','push','benachr','erinnerung','pwa','token','test']} >
+            <AccordionItem id="notifications" label="Produktivität & Push" icon={Activity} keys={['extras','smart day','stempelung','fokus','notiz','tagesziel','soll ist','freie zeitfenster','push','benachr','erinnerung','pwa','token','test']} >
               <section id="settings-notifications">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Activity className="w-4 h-4" /> Extras
+                  <Activity className="w-4 h-4" /> Produktivität & Push
                 </h3>
 
                 {/* Core settings */}
@@ -8414,8 +8476,8 @@ Später
                   <div className="border border-neutral-800 rounded-xl bg-black p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <p className="font-medium text-white">Push & Erinnerungen</p>
-                        <p className="text-xs text-neutral-500 mt-1">Ehemaliger Benachrichtigungsbereich – liegt jetzt gesammelt unter Extras. Notizen, Tagesziele und Reihenfolge der Karten werden ebenfalls synchronisiert.</p>
+                        <p className="font-medium text-white">Bereichsstruktur</p>
+                        <p className="text-xs text-neutral-500 mt-1">Oben: Modul-Schalter (Extras/Home). Mitte: Planung, Zielstunden, Stempeluhr. Unten: Push, Diagnose und Tests.</p>
                       </div>
                     </div>
                   </div>
@@ -8623,8 +8685,9 @@ Später
 
                       {!!pushTest?.id && (
                         <div className="text-[11px] text-neutral-600 break-words">
-                          Server-Test Status: <span className="text-neutral-300">{pushTest.status || 'pending'}</span>
+                          Server-Test Status: <span className="text-neutral-300">{(() => { const st = String(pushTest.status || 'pending'); if (st === 'timeout') return 'timeout (keine Rückmeldung)'; return st; })()}</span>
                           {pushTest.lastError ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
+                          {String(pushTest.status || '').toLowerCase() === 'timeout' ? <div className="mt-1 text-[11px] text-amber-300">Server hat nicht geantwortet. Bitte Adblock/Shield deaktivieren und Push-Cloud-Function prüfen.</div> : null}
                         </div>
                       )}
 

@@ -313,7 +313,16 @@ function AmoledCalendarApp() {
       const [fullName, setFullName] = useState('');
       const [authError, setAuthError] = useState('');
       
-      const [currentView, setCurrentView] = useState('dashboard');
+      const [currentView, setCurrentView] = useState(() => {
+        try {
+          const raw = String(localStorage.getItem('onyx_last_view') || '').trim();
+          const allowed = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
+          if (!allowed.has(raw)) return 'dashboard';
+          return raw === 'secret_chat' ? 'calendar' : raw;
+        } catch (_) {
+          return 'dashboard';
+        }
+      });
       const [settingsTab, setSettingsTab] = useState('account');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
@@ -697,7 +706,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [messageSearchQuery, setMessageSearchQuery] = useState('');
       const [messageMatchIndex, setMessageMatchIndex] = useState(0);
       const [messageSearchFilter, setMessageSearchFilter] = useState('all');
-      const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+      const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '👏', '🙏', '😎', '🤔', '✅'];
       const reactionKeyForEmoji = (emoji) => `u${Array.from(String(emoji || '')).map(ch => ch.codePointAt(0).toString(16)).join('_')}`;
       const reactionEmojiFromKey = (key) => {
         const raw = String(key || '');
@@ -2235,6 +2244,12 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           if (presenceHeartbeatRef.current) { clearInterval(presenceHeartbeatRef.current); presenceHeartbeatRef.current = null; }
         };
       }, [user]);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('onyx_last_view', String(currentView || 'dashboard'));
+        } catch (_) {}
+      }, [currentView]);
 
       useEffect(() => {
         if (currentView === 'secret_chat') {
@@ -4467,8 +4482,8 @@ Kalender aktuell` : 'Kalender aktuell';
           }, (err) => {
             const code = String(err?.code || err?.message || 'unknown');
             if (code === 'permission-denied') {
-              setPushTest((prev) => ({ ...prev, status: 'submitted', lastError: 'READ_BLOCKED_BY_RULES', updatedAt: Date.now() }));
-              setPushDiag((prev) => ({ ...prev, lastError: 'SERVER_TEST_READ_BLOCKED: Firestore Rules erlauben kein Lesen von pushTests' }));
+              setPushTest((prev) => ({ ...prev, status: 'submitted', lastError: 'STATUS_READ_BLOCKED (optional)', updatedAt: Date.now() }));
+              setPushDiag((prev) => ({ ...prev, lastError: '' }));
             } else {
               setPushTest((prev) => ({ ...prev, status: 'error', lastError: `SNAPSHOT_ERROR: ${code}`, updatedAt: Date.now() }));
               setPushDiag((prev) => ({ ...prev, lastError: `SERVER_TEST_SNAPSHOT_ERROR: ${code}` }));
@@ -8196,32 +8211,16 @@ Später
       .filter((field) => isExtraFieldEnabled(field))
       .length;
 
-    const AccordionItem = ({ id, label, icon: Icon, keys, children }) => {
+    const AccordionItem = ({ id, keys, children }) => {
       const visible = !q || match(keys);
       if (!visible) return null;
       const open = q ? true : (settingsTab === id);
-      const tabMeta = TABS.find((t) => t.id === id);
-      const toggle = () => {
-        if (q) return;
-        setSettingsTab((prev) => (prev === id ? '' : id));
-      };
+      if (!open) return null;
       return (
         <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
-          <button type="button" onClick={toggle} className="settings-section-trigger w-full px-5 py-4 border-b border-neutral-900/80 flex items-center justify-between hover:bg-neutral-900/40 transition-colors text-left">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="mt-0.5">{Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}</div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-white truncate">{label}</div>
-                <div className="text-[11px] text-neutral-500 truncate">{tabMeta?.subtitle || ''}</div>
-              </div>
-            </div>
-            <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform shrink-0 " + (open ? 'rotate-90' : '')} />
-          </button>
-          {open && (
-            <div className="settings-section-body px-5 py-4">
-              {children}
-            </div>
-          )}
+          <div className="settings-section-body px-5 py-4">
+            {children}
+          </div>
         </section>
       );
     };
@@ -8268,48 +8267,7 @@ Später
           </div>
         </section>
 
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/50 p-3 md:p-4">
-          <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">Schnellzugriff</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              const active = settingsTab === t.id && !q;
-              return (
-                <button
-                  key={`quick_${t.id}`}
-                  type="button"
-                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                  className={"text-left rounded-xl border p-3 transition-colors " + (active ? "bg-white text-black border-white" : "bg-black text-neutral-200 border-neutral-800 hover:border-neutral-600")}
-                >
-                  <div className="flex items-center gap-2">
-                    <Icon className="w-4 h-4" />
-                    <span className="text-sm font-semibold truncate">{t.label}</span>
-                  </div>
-                  <div className={"mt-1 text-[11px] " + (active ? "text-black/70" : "text-neutral-500")}>{t.subtitle}</div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
 
-        <div className="lg:hidden -mx-1 px-1">
-          <div className="grid grid-cols-2 gap-2">
-            {visibleTabs.map((t) => {
-              const Icon = t.icon;
-              const active = settingsTab === t.id && !q;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                  className={"settings-tab-pill px-3 py-2 rounded-xl border text-xs flex items-center gap-2 " + (active ? "bg-white text-black border-white" : "bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-600")}
-                >
-                  <Icon className="w-4 h-4" />
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
           <aside className="settings-nav-wrap hidden lg:block sticky top-6 self-start space-y-3">
@@ -8692,7 +8650,7 @@ Später
                       {!!pushTest?.id && (
                         <div className="text-[11px] text-neutral-600 break-words">
                           Server-Test Status: <span className="text-neutral-300">{(() => { const st = String(pushTest.status || 'pending'); if (st === 'timeout') return 'timeout (keine Rückmeldung)'; if (st === 'submitted') return 'übermittelt (kein Leserecht auf Status)'; return st; })()}</span>
-                          {pushTest.lastError ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
+                          {pushTest.lastError && String(pushTest.lastError) !== 'STATUS_READ_BLOCKED (optional)' ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
                           {String(pushTest.status || '').toLowerCase() === 'timeout' ? <div className="mt-1 text-[11px] text-amber-300">Server hat nicht geantwortet. Bitte Adblock/Shield deaktivieren und Push-Cloud-Function prüfen.</div> : null}
                         </div>
                       )}
@@ -8727,7 +8685,7 @@ Später
                       </div>
 
                       <div className="text-[11px] text-neutral-600 leading-relaxed">
-                        Hinweis: Wenn "Test (Server)" fehlschlaegt oder auf "kein Leserecht" steht, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create/read</span> nicht.
+                        Hinweis: "Test (Server)" braucht Firestore-Schreibzugriff auf <span className="text-neutral-300">public/data/pushTests:create</span>. Status-Lesen ist optional; bei Blockern/Rules kann trotzdem eine Push-Nachricht ankommen.
                       </div>
                     </div>
                     )}

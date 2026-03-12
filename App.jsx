@@ -362,14 +362,12 @@ function AmoledCalendarApp() {
       const [workClockTick, setWorkClockTick] = useState(Date.now());
       const [workClockModalOpen, setWorkClockModalOpen] = useState(false);
       const [workClockDraftTitle, setWorkClockDraftTitle] = useState('');
-      const [workClockDraftUsePreset, setWorkClockDraftUsePreset] = useState(true);
       const [workClockPresetInput, setWorkClockPresetInput] = useState('Büro\nBaustelle\nSupport');
       const [workClockDraftLevel, setWorkClockDraftLevel] = useState('mittel');
       const [workClockSaving, setWorkClockSaving] = useState(false);
       const [workClockEditOpen, setWorkClockEditOpen] = useState(false);
       const [workClockEditingSession, setWorkClockEditingSession] = useState(null);
       const [workClockEditTitle, setWorkClockEditTitle] = useState('');
-      const [workClockEditUsePreset, setWorkClockEditUsePreset] = useState(true);
       const [workClockEditLevel, setWorkClockEditLevel] = useState('mittel');
       const [workClockEditStartValue, setWorkClockEditStartValue] = useState('');
       const [workClockEditEndValue, setWorkClockEditEndValue] = useState('');
@@ -3286,6 +3284,19 @@ const requestNotificationPermission = async (currentUser) => {
         } catch (_) { return getDefaultWorkClockPresets(); }
       }
 
+      function getWorkClockTaskSuggestions(input) {
+        try {
+          const raw = Array.isArray(input)
+            ? input
+            : String(input || '').split(/[\n,;]+/g);
+          return raw
+            .map(v => String(v || '').trim())
+            .filter(Boolean)
+            .filter((value, index, arr) => arr.findIndex(x => x.toLowerCase() === value.toLowerCase()) === index)
+            .slice(0, 24);
+        } catch (_) { return []; }
+      }
+
       function readWorkClockSessionsLocal(uid) {
         try {
           if (!uid) return [];
@@ -3435,9 +3446,7 @@ const requestNotificationPermission = async (currentUser) => {
 
       const requestStopWorkClock = () => {
         if (!workClockActive?.startedAt) return;
-        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
-        setWorkClockDraftUsePreset(true);
-        setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
+        setWorkClockDraftTitle('');
         setWorkClockDraftLevel('mittel');
         setWorkClockModalOpen(true);
       };
@@ -3482,7 +3491,9 @@ const requestNotificationPermission = async (currentUser) => {
           }
           setWorkClockActive(null);
           persistWorkClockActiveLocal(null);
-          await saveWorkClockProfilePatch({ workClockActive: null, updatedAt: now, workClockLastTitle: finalTitle });
+          const nextTaskOptions = getWorkClockTaskSuggestions([...(Array.isArray(userProfile?.workClockTaskOptions) ? userProfile.workClockTaskOptions : []), finalTitle]);
+          await saveWorkClockProfilePatch({ workClockActive: null, updatedAt: now, workClockLastTitle: finalTitle, workClockTaskOptions: nextTaskOptions });
+          setUserProfile(prev => ({ ...(prev || {}), workClockActive: null, workClockLastTitle: finalTitle, workClockTaskOptions: nextTaskOptions, updatedAt: now }));
           setWorkClockModalOpen(false);
           showToast('Arbeitszeit gespeichert');
         } catch (err) {
@@ -3496,12 +3507,9 @@ const requestNotificationPermission = async (currentUser) => {
 
       const openEditWorkClockSession = (session) => {
         if (!session) return;
-        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
         const rawTitle = String(session?.title || 'Arbeit');
-        const usePreset = presets.some(p => String(p).toLowerCase() === rawTitle.toLowerCase());
         setWorkClockEditingSession(session);
-        setWorkClockEditUsePreset(usePreset);
-        setWorkClockEditTitle(rawTitle || presets[0] || 'Arbeit');
+        setWorkClockEditTitle(rawTitle);
         setWorkClockEditLevel(String(session?.level || 'mittel'));
         setWorkClockEditStartValue(formatDateTimeInputValue(session?.startedAt || Date.now()));
         setWorkClockEditEndValue(formatDateTimeInputValue(session?.endedAt || session?.startedAt || Date.now()));
@@ -3552,7 +3560,10 @@ const requestNotificationPermission = async (currentUser) => {
           } catch (remoteErr) {
             console.warn('saveEditedWorkClockSession remote update skipped', remoteErr);
           }
-          await saveWorkClockProfilePatch({ workClockLastTitle: nextTitle, updatedAt: Date.now() });
+          const nextTaskOptions = getWorkClockTaskSuggestions([...(Array.isArray(userProfile?.workClockTaskOptions) ? userProfile.workClockTaskOptions : []), nextTitle]);
+          const nextUpdatedAt = Date.now();
+          await saveWorkClockProfilePatch({ workClockLastTitle: nextTitle, workClockTaskOptions: nextTaskOptions, updatedAt: nextUpdatedAt });
+          setUserProfile(prev => ({ ...(prev || {}), workClockLastTitle: nextTitle, workClockTaskOptions: nextTaskOptions, updatedAt: nextUpdatedAt }));
           setWorkClockEditOpen(false);
           setWorkClockEditingSession(null);
           showToast('Session aktualisiert');
@@ -3663,13 +3674,7 @@ const requestNotificationPermission = async (currentUser) => {
       useEffect(() => {
         const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
         setWorkClockPresetInput(presets.join('\n'));
-        setWorkClockDraftUsePreset(true);
       }, [userProfile?.workClockTaskOptions]);
-
-      useEffect(() => {
-        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
-        setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
-      }, [userProfile?.workClockLastTitle, userProfile?.workClockTaskOptions]);
 
 
       useEffect(() => {
@@ -7401,6 +7406,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           <nav className="md:hidden fixed bottom-0 inset-x-0 w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 flex items-center justify-between gap-1 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]">
             <button onClick={() => setCurrentView('dashboard')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
             <button onClick={() => setCurrentView('calendar')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
+            <button
+              onClick={() => { if (workClockActive?.startedAt) { requestStopWorkClock(); } else { startWorkClock(); } }}
+              className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${workClockActive?.startedAt ? 'text-white' : 'text-neutral-500'}`}
+              title="Stempeluhr"
+            >
+              <Timer className="w-7 h-7" />
+            </button>
             <div className="flex-1 min-w-0 flex items-center justify-center">
               <button onClick={() => setPlusMenuOpen(true)} className="p-4 bg-white text-black rounded-full -mt-7 border-4 border-black shadow-lg"><Plus className="w-7 h-7" /></button>
             </div>
@@ -10056,34 +10068,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 <div className="space-y-3">
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
-                    {workClockEditUsePreset ? (
-                      <div className="mt-1 space-y-2">
-                        <select
-                          value={workClockEditTitle}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            if (value === '__other__') {
-                              setWorkClockEditUsePreset(false);
-                              setWorkClockEditTitle('');
-                            } else {
-                              setWorkClockEditTitle(value);
-                            }
-                          }}
-                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                        >
-                          {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
-                            <option key={preset} value={preset}>{preset}</option>
-                          ))}
-                          <option value="__other__">Andere Tätigkeit…</option>
-                        </select>
-                        <button type="button" onClick={() => { setWorkClockEditUsePreset(false); setWorkClockEditTitle(workClockEditingSession?.title || ''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene Tätigkeit eingeben</button>
-                      </div>
-                    ) : (
-                      <div className="mt-1 space-y-2">
-                        <input value={workClockEditTitle} onChange={(e) => setWorkClockEditTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockEditUsePreset(true); setWorkClockEditTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
-                      </div>
-                    )}
+                    <div className="mt-1 space-y-2">
+                      <input list="workClockTaskSuggestionsEdit" value={workClockEditTitle} onChange={(e) => setWorkClockEditTitle(e.target.value)} placeholder="Tätigkeit eingeben" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                      <datalist id="workClockTaskSuggestionsEdit">
+                        {getWorkClockTaskSuggestions(userProfile?.workClockTaskOptions).map((preset) => (
+                          <option key={preset} value={preset} />
+                        ))}
+                      </datalist>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Level</label>
@@ -10130,34 +10122,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 <div className="space-y-3">
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
-                    {workClockDraftUsePreset ? (
-                      <div className="mt-1 space-y-2">
-                        <select
-                          value={workClockDraftTitle}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            if (value === '__other__') {
-                              setWorkClockDraftUsePreset(false);
-                              setWorkClockDraftTitle('');
-                            } else {
-                              setWorkClockDraftTitle(value);
-                            }
-                          }}
-                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                        >
-                          {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
-                            <option key={preset} value={preset}>{preset}</option>
-                          ))}
-                          <option value="__other__">Andere Tätigkeit…</option>
-                        </select>
-                        <button type="button" onClick={() => { setWorkClockDraftUsePreset(false); setWorkClockDraftTitle(''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene Tätigkeit eingeben</button>
-                      </div>
-                    ) : (
-                      <div className="mt-1 space-y-2">
-                        <input value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockDraftUsePreset(true); setWorkClockDraftTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
-                      </div>
-                    )}
+                    <div className="mt-1 space-y-2">
+                      <input list="workClockTaskSuggestionsDraft" value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="Tätigkeit eingeben" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                      <datalist id="workClockTaskSuggestionsDraft">
+                        {getWorkClockTaskSuggestions(userProfile?.workClockTaskOptions).map((preset) => (
+                          <option key={preset} value={preset} />
+                        ))}
+                      </datalist>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Level</label>

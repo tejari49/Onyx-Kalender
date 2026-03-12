@@ -313,7 +313,16 @@ function AmoledCalendarApp() {
       const [fullName, setFullName] = useState('');
       const [authError, setAuthError] = useState('');
       
-      const [currentView, setCurrentView] = useState('dashboard');
+      const [currentView, setCurrentView] = useState(() => {
+        try {
+          const raw = String(localStorage.getItem('onyx_last_view') || '').trim();
+          const allowed = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
+          if (!allowed.has(raw)) return 'dashboard';
+          return raw === 'secret_chat' ? 'calendar' : raw;
+        } catch (_) {
+          return 'dashboard';
+        }
+      });
       const [settingsTab, setSettingsTab] = useState('account');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
@@ -697,7 +706,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [messageSearchQuery, setMessageSearchQuery] = useState('');
       const [messageMatchIndex, setMessageMatchIndex] = useState(0);
       const [messageSearchFilter, setMessageSearchFilter] = useState('all');
-      const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+      const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '👏', '🙏', '😎', '🤔', '✅'];
       const reactionKeyForEmoji = (emoji) => `u${Array.from(String(emoji || '')).map(ch => ch.codePointAt(0).toString(16)).join('_')}`;
       const reactionEmojiFromKey = (key) => {
         const raw = String(key || '');
@@ -2235,6 +2244,12 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           if (presenceHeartbeatRef.current) { clearInterval(presenceHeartbeatRef.current); presenceHeartbeatRef.current = null; }
         };
       }, [user]);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('onyx_last_view', String(currentView || 'dashboard'));
+        } catch (_) {}
+      }, [currentView]);
 
       useEffect(() => {
         if (currentView === 'secret_chat') {
@@ -4467,8 +4482,8 @@ Kalender aktuell` : 'Kalender aktuell';
           }, (err) => {
             const code = String(err?.code || err?.message || 'unknown');
             if (code === 'permission-denied') {
-              setPushTest((prev) => ({ ...prev, status: 'submitted', lastError: 'READ_BLOCKED_BY_RULES', updatedAt: Date.now() }));
-              setPushDiag((prev) => ({ ...prev, lastError: 'SERVER_TEST_READ_BLOCKED: Firestore Rules erlauben kein Lesen von pushTests' }));
+              setPushTest((prev) => ({ ...prev, status: 'submitted', lastError: 'STATUS_READ_BLOCKED (optional)', updatedAt: Date.now() }));
+              setPushDiag((prev) => ({ ...prev, lastError: '' }));
             } else {
               setPushTest((prev) => ({ ...prev, status: 'error', lastError: `SNAPSHOT_ERROR: ${code}`, updatedAt: Date.now() }));
               setPushDiag((prev) => ({ ...prev, lastError: `SERVER_TEST_SNAPSHOT_ERROR: ${code}` }));
@@ -7281,14 +7296,27 @@ setSelfDestruct(false);
                       </div>
                     )}
                     {compactHomeWorkClock && (
-                      <div onClick={() => setCurrentView('extras')} className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 cursor-pointer hover:border-neutral-500 transition-colors">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
-                            <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
-                            <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
+                      <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
+                              <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
+                              <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
+                            </div>
+                            <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Historie</button>
                           </div>
-                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
+
+                          <div className="flex flex-wrap gap-2">
+                            {!workClockActive?.startedAt ? (
+                              <button onClick={startWorkClock} className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
+                            ) : (
+                              <>
+                                <button onClick={toggleWorkClockPause} className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-xs font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Pause fertig' : 'Pause'}</button>
+                                <button onClick={requestStopWorkClock} className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -7965,8 +7993,7 @@ setSelfDestruct(false);
                 ), 'xl:col-span-2')});
               }
 
-              if (showExtrasWorkClock) {
-                extraCards.push({ key: 'workclock', node: slotChrome('workclock', 'Stempeluhr', 'Start, Pause, Stopp, Rapport und letzte Sessions.', (
+                extraCards.push({ key: 'workclock', node: slotChrome('workclock', 'Stempeluhr', 'Start, Pause, Stopp und komplette Historie.', (
                   <>
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       <div>
@@ -7992,26 +8019,29 @@ setSelfDestruct(false);
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
                     </div>
-                    {(workClockSessions || []).length > 0 && (
-                      <div className="space-y-2">
-                        {(workClockSessions || []).slice(0, 4).map((s) => (
-                          <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
-                            <div className="min-w-0 flex-1">
-                              <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
-                              <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500 mb-2">Historie</div>
+                      {(workClockSessions || []).length === 0 ? (
+                        <div className="text-sm text-neutral-500 border border-neutral-800 rounded-xl px-3 py-4 bg-black">Noch keine Einträge.</div>
+                      ) : (
+                        <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                          {(workClockSessions || []).slice(0, 20).map((s) => (
+                            <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
+                              <div className="min-w-0 flex-1">
+                                <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
+                                <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
+                                <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
-                              <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </>
                 ), 'xl:col-span-2')});
-              }
-
               if (showExtrasFocus) {
                 extraCards.push({ key: 'focus', node: slotChrome('focus', 'Fokusmodus', '25/50/90-Minuten Fokusblöcke mit Verlauf.', (
                   <>
@@ -8142,16 +8172,14 @@ Später
               }
 
               const cardMap = Object.fromEntries(extraCards.map((item) => [item.key, item.node]));
-              const orderedKeys = normalizeExtrasOrder(extrasSlotOrder).filter((key) => cardMap[key]);
-              const extraKeys = Object.keys(cardMap).filter((key) => !orderedKeys.includes(key));
-              const finalKeys = [...orderedKeys, ...extraKeys];
+              const finalKeys = cardMap['workclock'] ? ['workclock'] : [];
 
               return (
                 <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
                   <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
                     <div>
                       <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
-                      <p className="text-sm text-neutral-500 mt-2">Nützliche Werkzeuge getrennt von der Startseite – jetzt zusätzlich frei sortierbar per Drag & Drop.</p>
+                      <p className="text-sm text-neutral-500 mt-2">Hier findest du nur noch die Stempeluhr mit kompletter Historie.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -8196,32 +8224,16 @@ Später
       .filter((field) => isExtraFieldEnabled(field))
       .length;
 
-    const AccordionItem = ({ id, label, icon: Icon, keys, children }) => {
+    const AccordionItem = ({ id, keys, children }) => {
       const visible = !q || match(keys);
       if (!visible) return null;
       const open = q ? true : (settingsTab === id);
-      const tabMeta = TABS.find((t) => t.id === id);
-      const toggle = () => {
-        if (q) return;
-        setSettingsTab((prev) => (prev === id ? '' : id));
-      };
+      if (!open) return null;
       return (
         <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
-          <button type="button" onClick={toggle} className="settings-section-trigger w-full px-5 py-4 border-b border-neutral-900/80 flex items-center justify-between hover:bg-neutral-900/40 transition-colors text-left">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="mt-0.5">{Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}</div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-white truncate">{label}</div>
-                <div className="text-[11px] text-neutral-500 truncate">{tabMeta?.subtitle || ''}</div>
-              </div>
-            </div>
-            <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform shrink-0 " + (open ? 'rotate-90' : '')} />
-          </button>
-          {open && (
-            <div className="settings-section-body px-5 py-4">
-              {children}
-            </div>
-          )}
+          <div className="settings-section-body px-5 py-4">
+            {children}
+          </div>
         </section>
       );
     };
@@ -8268,48 +8280,7 @@ Später
           </div>
         </section>
 
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/50 p-3 md:p-4">
-          <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">Schnellzugriff</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              const active = settingsTab === t.id && !q;
-              return (
-                <button
-                  key={`quick_${t.id}`}
-                  type="button"
-                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                  className={"text-left rounded-xl border p-3 transition-colors " + (active ? "bg-white text-black border-white" : "bg-black text-neutral-200 border-neutral-800 hover:border-neutral-600")}
-                >
-                  <div className="flex items-center gap-2">
-                    <Icon className="w-4 h-4" />
-                    <span className="text-sm font-semibold truncate">{t.label}</span>
-                  </div>
-                  <div className={"mt-1 text-[11px] " + (active ? "text-black/70" : "text-neutral-500")}>{t.subtitle}</div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
 
-        <div className="lg:hidden -mx-1 px-1">
-          <div className="grid grid-cols-2 gap-2">
-            {visibleTabs.map((t) => {
-              const Icon = t.icon;
-              const active = settingsTab === t.id && !q;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                  className={"settings-tab-pill px-3 py-2 rounded-xl border text-xs flex items-center gap-2 " + (active ? "bg-white text-black border-white" : "bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-600")}
-                >
-                  <Icon className="w-4 h-4" />
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
           <aside className="settings-nav-wrap hidden lg:block sticky top-6 self-start space-y-3">
@@ -8692,7 +8663,7 @@ Später
                       {!!pushTest?.id && (
                         <div className="text-[11px] text-neutral-600 break-words">
                           Server-Test Status: <span className="text-neutral-300">{(() => { const st = String(pushTest.status || 'pending'); if (st === 'timeout') return 'timeout (keine Rückmeldung)'; if (st === 'submitted') return 'übermittelt (kein Leserecht auf Status)'; return st; })()}</span>
-                          {pushTest.lastError ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
+                          {pushTest.lastError && String(pushTest.lastError) !== 'STATUS_READ_BLOCKED (optional)' ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
                           {String(pushTest.status || '').toLowerCase() === 'timeout' ? <div className="mt-1 text-[11px] text-amber-300">Server hat nicht geantwortet. Bitte Adblock/Shield deaktivieren und Push-Cloud-Function prüfen.</div> : null}
                         </div>
                       )}
@@ -8727,7 +8698,7 @@ Später
                       </div>
 
                       <div className="text-[11px] text-neutral-600 leading-relaxed">
-                        Hinweis: Wenn "Test (Server)" fehlschlaegt oder auf "kein Leserecht" steht, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create/read</span> nicht.
+                        Hinweis: "Test (Server)" braucht Firestore-Schreibzugriff auf <span className="text-neutral-300">public/data/pushTests:create</span>. Status-Lesen ist optional; bei Blockern/Rules kann trotzdem eine Push-Nachricht ankommen.
                       </div>
                     </div>
                     )}

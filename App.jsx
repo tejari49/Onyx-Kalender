@@ -4467,8 +4467,8 @@ Kalender aktuell` : 'Kalender aktuell';
           }, (err) => {
             const code = String(err?.code || err?.message || 'unknown');
             if (code === 'permission-denied') {
-              setPushTest((prev) => ({ ...prev, status: 'submitted', lastError: 'READ_BLOCKED_BY_RULES', updatedAt: Date.now() }));
-              setPushDiag((prev) => ({ ...prev, lastError: 'SERVER_TEST_READ_BLOCKED: Firestore Rules erlauben kein Lesen von pushTests' }));
+              setPushTest((prev) => ({ ...prev, status: 'submitted', lastError: 'STATUS_READ_BLOCKED (optional)', updatedAt: Date.now() }));
+              setPushDiag((prev) => ({ ...prev, lastError: '' }));
             } else {
               setPushTest((prev) => ({ ...prev, status: 'error', lastError: `SNAPSHOT_ERROR: ${code}`, updatedAt: Date.now() }));
               setPushDiag((prev) => ({ ...prev, lastError: `SERVER_TEST_SNAPSHOT_ERROR: ${code}` }));
@@ -8196,32 +8196,16 @@ Später
       .filter((field) => isExtraFieldEnabled(field))
       .length;
 
-    const AccordionItem = ({ id, label, icon: Icon, keys, children }) => {
+    const AccordionItem = ({ id, keys, children }) => {
       const visible = !q || match(keys);
       if (!visible) return null;
       const open = q ? true : (settingsTab === id);
-      const tabMeta = TABS.find((t) => t.id === id);
-      const toggle = () => {
-        if (q) return;
-        setSettingsTab((prev) => (prev === id ? '' : id));
-      };
+      if (!open) return null;
       return (
         <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
-          <button type="button" onClick={toggle} className="settings-section-trigger w-full px-5 py-4 border-b border-neutral-900/80 flex items-center justify-between hover:bg-neutral-900/40 transition-colors text-left">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="mt-0.5">{Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}</div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-white truncate">{label}</div>
-                <div className="text-[11px] text-neutral-500 truncate">{tabMeta?.subtitle || ''}</div>
-              </div>
-            </div>
-            <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform shrink-0 " + (open ? 'rotate-90' : '')} />
-          </button>
-          {open && (
-            <div className="settings-section-body px-5 py-4">
-              {children}
-            </div>
-          )}
+          <div className="settings-section-body px-5 py-4">
+            {children}
+          </div>
         </section>
       );
     };
@@ -8651,7 +8635,7 @@ Später
                       {!!pushTest?.id && (
                         <div className="text-[11px] text-neutral-600 break-words">
                           Server-Test Status: <span className="text-neutral-300">{(() => { const st = String(pushTest.status || 'pending'); if (st === 'timeout') return 'timeout (keine Rückmeldung)'; if (st === 'submitted') return 'übermittelt (kein Leserecht auf Status)'; return st; })()}</span>
-                          {pushTest.lastError ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
+                          {pushTest.lastError && String(pushTest.lastError) !== 'STATUS_READ_BLOCKED (optional)' ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
                           {String(pushTest.status || '').toLowerCase() === 'timeout' ? <div className="mt-1 text-[11px] text-amber-300">Server hat nicht geantwortet. Bitte Adblock/Shield deaktivieren und Push-Cloud-Function prüfen.</div> : null}
                         </div>
                       )}
@@ -8686,7 +8670,7 @@ Später
                       </div>
 
                       <div className="text-[11px] text-neutral-600 leading-relaxed">
-                        Hinweis: Wenn "Test (Server)" fehlschlaegt oder auf "kein Leserecht" steht, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create/read</span> nicht.
+                        Hinweis: "Test (Server)" braucht Firestore-Schreibzugriff auf <span className="text-neutral-300">public/data/pushTests:create</span>. Status-Lesen ist optional; bei Blockern/Rules kann trotzdem eine Push-Nachricht ankommen.
                       </div>
                     </div>
                     )}

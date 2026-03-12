@@ -155,10 +155,16 @@ service cloud.firestore {
         match /pushTests/{id} {
           // Client darf nur eigene PushTests anlegen.
           allow create: if signedIn()
-            && request.resource.data.uid == uid();
+            && request.resource.data.uid == uid()
+            && id.matches('^' + uid() + '_.*');
 
           // Optional: Client darf den eigenen Test lesen (Debug).
-          allow read: if signedIn() && resource.data.uid == uid();
+          // Auch dann erlauben, wenn der Status-Doc noch nicht existiert,
+          // solange die ID zum User gehört (uid_timestamp).
+          allow read: if signedIn() && (
+            (resource == null && id.matches('^' + uid() + '_.*'))
+            || (resource != null && resource.data.uid == uid())
+          );
 
           // Kein Client-Update/Delete (Worker schreibt über Admin SDK ohnehin vorbei)
           allow update, delete: if false;

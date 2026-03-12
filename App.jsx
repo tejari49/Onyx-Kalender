@@ -9988,6 +9988,25 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                               <CalendarPlus className="w-5 h-5" />
                             </button>
                           </div>
+
+                          {imageSendMode === 'viewonce' && !editingMessage && (
+                            <div
+                              className="absolute left-0 right-0 -top-24 z-30 rounded-2xl border border-red-900/40 bg-black/95 p-3"
+                              onDragOver={(e) => { e.preventDefault(); }}
+                              onDrop={(e) => handleImageDrop(e, 'viewonce')}
+                            >
+                              <div className="text-[11px] text-red-300 mb-2 flex items-center gap-2"><Bomb className="w-3.5 h-3.5" /> 1x Ansicht aktiv (10s nach Öffnen)</div>
+                              <div className="flex flex-wrap gap-2">
+                                <label className="cursor-pointer px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:border-neutral-500">Bild hochladen
+                                  <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => handleImageUpload(e, 'viewonce')} />
+                                </label>
+                                <label className="cursor-pointer px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:border-neutral-500">Kamera
+                                  <input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={(e) => handleImageUpload(e, 'viewonce')} />
+                                </label>
+                                <div className="px-3 py-2 rounded-xl border border-dashed border-neutral-700 text-xs text-neutral-400">Bild hierher ziehen</div>
+                              </div>
+                            </div>
+                          )}
                           
                           <div className="flex-1 relative">
                             {isRecording ? (

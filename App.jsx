@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip, Paperclip,
       Copy, Link2, History, Star, SmilePlus
     } from 'lucide-react';
 
@@ -313,7 +313,18 @@ function AmoledCalendarApp() {
       const [fullName, setFullName] = useState('');
       const [authError, setAuthError] = useState('');
       
-      const [currentView, setCurrentView] = useState('dashboard');
+      const [currentView, setCurrentView] = useState(() => {
+        try {
+          const raw = String(localStorage.getItem('onyx_last_view') || '').trim();
+          const allowed = new Set(['dashboard', 'calendar', 'shopping', 'settings', 'secret_chat']);
+          if (!allowed.has(raw)) return 'dashboard';
+          if (raw === 'secret_chat') return 'calendar';
+          if (raw === 'extras') return 'settings';
+          return raw;
+        } catch (_) {
+          return 'dashboard';
+        }
+      });
       const [settingsTab, setSettingsTab] = useState('account');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
@@ -646,6 +657,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [selectedMessageId, setSelectedMessageId] = useState(null); 
       const [messageReactionPickerFor, setMessageReactionPickerFor] = useState(null);
       const [selfDestruct, setSelfDestruct] = useState(false);
+      const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
       
       const [isRecording, setIsRecording] = useState(false);
@@ -655,6 +667,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const typingTimeoutRef = useRef(null);
       const messagesEndRef = useRef(null);
       const chatScrollRef = useRef(null);
+      const chatInputRef = useRef(null);
+      const attachmentMenuRef = useRef(null);
 
       // --- Chat scroll UX ---
       // Keep the viewport stable when prepending older messages and avoid auto-jumping to bottom
@@ -676,11 +690,13 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const extrasCloudReadyRef = useRef(false);
       const extrasCloudTimerRef = useRef(null);
       const activeChatIdRef = useRef(null);
+      const chatSubscribedIdRef = useRef('');
       const currentViewRef = useRef(null);
       const lastChatPingRef = useRef({});
       const myChatsRef = useRef([]);
       const quoteRotationRef = useRef({ idx: -1, last: '' });
       const pushTestTimeoutRef = useRef(null);
+      const ephemeralDeleteTimersRef = useRef({});
       
       const [chatStats, setChatStats] = useState({ sent: 0, received: 0, total: 0 });
       const [showPartnerStats, setShowPartnerStats] = useState(false);
@@ -697,7 +713,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [messageSearchQuery, setMessageSearchQuery] = useState('');
       const [messageMatchIndex, setMessageMatchIndex] = useState(0);
       const [messageSearchFilter, setMessageSearchFilter] = useState('all');
-      const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+      const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '👏', '🙏', '😎', '🤔', '✅'];
       const reactionKeyForEmoji = (emoji) => `u${Array.from(String(emoji || '')).map(ch => ch.codePointAt(0).toString(16)).join('_')}`;
       const reactionEmojiFromKey = (key) => {
         const raw = String(key || '');
@@ -2237,6 +2253,19 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       }, [user]);
 
       useEffect(() => {
+        try {
+          localStorage.setItem('onyx_last_view', String(currentView || 'dashboard'));
+        } catch (_) {}
+      }, [currentView]);
+
+      useEffect(() => {
+        if (currentView === 'extras') {
+          setSettingsTab('notifications');
+          setCurrentView('settings');
+        }
+      }, [currentView]);
+
+      useEffect(() => {
         if (currentView === 'secret_chat') {
           const now = Date.now();
           setLastChatVisit(now);
@@ -2710,17 +2739,26 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       useEffect(() => {
         if (!activeChat || !user) return;
 
+        const chatId = String(activeChat.id || '');
+        const participantCount = Array.isArray(activeChat?.participants) ? activeChat.participants.length : 0;
+
         // Reset pagination state when switching chats
         chatOldestCursorRef.current = null;
         chatLoadedMoreRef.current = false;
         chatAutoLoadLockRef.current = false;
         setChatHasMore(false);
         setChatLoadingMore(false);
+        // Nur beim echten Chatwechsel leeren (sonst flackert es bei jedem Re-Subscribe).
+        if (chatSubscribedIdRef.current !== chatId) {
+          setChatMessages([]);
+          chatSubscribedIdRef.current = chatId;
+        }
 
-        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
         const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
 
         const unsubscribeMessages = onSnapshot(latestQ, (snapshot) => {
+          if ((activeChatIdRef.current || '') !== chatId) return;
           const loadedDesc = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           const loaded = [...loadedDesc].reverse(); // ascending
 
@@ -2741,10 +2779,10 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           // Read/delivered marking only for messages in latest window
           for (const docSnap of snapshot.docs) {
             const data = docSnap.data() || {};
-            if (data.senderId !== user?.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
+            if (data.senderId !== user?.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (participantCount <= 2)) {
               unreadToUpdate.push(docSnap.id);
             }
-            if (data.senderId !== user?.uid && !data.deliveredAt && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
+            if (data.senderId !== user?.uid && !data.deliveredAt && (participantCount <= 2)) {
               deliveredToUpdate.push(docSnap.id);
             }
           }
@@ -2779,10 +2817,11 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           try {
             const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user?.uid) {
-              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
-              const isMuted = mutedChatIds.includes(activeChat.id);
+              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+              const mutedChatIds = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
+              const isMuted = mutedChatIds.includes(chatId);
               const canNotify = (('Notification' in window) && Notification.permission === 'granted');
-              const key = `onyx_last_notify_${activeChat.id}`;
+              const key = `onyx_last_notify_${chatId}`;
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
               if (!isMuted && canNotify && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
@@ -2797,20 +2836,20 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const nowMs = Date.now();
             if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
               lastReadWriteRef.current = nowMs;
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
             }
           }
 
           if (unreadToUpdate.length > 0) {
             unreadToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
             });
           }
 
           if (deliveredToUpdate.length > 0) {
             const deliveredAt = Date.now();
             deliveredToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
             });
           }
 
@@ -2825,7 +2864,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         return () => unsubscribeMessages();
-      }, [activeChat, user, currentView, secretView, userProfile]);
+      }, [activeChat?.id, user?.uid, currentView, secretView]);
 
       useEffect(() => {
         let cancelled = false;
@@ -4467,8 +4506,8 @@ Kalender aktuell` : 'Kalender aktuell';
           }, (err) => {
             const code = String(err?.code || err?.message || 'unknown');
             if (code === 'permission-denied') {
-              setPushTest((prev) => ({ ...prev, status: 'submitted', lastError: 'READ_BLOCKED_BY_RULES', updatedAt: Date.now() }));
-              setPushDiag((prev) => ({ ...prev, lastError: 'SERVER_TEST_READ_BLOCKED: Firestore Rules erlauben kein Lesen von pushTests' }));
+              setPushTest((prev) => ({ ...prev, status: 'submitted', lastError: 'STATUS_READ_BLOCKED (optional)', updatedAt: Date.now() }));
+              setPushDiag((prev) => ({ ...prev, lastError: '' }));
             } else {
               setPushTest((prev) => ({ ...prev, status: 'error', lastError: `SNAPSHOT_ERROR: ${code}`, updatedAt: Date.now() }));
               setPushDiag((prev) => ({ ...prev, lastError: `SERVER_TEST_SNAPSHOT_ERROR: ${code}` }));
@@ -6263,9 +6302,46 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
+      const resizeChatInput = () => {
+        try {
+          const el = chatInputRef.current;
+          if (!el) return;
+          el.style.height = 'auto';
+          const computed = window.getComputedStyle(el);
+          const lineHeight = parseFloat(computed.lineHeight || '20') || 20;
+          const padding = (parseFloat(computed.paddingTop || '0') || 0) + (parseFloat(computed.paddingBottom || '0') || 0);
+          const border = (parseFloat(computed.borderTopWidth || '0') || 0) + (parseFloat(computed.borderBottomWidth || '0') || 0);
+          const minHeight = 44;
+          const maxHeight = Math.round((lineHeight * 3) + padding + border);
+          const nextHeight = Math.max(minHeight, Math.min(el.scrollHeight, maxHeight));
+          el.style.height = `${nextHeight}px`;
+          el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+        } catch (_) {}
+      };
+
+      useEffect(() => {
+        resizeChatInput();
+      }, [newMessageText, editingMessage, replyToMessage]);
+
+      useEffect(() => {
+        const handleOutsideClick = (e) => {
+          if (!attachmentMenuRef.current) return;
+          if (!attachmentMenuRef.current.contains(e.target)) {
+            setIsAttachmentMenuOpen(false);
+          }
+        };
+        document.addEventListener('mousedown', handleOutsideClick);
+        document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+        return () => {
+          document.removeEventListener('mousedown', handleOutsideClick);
+          document.removeEventListener('touchstart', handleOutsideClick);
+        };
+      }, []);
+
       function handleTyping(e) {
          const value = e.target.value;
          setNewMessageText(value);
+         resizeChatInput();
          if (!activeChat || !user) return;
          updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user?.uid}`]: value.length > 0, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -6337,7 +6413,87 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const visibleChatMessages = ((isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media') ? baseByType : (chatMessages || [])).filter(Boolean);
 
-      const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
+
+      const scheduleEphemeralHide = (chatId, msgId, deleteAtMs) => {
+        try {
+          const id = String(msgId || '');
+          if (!chatId || !id || !Number.isFinite(Number(deleteAtMs || 0))) return;
+          const prev = ephemeralDeleteTimersRef.current[id];
+          if (prev) { try { clearTimeout(prev); } catch (_) {} }
+          const delay = Math.max(0, Number(deleteAtMs) - Date.now());
+          ephemeralDeleteTimersRef.current[id] = setTimeout(async () => {
+            try {
+              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), {
+                [`ephemeralHidden.${id}`]: true,
+                [`ephemeralDeletedAt.${id}`]: Date.now(),
+                updatedAt: Date.now(),
+              });
+            } catch (_) {}
+          }, delay);
+        } catch (_) {}
+      };
+
+      const handleEphemeralImageOpen = async (msg) => {
+        try {
+          if (!activeChat?.id || !user?.uid || !msg?.id) return true;
+          if (!msg?.selfDestruct) return true;
+          if (msg?.senderId === user?.uid) return true;
+          const hidden = !!(activeChatData?.ephemeralHidden?.[msg.id]);
+          if (hidden) return false;
+
+          const meta = activeChatData?.ephemeralViews?.[msg.id] || null;
+          const now = Date.now();
+          const existingDeleteAt = Number(meta?.deleteAt || 0);
+          if (existingDeleteAt > now) {
+            scheduleEphemeralHide(activeChat.id, msg.id, existingDeleteAt);
+            return true;
+          }
+
+          const deleteAt = now + 10000;
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+            [`ephemeralViews.${msg.id}`]: {
+              openedAt: now,
+              openedBy: user?.uid,
+              deleteAt,
+            },
+            updatedAt: now,
+          });
+          scheduleEphemeralHide(activeChat.id, msg.id, deleteAt);
+          return true;
+        } catch (_) {
+          showToast('Einmal-Ansicht konnte nicht geöffnet werden');
+          return false;
+        }
+      };
+
+      useEffect(() => {
+        return () => {
+          try {
+            Object.values(ephemeralDeleteTimersRef.current || {}).forEach((t) => { try { clearTimeout(t); } catch (_) {} });
+            ephemeralDeleteTimersRef.current = {};
+          } catch (_) {}
+        };
+      }, []);
+
+      useEffect(() => {
+        try {
+          const chatId = String(activeChat?.id || '');
+          if (!chatId || !user?.uid) return;
+          const views = (activeChatData && activeChatData?.ephemeralViews && typeof activeChatData.ephemeralViews === 'object') ? activeChatData.ephemeralViews : {};
+          const hidden = (activeChatData && activeChatData?.ephemeralHidden && typeof activeChatData.ephemeralHidden === 'object') ? activeChatData.ephemeralHidden : {};
+          const now = Date.now();
+          const dueIds = Object.entries(views).filter(([id, v]) => id && !hidden[id] && Number(v?.deleteAt || 0) > 0 && Number(v?.deleteAt || 0) <= now).map(([id]) => id);
+          if (dueIds.length === 0) return;
+          const patch = { updatedAt: now };
+          dueIds.forEach((id) => {
+            patch[`ephemeralHidden.${id}`] = true;
+            patch[`ephemeralDeletedAt.${id}`] = now;
+          });
+          updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), patch).catch(() => {});
+        } catch (_) {}
+      }, [activeChat?.id, activeChatData?.ephemeralViews, activeChatData?.ephemeralHidden, user?.uid]);
+
+      const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null, opts = {}) => {
         if (e) e.preventDefault();
 
         if (!activeChat || !user) return;
@@ -6382,7 +6538,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           replyTo: replyTo,
           reactions: {},
           starredBy: [],
-          selfDestruct: !!selfDestruct,
+          selfDestruct: (typeof opts?.forceSelfDestruct === 'boolean') ? !!opts.forceSelfDestruct : !!selfDestruct,
           timestamp: Date.now(),
           createdAt: serverTimestamp(),
           read: false
@@ -6401,7 +6557,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
         // Input sofort leeren
         setNewMessageText('');
-setSelfDestruct(false);
+        setSelfDestruct(false);
         setReplyToMessage(null);
         refocusChatInput();
 
@@ -6565,7 +6721,7 @@ setSelfDestruct(false);
         }
       };
 
-      const handleImageUpload = async (e) => {
+      const handleImageUpload = async (e, mode = 'normal') => {
         const file0 = e?.target?.files && e.target.files[0];
         if (!file0) return;
         try { e.target.value = ''; } catch (_) {}
@@ -6578,9 +6734,26 @@ setSelfDestruct(false);
         try {
           const file = await ensureJpegBlobIfHeic(file0);
           const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
-          await sendMessage(null, compressed);
+          await sendMessage(null, compressed, null, null, { forceSelfDestruct: mode === 'viewonce' });
         } catch (err) {
           console.warn('image compress/upload failed', err);
+          showToast('Bild konnte nicht verarbeitet werden');
+        }
+      };
+
+      const handleImageDrop = async (e, mode = 'normal') => {
+        try {
+          e.preventDefault();
+          e.stopPropagation();
+          temporarilySuspendSecretAutoHide(180000);
+          const file0 = e?.dataTransfer?.files && e.dataTransfer.files[0];
+          if (!file0) return;
+          if (!isProbablyImageFile(file0)) { showToast('Nur Bilder unterstützt'); return; }
+          const file = await ensureJpegBlobIfHeic(file0);
+          const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
+          await sendMessage(null, compressed, null, null, { forceSelfDestruct: mode === 'viewonce' });
+        } catch (err) {
+          console.warn('image drop failed', err);
           showToast('Bild konnte nicht verarbeitet werden');
         }
       };
@@ -7199,7 +7372,6 @@ setSelfDestruct(false);
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
                 <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
                 <button onClick={() => setCurrentView('shopping')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'shopping' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><ShoppingCart className="w-5 h-5" /> Einkauf</button>
-                <button onClick={() => setCurrentView('extras')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'extras' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Activity className="w-5 h-5" /> Extras</button>
                 <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
               </nav>
 
@@ -7232,7 +7404,6 @@ setSelfDestruct(false);
             <div className="flex-1 min-w-0 flex items-center justify-center">
               <button onClick={() => setPlusMenuOpen(true)} className="p-4 bg-white text-black rounded-full -mt-7 border-4 border-black shadow-lg"><Plus className="w-7 h-7" /></button>
             </div>
-            <button onClick={() => setCurrentView('extras')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`}><Activity className="w-7 h-7" /></button>
             <button onClick={() => setCurrentView('settings')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
           </nav>
 
@@ -7276,19 +7447,32 @@ setSelfDestruct(false);
                             <div className="text-lg md:text-xl font-semibold text-white">{nextEventLabel}</div>
                             <div className="mt-2 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
                           </div>
-                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
+                          <button onClick={() => { setSettingsTab('notifications'); setCurrentView('settings'); }} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
                         </div>
                       </div>
                     )}
                     {compactHomeWorkClock && (
-                      <div onClick={() => setCurrentView('extras')} className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 cursor-pointer hover:border-neutral-500 transition-colors">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
-                            <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
-                            <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
+                      <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
+                              <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
+                              <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
+                            </div>
+                            <button onClick={() => { setSettingsTab('notifications'); setCurrentView('settings'); }} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Historie</button>
                           </div>
-                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
+
+                          <div className="flex flex-wrap gap-2">
+                            {!workClockActive?.startedAt ? (
+                              <button onClick={startWorkClock} className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
+                            ) : (
+                              <>
+                                <button onClick={toggleWorkClockPause} className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-xs font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Pause fertig' : 'Pause'}</button>
+                                <button onClick={requestStopWorkClock} className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -7921,55 +8105,39 @@ setSelfDestruct(false);
             )}
 
             {currentView === 'extras' && (() => {
-              const extraCards = [];
-              const slotChrome = (key, title, subtitle, body, spanClass = '') => (
-                <section
-                  key={key}
-                  draggable
-                  onDragStart={() => setDraggedExtraSlot(key)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => {
-                    if (!draggedExtraSlot || draggedExtraSlot === key) return;
-                    setExtrasSlotOrder(prev => reorderExtraKeys(prev, draggedExtraSlot, key));
-                    setDraggedExtraSlot('');
-                    showToast('Reihenfolge gespeichert');
-                  }}
-                  onDragEnd={() => setDraggedExtraSlot('')}
-                  className={`border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4 ${spanClass} ${draggedExtraSlot === key ? 'ring-1 ring-white/20' : ''}`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">{title}</div>
-                      <div className="text-sm text-neutral-400">{subtitle}</div>
-                    </div>
-                    <div className="flex items-center gap-2 text-neutral-500 shrink-0">
-                      <span className="text-[11px] hidden md:inline">ziehen zum Sortieren</span>
-                      <GripVertical className="w-4 h-4" />
-                    </div>
+              if (!(extrasEnabled && (userProfile?.workClockEnabled === true))) {
+                return (
+                  <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
+                    <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                      <div>
+                        <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
+                        <p className="text-sm text-neutral-500 mt-2">In Extras ist nur noch die Stempeluhr aktiv.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Einstellungen</button>
+                      </div>
+                    </header>
+                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-5 text-sm text-neutral-400">Stempeluhr ist aktuell deaktiviert. Aktiviere sie unter Einstellungen → Produktivität & Push.</div>
                   </div>
-                  {body}
-                </section>
-              );
-
-              if (showExtrasSmartDay) {
-                extraCards.push({ key: 'smartday', node: slotChrome('smartday', 'Smart Day', 'Tageskarte mit Termin, Wetter und freiem Fenster.', (
-                  <>
-                    <div className="text-xl md:text-2xl font-semibold text-white">{nextEventLabel}</div>
-                    <div className="mt-1 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Nächster Termin</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextTimedEvent ? (nextTimedEvent.event.time || 'Heute') : 'Keiner mehr'}</div></div>
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Freies Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
-                      <div className={`px-3 py-2 rounded-xl border ${weatherBadgeMeta.tone}`}><div className="text-[10px] uppercase tracking-widest text-current/70">Wetter-Hinweis</div><div className="mt-1 text-sm font-medium flex items-center gap-2"><span>{weatherBadgeMeta.icon}</span><span>{weatherBadgeMeta.text}</span></div></div>
-                    </div>
-                  </>
-                ), 'xl:col-span-2')});
+                );
               }
 
-              if (showExtrasWorkClock) {
-                extraCards.push({ key: 'workclock', node: slotChrome('workclock', 'Stempeluhr', 'Start, Pause, Stopp, Rapport und letzte Sessions.', (
-                  <>
+              return (
+                <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
+                  <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                    <div>
+                      <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
+                      <p className="text-sm text-neutral-500 mt-2">Nur Stempeluhr: Start, Pause, Stopp und Historie.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => setCurrentView('dashboard')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Zur Startseite</button>
+                    </div>
+                  </header>
+
+                  <section className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       <div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
                         <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
                         <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv – Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
                       </div>
@@ -7978,7 +8146,7 @@ setSelfDestruct(false);
                           <button onClick={startWorkClock} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
                         ) : (
                           <>
-                            <button onClick={toggleWorkClockPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Weiter' : 'Pause'}</button>
+                            <button onClick={toggleWorkClockPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Pause fertig' : 'Pause'}</button>
                             <button onClick={requestStopWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
                           </>
                         )}
@@ -7986,191 +8154,36 @@ setSelfDestruct(false);
                         <button onClick={exportMonthWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Monat</button>
                       </div>
                     </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ø {formatDurationVerbose(weekAvgMs)}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
                     </div>
-                    {(workClockSessions || []).length > 0 && (
-                      <div className="space-y-2">
-                        {(workClockSessions || []).slice(0, 4).map((s) => (
-                          <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
-                            <div className="min-w-0 flex-1">
-                              <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
-                              <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
-                              <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ), 'xl:col-span-2')});
-              }
 
-              if (showExtrasFocus) {
-                extraCards.push({ key: 'focus', node: slotChrome('focus', 'Fokusmodus', '25/50/90-Minuten Fokusblöcke mit Verlauf.', (
-                  <>
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-xl font-semibold text-white">{focusState?.startedAt ? formatDurationCompact(focusRemainingMs) : `${focusDurationMin} Min.`}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{focusState?.startedAt ? (focusState?.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block läuft') : 'Starte einen Fokusblock für ruhiges Arbeiten.'}</div>
-                      </div>
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-sm text-neutral-300">Heute {formatDurationVerbose(focusTodayMs)}</div>
-                    </div>
-                    <select value={String(focusDurationMin)} onChange={(e) => setFocusDurationMin(parseInt(e.target.value, 10) || 25)} className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500">
-                      <option value="25">25 Minuten</option>
-                      <option value="50">50 Minuten</option>
-                      <option value="90">90 Minuten</option>
-                    </select>
-                    <div className="flex flex-wrap gap-2">
-                      {!focusState?.startedAt ? (
-                        <button onClick={startFocusMode} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Fokus starten</button>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500 mb-2">Historie</div>
+                      {(workClockSessions || []).length === 0 ? (
+                        <div className="text-sm text-neutral-500 border border-neutral-800 rounded-xl px-3 py-4 bg-black">Noch keine Einträge.</div>
                       ) : (
-                        <>
-                          <button onClick={toggleFocusPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{focusState?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{focusState?.isPaused ? 'Weiter' : 'Pause'}</button>
-                          <button onClick={() => stopFocusMode(true)} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">Als Fokusblock speichern</button>
-                        </>
+                        <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-1">
+                          {(workClockSessions || []).slice(0, 40).map((s) => (
+                            <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
+                              <div className="min-w-0 flex-1">
+                                <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
+                                <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
+                                <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
-                    <div className="text-[11px] text-neutral-500">Letzte Fokusblöcke: {(focusHistory || []).slice(0, 3).map((x) => `${formatDurationCompact(x.elapsedMs || 0)} am ${new Date(x.startedAt).toLocaleDateString('de-CH')}`).join(' · ') || 'Noch keine'}</div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasWeek) {
-                extraCards.push({ key: 'week', node: slotChrome('week', 'Wochenübersicht', 'Termine, Arbeit und nächste Freiflächen in einer Karte.', (
-                  <>
-                    <div className="text-xl font-semibold text-white">{weekEventCount} Termine · {formatDurationVerbose(weekWorkMs)} Arbeit</div>
-                    <div className="mt-2 text-sm text-neutral-400">{nextFreeBlock} · {workLevelSummary.map(x => `${x.level}: ${x.count}`).join(' · ')}</div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute Termine</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayEventCount}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Frei-Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</div><div className="mt-1 text-sm font-medium text-neutral-100">{weatherBadgeMeta.text}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ø pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
-                    </div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasFreeWindows) {
-                extraCards.push({ key: 'freewindows', node: slotChrome('freewindows', 'Freie Zeitfenster', 'Zeigt die nächsten freien Blöcke des heutigen Tages.', (
-                  <div className="space-y-2">
-                    {freeWindowsToday.map((slot, idx) => (
-                      <div key={`${slot}_${idx}`} className="px-3 py-3 rounded-xl border border-neutral-800 bg-black flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-medium text-neutral-100">{slot}</div>
-                          <div className="text-[11px] text-neutral-500">Ideal für Fokus, Aufgaben oder Pause</div>
-                        </div>
-                        <Clock className="w-4 h-4 text-neutral-500" />
-                      </div>
-                    ))}
-                  </div>
-                ))});
-              }
-
-              if (showExtrasGoals) {
-                extraCards.push({ key: 'goals', node: slotChrome('goals', 'Tagesziele', 'Drei wichtige Ziele für heute – mit Cloud-Sync.', (
-                  <>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-xl font-semibold text-white">{completedGoals}/3 erledigt</div>
-                      <button onClick={() => setDailyGoals(normalizeDailyGoals([]))} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Zurücksetzen</button>
-                    </div>
-                    <div className="space-y-3">
-                      {normalizeDailyGoals(dailyGoals).slice(0, 3).map((goal, idx) => (
-                        <div key={goal.id} className="flex items-center gap-3">
-                          <button type="button" onClick={() => setDailyGoals(prev => normalizeDailyGoals(prev).map((item, i) => i === idx ? { ...item, done: !item.done } : item))} className={`p-2 rounded-lg border transition-colors ${goal.done ? 'bg-white text-black border-white' : 'border-neutral-800 text-neutral-400 hover:border-neutral-600'}`}><CheckSquare className="w-4 h-4" /></button>
-                          <input value={goal.text} onChange={(e) => setDailyGoals(prev => normalizeDailyGoals(prev).map((item, i) => i === idx ? { ...item, text: e.target.value } : item))} placeholder={`Ziel ${idx + 1}`} className="flex-1 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasTimeBalance) {
-                extraCards.push({ key: 'sollist', node: slotChrome('sollist', 'Soll-/Ist-Stunden', 'Wochenziel, Fortschritt und Differenz aus der Stempeluhr.', (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Soll</div><div className="mt-1 text-sm font-medium text-neutral-100">{weeklyTargetHours || '0'} h</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ist</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div></div>
-                      <div className={`px-3 py-3 rounded-xl border bg-black ${weekDeltaMs >= 0 ? 'border-emerald-900/40 text-emerald-300' : 'border-amber-900/40 text-amber-300'}`}><div className="text-[10px] uppercase tracking-widest text-current/70">Differenz</div><div className="mt-1 text-sm font-medium">{`${weekDeltaMs >= 0 ? '+' : '-'}${formatDurationVerbose(Math.abs(weekDeltaMs))}`}</div></div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between text-[11px] text-neutral-500 mb-2"><span>Wochenziel</span><span>{weekTargetPct}% erreicht</span></div>
-                      <div className="h-2 rounded-full bg-black border border-neutral-800 overflow-hidden"><div className="h-full bg-white" style={{ width: `${weekTargetPct}%` }} /></div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <input value={weeklyTargetHours} onFocus={() => setIsWeeklyTargetEditing(true)} onBlur={() => setIsWeeklyTargetEditing(false)} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="w-28 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                      <span className="text-sm text-neutral-500">Stunden pro Woche</span>
-                    </div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasNotes) {
-                extraCards.push({ key: 'notes', node: slotChrome('notes', 'Schnellnotizen', 'Mit Firebase-Sync – dieselben Notizen auf allen Geräten.', (
-                  <>
-                    <div className="text-sm text-neutral-400">Cloud-Sync aktiv. Änderungen werden automatisch übernommen.</div>
-                    <textarea value={quickNotes} onChange={(e) => setQuickNotes(e.target.value)} rows={10} placeholder={`Heute
-- ...
-
-Morgen
-- ...
-
-Später
-- ...`} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                  </>
-                ))});
-              }
-
-              if (showExtrasWeather) {
-                extraCards.push({ key: 'weather', node: slotChrome('weather', 'Wetter-Planer', 'Wetter, Kleidung und bestes Zeitfenster im Blick.', (
-                  <>
-                    <div className="text-xl font-semibold text-white">{weatherBadgeMeta.icon} {weatherBadgeMeta.text}</div>
-                    <div className="mt-2 text-sm text-neutral-400">{todayWeatherAdvice}</div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Beste Phase</div><div className="mt-1 text-sm font-medium text-neutral-100">{bestWeatherWindow}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Kleidung</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayWeatherAdvice.includes('Jacke') ? 'Jacke sinnvoll' : (todayWeatherAdvice.includes('Schirm') ? 'Schirm sinnvoll' : 'Leicht und trocken')}</div></div>
-                    </div>
-                  </>
-                ))});
-              }
-
-              const cardMap = Object.fromEntries(extraCards.map((item) => [item.key, item.node]));
-              const orderedKeys = normalizeExtrasOrder(extrasSlotOrder).filter((key) => cardMap[key]);
-              const extraKeys = Object.keys(cardMap).filter((key) => !orderedKeys.includes(key));
-              const finalKeys = [...orderedKeys, ...extraKeys];
-
-              return (
-                <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
-                  <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-                    <div>
-                      <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
-                      <p className="text-sm text-neutral-500 mt-2">Nützliche Werkzeuge getrennt von der Startseite – jetzt zusätzlich frei sortierbar per Drag & Drop.</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={toggleTheme}
-                        className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors flex items-center gap-2"
-                        title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
-                      >
-                        {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                        {uiTheme === 'light' ? 'Dunkel' : 'Hell'}
-                      </button>
-                      <button onClick={() => setCurrentView('dashboard')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Zur Startseite</button>
-                      <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200 transition-colors">Extras einstellen</button>
-                    </div>
-                  </header>
-
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                    {finalKeys.map((key) => cardMap[key])}
-                  </div>
+                  </section>
                 </div>
               );
             })()}
@@ -8196,32 +8209,16 @@ Später
       .filter((field) => isExtraFieldEnabled(field))
       .length;
 
-    const AccordionItem = ({ id, label, icon: Icon, keys, children }) => {
+    const AccordionItem = ({ id, keys, children }) => {
       const visible = !q || match(keys);
       if (!visible) return null;
       const open = q ? true : (settingsTab === id);
-      const tabMeta = TABS.find((t) => t.id === id);
-      const toggle = () => {
-        if (q) return;
-        setSettingsTab((prev) => (prev === id ? '' : id));
-      };
+      if (!open) return null;
       return (
         <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
-          <button type="button" onClick={toggle} className="settings-section-trigger w-full px-5 py-4 border-b border-neutral-900/80 flex items-center justify-between hover:bg-neutral-900/40 transition-colors text-left">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="mt-0.5">{Icon ? <Icon className="w-4 h-4 text-neutral-400" /> : null}</div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-white truncate">{label}</div>
-                <div className="text-[11px] text-neutral-500 truncate">{tabMeta?.subtitle || ''}</div>
-              </div>
-            </div>
-            <ChevronRight className={"w-4 h-4 text-neutral-500 transition-transform shrink-0 " + (open ? 'rotate-90' : '')} />
-          </button>
-          {open && (
-            <div className="settings-section-body px-5 py-4">
-              {children}
-            </div>
-          )}
+          <div className="settings-section-body px-5 py-4">
+            {children}
+          </div>
         </section>
       );
     };
@@ -8268,48 +8265,7 @@ Später
           </div>
         </section>
 
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/50 p-3 md:p-4">
-          <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">Schnellzugriff</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              const active = settingsTab === t.id && !q;
-              return (
-                <button
-                  key={`quick_${t.id}`}
-                  type="button"
-                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                  className={"text-left rounded-xl border p-3 transition-colors " + (active ? "bg-white text-black border-white" : "bg-black text-neutral-200 border-neutral-800 hover:border-neutral-600")}
-                >
-                  <div className="flex items-center gap-2">
-                    <Icon className="w-4 h-4" />
-                    <span className="text-sm font-semibold truncate">{t.label}</span>
-                  </div>
-                  <div className={"mt-1 text-[11px] " + (active ? "text-black/70" : "text-neutral-500")}>{t.subtitle}</div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
 
-        <div className="lg:hidden -mx-1 px-1">
-          <div className="grid grid-cols-2 gap-2">
-            {visibleTabs.map((t) => {
-              const Icon = t.icon;
-              const active = settingsTab === t.id && !q;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                  className={"settings-tab-pill px-3 py-2 rounded-xl border text-xs flex items-center gap-2 " + (active ? "bg-white text-black border-white" : "bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-600")}
-                >
-                  <Icon className="w-4 h-4" />
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
           <aside className="settings-nav-wrap hidden lg:block sticky top-6 self-start space-y-3">
@@ -8692,7 +8648,7 @@ Später
                       {!!pushTest?.id && (
                         <div className="text-[11px] text-neutral-600 break-words">
                           Server-Test Status: <span className="text-neutral-300">{(() => { const st = String(pushTest.status || 'pending'); if (st === 'timeout') return 'timeout (keine Rückmeldung)'; if (st === 'submitted') return 'übermittelt (kein Leserecht auf Status)'; return st; })()}</span>
-                          {pushTest.lastError ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
+                          {pushTest.lastError && String(pushTest.lastError) !== 'STATUS_READ_BLOCKED (optional)' ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
                           {String(pushTest.status || '').toLowerCase() === 'timeout' ? <div className="mt-1 text-[11px] text-amber-300">Server hat nicht geantwortet. Bitte Adblock/Shield deaktivieren und Push-Cloud-Function prüfen.</div> : null}
                         </div>
                       )}
@@ -8727,7 +8683,7 @@ Später
                       </div>
 
                       <div className="text-[11px] text-neutral-600 leading-relaxed">
-                        Hinweis: Wenn "Test (Server)" fehlschlaegt oder auf "kein Leserecht" steht, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create/read</span> nicht.
+                        Hinweis: "Test (Server)" braucht Firestore-Schreibzugriff auf <span className="text-neutral-300">public/data/pushTests:create</span>. Status-Lesen ist optional; bei Blockern/Rules kann trotzdem eine Push-Nachricht ankommen.
                       </div>
                     </div>
                     )}
@@ -9525,7 +9481,8 @@ Später
                             )}
                             {sortedMyChats.map(chat => {
                               const isPinned = pinnedChatIds.includes(chat.id);
-                              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
+                              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+              const mutedChatIds = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
                               const isMuted = mutedChatIds.includes(chat.id);
                               const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
                               const otherUid = isDm ? chat.participants.find(id => id !== user?.uid) : null;
@@ -9693,6 +9650,11 @@ Später
                           const mergedStars = [...new Set([...(Array.isArray(msg?.starredBy) ? msg.starredBy : []), ...(Array.isArray(activeChatData?.messageStars?.[msg?.id]) ? activeChatData.messageStars[msg.id] : [])])];
                           const isFavorite = mergedStars.includes(user?.uid);
                           const showReactionPicker = messageReactionPickerFor === msg?.id;
+                          const ephemeralMeta = (activeChatData && activeChatData?.ephemeralViews) ? activeChatData.ephemeralViews?.[msg?.id] : null;
+                          const ephemeralDeleteAt = Number(ephemeralMeta?.deleteAt || 0);
+                          const isEphemeralHidden = !!(activeChatData?.ephemeralHidden?.[msg?.id]);
+                          const isMessageHidden = !!msg?.deleted || isEphemeralHidden || (!!msg?.selfDestruct && ephemeralDeleteAt > 0 && Date.now() >= ephemeralDeleteAt);
+                          const selfDestructRemainingSec = (msg?.selfDestruct && ephemeralDeleteAt > 0) ? Math.ceil(Math.max(0, ephemeralDeleteAt - Date.now()) / 1000) : 0;
                           const mergedReactions = { ...(msg?.reactions || {}), ...((activeChatData?.messageReactions && activeChatData?.messageReactions?.[msg?.id]) ? activeChatData.messageReactions[msg.id] : {}) };
                           const reactionRows = Object.entries(mergedReactions || {}).reduce((acc, [rawKey, uids]) => {
                             const emoji = reactionEmojiFromKey(rawKey);
@@ -9721,10 +9683,10 @@ Später
                                 {/* Selbstzerstörungs-Indikator */}
                                 {msg.selfDestruct && (
                                   <div className="text-[10px] text-red-500 font-bold mb-2 flex items-center gap-1">
-                                    <Bomb className="w-3 h-3" /> Zerstört sich nach Lesen
+                                    <Bomb className="w-3 h-3" /> {selfDestructRemainingSec > 0 ? `Wird in ${selfDestructRemainingSec}s gelöscht` : 'Einmal-Ansicht (10s nach Öffnen)'}
                                   </div>
                                 )}
-                                {!msg.deleted && msg.replyTo && (
+                                {!isMessageHidden && msg.replyTo && (
                                   (() => {
                                     const refId = msg.replyTo?.id;
                                     const refMsg = refId ? (chatMessages || []).find(m => m && m.id === refId) : null;
@@ -9750,18 +9712,18 @@ Später
                                     );
                                   })()
                                 )}
-{!msg.deleted && msg.image && (
+{!isMessageHidden && msg.image && (
                                   <img
                                     src={msg.image}
                                     alt="Upload"
                                     className="rounded-lg mb-2 max-h-64 object-contain cursor-zoom-in"
-                                    onClick={(e) => { e.stopPropagation(); openImageViewer(msg.image); }}
+                                    onClick={async (e) => { e.stopPropagation(); const ok = await handleEphemeralImageOpen(msg); if (!ok) return; openImageViewer(msg.image); }}
                                   />
                                 )}
-                                {!msg.deleted && msg.audio && <AudioMessageBubble src={msg.audio} msgId={msg.id} isMe={isMe} />}
+                                {!isMessageHidden && msg.audio && <AudioMessageBubble src={msg.audio} msgId={msg.id} isMe={isMe} />}
                                 
                                 {/* Termin-Kachel Rendering */}
-                                {!msg.deleted && msg.event && (
+                                {!isMessageHidden && msg.event && (
                                   <div className={`mt-2 p-3 rounded-xl border ${isMe ? 'bg-black/10 border-black/20' : 'bg-black/40 border-neutral-700'}`}>
                                     <div className="flex items-center gap-2 mb-1">
                                       <CalendarIcon className="w-4 h-4" />
@@ -9778,7 +9740,7 @@ Später
                                   </div>
                                 )}
 
-                                {msg.deleted ? (
+                                {isMessageHidden ? (
                                   <p className={`text-sm italic whitespace-pre-wrap ${isMe ? 'text-neutral-600' : 'text-neutral-500'}`}>
                                     Nachricht gelöscht
                                   </p>
@@ -9786,7 +9748,7 @@ Später
                                   msg.text && <p className="text-sm whitespace-pre-wrap">{(isMessageSearchOpen && String(messageSearchQuery || '').trim()) ? renderHighlightedText(msg.text, messageSearchQuery, { isMe, active: String(currentMatchId) === String(msg.id) }) : msg.text}</p>
                                 )}
 
-                                {!msg.deleted && reactionRows.length > 0 && (
+                                {!isMessageHidden && reactionRows.length > 0 && (
                                   <div className="mt-2 flex flex-wrap gap-1.5">
                                     {reactionRows.map((row) => {
                                       const mine = row.uids.includes(user?.uid);
@@ -9806,9 +9768,9 @@ Später
                                 )}
                                 
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
-                                  {msg.deleted && <span className="text-[9px] mr-1">(gelöscht)</span>}
-                                  {!msg.deleted && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
-                                  {!msg.deleted && isFavorite && <Star className={`w-3 h-3 mr-1 ${isMe ? 'text-black/70' : 'text-yellow-300/90'}`} />}
+                                  {isMessageHidden && <span className="text-[9px] mr-1">(gelöscht)</span>}
+                                  {!isMessageHidden && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
+                                  {!isMessageHidden && isFavorite && <Star className={`w-3 h-3 mr-1 ${isMe ? 'text-black/70' : 'text-yellow-300/90'}`} />}
                                   {chatMetaPrefs.showTime && (
                                     <span className="text-[10px] block text-right">
                                       {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -9855,7 +9817,7 @@ Später
 
                                 {showActions && (
                                   <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
-                                    {!msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                    {!isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button
                                         onClick={(e) => { e.stopPropagation(); setMessageReactionPickerFor(showReactionPicker ? null : msg.id); }}
                                         className={`p-2 rounded-md ${showReactionPicker ? 'bg-white text-black' : 'text-white hover:bg-neutral-700'}`}
@@ -9865,7 +9827,7 @@ Später
                                       </button>
                                     )}
 
-                                    {!msg.deleted && (
+                                    {!isMessageHidden && (
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
@@ -9876,7 +9838,7 @@ Später
                                             image: !!msg.image,
                                             audio: !!msg.audio,
                                             event: msg.event ? { title: msg.event.title || 'Termin' } : null,
-                                            deleted: !!msg.deleted
+                                            deleted: !!isMessageHidden
                                           });
                                           setEditingMessage(null);
                                           setSelectedMessageId(null);
@@ -9889,7 +9851,7 @@ Später
                                       </button>
                                     )}
 
-                                    {!msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                    {!isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button
                                         onClick={(e) => { e.stopPropagation(); toggleMessageFavorite(msg); }}
                                         className={`p-2 rounded-md ${isFavorite ? 'text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20' : 'text-white hover:bg-neutral-700'}`}
@@ -9899,10 +9861,10 @@ Später
                                       </button>
                                     )}
                                     
-                                    {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
+                                    {isMe && !isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
                                       <button onClick={(e) => { e.stopPropagation(); setReplyToMessage(null); setEditingMessage(msg); setNewMessageText(msg.text); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
                                     )}
-                                    {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                    {isMe && !isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="Löschen"><Trash2 className="w-4 h-4" /></button>
                                     )}
                                   </div>
@@ -9960,33 +9922,69 @@ Später
                         )}
 
                         <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
-                          <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-x-auto no-scrollbar`}>
-                            <label
-                              className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0"
-                              title="Bild senden"
-                              onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
-                              onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
-                              onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                          <div ref={attachmentMenuRef} className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-visible`}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAttachmentMenuOpen(prev => !prev);
+                                temporarilySuspendSecretAutoHide(180000);
+                              }}
+                              className="p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400"
+                              title="Anhang"
                             >
-                              <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(180000)} onChange={handleImageUpload} />
-                            </label>
-
-                            <label
-                              className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0"
-                              title="Foto machen"
-                              onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
-                              onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
-                              onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
-                            >
-                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(180000)} onChange={handleImageUpload} />
-                            </label>
-                            
-                            <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
-                              <CalendarPlus className="w-5 h-5" />
+                              <Paperclip className="w-5 h-5" />
                             </button>
 
-                            <button type="button" onClick={() => setSelfDestruct(!selfDestruct)} className={`p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 hidden sm:flex ${selfDestruct ? 'bg-red-900/30 border-red-500 text-red-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400'}`} title="Snapchat-Modus (10s)">
-                              <Bomb className="w-5 h-5" />
+                            {isAttachmentMenuOpen && !editingMessage && (
+                              <div className="absolute bottom-14 left-0 z-50 min-w-[235px] rounded-2xl border border-neutral-800 bg-neutral-950 p-2 shadow-2xl flex flex-col gap-1">
+                                <label
+                                  className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                >
+                                  <ImageIcon className="w-4 h-4 text-neutral-400" /> Bild senden
+                                  <input
+                                    type="file"
+                                    accept="image/*,.heic,.heif"
+                                    className="hidden"
+                                    onClick={() => temporarilySuspendSecretAutoHide(180000)}
+                                    onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
+                                  />
+                                </label>
+
+                                <label
+                                  className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                >
+                                  <Camera className="w-4 h-4 text-neutral-400" /> Kamera
+                                  <input
+                                    type="file"
+                                    accept="image/*,.heic,.heif"
+                                    capture="environment"
+                                    className="hidden"
+                                    onClick={() => temporarilySuspendSecretAutoHide(180000)}
+                                    onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
+                                  />
+                                </label>
+
+                                <div className="h-px bg-neutral-800 my-1" />
+                                <div className="px-3 pt-1 text-[11px] uppercase tracking-wider text-red-300">1x Ansicht</div>
+                                <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
+                                  <Bomb className="w-4 h-4" /> Bild hochladen
+                                  <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
+                                </label>
+                                <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
+                                  <Bomb className="w-4 h-4" /> Kamera öffnen
+                                  <input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
+                                </label>
+                              </div>
+                            )}
+
+                            <button type="button" onClick={() => { setIsShareEventModalOpen(true); setIsAttachmentMenuOpen(false); }} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
+                              <CalendarPlus className="w-5 h-5" />
                             </button>
                           </div>
                           
@@ -9998,13 +9996,15 @@ Später
                             ) : (
                               <textarea 
                                 id="chatInput"
+                                ref={chatInputRef}
                                 value={newMessageText} 
                                 onChange={handleTyping} 
+                                onInput={resizeChatInput}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); } }} 
                                 placeholder="Nachricht..." 
                                 rows="1" 
-                                className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(editingMessage || replyToMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
-                                style={{ minHeight: '44px', maxHeight: '120px' }} 
+                                className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-hidden block text-sm ${(editingMessage || replyToMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
+                                style={{ minHeight: '44px' }} 
                               />
                             )}
                             

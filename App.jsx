@@ -8268,48 +8268,7 @@ Später
           </div>
         </section>
 
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/50 p-3 md:p-4">
-          <div className="text-[11px] uppercase tracking-widest text-neutral-500 mb-3">Schnellzugriff</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              const active = settingsTab === t.id && !q;
-              return (
-                <button
-                  key={`quick_${t.id}`}
-                  type="button"
-                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                  className={"text-left rounded-xl border p-3 transition-colors " + (active ? "bg-white text-black border-white" : "bg-black text-neutral-200 border-neutral-800 hover:border-neutral-600")}
-                >
-                  <div className="flex items-center gap-2">
-                    <Icon className="w-4 h-4" />
-                    <span className="text-sm font-semibold truncate">{t.label}</span>
-                  </div>
-                  <div className={"mt-1 text-[11px] " + (active ? "text-black/70" : "text-neutral-500")}>{t.subtitle}</div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
 
-        <div className="lg:hidden -mx-1 px-1">
-          <div className="grid grid-cols-2 gap-2">
-            {visibleTabs.map((t) => {
-              const Icon = t.icon;
-              const active = settingsTab === t.id && !q;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                  className={"settings-tab-pill px-3 py-2 rounded-xl border text-xs flex items-center gap-2 " + (active ? "bg-white text-black border-white" : "bg-neutral-950 text-neutral-300 border-neutral-800 hover:border-neutral-600")}
-                >
-                  <Icon className="w-4 h-4" />
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
           <aside className="settings-nav-wrap hidden lg:block sticky top-6 self-start space-y-3">

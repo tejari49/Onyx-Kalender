@@ -657,6 +657,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [selectedMessageId, setSelectedMessageId] = useState(null); 
       const [messageReactionPickerFor, setMessageReactionPickerFor] = useState(null);
       const [selfDestruct, setSelfDestruct] = useState(false);
+      const [imageSendMode, setImageSendMode] = useState('normal');
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
       
       const [isRecording, setIsRecording] = useState(false);
@@ -6453,7 +6454,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         } catch (_) {}
       }, [activeChat?.id, activeChatData?.ephemeralViews, activeChatData?.ephemeralHidden, user?.uid]);
 
-      const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
+      const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null, opts = {}) => {
         if (e) e.preventDefault();
 
         if (!activeChat || !user) return;
@@ -6498,7 +6499,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           replyTo: replyTo,
           reactions: {},
           starredBy: [],
-          selfDestruct: !!selfDestruct,
+          selfDestruct: (typeof opts?.forceSelfDestruct === 'boolean') ? !!opts.forceSelfDestruct : !!selfDestruct,
           timestamp: Date.now(),
           createdAt: serverTimestamp(),
           read: false
@@ -6517,7 +6518,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
         // Input sofort leeren
         setNewMessageText('');
-setSelfDestruct(false);
+        setSelfDestruct(false);
+        setImageSendMode('normal');
         setReplyToMessage(null);
         refocusChatInput();
 
@@ -6681,7 +6683,7 @@ setSelfDestruct(false);
         }
       };
 
-      const handleImageUpload = async (e) => {
+      const handleImageUpload = async (e, mode = 'normal') => {
         const file0 = e?.target?.files && e.target.files[0];
         if (!file0) return;
         try { e.target.value = ''; } catch (_) {}
@@ -6694,9 +6696,32 @@ setSelfDestruct(false);
         try {
           const file = await ensureJpegBlobIfHeic(file0);
           const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
-          await sendMessage(null, compressed);
+          await sendMessage(null, compressed, null, null, { forceSelfDestruct: mode === 'viewonce' });
+          if (mode === 'viewonce') {
+            setImageSendMode('normal');
+          }
         } catch (err) {
           console.warn('image compress/upload failed', err);
+          showToast('Bild konnte nicht verarbeitet werden');
+        }
+      };
+
+      const handleImageDrop = async (e, mode = 'normal') => {
+        try {
+          e.preventDefault();
+          e.stopPropagation();
+          temporarilySuspendSecretAutoHide(180000);
+          const file0 = e?.dataTransfer?.files && e.dataTransfer.files[0];
+          if (!file0) return;
+          if (!isProbablyImageFile(file0)) { showToast('Nur Bilder unterstützt'); return; }
+          const file = await ensureJpegBlobIfHeic(file0);
+          const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
+          await sendMessage(null, compressed, null, null, { forceSelfDestruct: mode === 'viewonce' });
+          if (mode === 'viewonce') {
+            setImageSendMode('normal');
+          }
+        } catch (err) {
+          console.warn('image drop failed', err);
           showToast('Bild konnte nicht verarbeitet werden');
         }
       };
@@ -9866,34 +9891,57 @@ setSelfDestruct(false);
 
                         <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
                           <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-x-auto no-scrollbar`}>
-                            <label
-                              className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0"
-                              title="Bild senden"
-                              onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
-                              onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
-                              onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
-                            >
-                              <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(180000)} onChange={handleImageUpload} />
-                            </label>
+                            {imageSendMode !== 'viewonce' && (
+                              <>
+                                <label
+                                  className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0"
+                                  title="Bild senden"
+                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                >
+                                  <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(180000)} onChange={(e) => handleImageUpload(e, 'normal')} />
+                                </label>
 
-                            <label
-                              className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0"
-                              title="Foto machen"
-                              onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
-                              onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
-                              onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
-                            >
-                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(180000)} onChange={handleImageUpload} />
-                            </label>
+                                <label
+                                  className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0"
+                                  title="Foto machen"
+                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                >
+                                  <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(180000)} onChange={(e) => handleImageUpload(e, 'normal')} />
+                                </label>
+                              </>
+                            )}
                             
                             <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
                               <CalendarPlus className="w-5 h-5" />
                             </button>
 
-                            <button type="button" onClick={() => setSelfDestruct(!selfDestruct)} className={`p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 hidden sm:flex ${selfDestruct ? 'bg-red-900/30 border-red-500 text-red-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400'}`} title="Snapchat-Modus (10s)">
+                            <button type="button" onClick={() => { setImageSendMode(prev => prev === 'viewonce' ? 'normal' : 'viewonce'); setSelfDestruct(false); }} className={`p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 ${imageSendMode === 'viewonce' ? 'bg-red-900/30 border-red-500 text-red-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400'}`} title="1x Ansicht (10s nach Öffnen)">
                               <Bomb className="w-5 h-5" />
                             </button>
                           </div>
+
+                          {imageSendMode === 'viewonce' && !editingMessage && (
+                            <div
+                              className="absolute left-0 right-0 -top-24 z-30 rounded-2xl border border-red-900/40 bg-black/95 p-3"
+                              onDragOver={(e) => { e.preventDefault(); }}
+                              onDrop={(e) => handleImageDrop(e, 'viewonce')}
+                            >
+                              <div className="text-[11px] text-red-300 mb-2 flex items-center gap-2"><Bomb className="w-3.5 h-3.5" /> 1x Ansicht aktiv (10s nach Öffnen)</div>
+                              <div className="flex flex-wrap gap-2">
+                                <label className="cursor-pointer px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:border-neutral-500">Bild hochladen
+                                  <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => handleImageUpload(e, 'viewonce')} />
+                                </label>
+                                <label className="cursor-pointer px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:border-neutral-500">Kamera
+                                  <input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={(e) => handleImageUpload(e, 'viewonce')} />
+                                </label>
+                                <div className="px-3 py-2 rounded-xl border border-dashed border-neutral-700 text-xs text-neutral-400">Bild hierher ziehen</div>
+                              </div>
+                            </div>
+                          )}
                           
                           <div className="flex-1 relative">
                             {isRecording ? (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip, Paperclip,
       Copy, Link2, History, Star, SmilePlus
     } from 'lucide-react';
 
@@ -658,6 +658,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [messageReactionPickerFor, setMessageReactionPickerFor] = useState(null);
       const [selfDestruct, setSelfDestruct] = useState(false);
       const [imageSendMode, setImageSendMode] = useState('normal');
+      const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
       
       const [isRecording, setIsRecording] = useState(false);
@@ -667,6 +668,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const typingTimeoutRef = useRef(null);
       const messagesEndRef = useRef(null);
       const chatScrollRef = useRef(null);
+      const chatInputRef = useRef(null);
+      const attachmentMenuRef = useRef(null);
 
       // --- Chat scroll UX ---
       // Keep the viewport stable when prepending older messages and avoid auto-jumping to bottom
@@ -6300,9 +6303,46 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
+      const resizeChatInput = () => {
+        try {
+          const el = chatInputRef.current;
+          if (!el) return;
+          el.style.height = 'auto';
+          const computed = window.getComputedStyle(el);
+          const lineHeight = parseFloat(computed.lineHeight || '20') || 20;
+          const padding = (parseFloat(computed.paddingTop || '0') || 0) + (parseFloat(computed.paddingBottom || '0') || 0);
+          const border = (parseFloat(computed.borderTopWidth || '0') || 0) + (parseFloat(computed.borderBottomWidth || '0') || 0);
+          const minHeight = 44;
+          const maxHeight = Math.round((lineHeight * 3) + padding + border);
+          const nextHeight = Math.max(minHeight, Math.min(el.scrollHeight, maxHeight));
+          el.style.height = `${nextHeight}px`;
+          el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+        } catch (_) {}
+      };
+
+      useEffect(() => {
+        resizeChatInput();
+      }, [newMessageText, editingMessage, replyToMessage]);
+
+      useEffect(() => {
+        const handleOutsideClick = (e) => {
+          if (!attachmentMenuRef.current) return;
+          if (!attachmentMenuRef.current.contains(e.target)) {
+            setIsAttachmentMenuOpen(false);
+          }
+        };
+        document.addEventListener('mousedown', handleOutsideClick);
+        document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+        return () => {
+          document.removeEventListener('mousedown', handleOutsideClick);
+          document.removeEventListener('touchstart', handleOutsideClick);
+        };
+      }, []);
+
       function handleTyping(e) {
          const value = e.target.value;
          setNewMessageText(value);
+         resizeChatInput();
          if (!activeChat || !user) return;
          updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user?.uid}`]: value.length > 0, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -9890,37 +9930,67 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                         )}
 
                         <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
-                          <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-x-auto no-scrollbar`}>
-                            {imageSendMode !== 'viewonce' && (
-                              <>
-                                <label
-                                  className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0"
-                                  title="Bild senden"
-                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                >
-                                  <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(180000)} onChange={(e) => handleImageUpload(e, 'normal')} />
-                                </label>
-
-                                <label
-                                  className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0"
-                                  title="Foto machen"
-                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                >
-                                  <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onClick={() => temporarilySuspendSecretAutoHide(180000)} onChange={(e) => handleImageUpload(e, 'normal')} />
-                                </label>
-                              </>
-                            )}
-                            
-                            <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
-                              <CalendarPlus className="w-5 h-5" />
+                          <div ref={attachmentMenuRef} className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-visible`}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAttachmentMenuOpen(prev => !prev);
+                                temporarilySuspendSecretAutoHide(180000);
+                              }}
+                              className={`p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 ${imageSendMode === 'viewonce' ? 'bg-red-900/30 border-red-500 text-red-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400'}`}
+                              title="Anhang"
+                            >
+                              <Paperclip className="w-5 h-5" />
                             </button>
 
-                            <button type="button" onClick={() => { setImageSendMode(prev => prev === 'viewonce' ? 'normal' : 'viewonce'); setSelfDestruct(false); }} className={`p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 ${imageSendMode === 'viewonce' ? 'bg-red-900/30 border-red-500 text-red-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400'}`} title="1x Ansicht (10s nach Öffnen)">
-                              <Bomb className="w-5 h-5" />
+                            {isAttachmentMenuOpen && !editingMessage && (
+                              <div className="absolute bottom-14 left-0 z-40 min-w-[210px] rounded-2xl border border-neutral-800 bg-neutral-950/95 p-2 shadow-2xl backdrop-blur">
+                                <label
+                                  className="cursor-pointer w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                >
+                                  <ImageIcon className="w-4 h-4 text-neutral-400" /> Bild senden
+                                  <input
+                                    type="file"
+                                    accept="image/*,.heic,.heif"
+                                    className="hidden"
+                                    onClick={() => temporarilySuspendSecretAutoHide(180000)}
+                                    onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
+                                  />
+                                </label>
+
+                                <label
+                                  className="cursor-pointer w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                >
+                                  <Camera className="w-4 h-4 text-neutral-400" /> Kamera
+                                  <input
+                                    type="file"
+                                    accept="image/*,.heic,.heif"
+                                    capture="environment"
+                                    className="hidden"
+                                    onClick={() => temporarilySuspendSecretAutoHide(180000)}
+                                    onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
+                                  />
+                                </label>
+
+                                <button
+                                  type="button"
+                                  onClick={() => { setImageSendMode('viewonce'); setSelfDestruct(false); setIsAttachmentMenuOpen(false); }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-red-300 hover:bg-red-950/40"
+                                  title="1x Ansicht (10s nach Öffnen)"
+                                >
+                                  <Bomb className="w-4 h-4" /> 1x Ansicht
+                                </button>
+                              </div>
+                            )}
+
+                            <button type="button" onClick={() => { setIsShareEventModalOpen(true); setIsAttachmentMenuOpen(false); }} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
+                              <CalendarPlus className="w-5 h-5" />
                             </button>
                           </div>
 
@@ -9951,13 +10021,15 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                             ) : (
                               <textarea 
                                 id="chatInput"
+                                ref={chatInputRef}
                                 value={newMessageText} 
                                 onChange={handleTyping} 
+                                onInput={resizeChatInput}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); } }} 
                                 placeholder="Nachricht..." 
                                 rows="1" 
-                                className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(editingMessage || replyToMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
-                                style={{ minHeight: '44px', maxHeight: '120px' }} 
+                                className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-hidden block text-sm ${(editingMessage || replyToMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
+                                style={{ minHeight: '44px' }} 
                               />
                             )}
                             

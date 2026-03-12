@@ -372,6 +372,7 @@ function AmoledCalendarApp() {
       const [quickNotes, setQuickNotes] = useState('');
       const [dailyGoals, setDailyGoals] = useState(() => normalizeDailyGoals([]));
       const [weeklyTargetHours, setWeeklyTargetHours] = useState('42');
+      const [isWeeklyTargetEditing, setIsWeeklyTargetEditing] = useState(false);
       const [extrasSlotOrder, setExtrasSlotOrder] = useState(() => normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER));
       const [extrasUpdatedAt, setExtrasUpdatedAt] = useState(0);
       const [draggedExtraSlot, setDraggedExtraSlot] = useState('');
@@ -2122,7 +2123,11 @@ const handleTouchEnd = () => {
         if (f === 'media') return !!(m.image);
         if (f === 'audio') return !!m.audio;
         if (f === 'links') return messageHasLink(m);
-        if (f === 'favorites') return Array.isArray(m?.starredBy) && m.starredBy.includes(user?.uid);
+        if (f === 'favorites') {
+          const msgStars = Array.isArray(m?.starredBy) ? m.starredBy : [];
+          const chatStars = Array.isArray(activeChatData?.messageStars?.[m?.id]) ? activeChatData.messageStars[m.id] : [];
+          return [...new Set([...(msgStars || []), ...(chatStars || [])])].includes(user?.uid);
+        }
         return true;
       };
 
@@ -6441,7 +6446,14 @@ setSelfDestruct(false);
             [path]: already ? arrayRemove(user?.uid) : arrayUnion(user?.uid)
           });
         } catch (error) {
-          showToast('Reaktion fehlgeschlagen');
+          try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+              [`messageReactions.${msg.id}.${encodedKey}`]: already ? arrayRemove(user?.uid) : arrayUnion(user?.uid),
+              updatedAt: Date.now()
+            });
+          } catch (_) {
+            showToast('Reaktion fehlgeschlagen');
+          }
         }
       };
 
@@ -6456,7 +6468,15 @@ setSelfDestruct(false);
           });
           showToast(already ? 'Favorit entfernt' : 'Zu Favoriten hinzugefügt');
         } catch (error) {
-          showToast('Favorit fehlgeschlagen');
+          try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+              [`messageStars.${msg.id}`]: already ? arrayRemove(user?.uid) : arrayUnion(user?.uid),
+              updatedAt: Date.now()
+            });
+            showToast(already ? 'Favorit entfernt' : 'Zu Favoriten hinzugefügt');
+          } catch (_) {
+            showToast('Favorit fehlgeschlagen');
+          }
         }
       };
 
@@ -6704,14 +6724,15 @@ setSelfDestruct(false);
         try {
           if (typeof userProfile?.quickNotesCloud === 'string') setQuickNotes(String(userProfile?.quickNotesCloud || ''));
           if (Array.isArray(userProfile?.dailyGoals)) setDailyGoals(normalizeDailyGoals(userProfile?.dailyGoals));
-          if (userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) setWeeklyTargetHours(String(userProfile?.weeklyTargetHours));
+          if (!isWeeklyTargetEditing && userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) setWeeklyTargetHours(String(userProfile?.weeklyTargetHours));
           if (Array.isArray(userProfile?.extrasSlotOrder)) setExtrasSlotOrder(normalizeExtrasOrder(userProfile?.extrasSlotOrder));
           setExtrasUpdatedAt(remoteTs);
           extrasCloudReadyRef.current = true;
         } catch (_) {}
-      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder]);
+      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder, isWeeklyTargetEditing]);
       useEffect(() => {
         if (!user) return;
+        if (isWeeklyTargetEditing) return;
         if (!extrasCloudReadyRef.current) { extrasCloudReadyRef.current = true; return; }
         try { if (extrasCloudTimerRef.current) clearTimeout(extrasCloudTimerRef.current); } catch (_) {}
         extrasCloudTimerRef.current = setTimeout(async () => {
@@ -6731,7 +6752,7 @@ setSelfDestruct(false);
           }
         }, 700);
         return () => { try { if (extrasCloudTimerRef.current) clearTimeout(extrasCloudTimerRef.current); } catch (_) {} };
-      }, [quickNotes, dailyGoals, weeklyTargetHours, extrasSlotOrder, user?.uid]);
+      }, [quickNotes, dailyGoals, weeklyTargetHours, extrasSlotOrder, user?.uid, isWeeklyTargetEditing]);
       const getFocusElapsedMs = (state, now = Date.now()) => {
         if (!state?.startedAt) return 0;
         const base = Math.max(0, now - Number(state.startedAt || now));
@@ -7999,7 +8020,7 @@ setSelfDestruct(false);
                       <div className="h-2 rounded-full bg-black border border-neutral-800 overflow-hidden"><div className="h-full bg-white" style={{ width: `${weekTargetPct}%` }} /></div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <input value={weeklyTargetHours} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="w-28 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                      <input value={weeklyTargetHours} onFocus={() => setIsWeeklyTargetEditing(true)} onBlur={() => setIsWeeklyTargetEditing(false)} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="w-28 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                       <span className="text-sm text-neutral-500">Stunden pro Woche</span>
                     </div>
                   </>
@@ -8447,7 +8468,7 @@ Später
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wochenziel in Stunden</label>
-                        <input value={weeklyTargetHours} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                        <input value={weeklyTargetHours} onFocus={() => setIsWeeklyTargetEditing(true)} onBlur={() => setIsWeeklyTargetEditing(false)} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                       </div>
                       <div className="flex items-end">
                         <button type="button" onClick={() => { setExtrasSlotOrder(normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER)); showToast('Extras-Reihenfolge zurückgesetzt'); }} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Reihenfolge zurücksetzen</button>
@@ -9555,9 +9576,11 @@ Später
                           if (!msg) return null;
                           const isMe = msg?.senderId === user?.uid;
                           const showActions = selectedMessageId === msg?.id;
-                          const isFavorite = Array.isArray(msg?.starredBy) && msg.starredBy.includes(user?.uid);
+                          const mergedStars = [...new Set([...(Array.isArray(msg?.starredBy) ? msg.starredBy : []), ...(Array.isArray(activeChatData?.messageStars?.[msg?.id]) ? activeChatData.messageStars[msg.id] : [])])];
+                          const isFavorite = mergedStars.includes(user?.uid);
                           const showReactionPicker = messageReactionPickerFor === msg?.id;
-                          const reactionRows = Object.entries(msg?.reactions || {}).reduce((acc, [rawKey, uids]) => {
+                          const mergedReactions = { ...(msg?.reactions || {}), ...((activeChatData?.messageReactions && activeChatData?.messageReactions?.[msg?.id]) ? activeChatData.messageReactions[msg.id] : {}) };
+                          const reactionRows = Object.entries(mergedReactions || {}).reduce((acc, [rawKey, uids]) => {
                             const emoji = reactionEmojiFromKey(rawKey);
                             const list = Array.isArray(uids) ? uids.filter(Boolean) : [];
                             if (!emoji || list.length === 0) return acc;

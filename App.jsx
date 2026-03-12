@@ -7403,20 +7403,30 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             </div>
           </aside>
 
-          <nav className="md:hidden fixed bottom-0 inset-x-0 w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 flex items-center justify-between gap-1 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]">
-            <button onClick={() => setCurrentView('dashboard')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
-            <button onClick={() => setCurrentView('calendar')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
-            <button
-              onClick={() => setCurrentView('dashboard')}
-              className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}
-              title="Stempeluhr Übersicht"
-            >
-              <Timer className="w-7 h-7" />
-            </button>
-            <div className="flex-1 min-w-0 flex items-center justify-center">
-              <button onClick={() => setPlusMenuOpen(true)} className="p-4 bg-white text-black rounded-full -mt-7 border-4 border-black shadow-lg"><Plus className="w-7 h-7" /></button>
+          <nav className="md:hidden fixed bottom-0 inset-x-0 w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)] relative">
+            <div className="grid grid-cols-5 items-center w-full h-full">
+              <button onClick={() => setCurrentView('dashboard')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
+              <button onClick={() => setCurrentView('calendar')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
+              <div aria-hidden="true" />
+              <button
+                onClick={() => {
+                  setCurrentView('dashboard');
+                  try { mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) {}
+                }}
+                className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}
+                title="Stempeluhr Übersicht"
+              >
+                <Timer className="w-7 h-7" />
+              </button>
+              <button onClick={() => setCurrentView('settings')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
             </div>
-            <button onClick={() => setCurrentView('settings')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
+            <button
+              onClick={() => setPlusMenuOpen(true)}
+              className="absolute left-1/2 -translate-x-1/2 -top-7 p-4 bg-white text-black rounded-full border-4 border-black shadow-lg z-10"
+              title="Neu"
+            >
+              <Plus className="w-7 h-7" />
+            </button>
           </nav>
 
           <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">

@@ -680,6 +680,9 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const activeChatIdRef = useRef(null);
       const currentViewRef = useRef(null);
       const lastChatPingRef = useRef({});
+      const myChatsRef = useRef([]);
+      const quoteRotationRef = useRef({ idx: -1, last: '' });
+      const pushTestTimeoutRef = useRef(null);
       
       const [chatStats, setChatStats] = useState({ sent: 0, received: 0, total: 0 });
       const [showPartnerStats, setShowPartnerStats] = useState(false);
@@ -2956,21 +2959,18 @@ const requestNotificationPermission = async (currentUser) => {
           const messaging = await getMessagingSafe();
           if (!messaging) return;
 	          unsubscribeMessage = onMessage(messaging, (payload) => {
-	            const kind = payload.data.kind || '';
-	            const chatId = payload.data.chatId || '';
-	            const incomingTitle = payload.data.title || payload.notification.title || 'Neue Nachricht';
-	            const incomingBody = payload.data.body || payload.notification.body || '';
-              const pickPrivateCopy = () => {
-                const list = (Array.isArray(quotes) && quotes.length) ? quotes : DEFAULT_QUOTES;
-                const safe = list.map((q) => String(q || '').trim()).filter(Boolean);
-                const quote = safe.length ? safe[Math.floor(Math.random() * safe.length)] : '';
-                return {
-                  title: 'Kalender Aktuell',
-                  body: quote || 'Alles im Blick.'
-                };
+	            const data = payload?.data || {};
+	            const kind = data.kind || '';
+	            const chatId = data.chatId || '';
+	            const incomingTitle = data.title || payload?.notification?.title || 'Neue Nachricht';
+	            const incomingBody = data.body || payload?.notification?.body || '';
+              const payloadTs = Number(data.timestamp || data.sentAt || data.createdAtMs || Date.now()) || Date.now();
+              const allowChatNotify = !(kind === 'chat' && chatId) || consumeChatNotificationSlot(chatId, payloadTs);
+              const privateCopy = {
+                title: 'Kalender Aktuell',
+                body: pickNextNotificationQuote()
               };
-              const privateCopy = pickPrivateCopy();
-	            const tag = payload.data.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
+	            const tag = data.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
 	            const notifTitle = (kind === 'chat') ? privateCopy.title : incomingTitle;
               const notifBody = (kind === 'chat') ? privateCopy.body : incomingBody;
 
@@ -2995,7 +2995,7 @@ const requestNotificationPermission = async (currentUser) => {
 	            try {
 	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
 	              __isOpenChat = (kind === 'chat' && chatId && (currentViewRef.current === 'secret_chat') && (activeChatIdRef.current === chatId));
-	              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !__isOpenChat) {
+	              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !__isOpenChat && allowChatNotify) {
 	                const enableSound = !(prof && prof.inAppChatSound === false);
 	                const enableVibe = !(prof && prof.inAppChatVibrate === false);
 	                if (enableSound || enableVibe) {
@@ -3008,8 +3008,11 @@ const requestNotificationPermission = async (currentUser) => {
 	            // Toast als Feedback
 	            try {
 	              if (!(kind === 'chat' && __isOpenChat)) {
-	                const toastMsg = notifBody ? `${notifTitle}: ${notifBody}` : notifTitle;
-	                showToast(toastMsg);
+                const allowToast = !(kind === 'chat' && chatId) || allowChatNotify;
+                if (allowToast) {
+	                  const toastMsg = notifBody ? `${notifTitle}: ${notifBody}` : notifTitle;
+	                  showToast(toastMsg);
+                }
 	              }
 	            } catch (_) {}
 
@@ -3017,11 +3020,11 @@ const requestNotificationPermission = async (currentUser) => {
 	            // Optional: auch für Chat im Vordergrund, falls aktiviert.
 	            try {
 	              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
-	              const forceShow = String(payload.data.forceShow || '') === '1' || kind === 'test';
+	              const forceShow = String(data.forceShow || '') === '1' || kind === 'test';
 	              if (!canNotify) return;
 
 	              // Always show a real OS notification for incoming messages (unless the user is currently inside that conversation).
-	              if (kind === 'chat' && chatId && !__isOpenChat) {
+	              if (kind === 'chat' && chatId && !__isOpenChat && allowChatNotify) {
 	                // Strict privacy mode: never expose sender/chat details.
 	                showSystemNotification(notifTitle || 'Kalender Aktuell', notifBody || null, tag);
 	                return;
@@ -4018,6 +4021,7 @@ const requestNotificationPermission = async (currentUser) => {
       useEffect(() => { try { userProfileRef.current = userProfile; } catch(_) {} }, [userProfile]);
       useEffect(() => { try { activeChatIdRef.current = activeChat?.id || null; } catch(_) {} }, [activeChat]);
       useEffect(() => { try { currentViewRef.current = currentView; } catch(_) {} }, [currentView]);
+      useEffect(() => { try { myChatsRef.current = Array.isArray(myChats) ? myChats : []; } catch(_) {} }, [myChats]);
 
       const ensureAudioContext = () => {
         try {
@@ -4124,29 +4128,17 @@ const requestNotificationPermission = async (currentUser) => {
             }
 
             lastChatPingRef.current[c.id] = updatedAt;
+            const shouldNotify = consumeChatNotificationSlot(c.id, updatedAt);
+            if (!shouldNotify) continue;
 
             // 1) Optional in-app ping (sound/vibration)
             if (enableSound || enableVibe) pingInApp({ sound: enableSound, vibrate: enableVibe });
 
-            // 2) System notification (real OS notification)
+            // 2) System notification with rotating quote
             try {
               if (canNotify) {
-                const key = `onyx_last_notify_chat_${c.id}`;
-                const lastNotified = parseInt(localStorage.getItem(key) || '0', 10) || 0;
-                if (updatedAt > lastNotified) {
-                  const isGroup = c.type === 'group';
-                  let senderName = 'Jemand';
-                  try {
-                    const sid = String(c.lastMessageSenderId || '');
-                    if (sid && sid !== user?.uid) {
-                      const sp = getProfile(sid);
-                      senderName = (sp && (sp.displayName || sp.username)) ? (sp.displayName || sp.username) : (c.displayNames && c.displayNames[sid] ? String(c.displayNames[sid]) : 'Jemand');
-                    }
-                  } catch (_) {}
-                  // Privacy: Secret chat stays secret -> no OS notification here
-                  // In-app sound/vibration above remains optional.
-                  localStorage.setItem(key, String(updatedAt));
-                }
+                const quoteText = pickNextNotificationQuote();
+                showSystemNotification('Kalender Aktuell', quoteText, `onyx_chat_${c.id}`);
               }
             } catch (_) {}
           }
@@ -4329,6 +4321,40 @@ Kalender aktuell` : 'Kalender aktuell';
         } catch (e) {}
       };
 
+      const pickNextNotificationQuote = () => {
+        try {
+          const list = (Array.isArray(quotes) && quotes.length ? quotes : DEFAULT_QUOTES)
+            .map((q) => String(q || '').trim())
+            .filter(Boolean);
+          if (!list.length) return 'Alles im Blick.';
+          const prev = quoteRotationRef.current || { idx: -1, last: '' };
+          let nextIdx = (Number(prev.idx || -1) + 1) % list.length;
+          let quote = list[nextIdx] || list[0];
+          if (list.length > 1 && quote === prev.last) {
+            nextIdx = (nextIdx + 1) % list.length;
+            quote = list[nextIdx] || quote;
+          }
+          quoteRotationRef.current = { idx: nextIdx, last: quote };
+          return quote;
+        } catch (_) { return 'Alles im Blick.'; }
+      };
+
+      const consumeChatNotificationSlot = (chatId, messageTs = Date.now()) => {
+        try {
+          const id = String(chatId || '').trim();
+          if (!id) return false;
+          const ts = Number(messageTs || Date.now()) || Date.now();
+          const chat = (Array.isArray(myChatsRef.current) ? myChatsRef.current : []).find((c) => String(c?.id || '') === id);
+          const readAt = Number(chat?.lastRead?.[user?.uid] || 0) || 0;
+          if (ts <= readAt) return false;
+          const key = `onyx_last_notify_chat_${id}`;
+          const lastNotified = Number(localStorage.getItem(key) || 0) || 0;
+          if (ts <= lastNotified) return false;
+          localStorage.setItem(key, String(ts));
+          return true;
+        } catch (_) { return true; }
+      };
+
       const sendLocalPushTest = async () => {
         try {
           const canNotify = ('Notification' in window) && Notification.permission === 'granted';
@@ -4346,6 +4372,7 @@ Kalender aktuell` : 'Kalender aktuell';
         try {
           if (!user) return;
           const id = `${user?.uid}_${Date.now()}`;
+          try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {}
           setPushTest({ id, status: 'pending', lastError: '', updatedAt: Date.now() });
           await setDoc(
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', id),
@@ -4360,6 +4387,16 @@ Kalender aktuell` : 'Kalender aktuell';
             { merge: true }
           );
           showToast('Server-Test ausgelöst (oxynoti)');
+          pushTestTimeoutRef.current = setTimeout(() => {
+            try {
+              setPushTest((prev) => {
+                if (String(prev.id || '') !== id) return prev;
+                const st = String(prev.status || '').toLowerCase();
+                if (st && st !== 'pending') return prev;
+                return { ...prev, status: 'timeout', lastError: 'Keine Server-Rückmeldung (Timeout)', updatedAt: Date.now() };
+              });
+            } catch (_) {}
+          }, 25000);
         } catch (e) {
           showToast('Server-Test fehlgeschlagen');
         }
@@ -4379,6 +4416,7 @@ Kalender aktuell` : 'Kalender aktuell';
               const lastError = d.lastError ? String(d.lastError) : '';
               const updatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : Date.now();
               setPushTest((prev) => ({ ...prev, status, lastError, updatedAt }));
+              if (status && status !== 'pending') { try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {} }
               if (status === 'error' && lastError) {
                 setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
               }
@@ -7034,20 +7072,19 @@ setSelfDestruct(false);
                     </button>
                   )}
                   {showHomeWorkClockCard && (
-                    <div className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4">
+                    <div onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 cursor-pointer hover:border-neutral-500 transition-colors">
                       <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
                       <div className="text-sm font-semibold text-white">{workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Bereit zum Start'}</div>
                       <div className="mt-1 text-xs text-neutral-500">{workClockActive?.startedAt ? (workClockActive.isPaused ? 'Pause aktiv' : 'Arbeitszeit läuft') : 'Direkt hier stempeln'}</div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {!workClockActive?.startedAt ? (
-                          <button type="button" onClick={startWorkClock} className="px-3 py-1.5 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-1.5"><Play className="w-3.5 h-3.5" /> Start</button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); startWorkClock(); }} className="px-3 py-1.5 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-1.5"><Play className="w-3.5 h-3.5" /> Start</button>
                         ) : (
                           <>
-                            <button type="button" onClick={toggleWorkClockPause} className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors flex items-center gap-1.5 ${workClockActive.isPaused ? 'bg-amber-300/20 border-amber-300/60 text-amber-100 hover:bg-amber-300/25' : 'bg-neutral-900 border-neutral-800 text-white hover:border-neutral-500'}`}>{workClockActive.isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}{workClockActive.isPaused ? 'Pause Ende' : 'Kaffee'}</button>
-                            <button type="button" onClick={requestStopWorkClock} className="px-3 py-1.5 rounded-lg bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-1.5"><StopCircle className="w-3.5 h-3.5" /> Ende</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); toggleWorkClockPause(); }} className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors flex items-center gap-1.5 ${workClockActive.isPaused ? 'bg-amber-300/20 border-amber-300/60 text-amber-100 hover:bg-amber-300/25' : 'bg-neutral-900 border-neutral-800 text-white hover:border-neutral-500'}`}>{workClockActive.isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}{workClockActive.isPaused ? 'Pause Ende' : 'Kaffee'}</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); requestStopWorkClock(); }} className="px-3 py-1.5 rounded-lg bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-1.5"><StopCircle className="w-3.5 h-3.5" /> Ende</button>
                           </>
                         )}
-                        <button type="button" onClick={() => setCurrentView('extras')} className="px-3 py-1.5 rounded-lg border border-neutral-800 bg-black text-neutral-300 text-xs font-semibold hover:border-neutral-600 transition-colors">Historie</button>
                       </div>
                     </div>
                   )}

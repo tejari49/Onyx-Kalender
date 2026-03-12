@@ -7407,9 +7407,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             <button onClick={() => setCurrentView('dashboard')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
             <button onClick={() => setCurrentView('calendar')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
             <button
-              onClick={() => { if (workClockActive?.startedAt) { requestStopWorkClock(); } else { startWorkClock(); } }}
-              className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${workClockActive?.startedAt ? 'text-white' : 'text-neutral-500'}`}
-              title="Stempeluhr"
+              onClick={() => setCurrentView('dashboard')}
+              className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}
+              title="Stempeluhr Übersicht"
             >
               <Timer className="w-7 h-7" />
             </button>

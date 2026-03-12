@@ -2725,17 +2725,22 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       useEffect(() => {
         if (!activeChat || !user) return;
 
+        const chatId = String(activeChat.id || '');
+
         // Reset pagination state when switching chats
         chatOldestCursorRef.current = null;
         chatLoadedMoreRef.current = false;
         chatAutoLoadLockRef.current = false;
         setChatHasMore(false);
         setChatLoadingMore(false);
+        // Wichtig: alte Nachrichten sofort leeren, damit beim Chatwechsel nichts vermischt wird.
+        setChatMessages([]);
 
-        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
+        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
         const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
 
         const unsubscribeMessages = onSnapshot(latestQ, (snapshot) => {
+          if ((activeChatIdRef.current || '') !== chatId) return;
           const loadedDesc = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           const loaded = [...loadedDesc].reverse(); // ascending
 
@@ -2795,9 +2800,9 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user?.uid) {
               const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
-              const isMuted = mutedChatIds.includes(activeChat.id);
+              const isMuted = mutedChatIds.includes(chatId);
               const canNotify = (('Notification' in window) && Notification.permission === 'granted');
-              const key = `onyx_last_notify_${activeChat.id}`;
+              const key = `onyx_last_notify_${chatId}`;
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
               if (!isMuted && canNotify && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
@@ -2812,20 +2817,20 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const nowMs = Date.now();
             if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
               lastReadWriteRef.current = nowMs;
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
             }
           }
 
           if (unreadToUpdate.length > 0) {
             unreadToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
             });
           }
 
           if (deliveredToUpdate.length > 0) {
             const deliveredAt = Date.now();
             deliveredToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
             });
           }
 

@@ -9921,8 +9921,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                           </div>
                         )}
 
-                        <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
-                          <div ref={attachmentMenuRef} className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-visible`}>
+                        <form ref={attachmentMenuRef} onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
+                          <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-visible`}>
                             <button
                               type="button"
                               onClick={() => {
@@ -9935,58 +9935,58 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                               <Paperclip className="w-5 h-5" />
                             </button>
 
-                            {isAttachmentMenuOpen && !editingMessage && (
-                              <div className="absolute bottom-14 left-0 z-50 min-w-[235px] rounded-2xl border border-neutral-800 bg-neutral-950 p-2 shadow-2xl flex flex-col gap-1">
-                                <label
-                                  className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
-                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                >
-                                  <ImageIcon className="w-4 h-4 text-neutral-400" /> Bild senden
-                                  <input
-                                    type="file"
-                                    accept="image/*,.heic,.heif"
-                                    className="hidden"
-                                    onClick={() => temporarilySuspendSecretAutoHide(180000)}
-                                    onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
-                                  />
-                                </label>
-
-                                <label
-                                  className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
-                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                >
-                                  <Camera className="w-4 h-4 text-neutral-400" /> Kamera
-                                  <input
-                                    type="file"
-                                    accept="image/*,.heic,.heif"
-                                    capture="environment"
-                                    className="hidden"
-                                    onClick={() => temporarilySuspendSecretAutoHide(180000)}
-                                    onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
-                                  />
-                                </label>
-
-                                <div className="h-px bg-neutral-800 my-1" />
-                                <div className="px-3 pt-1 text-[11px] uppercase tracking-wider text-red-300">1x Ansicht</div>
-                                <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
-                                  <Bomb className="w-4 h-4" /> Bild hochladen
-                                  <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
-                                </label>
-                                <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
-                                  <Bomb className="w-4 h-4" /> Kamera öffnen
-                                  <input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
-                                </label>
-                              </div>
-                            )}
-
                             <button type="button" onClick={() => { setIsShareEventModalOpen(true); setIsAttachmentMenuOpen(false); }} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
                               <CalendarPlus className="w-5 h-5" />
                             </button>
                           </div>
+
+                          {isAttachmentMenuOpen && !editingMessage && (
+                            <div className="absolute left-0 right-0 bottom-full mb-2 z-50 rounded-2xl border border-neutral-800 bg-neutral-950 p-2 shadow-2xl flex flex-col gap-1">
+                              <label
+                                className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                              >
+                                <ImageIcon className="w-4 h-4 text-neutral-400" /> Bild senden
+                                <input
+                                  type="file"
+                                  accept="image/*,.heic,.heif"
+                                  className="hidden"
+                                  onClick={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
+                                />
+                              </label>
+
+                              <label
+                                className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                              >
+                                <Camera className="w-4 h-4 text-neutral-400" /> Kamera
+                                <input
+                                  type="file"
+                                  accept="image/*,.heic,.heif"
+                                  capture="environment"
+                                  className="hidden"
+                                  onClick={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
+                                />
+                              </label>
+
+                              <div className="h-px bg-neutral-800 my-1" />
+                              <div className="px-3 pt-1 text-[11px] uppercase tracking-wider text-red-300">1x Ansicht</div>
+                              <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
+                                <Bomb className="w-4 h-4" /> Bild hochladen
+                                <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
+                              </label>
+                              <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
+                                <Bomb className="w-4 h-4" /> Kamera öffnen
+                                <input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
+                              </label>
+                            </div>
+                          )}
 
                           <div className="flex-1 relative">
                             {isRecording ? (

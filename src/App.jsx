@@ -6831,7 +6831,7 @@ setSelfDestruct(false);
         } catch (_) { return todayWeatherAdvice; }
       })();
       const compactHomeSmartDay = (userProfile?.smartDayEnabled !== false) && (userProfile?.smartDayHomeEnabled !== false);
-      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled === true);
+      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled !== false);
       const extrasEnabled = userProfile?.extrasEnabled !== false;
       const showExtrasSmartDay = extrasEnabled && (userProfile?.smartDayEnabled !== false);
       const showExtrasWorkClock = extrasEnabled && (userProfile?.workClockEnabled === true);
@@ -8265,15 +8265,15 @@ setSelfDestruct(false);
                         </div>
                         <button type="button" onClick={async () => {
                           try {
-                            const defaultOn = !['workClockHomeEnabled'].includes(field);
+                            const defaultOn = true;
                             const current = (userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn;
                             const next = !(current === true);
                             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { [field]: next, updatedAt: Date.now() }, { merge: true });
                             setUserProfile(prev => ({ ...(prev || {}), [field]: next }));
                             showToast(next ? 'Aktiviert' : 'Deaktiviert');
                           } catch (_) { showToast('Fehler'); }
-                        }} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + (((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
-                          {(((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true) ? 'Aktiv' : 'Aus'}
+                        }} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + (((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : true) === true ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
+                          {(((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : true) === true) ? 'Aktiv' : 'Aus'}
                         </button>
                       </div>
                     ))}

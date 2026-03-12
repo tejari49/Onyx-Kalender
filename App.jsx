@@ -678,6 +678,9 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const activeChatIdRef = useRef(null);
       const currentViewRef = useRef(null);
       const lastChatPingRef = useRef({});
+      const myChatsRef = useRef([]);
+      const quoteRotationRef = useRef({ idx: -1, last: '' });
+      const pushTestTimeoutRef = useRef(null);
       
       const [chatStats, setChatStats] = useState({ sent: 0, received: 0, total: 0 });
       const [showPartnerStats, setShowPartnerStats] = useState(false);
@@ -2332,6 +2335,31 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setIsPaintbrushActive(false);
       }, [activeCalendarId]);
 
+      useEffect(() => {
+        const root = document.getElementById('root');
+        if (!root) return;
+
+        const normalizeDomText = () => {
+          try {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            const touched = [];
+            while (walker.nextNode()) touched.push(walker.currentNode);
+            touched.forEach((node) => {
+              const src = node?.nodeValue || '';
+              const fixed = repairMojibakeText(src);
+              if (fixed !== src) node.nodeValue = fixed;
+            });
+          } catch (_) {}
+        };
+
+        normalizeDomText();
+        const observer = new MutationObserver(() => normalizeDomText());
+        observer.observe(root, { childList: true, subtree: true, characterData: true });
+        return () => {
+          try { observer.disconnect(); } catch (_) {}
+        };
+      }, []);
+
       // --- Hash routing for public shares (#/share/<token>?k=<magicKey>) ---
       useEffect(() => {
         const parseHash = () => {
@@ -3137,7 +3165,7 @@ const requestNotificationPermission = async (currentUser) => {
         return () => {
           try { if (unsubscribeMessage) unsubscribeMessage(); } catch (_) {}
         };
-      }, [userProfile]);
+      }, [userProfile, quotes]);
 
       function localDateKey(ts = Date.now()) {
         try {
@@ -3990,6 +4018,7 @@ const requestNotificationPermission = async (currentUser) => {
       useEffect(() => { try { userProfileRef.current = userProfile; } catch(_) {} }, [userProfile]);
       useEffect(() => { try { activeChatIdRef.current = activeChat?.id || null; } catch(_) {} }, [activeChat]);
       useEffect(() => { try { currentViewRef.current = currentView; } catch(_) {} }, [currentView]);
+      useEffect(() => { try { myChatsRef.current = Array.isArray(myChats) ? myChats : []; } catch(_) {} }, [myChats]);
 
       const ensureAudioContext = () => {
         try {
@@ -4096,29 +4125,17 @@ const requestNotificationPermission = async (currentUser) => {
             }
 
             lastChatPingRef.current[c.id] = updatedAt;
+            const shouldNotify = consumeChatNotificationSlot(c.id, updatedAt);
+            if (!shouldNotify) continue;
 
             // 1) Optional in-app ping (sound/vibration)
             if (enableSound || enableVibe) pingInApp({ sound: enableSound, vibrate: enableVibe });
 
-            // 2) System notification (real OS notification)
+            // 2) System notification with rotating quote
             try {
               if (canNotify) {
-                const key = `onyx_last_notify_chat_${c.id}`;
-                const lastNotified = parseInt(localStorage.getItem(key) || '0', 10) || 0;
-                if (updatedAt > lastNotified) {
-                  const isGroup = c.type === 'group';
-                  let senderName = 'Jemand';
-                  try {
-                    const sid = String(c.lastMessageSenderId || '');
-                    if (sid && sid !== user?.uid) {
-                      const sp = getProfile(sid);
-                      senderName = (sp && (sp.displayName || sp.username)) ? (sp.displayName || sp.username) : (c.displayNames && c.displayNames[sid] ? String(c.displayNames[sid]) : 'Jemand');
-                    }
-                  } catch (_) {}
-                  // Privacy: Secret chat stays secret -> no OS notification here
-                  // In-app sound/vibration above remains optional.
-                  localStorage.setItem(key, String(updatedAt));
-                }
+                const quoteText = pickNextNotificationQuote();
+                showSystemNotification('Kalender Aktuell', quoteText, `onyx_chat_${c.id}`);
               }
             } catch (_) {}
           }
@@ -4313,6 +4330,40 @@ Kalender aktuell` : 'Kalender aktuell';
         } catch (e) {}
       };
 
+      const pickNextNotificationQuote = () => {
+        try {
+          const list = (Array.isArray(quotes) && quotes.length ? quotes : DEFAULT_QUOTES)
+            .map((q) => String(q || '').trim())
+            .filter(Boolean);
+          if (!list.length) return 'Alles im Blick.';
+          const prev = quoteRotationRef.current || { idx: -1, last: '' };
+          let nextIdx = (Number(prev.idx || -1) + 1) % list.length;
+          let quote = list[nextIdx] || list[0];
+          if (list.length > 1 && quote === prev.last) {
+            nextIdx = (nextIdx + 1) % list.length;
+            quote = list[nextIdx] || quote;
+          }
+          quoteRotationRef.current = { idx: nextIdx, last: quote };
+          return quote;
+        } catch (_) { return 'Alles im Blick.'; }
+      };
+
+      const consumeChatNotificationSlot = (chatId, messageTs = Date.now()) => {
+        try {
+          const id = String(chatId || '').trim();
+          if (!id) return false;
+          const ts = Number(messageTs || Date.now()) || Date.now();
+          const chat = (Array.isArray(myChatsRef.current) ? myChatsRef.current : []).find((c) => String(c?.id || '') === id);
+          const readAt = Number(chat?.lastRead?.[user?.uid] || 0) || 0;
+          if (ts <= readAt) return false;
+          const key = `onyx_last_notify_chat_${id}`;
+          const lastNotified = Number(localStorage.getItem(key) || 0) || 0;
+          if (ts <= lastNotified) return false;
+          localStorage.setItem(key, String(ts));
+          return true;
+        } catch (_) { return true; }
+      };
+
       const sendLocalPushTest = async () => {
         try {
           const canNotify = ('Notification' in window) && Notification.permission === 'granted';
@@ -4401,6 +4452,7 @@ Kalender aktuell` : 'Kalender aktuell';
               const lastError = d.lastError ? String(d.lastError) : '';
               const updatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : Date.now();
               setPushTest((prev) => ({ ...prev, status, lastError, updatedAt }));
+              if (status && status !== 'pending') { try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {} }
               if (status === 'error' && lastError) {
                 setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
               }
@@ -7089,7 +7141,7 @@ setSelfDestruct(false);
         } catch (_) { return todayWeatherAdvice; }
       })();
       const compactHomeSmartDay = (userProfile?.smartDayEnabled !== false) && (userProfile?.smartDayHomeEnabled !== false);
-      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled === true);
+      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled !== false);
       const extrasEnabled = userProfile?.extrasEnabled !== false;
       const showExtrasSmartDay = extrasEnabled && (userProfile?.smartDayEnabled !== false);
       const showExtrasWorkClock = extrasEnabled && (userProfile?.workClockEnabled === true);
@@ -7229,7 +7281,7 @@ setSelfDestruct(false);
                       </div>
                     )}
                     {compactHomeWorkClock && (
-                      <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                      <div onClick={() => setCurrentView('extras')} className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 cursor-pointer hover:border-neutral-500 transition-colors">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>

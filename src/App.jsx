@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
       Copy, Link2, History, UserMinus, UserPlus
     } from 'lucide-react';
 
@@ -436,21 +436,6 @@ function AmoledCalendarApp() {
 
 
 
-function getSupportedAudioRecorderConfig() {
-  const MR = (typeof window !== 'undefined' && window.MediaRecorder) ? window.MediaRecorder : null;
-  const isIos = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
-  const supports = (mime) => {
-    try { return !!(MR && MR.isTypeSupported && MR.isTypeSupported(mime)); }
-    catch (_) { return false; }
-  };
-
-  // Most reliable without backend/storage transcoding:
-  // - iOS prefers mp4
-  // - other browsers work best when the UA chooses default container/codec
-  if (isIos && supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
-  return { mimeType: '', audioBitsPerSecond: 96000 };
-}
-
       const isIosUA = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
       
       const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
@@ -665,10 +650,6 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [selfDestruct, setSelfDestruct] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
       
-      const [isRecording, setIsRecording] = useState(false);
-      const mediaRecorderRef = useRef(null);
-      const recordingStreamRef = useRef(null);
-      const audioChunksRef = useRef([]);
 
       const typingTimeoutRef = useRef(null);
       const messagesEndRef = useRef(null);
@@ -699,6 +680,9 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const activeChatIdRef = useRef(null);
       const currentViewRef = useRef(null);
       const lastChatPingRef = useRef({});
+      const myChatsRef = useRef([]);
+      const quoteRotationRef = useRef({ idx: -1, last: '' });
+      const pushTestTimeoutRef = useRef(null);
       
       const [chatStats, setChatStats] = useState({ sent: 0, received: 0, total: 0 });
       const [showPartnerStats, setShowPartnerStats] = useState(false);
@@ -2975,21 +2959,18 @@ const requestNotificationPermission = async (currentUser) => {
           const messaging = await getMessagingSafe();
           if (!messaging) return;
 	          unsubscribeMessage = onMessage(messaging, (payload) => {
-	            const kind = payload.data.kind || '';
-	            const chatId = payload.data.chatId || '';
-	            const incomingTitle = payload.data.title || payload.notification.title || 'Neue Nachricht';
-	            const incomingBody = payload.data.body || payload.notification.body || '';
-              const pickPrivateCopy = () => {
-                const list = (Array.isArray(quotes) && quotes.length) ? quotes : DEFAULT_QUOTES;
-                const safe = list.map((q) => String(q || '').trim()).filter(Boolean);
-                const quote = safe.length ? safe[Math.floor(Math.random() * safe.length)] : '';
-                return {
-                  title: 'Kalender Aktuell',
-                  body: quote || 'Alles im Blick.'
-                };
+	            const data = payload?.data || {};
+	            const kind = data.kind || '';
+	            const chatId = data.chatId || '';
+	            const incomingTitle = data.title || payload?.notification?.title || 'Neue Nachricht';
+	            const incomingBody = data.body || payload?.notification?.body || '';
+              const payloadTs = Number(data.timestamp || data.sentAt || data.createdAtMs || Date.now()) || Date.now();
+              const allowChatNotify = !(kind === 'chat' && chatId) || consumeChatNotificationSlot(chatId, payloadTs);
+              const privateCopy = {
+                title: 'Kalender Aktuell',
+                body: pickNextNotificationQuote()
               };
-              const privateCopy = pickPrivateCopy();
-	            const tag = payload.data.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
+	            const tag = data.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
 	            const notifTitle = (kind === 'chat') ? privateCopy.title : incomingTitle;
               const notifBody = (kind === 'chat') ? privateCopy.body : incomingBody;
 
@@ -3014,7 +2995,7 @@ const requestNotificationPermission = async (currentUser) => {
 	            try {
 	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
 	              __isOpenChat = (kind === 'chat' && chatId && (currentViewRef.current === 'secret_chat') && (activeChatIdRef.current === chatId));
-	              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !__isOpenChat) {
+	              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !__isOpenChat && allowChatNotify) {
 	                const enableSound = !(prof && prof.inAppChatSound === false);
 	                const enableVibe = !(prof && prof.inAppChatVibrate === false);
 	                if (enableSound || enableVibe) {
@@ -3027,8 +3008,11 @@ const requestNotificationPermission = async (currentUser) => {
 	            // Toast als Feedback
 	            try {
 	              if (!(kind === 'chat' && __isOpenChat)) {
-	                const toastMsg = notifBody ? `${notifTitle}: ${notifBody}` : notifTitle;
-	                showToast(toastMsg);
+                const allowToast = !(kind === 'chat' && chatId) || allowChatNotify;
+                if (allowToast) {
+	                  const toastMsg = notifBody ? `${notifTitle}: ${notifBody}` : notifTitle;
+	                  showToast(toastMsg);
+                }
 	              }
 	            } catch (_) {}
 
@@ -3036,11 +3020,11 @@ const requestNotificationPermission = async (currentUser) => {
 	            // Optional: auch für Chat im Vordergrund, falls aktiviert.
 	            try {
 	              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
-	              const forceShow = String(payload.data.forceShow || '') === '1' || kind === 'test';
+	              const forceShow = String(data.forceShow || '') === '1' || kind === 'test';
 	              if (!canNotify) return;
 
 	              // Always show a real OS notification for incoming messages (unless the user is currently inside that conversation).
-	              if (kind === 'chat' && chatId && !__isOpenChat) {
+	              if (kind === 'chat' && chatId && !__isOpenChat && allowChatNotify) {
 	                // Strict privacy mode: never expose sender/chat details.
 	                showSystemNotification(notifTitle || 'Kalender Aktuell', notifBody || null, tag);
 	                return;
@@ -3301,9 +3285,8 @@ const requestNotificationPermission = async (currentUser) => {
 
       const requestStopWorkClock = () => {
         if (!workClockActive?.startedAt) return;
-        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
-        setWorkClockDraftUsePreset(true);
-        setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
+        setWorkClockDraftUsePreset(false);
+        setWorkClockDraftTitle('');
         setWorkClockDraftLevel('mittel');
         setWorkClockModalOpen(true);
       };
@@ -3322,7 +3305,12 @@ const requestNotificationPermission = async (currentUser) => {
           const now = Date.now();
           const workedMs = getActiveWorkedMs(workClockActive, now);
           const pauseMs = Number(workClockActive.pausedAccumulatedMs || 0) + ((workClockActive.isPaused && workClockActive.pauseStartedAt) ? Math.max(0, now - Number(workClockActive.pauseStartedAt || now)) : 0);
-          const finalTitle = String(workClockDraftTitle || '').trim() || 'Arbeit';
+          const finalTitle = String(workClockDraftTitle || '').trim();
+          if (!finalTitle) {
+            showToast('Bitte kurz eintragen, was du gemacht hast');
+            setWorkClockSaving(false);
+            return;
+          }
           const payload = {
             startedAt: Number(workClockActive?.startedAt || now),
             endedAt: now,
@@ -4033,6 +4021,7 @@ const requestNotificationPermission = async (currentUser) => {
       useEffect(() => { try { userProfileRef.current = userProfile; } catch(_) {} }, [userProfile]);
       useEffect(() => { try { activeChatIdRef.current = activeChat?.id || null; } catch(_) {} }, [activeChat]);
       useEffect(() => { try { currentViewRef.current = currentView; } catch(_) {} }, [currentView]);
+      useEffect(() => { try { myChatsRef.current = Array.isArray(myChats) ? myChats : []; } catch(_) {} }, [myChats]);
 
       const ensureAudioContext = () => {
         try {
@@ -4139,29 +4128,17 @@ const requestNotificationPermission = async (currentUser) => {
             }
 
             lastChatPingRef.current[c.id] = updatedAt;
+            const shouldNotify = consumeChatNotificationSlot(c.id, updatedAt);
+            if (!shouldNotify) continue;
 
             // 1) Optional in-app ping (sound/vibration)
             if (enableSound || enableVibe) pingInApp({ sound: enableSound, vibrate: enableVibe });
 
-            // 2) System notification (real OS notification)
+            // 2) System notification with rotating quote
             try {
               if (canNotify) {
-                const key = `onyx_last_notify_chat_${c.id}`;
-                const lastNotified = parseInt(localStorage.getItem(key) || '0', 10) || 0;
-                if (updatedAt > lastNotified) {
-                  const isGroup = c.type === 'group';
-                  let senderName = 'Jemand';
-                  try {
-                    const sid = String(c.lastMessageSenderId || '');
-                    if (sid && sid !== user?.uid) {
-                      const sp = getProfile(sid);
-                      senderName = (sp && (sp.displayName || sp.username)) ? (sp.displayName || sp.username) : (c.displayNames && c.displayNames[sid] ? String(c.displayNames[sid]) : 'Jemand');
-                    }
-                  } catch (_) {}
-                  // Privacy: Secret chat stays secret -> no OS notification here
-                  // In-app sound/vibration above remains optional.
-                  localStorage.setItem(key, String(updatedAt));
-                }
+                const quoteText = pickNextNotificationQuote();
+                showSystemNotification('Kalender Aktuell', quoteText, `onyx_chat_${c.id}`);
               }
             } catch (_) {}
           }
@@ -4344,6 +4321,40 @@ Kalender aktuell` : 'Kalender aktuell';
         } catch (e) {}
       };
 
+      const pickNextNotificationQuote = () => {
+        try {
+          const list = (Array.isArray(quotes) && quotes.length ? quotes : DEFAULT_QUOTES)
+            .map((q) => String(q || '').trim())
+            .filter(Boolean);
+          if (!list.length) return 'Alles im Blick.';
+          const prev = quoteRotationRef.current || { idx: -1, last: '' };
+          let nextIdx = (Number(prev.idx || -1) + 1) % list.length;
+          let quote = list[nextIdx] || list[0];
+          if (list.length > 1 && quote === prev.last) {
+            nextIdx = (nextIdx + 1) % list.length;
+            quote = list[nextIdx] || quote;
+          }
+          quoteRotationRef.current = { idx: nextIdx, last: quote };
+          return quote;
+        } catch (_) { return 'Alles im Blick.'; }
+      };
+
+      const consumeChatNotificationSlot = (chatId, messageTs = Date.now()) => {
+        try {
+          const id = String(chatId || '').trim();
+          if (!id) return false;
+          const ts = Number(messageTs || Date.now()) || Date.now();
+          const chat = (Array.isArray(myChatsRef.current) ? myChatsRef.current : []).find((c) => String(c?.id || '') === id);
+          const readAt = Number(chat?.lastRead?.[user?.uid] || 0) || 0;
+          if (ts <= readAt) return false;
+          const key = `onyx_last_notify_chat_${id}`;
+          const lastNotified = Number(localStorage.getItem(key) || 0) || 0;
+          if (ts <= lastNotified) return false;
+          localStorage.setItem(key, String(ts));
+          return true;
+        } catch (_) { return true; }
+      };
+
       const sendLocalPushTest = async () => {
         try {
           const canNotify = ('Notification' in window) && Notification.permission === 'granted';
@@ -4361,6 +4372,7 @@ Kalender aktuell` : 'Kalender aktuell';
         try {
           if (!user) return;
           const id = `${user?.uid}_${Date.now()}`;
+          try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {}
           setPushTest({ id, status: 'pending', lastError: '', updatedAt: Date.now() });
           await setDoc(
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', id),
@@ -4375,6 +4387,16 @@ Kalender aktuell` : 'Kalender aktuell';
             { merge: true }
           );
           showToast('Server-Test ausgelöst (oxynoti)');
+          pushTestTimeoutRef.current = setTimeout(() => {
+            try {
+              setPushTest((prev) => {
+                if (String(prev.id || '') !== id) return prev;
+                const st = String(prev.status || '').toLowerCase();
+                if (st && st !== 'pending') return prev;
+                return { ...prev, status: 'timeout', lastError: 'Keine Server-Rückmeldung (Timeout)', updatedAt: Date.now() };
+              });
+            } catch (_) {}
+          }, 25000);
         } catch (e) {
           showToast('Server-Test fehlgeschlagen');
         }
@@ -4394,6 +4416,7 @@ Kalender aktuell` : 'Kalender aktuell';
               const lastError = d.lastError ? String(d.lastError) : '';
               const updatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : Date.now();
               setPushTest((prev) => ({ ...prev, status, lastError, updatedAt }));
+              if (status && status !== 'pending') { try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {} }
               if (status === 'error' && lastError) {
                 setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
               }
@@ -6033,56 +6056,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       };
 
 
-      const startRecording = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              channelCount: 1,
-            }
-          });
-          recordingStreamRef.current = stream;
-          const recorderCfg = getSupportedAudioRecorderConfig();
-          const recorderOpts = {};
-          if (recorderCfg.mimeType) recorderOpts.mimeType = recorderCfg.mimeType;
-          if (recorderCfg.audioBitsPerSecond) recorderOpts.audioBitsPerSecond = recorderCfg.audioBitsPerSecond;
-          mediaRecorderRef.current = new MediaRecorder(stream, recorderOpts);
-          mediaRecorderRef.current.ondataavailable = (e) => {
-            if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
-          };
-          mediaRecorderRef.current.onstop = () => {
-            try {
-              const finalMime = mediaRecorderRef.current?.mimeType || recorderCfg.mimeType || 'audio/webm';
-              const audioBlob = new Blob(audioChunksRef.current, { type: finalMime });
-              audioChunksRef.current = [];
-              if (!audioBlob || audioBlob.size === 0) {
-                showToast('Aufnahme war leer');
-                return;
-              }
-              const reader = new FileReader();
-              reader.readAsDataURL(audioBlob);
-              reader.onloadend = () => { sendMessage(null, null, reader.result); };
-            } finally {
-              const s = recordingStreamRef.current;
-              if (s) s.getTracks().forEach(track => track.stop());
-              recordingStreamRef.current = null;
-            }
-          };
-          audioChunksRef.current = [];
-          mediaRecorderRef.current.start();
-          setIsRecording(true);
-        } catch (err) { showToast("Mikrofon-Zugriff verweigert"); }
-      };
 
-      const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-          try { mediaRecorderRef.current.requestData(); } catch (_) {}
-          mediaRecorderRef.current.stop();
-          setIsRecording(false);
-        }
-      };
 
       function handleTyping(e) {
          const value = e.target.value;
@@ -6895,7 +6869,7 @@ setSelfDestruct(false);
         } catch (_) { return todayWeatherAdvice; }
       })();
       const compactHomeSmartDay = (userProfile?.smartDayEnabled !== false) && (userProfile?.smartDayHomeEnabled !== false);
-      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled === true);
+      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled !== false);
       const extrasEnabled = userProfile?.extrasEnabled !== false;
       const showExtrasSmartDay = extrasEnabled && (userProfile?.smartDayEnabled !== false);
       const showExtrasWorkClock = extrasEnabled && (userProfile?.workClockEnabled === true);
@@ -6927,7 +6901,7 @@ setSelfDestruct(false);
       const goalsWithText = normalizeDailyGoals(dailyGoals).filter((g) => String(g.text || '').trim());
       const completedGoals = goalsWithText.filter((g) => g.done).length;
       const hasDailyGoalsForHome = goalsWithText.length > 0;
-      const showHomeWorkClockCard = compactHomeWorkClock && !!workClockActive?.startedAt;
+      const showHomeWorkClockCard = compactHomeWorkClock;
       const shouldShowHomeShoppingCard = !!pinnedShoppingList;
       const homeCalendarDateLabel = homeCalendarScope === 'today' ? 'Heute' : (homeCalendarScope === 'week' ? 'Diese Woche' : (homeCalendarScope === 'month' ? 'Dieser Monat' : 'Datum'));
       const homeCalendarEvents = (() => {
@@ -7098,11 +7072,21 @@ setSelfDestruct(false);
                     </button>
                   )}
                   {showHomeWorkClockCard && (
-                    <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
+                    <div onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 cursor-pointer hover:border-neutral-500 transition-colors">
                       <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
-                      <div className="text-lg font-semibold text-white">Aktiv</div>
-                      <div className="mt-1 text-xs text-neutral-500">{formatDurationCompact(activeWorkMs)}</div>
-                    </button>
+                      <div className="text-sm font-semibold text-white">{workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Bereit zum Start'}</div>
+                      <div className="mt-1 text-xs text-neutral-500">{workClockActive?.startedAt ? (workClockActive.isPaused ? 'Pause aktiv' : 'Arbeitszeit läuft') : 'Direkt hier stempeln'}</div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {!workClockActive?.startedAt ? (
+                          <button type="button" onClick={(e) => { e.stopPropagation(); startWorkClock(); }} className="px-3 py-1.5 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-1.5"><Play className="w-3.5 h-3.5" /> Start</button>
+                        ) : (
+                          <>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); toggleWorkClockPause(); }} className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors flex items-center gap-1.5 ${workClockActive.isPaused ? 'bg-amber-300/20 border-amber-300/60 text-amber-100 hover:bg-amber-300/25' : 'bg-neutral-900 border-neutral-800 text-white hover:border-neutral-500'}`}>{workClockActive.isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}{workClockActive.isPaused ? 'Pause Ende' : 'Kaffee'}</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); requestStopWorkClock(); }} className="px-3 py-1.5 rounded-lg bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-1.5"><StopCircle className="w-3.5 h-3.5" /> Ende</button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   )}
                   {hasDailyGoalsForHome && (
                     <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
@@ -7821,7 +7805,7 @@ setSelfDestruct(false);
               }
 
               if (showExtrasWorkClock) {
-                extraCards.push({ key: 'workclock', node: slotChrome('workclock', 'Stempeluhr', 'Start, Pause, Stopp, Rapport und letzte Sessions.', (
+                extraCards.push({ key: 'workclock', node: slotChrome('workclock', 'Stempeluhr', 'Start, Kaffee-Pause, Stopp und kurze Rapporte.', (
                   <>
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       <div>
@@ -7830,15 +7814,15 @@ setSelfDestruct(false);
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {!workClockActive?.startedAt ? (
-                          <button onClick={startWorkClock} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
+                          <button onClick={startWorkClock} className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
                         ) : (
                           <>
-                            <button onClick={toggleWorkClockPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive.isPaused ? 'Weiter' : 'Pause'}</button>
-                            <button onClick={requestStopWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
+                            <button onClick={toggleWorkClockPause} className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-colors flex items-center gap-2 ${workClockActive.isPaused ? 'bg-amber-300/20 border-amber-300/60 text-amber-100 hover:bg-amber-300/25' : 'bg-neutral-900 border-neutral-800 text-white hover:border-neutral-500'}`}>{workClockActive.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive.isPaused ? 'Pause Ende' : 'Kaffee'}</button>
+                            <button onClick={requestStopWorkClock} className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Ende</button>
                           </>
                         )}
-                        <button onClick={exportWeekWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Woche</button>
-                        <button onClick={exportMonthWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Monat</button>
+                        <button onClick={exportWeekWorkClockCsv} className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Woche</button>
+                        <button onClick={exportMonthWorkClockCsv} className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Monat</button>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -7849,7 +7833,8 @@ setSelfDestruct(false);
                     </div>
                     {(workClockSessions || []).length > 0 && (
                       <div className="space-y-2">
-                        {(workClockSessions || []).slice(0, 4).map((s) => (
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">Historie</div>
+                        {(workClockSessions || []).slice(0, 10).map((s) => (
                           <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
                             <div className="min-w-0 flex-1">
                               <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
@@ -8317,15 +8302,15 @@ setSelfDestruct(false);
                         </div>
                         <button type="button" onClick={async () => {
                           try {
-                            const defaultOn = !['workClockHomeEnabled'].includes(field);
+                            const defaultOn = true;
                             const current = (userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn;
                             const next = !(current === true);
                             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { [field]: next, updatedAt: Date.now() }, { merge: true });
                             setUserProfile(prev => ({ ...(prev || {}), [field]: next }));
                             showToast(next ? 'Aktiviert' : 'Deaktiviert');
                           } catch (_) { showToast('Fehler'); }
-                        }} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + (((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
-                          {(((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : !['workClockHomeEnabled'].includes(field)) === true) ? 'Aktiv' : 'Aus'}
+                        }} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + (((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : true) === true ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
+                          {(((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : true) === true) ? 'Aktiv' : 'Aus'}
                         </button>
                       </div>
                     ))}
@@ -9172,6 +9157,10 @@ setSelfDestruct(false);
                       <div className="mb-4 px-2">
                         <h3 className="text-sm md:text-base font-semibold text-white">Freunde hinzufügen & verwalten</h3>
                         <p className="text-xs text-neutral-500 mt-1">Alles für Kontakte liegt jetzt direkt im Secret-Chat-Dashboard.</p>
+                        <div className="mt-3 p-3 rounded-xl border border-neutral-800 bg-neutral-950/40 text-xs text-neutral-300">
+                          <p className="font-medium text-white">Freundesliste bearbeiten</p>
+                          <p className="mt-1 text-neutral-400">Lang auf einen Chat drücken für Optionen wie Entfernen/Stummschalten/Pinnen. Entfernte Freunde erscheinen unten bei „Kürzlich entfernte Freunde" zum Wiederherstellen.</p>
+                        </div>
                       </div>
                       <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
                         <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
@@ -9602,11 +9591,6 @@ setSelfDestruct(false);
                           </div>
                           
                           <div className="flex-1 relative">
-                            {isRecording ? (
-                              <div className="w-full bg-red-950 border border-red-900 text-red-500 rounded-2xl pl-4 pr-12 py-3 flex items-center justify-between animate-pulse">
-                                <span className="text-sm font-medium">Aufnahme läuft...</span>
-                              </div>
-                            ) : (
                               <textarea 
                                 id="chatInput"
                                 value={newMessageText} 
@@ -9617,20 +9601,9 @@ setSelfDestruct(false);
                                 className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(editingMessage || replyToMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
                                 style={{ minHeight: '44px', maxHeight: '120px' }} 
                               />
-                            )}
                             
                             <div className="absolute right-1 bottom-1 flex items-center">
-                              {!newMessageText.trim() && !editingMessage && (
-                                <button 
-                                  type="button" 
-                                  onClick={isRecording ? stopRecording : startRecording} 
-                                  className={`p-2 rounded-full transition-colors ${isRecording ? 'text-red-500 hover:bg-red-900/30' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
-                                >
-                                  {isRecording ? <Square className="w-5 h-5" fill="currentColor" /> : <Mic className="w-5 h-5" />}
-                                </button>
-                              )}
-                              
-                              {(!isRecording && (newMessageText.trim() || editingMessage)) && (
+                              {(newMessageText.trim() || editingMessage) && (
                                 <button
                                   type="submit"
                                   onMouseDown={(e) => e.preventDefault()}
@@ -9730,51 +9703,24 @@ setSelfDestruct(false);
 
           {workClockModalOpen && (
             <div className="fixed inset-0 z-[95] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl">
+              <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-950 p-4 shadow-2xl">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white"><Briefcase className="w-5 h-5" /></div>
+                  <div className="w-9 h-9 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white"><Briefcase className="w-4 h-4" /></div>
                   <div>
-                    <h3 className="text-lg font-semibold text-white">Arbeitszeit abschliessen</h3>
-                    <p className="text-xs text-neutral-500">Erfasse kurz die Tätigkeit und die Belastung.</p>
+                    <h3 className="text-base font-semibold text-white">Stempelung beenden</h3>
+                    <p className="text-xs text-neutral-500">Kurz notieren und speichern.</p>
                   </div>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
-                    {workClockDraftUsePreset ? (
-                      <div className="mt-1 space-y-2">
-                        <select
-                          value={workClockDraftTitle}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            if (value === '__other__') {
-                              setWorkClockDraftUsePreset(false);
-                              setWorkClockDraftTitle('');
-                            } else {
-                              setWorkClockDraftTitle(value);
-                            }
-                          }}
-                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                        >
-                          {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
-                            <option key={preset} value={preset}>{preset}</option>
-                          ))}
-                          <option value="__other__">Andere Tätigkeit...</option>
-                        </select>
-                        <button type="button" onClick={() => { setWorkClockDraftUsePreset(false); setWorkClockDraftTitle(''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene Tätigkeit eingeben</button>
-                      </div>
-                    ) : (
-                      <div className="mt-1 space-y-2">
-                        <input value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockDraftUsePreset(true); setWorkClockDraftTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
-                      </div>
-                    )}
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Was hast du gemacht?</label>
+                    <textarea value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} rows={3} placeholder="z. B. Kundenanruf, Büro, Montage..." className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500 resize-none" />
                   </div>
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Level</label>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       {['leicht','mittel','schwer'].map(level => (
-                        <button key={level} type="button" onClick={() => setWorkClockDraftLevel(level)} className={"px-3 py-3 rounded-xl border text-sm font-semibold transition-colors " + (workClockDraftLevel === level ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
+                        <button key={level} type="button" onClick={() => setWorkClockDraftLevel(level)} className={"px-3 py-2 rounded-xl border text-xs font-semibold transition-colors " + (workClockDraftLevel === level ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
                           {level.charAt(0).toUpperCase() + level.slice(1)}
                         </button>
                       ))}

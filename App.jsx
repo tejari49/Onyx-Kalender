@@ -316,9 +316,11 @@ function AmoledCalendarApp() {
       const [currentView, setCurrentView] = useState(() => {
         try {
           const raw = String(localStorage.getItem('onyx_last_view') || '').trim();
-          const allowed = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
+          const allowed = new Set(['dashboard', 'calendar', 'shopping', 'settings', 'secret_chat']);
           if (!allowed.has(raw)) return 'dashboard';
-          return raw === 'secret_chat' ? 'calendar' : raw;
+          if (raw === 'secret_chat') return 'calendar';
+          if (raw === 'extras') return 'settings';
+          return raw;
         } catch (_) {
           return 'dashboard';
         }
@@ -2249,6 +2251,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         try {
           localStorage.setItem('onyx_last_view', String(currentView || 'dashboard'));
         } catch (_) {}
+      }, [currentView]);
+
+      useEffect(() => {
+        if (currentView === 'extras') {
+          setSettingsTab('notifications');
+          setCurrentView('settings');
+        }
       }, [currentView]);
 
       useEffect(() => {
@@ -7219,7 +7228,6 @@ setSelfDestruct(false);
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
                 <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
                 <button onClick={() => setCurrentView('shopping')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'shopping' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><ShoppingCart className="w-5 h-5" /> Einkauf</button>
-                <button onClick={() => setCurrentView('extras')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'extras' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Activity className="w-5 h-5" /> Extras</button>
                 <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
               </nav>
 
@@ -7252,7 +7260,6 @@ setSelfDestruct(false);
             <div className="flex-1 min-w-0 flex items-center justify-center">
               <button onClick={() => setPlusMenuOpen(true)} className="p-4 bg-white text-black rounded-full -mt-7 border-4 border-black shadow-lg"><Plus className="w-7 h-7" /></button>
             </div>
-            <button onClick={() => setCurrentView('extras')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`}><Activity className="w-7 h-7" /></button>
             <button onClick={() => setCurrentView('settings')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
           </nav>
 
@@ -7296,7 +7303,7 @@ setSelfDestruct(false);
                             <div className="text-lg md:text-xl font-semibold text-white">{nextEventLabel}</div>
                             <div className="mt-2 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
                           </div>
-                          <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
+                          <button onClick={() => { setSettingsTab('notifications'); setCurrentView('settings'); }} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
                         </div>
                       </div>
                     )}
@@ -7309,7 +7316,7 @@ setSelfDestruct(false);
                               <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
                               <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
                             </div>
-                            <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Historie</button>
+                            <button onClick={() => { setSettingsTab('notifications'); setCurrentView('settings'); }} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Historie</button>
                           </div>
 
                           <div className="flex flex-wrap gap-2">

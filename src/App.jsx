@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
       Copy, Link2, History, UserMinus, UserPlus
     } from 'lucide-react';
 
@@ -436,21 +436,6 @@ function AmoledCalendarApp() {
 
 
 
-function getSupportedAudioRecorderConfig() {
-  const MR = (typeof window !== 'undefined' && window.MediaRecorder) ? window.MediaRecorder : null;
-  const isIos = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
-  const supports = (mime) => {
-    try { return !!(MR && MR.isTypeSupported && MR.isTypeSupported(mime)); }
-    catch (_) { return false; }
-  };
-
-  // Most reliable without backend/storage transcoding:
-  // - iOS prefers mp4
-  // - other browsers work best when the UA chooses default container/codec
-  if (isIos && supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
-  return { mimeType: '', audioBitsPerSecond: 96000 };
-}
-
       const isIosUA = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
       
       const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
@@ -665,10 +650,6 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [selfDestruct, setSelfDestruct] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
       
-      const [isRecording, setIsRecording] = useState(false);
-      const mediaRecorderRef = useRef(null);
-      const recordingStreamRef = useRef(null);
-      const audioChunksRef = useRef([]);
 
       const typingTimeoutRef = useRef(null);
       const messagesEndRef = useRef(null);
@@ -6033,56 +6014,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       };
 
 
-      const startRecording = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              channelCount: 1,
-            }
-          });
-          recordingStreamRef.current = stream;
-          const recorderCfg = getSupportedAudioRecorderConfig();
-          const recorderOpts = {};
-          if (recorderCfg.mimeType) recorderOpts.mimeType = recorderCfg.mimeType;
-          if (recorderCfg.audioBitsPerSecond) recorderOpts.audioBitsPerSecond = recorderCfg.audioBitsPerSecond;
-          mediaRecorderRef.current = new MediaRecorder(stream, recorderOpts);
-          mediaRecorderRef.current.ondataavailable = (e) => {
-            if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
-          };
-          mediaRecorderRef.current.onstop = () => {
-            try {
-              const finalMime = mediaRecorderRef.current?.mimeType || recorderCfg.mimeType || 'audio/webm';
-              const audioBlob = new Blob(audioChunksRef.current, { type: finalMime });
-              audioChunksRef.current = [];
-              if (!audioBlob || audioBlob.size === 0) {
-                showToast('Aufnahme war leer');
-                return;
-              }
-              const reader = new FileReader();
-              reader.readAsDataURL(audioBlob);
-              reader.onloadend = () => { sendMessage(null, null, reader.result); };
-            } finally {
-              const s = recordingStreamRef.current;
-              if (s) s.getTracks().forEach(track => track.stop());
-              recordingStreamRef.current = null;
-            }
-          };
-          audioChunksRef.current = [];
-          mediaRecorderRef.current.start();
-          setIsRecording(true);
-        } catch (err) { showToast("Mikrofon-Zugriff verweigert"); }
-      };
 
-      const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-          try { mediaRecorderRef.current.requestData(); } catch (_) {}
-          mediaRecorderRef.current.stop();
-          setIsRecording(false);
-        }
-      };
 
       function handleTyping(e) {
          const value = e.target.value;
@@ -9172,6 +9104,10 @@ setSelfDestruct(false);
                       <div className="mb-4 px-2">
                         <h3 className="text-sm md:text-base font-semibold text-white">Freunde hinzufügen & verwalten</h3>
                         <p className="text-xs text-neutral-500 mt-1">Alles für Kontakte liegt jetzt direkt im Secret-Chat-Dashboard.</p>
+                        <div className="mt-3 p-3 rounded-xl border border-neutral-800 bg-neutral-950/40 text-xs text-neutral-300">
+                          <p className="font-medium text-white">Freundesliste bearbeiten</p>
+                          <p className="mt-1 text-neutral-400">Lang auf einen Chat drücken für Optionen wie Entfernen/Stummschalten/Pinnen. Entfernte Freunde erscheinen unten bei „Kürzlich entfernte Freunde" zum Wiederherstellen.</p>
+                        </div>
                       </div>
                       <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
                         <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
@@ -9602,11 +9538,6 @@ setSelfDestruct(false);
                           </div>
                           
                           <div className="flex-1 relative">
-                            {isRecording ? (
-                              <div className="w-full bg-red-950 border border-red-900 text-red-500 rounded-2xl pl-4 pr-12 py-3 flex items-center justify-between animate-pulse">
-                                <span className="text-sm font-medium">Aufnahme läuft...</span>
-                              </div>
-                            ) : (
                               <textarea 
                                 id="chatInput"
                                 value={newMessageText} 
@@ -9617,20 +9548,9 @@ setSelfDestruct(false);
                                 className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(editingMessage || replyToMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
                                 style={{ minHeight: '44px', maxHeight: '120px' }} 
                               />
-                            )}
                             
                             <div className="absolute right-1 bottom-1 flex items-center">
-                              {!newMessageText.trim() && !editingMessage && (
-                                <button 
-                                  type="button" 
-                                  onClick={isRecording ? stopRecording : startRecording} 
-                                  className={`p-2 rounded-full transition-colors ${isRecording ? 'text-red-500 hover:bg-red-900/30' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
-                                >
-                                  {isRecording ? <Square className="w-5 h-5" fill="currentColor" /> : <Mic className="w-5 h-5" />}
-                                </button>
-                              )}
-                              
-                              {(!isRecording && (newMessageText.trim() || editingMessage)) && (
+                              {(newMessageText.trim() || editingMessage) && (
                                 <button
                                   type="submit"
                                   onMouseDown={(e) => e.preventDefault()}

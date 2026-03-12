@@ -1,127 +1,104 @@
 # Onyx Kalender
 
-Onyx ist eine dunkle Kalender-PWA mit Fokus auf Terminplanung, geteilte Kalender, Wetter-Hinweise, Secret-Bereich und produktive Extras.
+Onyx Kalender ist eine moderne, dunkle Kalender‑PWA mit Fokus auf Terminplanung, Produktivität und private Kommunikation. Die App kombiniert klassische Kalenderfunktionen mit Extras wie Stempeluhr, Smart Day, Fokusmodus, Einkaufslisten, Wetter-Hinweisen und einem geschützten Secret‑Bereich.
 
-## Hauptfunktionen
+## Inhaltsverzeichnis
+
+- [Funktionsumfang](#funktionsumfang)
+- [Technologie-Stack](#technologie-stack)
+- [Projektstruktur](#projektstruktur)
+- [Voraussetzungen](#voraussetzungen)
+- [Installation & lokaler Start](#installation--lokaler-start)
+- [Build & Preview](#build--preview)
+- [Firebase-Setup](#firebase-setup)
+- [Cloud Functions](#cloud-functions)
+- [PWA, Push & Service Worker](#pwa-push--service-worker)
+- [Deployment](#deployment)
+- [Firestore Rules Hinweise](#firestore-rules-hinweise)
+- [Troubleshooting](#troubleshooting)
+- [Roadmap-Ideen](#roadmap-ideen)
+- [Lizenz](#lizenz)
+
+## Funktionsumfang
 
 ### Kalender
-- privater Standard-Kalender
-- eigene zusätzliche Kalender
-- Farben, Teilen, Busy-only, Public Links
+
+- Privater Standardkalender
+- Zusätzliche eigene Kalender
+- Farben, Freigaben, Busy-only und Public Links
 - Tagesansicht mit Agenda und Feed
-- wiederkehrende Termine
-- Audit / Verlauf
-- ICS Import / Export
+- Wiederkehrende Termine
+- Audit-/Verlaufsfunktionen
+- ICS Import/Export
 
 ### Dashboard / Startseite
+
 - Wetterkarte mit 4h-Hinweisen
-- Smartes Wetter-Badge wie `Regen ab xx:xx`, `Windig bis xx:xx`, `Trocken bis xx:xx`
+- Smarte Wetter-Badges (z. B. „Regen ab xx:xx“)
 - Spruch des Tages
 - Agenda für heute
-- optionale kompakte Smart-Day-Karte
-- optionale kompakte Stempeluhr-Karte
+- Optional kompakte Smart-Day-Karte
+- Optional kompakte Stempeluhr-Karte
 
 ### Extras
-- eigener Extras-Bereich in Sidebar und Bottom-Bar
-- Smart Day
-  - nächster Termin
-  - Countdown bis zum Termin
-  - freie Zeitfenster
-  - Wetter-Hinweis
-- Stempeluhr
-  - Start / Pause / Weiter / Stopp
-  - Tätigkeits-Dropdown
-  - Belastungslevel leicht / mittel / schwer
-  - Heute / Woche / Monat
-  - Wochenrapport CSV
-  - Monatsrapport CSV
-  - letzte Sessions
-  - Session bearbeiten / löschen
-  - manuelle Zeitkorrektur
-  - lokale Persistenz mit Remote-Fallback
-- Fokusmodus
-  - 25 / 50 / 90 Minuten
-  - Pause / Weiter / Speichern
-  - lokale Historie
-- Wochenübersicht
-  - Termine der Woche
-  - Arbeitszeit
-  - freies Fenster
-  - Belastungsübersicht
+
+- Smart Day (nächster Termin, Countdown, freie Zeitfenster, Wetterhinweis)
+- Stempeluhr (Start/Pause/Weiter/Stopp, Tätigkeiten, Belastungslevel)
+- Fokusmodus (25/50/90 Minuten inkl. Historie)
+- Wochenübersicht (Termine, Arbeitszeit, Belastung)
 - Schnellnotizen
-  - lokal gespeichert
 - Wetter-Planer
-  - Kleidung / Schirm / Trockenfenster
+- Tagesziele & Soll-/Ist-Stunden
+- Drag-&-Drop Sortierung der Extras-Karten
 
-### Einstellungen
-- Extras ein-/ausblendbar
-- Smart Day in Extras ein-/aus
-- Smart Day auf Home ein-/aus
-- Stempeluhr auf Home ein-/aus
-- Fokusmodus ein-/aus
-- Wochenübersicht ein-/aus
-- Schnellnotizen ein-/aus
-- Wetter-Planer ein-/aus
-- Push & Erinnerungen weiterhin vorhanden, jetzt unter Extras zusammengefasst
+### Einkauf
 
-### Secret Bereich
+- Eigene Einkaufs-Ansicht
+- Mehrere Einkaufslisten pro Benutzer
+- Artikel als gekauft markieren
+- Menge und Preis pro Artikel
+- Automatische Summen für gekaufte Positionen
+- Lokal + Firebase-Profil Sync
+
+### Secret-Bereich
+
 - Secret Chat mit PIN
-- Panic Mode
-- Auto-Panic bei App-Wechsel optional
-- diskrete Benachrichtigungen für Secret Chat
+- Panic Mode / optional Auto-Panic
+- Diskrete Benachrichtigungen
+- Medien-Galerie und Vollbild-Viewer
+- Voice-Nachrichten
 
-### Account
-- Alias dauerhaft speicherbar
-- Passwort ändern / Reset-Mail
-- Datenschutz & Profilbereich
+## Technologie-Stack
 
-## Technische Hinweise
-- Firebase Auth + Firestore
-- lokale Fallbacks für sensible Bereiche wie Workclock
-- PWA mit Service Worker
-- Vite + React
+- **Frontend:** React 18 + Vite
+- **Styling:** CSS + Tailwind/PostCSS Tooling
+- **Backend-Dienste:** Firebase (Auth, Firestore, Cloud Messaging)
+- **Push / Backend-Logik:** Firebase Cloud Functions (Node.js 20)
+- **PWA:** Service Worker + Manifest
 
-## Bedienidee
-- Home bleibt bewusst kompakt
-- Extras bündelt produktive Werkzeuge
-- Einstellungen schalten Extras und Home-Karten granular an oder aus
+## Projektstruktur
 
+```text
+.
+├─ App.jsx                        # Hauptanwendung (UI + Logik)
+├─ main.jsx                       # React-Einstiegspunkt
+├─ firebase-messaging-sw.js       # Service Worker für Push/PWA
+├─ index.html                     # App-Shell
+├─ package.json                   # Frontend-Skripte und Dependencies
+├─ functions/
+│  ├─ index.js                    # Firebase Cloud Function(s)
+│  └─ package.json                # Functions Abhängigkeiten/Skripte
+├─ FIRESTORE_RULES_SHARING.txt    # Beispielregeln für Public Sharing
+└─ FIRESTORE_RULES_EVENT_THREADS.txt # Beispielregeln für Event Threads/Polls
+```
 
-## Extras (neu erweitert)
+## Voraussetzungen
 
-- Frei sortierbare Extras-Karten per Drag & Drop
-- Smart Day im Extras-Bereich
-- Stempeluhr im Extras-Bereich
-- Fokusmodus
-- Wochenübersicht
-- Freie Zeitfenster des Tages
-- Soll-/Ist-Stunden mit Wochenziel
-- Tagesziele mit Häkchen
-- Schnellnotizen mit Firebase-Sync
-- Wetter-Planer
+- **Node.js 20+** (empfohlen, passend zu Functions Engine)
+- **npm 9+**
+- Optional für Deployment: **Firebase CLI**
 
-### Sync über Geräte
-
-Die folgenden Extras-Daten werden jetzt im Firebase-Profil mitgespeichert und stehen nach dem Login auf mehreren Geräten zur Verfügung:
-
-- Schnellnotizen
-- Tagesziele
-- Wochenziel für Soll-/Ist-Stunden
-- Reihenfolge der Extras-Karten
-
-
-## Neu in diesem Stand
-
-### Plus-Menü
-- **Neu erstellen** mit Auswahl zwischen **Termin** und **Einkaufsliste**.
-
-### Einkaufslisten
-- eigene Ansicht **Einkauf**
-- mehrere Listen pro Benutzer
-- Artikel können direkt als **gekauft** markiert und dadurch durchgestrichen werden
-- pro Artikel sind **Menge** und **Preis** möglich
-- automatische Summe für bereits gekaufte Positionen
-- Listen werden lokal gespeichert und zusätzlich im Firebase-Profil gespiegelt, damit dieselben Daten auf mehreren Geräten verfügbar sind
+## Installation & lokaler Start
 
 ### Extras
 - Smart Day

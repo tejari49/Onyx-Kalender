@@ -1,0 +1,271 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =====================
+    // Helpers
+    // =====================
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && uid() == userId;
+    }
+
+    function isInt(v) {
+      return v is int;
+    }
+
+    // ---------- Calendars permissions ----------
+    function calDoc(appId, calId) {
+      return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/calendars/$(calId));
+    }
+
+    function calExists(appId, calId) {
+      return exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/calendars/$(calId));
+    }
+
+    function calOwnerId(appId, calId) {
+      return calDoc(appId, calId).data.ownerId;
+    }
+
+    function calRole(appId, calId) {
+      // 'read' | 'write' | null
+      return calDoc(appId, calId).data.sharedWith[uid()];
+    }
+
+    function canReadCal(appId, calId) {
+      return signedIn() && calExists(appId, calId) &&
+        (calOwnerId(appId, calId) == uid() || calRole(appId, calId) in ['read', 'write']);
+    }
+
+    function canWriteCal(appId, calId) {
+      return signedIn() && calExists(appId, calId) &&
+        (calOwnerId(appId, calId) == uid() || calRole(appId, calId) == 'write');
+    }
+
+    // ---------- Chat permissions ----------
+    function chatDoc(appId, chatId) {
+      return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/chats/$(chatId));
+    }
+
+    function isChatParticipant(appId, chatId) {
+      return signedIn() && (uid() in chatDoc(appId, chatId).data.participants);
+    }
+
+    function msgStatusOnlyUpdate() {
+      // Empfänger darf nur diese Felder setzen:
+      return request.resource.data.diff(resource.data).changedKeys()
+        .hasOnly(['read', 'readAt', 'delivered', 'deliveredAt']);
+    }
+
+    // ---------- Public share helpers ----------
+    function shareActive() {
+      // revokedAtMs/expiresAtMs are stored as epoch-ms numbers.
+      return (resource.data.revokedAtMs == null || resource.data.revokedAtMs == 0)
+        && (resource.data.expiresAtMs == null || request.time.toMillis() <= resource.data.expiresAtMs);
+    }
+
+    function isShareOwner() {
+      return signedIn() && resource.data.createdByUid == uid();
+    }
+
+    // ================================
+    // Root: artifacts/{appId}
+    // ================================
+    match /artifacts/{appId} {
+
+      // ----------------
+      // Private user events
+      // ----------------
+      match /users/{userId}/events/{eventId} {
+        allow read, create, update, delete: if isSelf(userId);
+
+        // Event comments (private)
+        match /comments/{commentId} {
+          allow read: if isSelf(userId);
+          allow create: if isSelf(userId)
+            && request.resource.data.senderId == uid();
+          allow update, delete: if isSelf(userId)
+            && (resource.data.senderId == uid());
+        }
+      }
+
+      // ----------------
+      // User audit log (private)
+      // ----------------
+      match /users/{userId}/auditLogs/{logId} {
+        allow read: if isSelf(userId);
+        allow create: if isSelf(userId)
+          && request.resource.data.uid == uid();
+        allow update, delete: if false;
+      }
+
+      // ----------------
+      // Public data namespace
+      // ----------------
+      match /public/data {
+
+        // ---- Profiles ----
+        match /profiles/{userId} {
+          // App braucht Profile lesen (DisplayName, friendCode, Token, etc.)
+          allow read: if signedIn();
+          allow create, update, delete: if isSelf(userId);
+        }
+
+        // ---- Friend code registry ----
+        match /friendCodes/{code} {
+          allow read: if signedIn();
+
+          // Nur NEU anlegen (immutabel), nur für sich selbst
+          allow create: if signedIn()
+            && request.resource.data.uid == uid()
+            && !exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/friendCodes/$(code));
+
+          // Keine Updates/Deletes (sonst kann man Codes klauen/freischalten)
+          allow update, delete: if false;
+        }
+
+        // ---- Public shares (Busy-only links, etc.) ----
+        match /shares/{token} {
+          // Extern (ohne Login) darf NUR per "get" lesen (kein Listing).
+          allow get: if shareActive();
+
+          // Signed-in darf eigene Shares listen/lesen (für "Meine Links" UI)
+          allow list: if isShareOwner() && shareActive();
+
+          // Share erstellen: nur der Ersteller
+          allow create: if signedIn()
+            && request.resource.data.createdByUid == uid();
+
+          // Share widerrufen: nur Ersteller, und nur revokedAtMs ändern
+          allow update: if isShareOwner()
+            && request.resource.data.createdByUid == resource.data.createdByUid
+            && request.resource.data.diff(resource.data).changedKeys().hasOnly(['revokedAtMs']);
+
+          allow delete: if false;
+        }
+
+        // ---- Push tests (Server-Test Button) ----
+        match /pushTests/{id} {
+          // Client darf nur eigene PushTests anlegen.
+          allow create: if signedIn()
+            && request.resource.data.uid == uid()
+            && id.matches('^' + uid() + '_.*');
+
+          // Optional: Client darf den eigenen Test lesen (Debug).
+          // Auch dann erlauben, wenn der Status-Doc noch nicht existiert,
+          // solange die ID zum User gehört (uid_timestamp).
+          allow read: if signedIn() && (
+            (resource == null && id.matches('^' + uid() + '_.*'))
+            || (resource != null && resource.data.uid == uid())
+          );
+
+          // Kein Client-Update/Delete (Worker schreibt über Admin SDK ohnehin vorbei)
+          allow update, delete: if false;
+        }
+
+        // ---- Calendars ----
+        match /calendars/{calId} {
+          // Read, wenn Owner oder sharedWith[uid] = read/write
+          allow read: if signedIn() &&
+            (resource.data.ownerId == uid() || resource.data.sharedWith[uid()] in ['read', 'write']);
+
+          // Create: ownerId muss request.auth.uid sein
+          allow create: if signedIn()
+            && request.resource.data.ownerId == uid();
+
+          // Update: nur write-Recht. ownerId darf nie geändert werden.
+          // sharedWith darf nur der Owner ändern (Sharing kontrolliert).
+          allow update: if signedIn()
+            && (resource.data.ownerId == uid() || resource.data.sharedWith[uid()] == 'write')
+            && request.resource.data.ownerId == resource.data.ownerId
+            && (
+              !request.resource.data.diff(resource.data).changedKeys().hasAny(['sharedWith'])
+              || resource.data.ownerId == uid()
+            );
+
+          // Delete: nur Owner
+          allow delete: if signedIn() && resource.data.ownerId == uid();
+
+          // ---- Calendar audit log (shared calendars) ----
+          match /auditLogs/{logId} {
+            allow read: if canReadCal(appId, calId);
+            allow create: if canWriteCal(appId, calId)
+              && request.resource.data.uid == uid()
+              && request.resource.data.calId == calId;
+            allow update, delete: if false;
+          }
+
+          // ---- Calendar Events ----
+          match /events/{eventId} {
+            allow read: if canReadCal(appId, calId);
+            allow create, update, delete: if canWriteCal(appId, calId);
+
+            // ---- Event comments (shared) ----
+            match /comments/{commentId} {
+              allow read: if canReadCal(appId, calId);
+
+              // Kommentare schreiben nur mit WRITE-Recht
+              allow create: if canWriteCal(appId, calId)
+                && request.resource.data.senderId == uid();
+
+              // Sender darf edit/delete, Owner darf moderieren
+              allow update, delete: if canReadCal(appId, calId) &&
+                (resource.data.senderId == uid() || calOwnerId(appId, calId) == uid());
+            }
+          }
+        }
+
+        // ---- Chats ----
+        match /chats/{chatId} {
+          allow read: if signedIn() && (uid() in resource.data.participants);
+
+          // Create: du musst in participants sein
+          allow create: if signedIn()
+            && (uid() in request.resource.data.participants)
+            && request.resource.data.participants.size() >= 2
+            && request.resource.data.participants.size() <= 50;
+
+          // Update: nur Teilnehmer, und participants dürfen NICHT geändert werden
+          allow update: if signedIn()
+            && (uid() in resource.data.participants)
+            && request.resource.data.participants == resource.data.participants;
+
+          allow delete: if false;
+
+          // ---- Messages ----
+          match /messages/{msgId} {
+            allow read: if isChatParticipant(appId, chatId);
+
+            allow create: if isChatParticipant(appId, chatId)
+              && request.resource.data.senderId == uid();
+
+            // Sender darf editieren; Empfänger darf nur read/delivered setzen
+            allow update: if isChatParticipant(appId, chatId) && (
+              (resource.data.senderId == uid()
+                && request.resource.data.senderId == resource.data.senderId
+                && request.resource.data.clientMsgId == resource.data.clientMsgId)
+              ||
+              (resource.data.senderId != uid()
+                && request.resource.data.senderId == resource.data.senderId
+                && msgStatusOnlyUpdate())
+            );
+
+            allow delete: if isChatParticipant(appId, chatId) && resource.data.senderId == uid();
+          }
+        }
+      }
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

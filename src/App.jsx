@@ -6863,7 +6863,7 @@ setSelfDestruct(false);
       const goalsWithText = normalizeDailyGoals(dailyGoals).filter((g) => String(g.text || '').trim());
       const completedGoals = goalsWithText.filter((g) => g.done).length;
       const hasDailyGoalsForHome = goalsWithText.length > 0;
-      const showHomeWorkClockCard = compactHomeWorkClock && !!workClockActive?.startedAt;
+      const showHomeWorkClockCard = compactHomeWorkClock;
       const shouldShowHomeShoppingCard = !!pinnedShoppingList;
       const homeCalendarDateLabel = homeCalendarScope === 'today' ? 'Heute' : (homeCalendarScope === 'week' ? 'Diese Woche' : (homeCalendarScope === 'month' ? 'Dieser Monat' : 'Datum'));
       const homeCalendarEvents = (() => {
@@ -7034,11 +7034,22 @@ setSelfDestruct(false);
                     </button>
                   )}
                   {showHomeWorkClockCard && (
-                    <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
+                    <div className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4">
                       <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
-                      <div className="text-lg font-semibold text-white">Aktiv</div>
-                      <div className="mt-1 text-xs text-neutral-500">{formatDurationCompact(activeWorkMs)}</div>
-                    </button>
+                      <div className="text-sm font-semibold text-white">{workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Bereit zum Start'}</div>
+                      <div className="mt-1 text-xs text-neutral-500">{workClockActive?.startedAt ? (workClockActive.isPaused ? 'Pause aktiv' : 'Arbeitszeit läuft') : 'Direkt hier stempeln'}</div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {!workClockActive?.startedAt ? (
+                          <button type="button" onClick={startWorkClock} className="px-3 py-1.5 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-1.5"><Play className="w-3.5 h-3.5" /> Start</button>
+                        ) : (
+                          <>
+                            <button type="button" onClick={toggleWorkClockPause} className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors flex items-center gap-1.5 ${workClockActive.isPaused ? 'bg-amber-300/20 border-amber-300/60 text-amber-100 hover:bg-amber-300/25' : 'bg-neutral-900 border-neutral-800 text-white hover:border-neutral-500'}`}>{workClockActive.isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}{workClockActive.isPaused ? 'Pause Ende' : 'Kaffee'}</button>
+                            <button type="button" onClick={requestStopWorkClock} className="px-3 py-1.5 rounded-lg bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-1.5"><StopCircle className="w-3.5 h-3.5" /> Ende</button>
+                          </>
+                        )}
+                        <button type="button" onClick={() => setCurrentView('extras')} className="px-3 py-1.5 rounded-lg border border-neutral-800 bg-black text-neutral-300 text-xs font-semibold hover:border-neutral-600 transition-colors">Historie</button>
+                      </div>
+                    </div>
                   )}
                   {hasDailyGoalsForHome && (
                     <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
@@ -7785,7 +7796,8 @@ setSelfDestruct(false);
                     </div>
                     {(workClockSessions || []).length > 0 && (
                       <div className="space-y-2">
-                        {(workClockSessions || []).slice(0, 4).map((s) => (
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">Historie</div>
+                        {(workClockSessions || []).slice(0, 10).map((s) => (
                           <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
                             <div className="min-w-0 flex-1">
                               <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>

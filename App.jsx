@@ -693,6 +693,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const myChatsRef = useRef([]);
       const quoteRotationRef = useRef({ idx: -1, last: '' });
       const pushTestTimeoutRef = useRef(null);
+      const ephemeralDeleteTimersRef = useRef({});
       
       const [chatStats, setChatStats] = useState({ sent: 0, received: 0, total: 0 });
       const [showPartnerStats, setShowPartnerStats] = useState(false);
@@ -6372,6 +6373,86 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const visibleChatMessages = ((isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media') ? baseByType : (chatMessages || [])).filter(Boolean);
 
+
+      const scheduleEphemeralHide = (chatId, msgId, deleteAtMs) => {
+        try {
+          const id = String(msgId || '');
+          if (!chatId || !id || !Number.isFinite(Number(deleteAtMs || 0))) return;
+          const prev = ephemeralDeleteTimersRef.current[id];
+          if (prev) { try { clearTimeout(prev); } catch (_) {} }
+          const delay = Math.max(0, Number(deleteAtMs) - Date.now());
+          ephemeralDeleteTimersRef.current[id] = setTimeout(async () => {
+            try {
+              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), {
+                [`ephemeralHidden.${id}`]: true,
+                [`ephemeralDeletedAt.${id}`]: Date.now(),
+                updatedAt: Date.now(),
+              });
+            } catch (_) {}
+          }, delay);
+        } catch (_) {}
+      };
+
+      const handleEphemeralImageOpen = async (msg) => {
+        try {
+          if (!activeChat?.id || !user?.uid || !msg?.id) return true;
+          if (!msg?.selfDestruct) return true;
+          if (msg?.senderId === user?.uid) return true;
+          const hidden = !!(activeChatData?.ephemeralHidden?.[msg.id]);
+          if (hidden) return false;
+
+          const meta = activeChatData?.ephemeralViews?.[msg.id] || null;
+          const now = Date.now();
+          const existingDeleteAt = Number(meta?.deleteAt || 0);
+          if (existingDeleteAt > now) {
+            scheduleEphemeralHide(activeChat.id, msg.id, existingDeleteAt);
+            return true;
+          }
+
+          const deleteAt = now + 10000;
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+            [`ephemeralViews.${msg.id}`]: {
+              openedAt: now,
+              openedBy: user?.uid,
+              deleteAt,
+            },
+            updatedAt: now,
+          });
+          scheduleEphemeralHide(activeChat.id, msg.id, deleteAt);
+          return true;
+        } catch (_) {
+          showToast('Einmal-Ansicht konnte nicht geöffnet werden');
+          return false;
+        }
+      };
+
+      useEffect(() => {
+        return () => {
+          try {
+            Object.values(ephemeralDeleteTimersRef.current || {}).forEach((t) => { try { clearTimeout(t); } catch (_) {} });
+            ephemeralDeleteTimersRef.current = {};
+          } catch (_) {}
+        };
+      }, []);
+
+      useEffect(() => {
+        try {
+          const chatId = String(activeChat?.id || '');
+          if (!chatId || !user?.uid) return;
+          const views = (activeChatData && activeChatData?.ephemeralViews && typeof activeChatData.ephemeralViews === 'object') ? activeChatData.ephemeralViews : {};
+          const hidden = (activeChatData && activeChatData?.ephemeralHidden && typeof activeChatData.ephemeralHidden === 'object') ? activeChatData.ephemeralHidden : {};
+          const now = Date.now();
+          const dueIds = Object.entries(views).filter(([id, v]) => id && !hidden[id] && Number(v?.deleteAt || 0) > 0 && Number(v?.deleteAt || 0) <= now).map(([id]) => id);
+          if (dueIds.length === 0) return;
+          const patch = { updatedAt: now };
+          dueIds.forEach((id) => {
+            patch[`ephemeralHidden.${id}`] = true;
+            patch[`ephemeralDeletedAt.${id}`] = now;
+          });
+          updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), patch).catch(() => {});
+        } catch (_) {}
+      }, [activeChat?.id, activeChatData?.ephemeralViews, activeChatData?.ephemeralHidden, user?.uid]);
+
       const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
         if (e) e.preventDefault();
 
@@ -9512,6 +9593,11 @@ setSelfDestruct(false);
                           const mergedStars = [...new Set([...(Array.isArray(msg?.starredBy) ? msg.starredBy : []), ...(Array.isArray(activeChatData?.messageStars?.[msg?.id]) ? activeChatData.messageStars[msg.id] : [])])];
                           const isFavorite = mergedStars.includes(user?.uid);
                           const showReactionPicker = messageReactionPickerFor === msg?.id;
+                          const ephemeralMeta = (activeChatData && activeChatData?.ephemeralViews) ? activeChatData.ephemeralViews?.[msg?.id] : null;
+                          const ephemeralDeleteAt = Number(ephemeralMeta?.deleteAt || 0);
+                          const isEphemeralHidden = !!(activeChatData?.ephemeralHidden?.[msg?.id]);
+                          const isMessageHidden = !!msg?.deleted || isEphemeralHidden || (!!msg?.selfDestruct && ephemeralDeleteAt > 0 && Date.now() >= ephemeralDeleteAt);
+                          const selfDestructRemainingSec = (msg?.selfDestruct && ephemeralDeleteAt > 0) ? Math.ceil(Math.max(0, ephemeralDeleteAt - Date.now()) / 1000) : 0;
                           const mergedReactions = { ...(msg?.reactions || {}), ...((activeChatData?.messageReactions && activeChatData?.messageReactions?.[msg?.id]) ? activeChatData.messageReactions[msg.id] : {}) };
                           const reactionRows = Object.entries(mergedReactions || {}).reduce((acc, [rawKey, uids]) => {
                             const emoji = reactionEmojiFromKey(rawKey);
@@ -9540,10 +9626,10 @@ setSelfDestruct(false);
                                 {/* Selbstzerstörungs-Indikator */}
                                 {msg.selfDestruct && (
                                   <div className="text-[10px] text-red-500 font-bold mb-2 flex items-center gap-1">
-                                    <Bomb className="w-3 h-3" /> Zerstört sich nach Lesen
+                                    <Bomb className="w-3 h-3" /> {selfDestructRemainingSec > 0 ? `Wird in ${selfDestructRemainingSec}s gelöscht` : 'Einmal-Ansicht (10s nach Öffnen)'}
                                   </div>
                                 )}
-                                {!msg.deleted && msg.replyTo && (
+                                {!isMessageHidden && msg.replyTo && (
                                   (() => {
                                     const refId = msg.replyTo?.id;
                                     const refMsg = refId ? (chatMessages || []).find(m => m && m.id === refId) : null;
@@ -9569,18 +9655,18 @@ setSelfDestruct(false);
                                     );
                                   })()
                                 )}
-{!msg.deleted && msg.image && (
+{!isMessageHidden && msg.image && (
                                   <img
                                     src={msg.image}
                                     alt="Upload"
                                     className="rounded-lg mb-2 max-h-64 object-contain cursor-zoom-in"
-                                    onClick={(e) => { e.stopPropagation(); openImageViewer(msg.image); }}
+                                    onClick={async (e) => { e.stopPropagation(); const ok = await handleEphemeralImageOpen(msg); if (!ok) return; openImageViewer(msg.image); }}
                                   />
                                 )}
-                                {!msg.deleted && msg.audio && <AudioMessageBubble src={msg.audio} msgId={msg.id} isMe={isMe} />}
+                                {!isMessageHidden && msg.audio && <AudioMessageBubble src={msg.audio} msgId={msg.id} isMe={isMe} />}
                                 
                                 {/* Termin-Kachel Rendering */}
-                                {!msg.deleted && msg.event && (
+                                {!isMessageHidden && msg.event && (
                                   <div className={`mt-2 p-3 rounded-xl border ${isMe ? 'bg-black/10 border-black/20' : 'bg-black/40 border-neutral-700'}`}>
                                     <div className="flex items-center gap-2 mb-1">
                                       <CalendarIcon className="w-4 h-4" />
@@ -9597,7 +9683,7 @@ setSelfDestruct(false);
                                   </div>
                                 )}
 
-                                {msg.deleted ? (
+                                {isMessageHidden ? (
                                   <p className={`text-sm italic whitespace-pre-wrap ${isMe ? 'text-neutral-600' : 'text-neutral-500'}`}>
                                     Nachricht gelöscht
                                   </p>
@@ -9605,7 +9691,7 @@ setSelfDestruct(false);
                                   msg.text && <p className="text-sm whitespace-pre-wrap">{(isMessageSearchOpen && String(messageSearchQuery || '').trim()) ? renderHighlightedText(msg.text, messageSearchQuery, { isMe, active: String(currentMatchId) === String(msg.id) }) : msg.text}</p>
                                 )}
 
-                                {!msg.deleted && reactionRows.length > 0 && (
+                                {!isMessageHidden && reactionRows.length > 0 && (
                                   <div className="mt-2 flex flex-wrap gap-1.5">
                                     {reactionRows.map((row) => {
                                       const mine = row.uids.includes(user?.uid);
@@ -9625,9 +9711,9 @@ setSelfDestruct(false);
                                 )}
                                 
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
-                                  {msg.deleted && <span className="text-[9px] mr-1">(gelöscht)</span>}
-                                  {!msg.deleted && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
-                                  {!msg.deleted && isFavorite && <Star className={`w-3 h-3 mr-1 ${isMe ? 'text-black/70' : 'text-yellow-300/90'}`} />}
+                                  {isMessageHidden && <span className="text-[9px] mr-1">(gelöscht)</span>}
+                                  {!isMessageHidden && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
+                                  {!isMessageHidden && isFavorite && <Star className={`w-3 h-3 mr-1 ${isMe ? 'text-black/70' : 'text-yellow-300/90'}`} />}
                                   {chatMetaPrefs.showTime && (
                                     <span className="text-[10px] block text-right">
                                       {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -9674,7 +9760,7 @@ setSelfDestruct(false);
 
                                 {showActions && (
                                   <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
-                                    {!msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                    {!isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button
                                         onClick={(e) => { e.stopPropagation(); setMessageReactionPickerFor(showReactionPicker ? null : msg.id); }}
                                         className={`p-2 rounded-md ${showReactionPicker ? 'bg-white text-black' : 'text-white hover:bg-neutral-700'}`}
@@ -9684,7 +9770,7 @@ setSelfDestruct(false);
                                       </button>
                                     )}
 
-                                    {!msg.deleted && (
+                                    {!isMessageHidden && (
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
@@ -9695,7 +9781,7 @@ setSelfDestruct(false);
                                             image: !!msg.image,
                                             audio: !!msg.audio,
                                             event: msg.event ? { title: msg.event.title || 'Termin' } : null,
-                                            deleted: !!msg.deleted
+                                            deleted: !!isMessageHidden
                                           });
                                           setEditingMessage(null);
                                           setSelectedMessageId(null);
@@ -9708,7 +9794,7 @@ setSelfDestruct(false);
                                       </button>
                                     )}
 
-                                    {!msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                    {!isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button
                                         onClick={(e) => { e.stopPropagation(); toggleMessageFavorite(msg); }}
                                         className={`p-2 rounded-md ${isFavorite ? 'text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20' : 'text-white hover:bg-neutral-700'}`}
@@ -9718,10 +9804,10 @@ setSelfDestruct(false);
                                       </button>
                                     )}
                                     
-                                    {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
+                                    {isMe && !isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
                                       <button onClick={(e) => { e.stopPropagation(); setReplyToMessage(null); setEditingMessage(msg); setNewMessageText(msg.text); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
                                     )}
-                                    {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                    {isMe && !isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="Löschen"><Trash2 className="w-4 h-4" /></button>
                                     )}
                                   </div>

@@ -3282,9 +3282,8 @@ const requestNotificationPermission = async (currentUser) => {
 
       const requestStopWorkClock = () => {
         if (!workClockActive?.startedAt) return;
-        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
-        setWorkClockDraftUsePreset(true);
-        setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
+        setWorkClockDraftUsePreset(false);
+        setWorkClockDraftTitle('');
         setWorkClockDraftLevel('mittel');
         setWorkClockModalOpen(true);
       };
@@ -3303,7 +3302,12 @@ const requestNotificationPermission = async (currentUser) => {
           const now = Date.now();
           const workedMs = getActiveWorkedMs(workClockActive, now);
           const pauseMs = Number(workClockActive.pausedAccumulatedMs || 0) + ((workClockActive.isPaused && workClockActive.pauseStartedAt) ? Math.max(0, now - Number(workClockActive.pauseStartedAt || now)) : 0);
-          const finalTitle = String(workClockDraftTitle || '').trim() || 'Arbeit';
+          const finalTitle = String(workClockDraftTitle || '').trim();
+          if (!finalTitle) {
+            showToast('Bitte kurz eintragen, was du gemacht hast');
+            setWorkClockSaving(false);
+            return;
+          }
           const payload = {
             startedAt: Number(workClockActive?.startedAt || now),
             endedAt: now,
@@ -7753,7 +7757,7 @@ setSelfDestruct(false);
               }
 
               if (showExtrasWorkClock) {
-                extraCards.push({ key: 'workclock', node: slotChrome('workclock', 'Stempeluhr', 'Start, Pause, Stopp, Rapport und letzte Sessions.', (
+                extraCards.push({ key: 'workclock', node: slotChrome('workclock', 'Stempeluhr', 'Start, Kaffee-Pause, Stopp und kurze Rapporte.', (
                   <>
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       <div>
@@ -7762,15 +7766,15 @@ setSelfDestruct(false);
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {!workClockActive?.startedAt ? (
-                          <button onClick={startWorkClock} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
+                          <button onClick={startWorkClock} className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
                         ) : (
                           <>
-                            <button onClick={toggleWorkClockPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive.isPaused ? 'Weiter' : 'Pause'}</button>
-                            <button onClick={requestStopWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
+                            <button onClick={toggleWorkClockPause} className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-colors flex items-center gap-2 ${workClockActive.isPaused ? 'bg-amber-300/20 border-amber-300/60 text-amber-100 hover:bg-amber-300/25' : 'bg-neutral-900 border-neutral-800 text-white hover:border-neutral-500'}`}>{workClockActive.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive.isPaused ? 'Pause Ende' : 'Kaffee'}</button>
+                            <button onClick={requestStopWorkClock} className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Ende</button>
                           </>
                         )}
-                        <button onClick={exportWeekWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Woche</button>
-                        <button onClick={exportMonthWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Monat</button>
+                        <button onClick={exportWeekWorkClockCsv} className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Woche</button>
+                        <button onClick={exportMonthWorkClockCsv} className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Monat</button>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -9650,51 +9654,24 @@ setSelfDestruct(false);
 
           {workClockModalOpen && (
             <div className="fixed inset-0 z-[95] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl">
+              <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-950 p-4 shadow-2xl">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white"><Briefcase className="w-5 h-5" /></div>
+                  <div className="w-9 h-9 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white"><Briefcase className="w-4 h-4" /></div>
                   <div>
-                    <h3 className="text-lg font-semibold text-white">Arbeitszeit abschliessen</h3>
-                    <p className="text-xs text-neutral-500">Erfasse kurz die Tätigkeit und die Belastung.</p>
+                    <h3 className="text-base font-semibold text-white">Stempelung beenden</h3>
+                    <p className="text-xs text-neutral-500">Kurz notieren und speichern.</p>
                   </div>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
-                    {workClockDraftUsePreset ? (
-                      <div className="mt-1 space-y-2">
-                        <select
-                          value={workClockDraftTitle}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            if (value === '__other__') {
-                              setWorkClockDraftUsePreset(false);
-                              setWorkClockDraftTitle('');
-                            } else {
-                              setWorkClockDraftTitle(value);
-                            }
-                          }}
-                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                        >
-                          {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
-                            <option key={preset} value={preset}>{preset}</option>
-                          ))}
-                          <option value="__other__">Andere Tätigkeit...</option>
-                        </select>
-                        <button type="button" onClick={() => { setWorkClockDraftUsePreset(false); setWorkClockDraftTitle(''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene Tätigkeit eingeben</button>
-                      </div>
-                    ) : (
-                      <div className="mt-1 space-y-2">
-                        <input value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockDraftUsePreset(true); setWorkClockDraftTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
-                      </div>
-                    )}
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Was hast du gemacht?</label>
+                    <textarea value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} rows={3} placeholder="z. B. Kundenanruf, Büro, Montage..." className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500 resize-none" />
                   </div>
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Level</label>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       {['leicht','mittel','schwer'].map(level => (
-                        <button key={level} type="button" onClick={() => setWorkClockDraftLevel(level)} className={"px-3 py-3 rounded-xl border text-sm font-semibold transition-colors " + (workClockDraftLevel === level ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
+                        <button key={level} type="button" onClick={() => setWorkClockDraftLevel(level)} className={"px-3 py-2 rounded-xl border text-xs font-semibold transition-colors " + (workClockDraftLevel === level ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
                           {level.charAt(0).toUpperCase() + level.slice(1)}
                         </button>
                       ))}

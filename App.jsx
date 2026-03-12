@@ -7949,54 +7949,39 @@ setSelfDestruct(false);
             )}
 
             {currentView === 'extras' && (() => {
-              const extraCards = [];
-              const slotChrome = (key, title, subtitle, body, spanClass = '') => (
-                <section
-                  key={key}
-                  draggable
-                  onDragStart={() => setDraggedExtraSlot(key)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => {
-                    if (!draggedExtraSlot || draggedExtraSlot === key) return;
-                    setExtrasSlotOrder(prev => reorderExtraKeys(prev, draggedExtraSlot, key));
-                    setDraggedExtraSlot('');
-                    showToast('Reihenfolge gespeichert');
-                  }}
-                  onDragEnd={() => setDraggedExtraSlot('')}
-                  className={`border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4 ${spanClass} ${draggedExtraSlot === key ? 'ring-1 ring-white/20' : ''}`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">{title}</div>
-                      <div className="text-sm text-neutral-400">{subtitle}</div>
-                    </div>
-                    <div className="flex items-center gap-2 text-neutral-500 shrink-0">
-                      <span className="text-[11px] hidden md:inline">ziehen zum Sortieren</span>
-                      <GripVertical className="w-4 h-4" />
-                    </div>
+              if (!(extrasEnabled && (userProfile?.workClockEnabled === true))) {
+                return (
+                  <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
+                    <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                      <div>
+                        <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
+                        <p className="text-sm text-neutral-500 mt-2">In Extras ist nur noch die Stempeluhr aktiv.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Einstellungen</button>
+                      </div>
+                    </header>
+                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-5 text-sm text-neutral-400">Stempeluhr ist aktuell deaktiviert. Aktiviere sie unter Einstellungen → Produktivität & Push.</div>
                   </div>
-                  {body}
-                </section>
-              );
-
-              if (showExtrasSmartDay) {
-                extraCards.push({ key: 'smartday', node: slotChrome('smartday', 'Smart Day', 'Tageskarte mit Termin, Wetter und freiem Fenster.', (
-                  <>
-                    <div className="text-xl md:text-2xl font-semibold text-white">{nextEventLabel}</div>
-                    <div className="mt-1 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Nächster Termin</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextTimedEvent ? (nextTimedEvent.event.time || 'Heute') : 'Keiner mehr'}</div></div>
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Freies Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
-                      <div className={`px-3 py-2 rounded-xl border ${weatherBadgeMeta.tone}`}><div className="text-[10px] uppercase tracking-widest text-current/70">Wetter-Hinweis</div><div className="mt-1 text-sm font-medium flex items-center gap-2"><span>{weatherBadgeMeta.icon}</span><span>{weatherBadgeMeta.text}</span></div></div>
-                    </div>
-                  </>
-                ), 'xl:col-span-2')});
+                );
               }
 
-                extraCards.push({ key: 'workclock', node: slotChrome('workclock', 'Stempeluhr', 'Start, Pause, Stopp und komplette Historie.', (
-                  <>
+              return (
+                <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
+                  <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                    <div>
+                      <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
+                      <p className="text-sm text-neutral-500 mt-2">Nur Stempeluhr: Start, Pause, Stopp und Historie.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => setCurrentView('dashboard')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Zur Startseite</button>
+                    </div>
+                  </header>
+
+                  <section className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                       <div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
                         <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
                         <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv – Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
                       </div>
@@ -8005,7 +7990,7 @@ setSelfDestruct(false);
                           <button onClick={startWorkClock} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
                         ) : (
                           <>
-                            <button onClick={toggleWorkClockPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Weiter' : 'Pause'}</button>
+                            <button onClick={toggleWorkClockPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Pause fertig' : 'Pause'}</button>
                             <button onClick={requestStopWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
                           </>
                         )}
@@ -8013,19 +7998,21 @@ setSelfDestruct(false);
                         <button onClick={exportMonthWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Monat</button>
                       </div>
                     </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ø {formatDurationVerbose(weekAvgMs)}</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
                       <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
                     </div>
+
                     <div>
                       <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500 mb-2">Historie</div>
                       {(workClockSessions || []).length === 0 ? (
                         <div className="text-sm text-neutral-500 border border-neutral-800 rounded-xl px-3 py-4 bg-black">Noch keine Einträge.</div>
                       ) : (
-                        <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-                          {(workClockSessions || []).slice(0, 20).map((s) => (
+                        <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-1">
+                          {(workClockSessions || []).slice(0, 40).map((s) => (
                             <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
                               <div className="min-w-0 flex-1">
                                 <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
@@ -8040,165 +8027,7 @@ setSelfDestruct(false);
                         </div>
                       )}
                     </div>
-                  </>
-                ), 'xl:col-span-2')});
-              if (showExtrasFocus) {
-                extraCards.push({ key: 'focus', node: slotChrome('focus', 'Fokusmodus', '25/50/90-Minuten Fokusblöcke mit Verlauf.', (
-                  <>
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-xl font-semibold text-white">{focusState?.startedAt ? formatDurationCompact(focusRemainingMs) : `${focusDurationMin} Min.`}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{focusState?.startedAt ? (focusState?.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block läuft') : 'Starte einen Fokusblock für ruhiges Arbeiten.'}</div>
-                      </div>
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-sm text-neutral-300">Heute {formatDurationVerbose(focusTodayMs)}</div>
-                    </div>
-                    <select value={String(focusDurationMin)} onChange={(e) => setFocusDurationMin(parseInt(e.target.value, 10) || 25)} className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500">
-                      <option value="25">25 Minuten</option>
-                      <option value="50">50 Minuten</option>
-                      <option value="90">90 Minuten</option>
-                    </select>
-                    <div className="flex flex-wrap gap-2">
-                      {!focusState?.startedAt ? (
-                        <button onClick={startFocusMode} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Fokus starten</button>
-                      ) : (
-                        <>
-                          <button onClick={toggleFocusPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{focusState?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{focusState?.isPaused ? 'Weiter' : 'Pause'}</button>
-                          <button onClick={() => stopFocusMode(true)} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">Als Fokusblock speichern</button>
-                        </>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-neutral-500">Letzte Fokusblöcke: {(focusHistory || []).slice(0, 3).map((x) => `${formatDurationCompact(x.elapsedMs || 0)} am ${new Date(x.startedAt).toLocaleDateString('de-CH')}`).join(' · ') || 'Noch keine'}</div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasWeek) {
-                extraCards.push({ key: 'week', node: slotChrome('week', 'Wochenübersicht', 'Termine, Arbeit und nächste Freiflächen in einer Karte.', (
-                  <>
-                    <div className="text-xl font-semibold text-white">{weekEventCount} Termine · {formatDurationVerbose(weekWorkMs)} Arbeit</div>
-                    <div className="mt-2 text-sm text-neutral-400">{nextFreeBlock} · {workLevelSummary.map(x => `${x.level}: ${x.count}`).join(' · ')}</div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute Termine</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayEventCount}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Frei-Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</div><div className="mt-1 text-sm font-medium text-neutral-100">{weatherBadgeMeta.text}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ø pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
-                    </div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasFreeWindows) {
-                extraCards.push({ key: 'freewindows', node: slotChrome('freewindows', 'Freie Zeitfenster', 'Zeigt die nächsten freien Blöcke des heutigen Tages.', (
-                  <div className="space-y-2">
-                    {freeWindowsToday.map((slot, idx) => (
-                      <div key={`${slot}_${idx}`} className="px-3 py-3 rounded-xl border border-neutral-800 bg-black flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-medium text-neutral-100">{slot}</div>
-                          <div className="text-[11px] text-neutral-500">Ideal für Fokus, Aufgaben oder Pause</div>
-                        </div>
-                        <Clock className="w-4 h-4 text-neutral-500" />
-                      </div>
-                    ))}
-                  </div>
-                ))});
-              }
-
-              if (showExtrasGoals) {
-                extraCards.push({ key: 'goals', node: slotChrome('goals', 'Tagesziele', 'Drei wichtige Ziele für heute – mit Cloud-Sync.', (
-                  <>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-xl font-semibold text-white">{completedGoals}/3 erledigt</div>
-                      <button onClick={() => setDailyGoals(normalizeDailyGoals([]))} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Zurücksetzen</button>
-                    </div>
-                    <div className="space-y-3">
-                      {normalizeDailyGoals(dailyGoals).slice(0, 3).map((goal, idx) => (
-                        <div key={goal.id} className="flex items-center gap-3">
-                          <button type="button" onClick={() => setDailyGoals(prev => normalizeDailyGoals(prev).map((item, i) => i === idx ? { ...item, done: !item.done } : item))} className={`p-2 rounded-lg border transition-colors ${goal.done ? 'bg-white text-black border-white' : 'border-neutral-800 text-neutral-400 hover:border-neutral-600'}`}><CheckSquare className="w-4 h-4" /></button>
-                          <input value={goal.text} onChange={(e) => setDailyGoals(prev => normalizeDailyGoals(prev).map((item, i) => i === idx ? { ...item, text: e.target.value } : item))} placeholder={`Ziel ${idx + 1}`} className="flex-1 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasTimeBalance) {
-                extraCards.push({ key: 'sollist', node: slotChrome('sollist', 'Soll-/Ist-Stunden', 'Wochenziel, Fortschritt und Differenz aus der Stempeluhr.', (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Soll</div><div className="mt-1 text-sm font-medium text-neutral-100">{weeklyTargetHours || '0'} h</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ist</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div></div>
-                      <div className={`px-3 py-3 rounded-xl border bg-black ${weekDeltaMs >= 0 ? 'border-emerald-900/40 text-emerald-300' : 'border-amber-900/40 text-amber-300'}`}><div className="text-[10px] uppercase tracking-widest text-current/70">Differenz</div><div className="mt-1 text-sm font-medium">{`${weekDeltaMs >= 0 ? '+' : '-'}${formatDurationVerbose(Math.abs(weekDeltaMs))}`}</div></div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between text-[11px] text-neutral-500 mb-2"><span>Wochenziel</span><span>{weekTargetPct}% erreicht</span></div>
-                      <div className="h-2 rounded-full bg-black border border-neutral-800 overflow-hidden"><div className="h-full bg-white" style={{ width: `${weekTargetPct}%` }} /></div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <input value={weeklyTargetHours} onFocus={() => setIsWeeklyTargetEditing(true)} onBlur={() => setIsWeeklyTargetEditing(false)} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="w-28 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                      <span className="text-sm text-neutral-500">Stunden pro Woche</span>
-                    </div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasNotes) {
-                extraCards.push({ key: 'notes', node: slotChrome('notes', 'Schnellnotizen', 'Mit Firebase-Sync – dieselben Notizen auf allen Geräten.', (
-                  <>
-                    <div className="text-sm text-neutral-400">Cloud-Sync aktiv. Änderungen werden automatisch übernommen.</div>
-                    <textarea value={quickNotes} onChange={(e) => setQuickNotes(e.target.value)} rows={10} placeholder={`Heute
-- ...
-
-Morgen
-- ...
-
-Später
-- ...`} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                  </>
-                ))});
-              }
-
-              if (showExtrasWeather) {
-                extraCards.push({ key: 'weather', node: slotChrome('weather', 'Wetter-Planer', 'Wetter, Kleidung und bestes Zeitfenster im Blick.', (
-                  <>
-                    <div className="text-xl font-semibold text-white">{weatherBadgeMeta.icon} {weatherBadgeMeta.text}</div>
-                    <div className="mt-2 text-sm text-neutral-400">{todayWeatherAdvice}</div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Beste Phase</div><div className="mt-1 text-sm font-medium text-neutral-100">{bestWeatherWindow}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Kleidung</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayWeatherAdvice.includes('Jacke') ? 'Jacke sinnvoll' : (todayWeatherAdvice.includes('Schirm') ? 'Schirm sinnvoll' : 'Leicht und trocken')}</div></div>
-                    </div>
-                  </>
-                ))});
-              }
-
-              const cardMap = Object.fromEntries(extraCards.map((item) => [item.key, item.node]));
-              const finalKeys = cardMap['workclock'] ? ['workclock'] : [];
-
-              return (
-                <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
-                  <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-                    <div>
-                      <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
-                      <p className="text-sm text-neutral-500 mt-2">Hier findest du nur noch die Stempeluhr mit kompletter Historie.</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={toggleTheme}
-                        className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors flex items-center gap-2"
-                        title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
-                      >
-                        {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                        {uiTheme === 'light' ? 'Dunkel' : 'Hell'}
-                      </button>
-                      <button onClick={() => setCurrentView('dashboard')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Zur Startseite</button>
-                      <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200 transition-colors">Extras einstellen</button>
-                    </div>
-                  </header>
-
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                    {finalKeys.map((key) => cardMap[key])}
-                  </div>
+                  </section>
                 </div>
               );
             })()}

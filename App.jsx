@@ -6558,7 +6558,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         // Input sofort leeren
         setNewMessageText('');
         setSelfDestruct(false);
-        setImageSendMode('normal');
         setReplyToMessage(null);
         refocusChatInput();
 

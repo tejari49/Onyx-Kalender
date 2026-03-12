@@ -313,7 +313,16 @@ function AmoledCalendarApp() {
       const [fullName, setFullName] = useState('');
       const [authError, setAuthError] = useState('');
       
-      const [currentView, setCurrentView] = useState('dashboard');
+      const [currentView, setCurrentView] = useState(() => {
+        try {
+          const raw = String(localStorage.getItem('onyx_last_view') || '').trim();
+          const allowed = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
+          if (!allowed.has(raw)) return 'dashboard';
+          return raw === 'secret_chat' ? 'calendar' : raw;
+        } catch (_) {
+          return 'dashboard';
+        }
+      });
       const [settingsTab, setSettingsTab] = useState('account');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
@@ -697,7 +706,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [messageSearchQuery, setMessageSearchQuery] = useState('');
       const [messageMatchIndex, setMessageMatchIndex] = useState(0);
       const [messageSearchFilter, setMessageSearchFilter] = useState('all');
-      const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+      const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '👏', '🙏', '😎', '🤔', '✅'];
       const reactionKeyForEmoji = (emoji) => `u${Array.from(String(emoji || '')).map(ch => ch.codePointAt(0).toString(16)).join('_')}`;
       const reactionEmojiFromKey = (key) => {
         const raw = String(key || '');
@@ -2235,6 +2244,12 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           if (presenceHeartbeatRef.current) { clearInterval(presenceHeartbeatRef.current); presenceHeartbeatRef.current = null; }
         };
       }, [user]);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('onyx_last_view', String(currentView || 'dashboard'));
+        } catch (_) {}
+      }, [currentView]);
 
       useEffect(() => {
         if (currentView === 'secret_chat') {

@@ -7403,17 +7403,20 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             </div>
           </aside>
 
-          <nav className="md:hidden fixed bottom-0 inset-x-0 w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)] relative">
+          <nav
+            className="md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)] relative"
+            style={{ position: 'fixed', left: 0, right: 0, bottom: 0 }}
+          >
             <div className="grid grid-cols-5 items-center w-full h-full">
               <button onClick={() => setCurrentView('dashboard')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
               <button onClick={() => setCurrentView('calendar')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
               <div aria-hidden="true" />
               <button
                 onClick={() => {
-                  setCurrentView('dashboard');
+                  setCurrentView('extras');
                   try { mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) {}
                 }}
-                className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}
+                className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`}
                 title="Stempeluhr Übersicht"
               >
                 <Timer className="w-7 h-7" />

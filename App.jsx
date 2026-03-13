@@ -316,10 +316,9 @@ function AmoledCalendarApp() {
       const [currentView, setCurrentView] = useState(() => {
         try {
           const raw = String(localStorage.getItem('onyx_last_view') || '').trim();
-          const allowed = new Set(['dashboard', 'calendar', 'shopping', 'settings', 'secret_chat']);
+          const allowed = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
           if (!allowed.has(raw)) return 'dashboard';
           if (raw === 'secret_chat') return 'calendar';
-          if (raw === 'extras') return 'settings';
           return raw;
         } catch (_) {
           return 'dashboard';
@@ -2254,13 +2253,6 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         try {
           localStorage.setItem('onyx_last_view', String(currentView || 'dashboard'));
         } catch (_) {}
-      }, [currentView]);
-
-      useEffect(() => {
-        if (currentView === 'extras') {
-          setSettingsTab('notifications');
-          setCurrentView('settings');
-        }
       }, [currentView]);
 
       useEffect(() => {

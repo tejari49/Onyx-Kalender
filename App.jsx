@@ -8282,7 +8282,30 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           </div>
         </section>
 
-
+        <div className="lg:hidden -mt-2">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {(q ? visibleTabs : TABS).map((t) => {
+              const Icon = t.icon;
+              const active = settingsTab === t.id && !q;
+              return (
+                <button
+                  key={`mobile-${t.id}`}
+                  type="button"
+                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
+                  className={
+                    "shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs transition-colors " +
+                    (active
+                      ? "bg-white text-black border-white"
+                      : "bg-neutral-950/60 text-neutral-300 border-neutral-800 hover:border-neutral-600")
+                  }
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
           <aside className="settings-nav-wrap hidden lg:block sticky top-6 self-start space-y-3">

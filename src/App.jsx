@@ -4179,7 +4179,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=36`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=41`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -4391,6 +4391,7 @@ Kalender aktuell` : 'Kalender aktuell';
               createdAtMs: Date.now(),
               status: 'pending',
               platform: 'web',
+              fcmTokenWeb: userProfile?.fcmTokenWeb ? String(userProfile.fcmTokenWeb) : '',
               ua: String((typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '').slice(0, 220)
             },
             { merge: true }

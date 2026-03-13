@@ -26,6 +26,7 @@ import React, { useState, useEffect, useRef } from 'react';
 const FCM_WEB_VAPID_KEY = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
   ? String(import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
   : 'BLif9DBsVeYOPqRfhhBZsftnDbJvWfbfVrkjf14s7HsygsnYh4yfIKOr30oM58jIakPKBDu0arXj5oEZWhWG-E0';
+const FCM_WEB_VAPID_KEY_LEGACY = 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI';
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -3078,10 +3079,19 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
     const swRegistration = await registerPushServiceWorker();
     if (!swRegistration) throw new Error('SERVICE_WORKER_NOT_READY');
 
-    const token = await getToken(messaging, {
-      vapidKey: FCM_WEB_VAPID_KEY,
-      serviceWorkerRegistration: swRegistration
-    });
+    let token = '';
+    const vapidCandidates = [String(FCM_WEB_VAPID_KEY || '').trim(), String(FCM_WEB_VAPID_KEY_LEGACY || '').trim()].filter(Boolean);
+    for (let i = 0; i < vapidCandidates.length; i++) {
+      const vapidKey = vapidCandidates[i];
+      try {
+        token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swRegistration });
+        if (token) break;
+      } catch (err) {
+        const isLastTry = i >= vapidCandidates.length - 1;
+        if (isLastTry) throw err;
+        console.warn('[FCM] getToken failed, trying next VAPID key', err?.code || err?.message || err);
+      }
+    }
 
     if (token) {
       const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid);
@@ -3109,7 +3119,17 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
     }
   } catch (e) {
     console.warn('[FCM] ensure token failed', e?.message || e);
-    setPushDiag(prev => ({ ...prev, lastError: (e?.message || String(e)) }));
+    const friendly = (() => {
+      try {
+        const code = String(e?.code || '').toLowerCase();
+        if (code.includes('messaging/token-subscribe-failed')) return 'FCM_TOKEN_SUBSCRIBE_FAILED (VAPID/FCM-Konfiguration prüfen)';
+        if (code.includes('messaging/permission-blocked')) return 'NOTIFICATION_PERMISSION_BLOCKED';
+        if (code.includes('messaging/unsupported-browser')) return 'FCM_UNSUPPORTED_BROWSER';
+        if (code.includes('messaging/invalid-vapid-key')) return 'FCM_INVALID_VAPID_KEY';
+        return String(e?.message || e);
+      } catch (_) { return String(e?.message || e); }
+    })();
+    setPushDiag(prev => ({ ...prev, lastError: friendly }));
   }
 };
 

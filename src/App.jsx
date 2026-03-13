@@ -2379,7 +2379,8 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
                 merged.usernameLower = String(prevAlias).toLowerCase();
               }
 
-              if (localAlias && (!merged.username || incomingUpdatedAt < prevUpdatedAt || localAlias !== incomingAlias)) {
+              // Prefer server value for alias. Use localStorage only as fallback when server is empty.
+              if (!incomingAlias && localAlias) {
                 merged.username = localAlias;
                 merged.usernameLower = String(localAlias).toLowerCase();
               }
@@ -2387,6 +2388,11 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
               if (localDisplayName && !merged.displayName) {
                 merged.displayName = localDisplayName;
               }
+
+              try {
+                if (merged.username) localStorage.setItem(`onyx_username_${user?.uid}`, String(merged.username));
+                if (merged.displayName) localStorage.setItem(`onyx_displayName_${user?.uid}`, String(merged.displayName));
+              } catch (_) {}
               try {
                 const localClockRaw = localStorage.getItem(`onyx_work_clock_active_${user?.uid}`);
                 if (localClockRaw) {
@@ -7932,8 +7938,24 @@ setSelfDestruct(false);
                 if (!section) return null;
                 const visible = !q || match(sectionSearchTerms(section));
                 if (!visible) return null;
-                if (id !== activeSectionId) return null;
-                return <div className="space-y-4">{children}</div>;
+                const Icon = section.icon;
+                const isOpen = activeSectionId === id;
+                return (
+                  <div className="bg-neutral-950/50 border border-neutral-800 rounded-2xl overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setSettingsTab(id)}
+                      className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-neutral-900/70 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Icon className="w-4 h-4 text-neutral-300" />
+                        <span className="text-sm text-white font-medium truncate">{section.label}</span>
+                      </div>
+                      <ChevronDown className={"w-4 h-4 text-neutral-500 transition-transform " + (isOpen ? 'rotate-180' : '')} />
+                    </button>
+                    {isOpen ? <div className="p-4 border-t border-neutral-800 space-y-4">{children}</div> : null}
+                  </div>
+                );
               };
 
     return (
@@ -7967,67 +7989,16 @@ setSelfDestruct(false);
                 </button>
               )}
             </div>
-
-            {/* Mobile category selector */}
-            <div className="lg:hidden mt-3">
-              <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kategorie</label>
-              <div className="relative mt-1">
-                <select
-                  value={activeSectionId || ''}
-                  onChange={(e) => {
-                    if (!e.target.value) return;
-                    setSettingsTab(e.target.value);
-                    setSettingsQuery('');
-                  }}
-                  className="w-full appearance-none bg-black border border-neutral-800 rounded-xl px-4 py-3 pr-10 text-sm text-white focus:outline-none focus:border-neutral-500"
-                >
-                  {(q ? filteredTabs : SETTINGS_SECTIONS).length === 0 ? (
-                    <option value="">Keine Kategorie</option>
-                  ) : (
-                    (q ? filteredTabs : SETTINGS_SECTIONS).map((t) => (
-                      <option key={t.id} value={t.id}>{t.label}</option>
-                    ))
-                  )}
-                </select>
-                <ChevronDown className="pointer-events-none w-4 h-4 text-neutral-500 absolute right-3 top-1/2 -translate-y-1/2" />
-              </div>
-            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
-          {/* Desktop sidebar */}
-          <aside className="hidden lg:block sticky top-6 self-start">
-            <div className="bg-neutral-950/50 border border-neutral-800 rounded-2xl p-2">
-              {SETTINGS_SECTIONS.map(t => {
-                const Icon = t.icon;
-                const active = activeSectionId === t.id;
-                const disabledBySearch = q && !match(sectionSearchTerms(t));
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                    className={
-                      "w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors " +
-                      (active ? "bg-white text-black" : "text-neutral-300 hover:bg-neutral-900") +
-                      (disabledBySearch ? " opacity-50" : "")
-                    }
-                    title={disabledBySearch ? "Nicht im Suchresultat" : ""}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="truncate">{t.label}</span>
-                  </button>
-                );
-              })}
+        <div className="space-y-3 min-w-0">
+          <div className="text-[11px] text-neutral-600 leading-relaxed px-1">
+            <div className="flex items-center gap-2">
+              <Info className="w-3.5 h-3.5" />
+              <span>"Test (Server)" braucht Firestore-Zugriff (kein Adblock/Shield).</span>
             </div>
-
-            <div className="mt-3 text-[11px] text-neutral-600 leading-relaxed">
-              <div className="flex items-center gap-2">
-                <Info className="w-3.5 h-3.5" />
-                <span>"Test (Server)" braucht Firestore-Zugriff (kein Adblock/Shield).</span>
-              </div>
-            </div>
-          </aside>
+          </div>
 
           <main className="space-y-3 min-w-0">
             {/* KALENDER VERWALTUNG */}

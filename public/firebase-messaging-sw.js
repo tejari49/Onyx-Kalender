@@ -13,7 +13,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-const CACHE_NAME = 'onyx-v40';
+const CACHE_NAME = 'onyx-v41';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',

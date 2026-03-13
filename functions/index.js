@@ -38,11 +38,13 @@ exports.sendPushTestOnCreate = onDocumentCreated(
         .firestore()
         .doc(`artifacts/${appId}/public/data/profiles/${uid}`);
       const profileSnap = await profileRef.get();
-      const token = profileSnap.exists ? profileSnap.get("fcmTokenWeb") : null;
+      const tokenFromProfile = profileSnap.exists ? (profileSnap.get("fcmTokenWeb") || profileSnap.get("fcmToken")) : null;
+      const tokenFromTestDoc = data && (data.fcmTokenWeb || data.fcmToken) ? (data.fcmTokenWeb || data.fcmToken) : null;
+      const token = String(tokenFromProfile || tokenFromTestDoc || "").trim();
 
       if (!token) {
         await testRef.set(
-          { status: "error", lastError: "NO_FCM_TOKEN", updatedAt: Date.now() },
+          { status: "error", lastError: "NO_FCM_TOKEN_IN_PROFILE_OR_TESTDOC", updatedAt: Date.now() },
           { merge: true }
         );
         return;

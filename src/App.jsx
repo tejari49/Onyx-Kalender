@@ -23,6 +23,9 @@ import React, { useState, useEffect, useRef } from 'react';
     const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : customFirebaseConfig;
     const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'onyx-pwa-live';
     const BASE_PATH = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/Onyx-Kalender/';
+    const FCM_WEB_VAPID_KEY = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
+      ? String(import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
+      : 'BLif9DBsVeYOPqRfhhBZsftnDbJvWfbfVrkjf14s7HsygsnYh4yfIKOr30oM58jIakPKBDu0arXj5oEZWhWG-E0';
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -2899,7 +2902,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
     if (!swRegistration) throw new Error('SERVICE_WORKER_NOT_READY');
 
     const token = await getToken(messaging, {
-      vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI',
+      vapidKey: FCM_WEB_VAPID_KEY,
       serviceWorkerRegistration: swRegistration
     });
 
@@ -4176,7 +4179,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=36`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=41`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -4388,11 +4391,12 @@ Kalender aktuell` : 'Kalender aktuell';
               createdAtMs: Date.now(),
               status: 'pending',
               platform: 'web',
+              fcmTokenWeb: userProfile?.fcmTokenWeb ? String(userProfile.fcmTokenWeb) : '',
               ua: String((typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '').slice(0, 220)
             },
             { merge: true }
           );
-          showToast('Server-Test ausgelöst (oxynoti)');
+          showToast('Server-Test ausgelöst (FCM)');
           pushTestTimeoutRef.current = setTimeout(() => {
             try {
               setPushTest((prev) => {
@@ -4414,24 +4418,47 @@ Kalender aktuell` : 'Kalender aktuell';
           if (!user) return;
           if (!pushTest.id) return;
           const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', pushTest.id);
-          const unsub = onSnapshot(ref, (snap) => {
-            try {
-              if (!snap.exists()) return;
-              const d = snap.data() || {};
-              const status = String(d.status || '').toLowerCase();
-              const lastError = d.lastError ? String(d.lastError) : '';
-              const updatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : Date.now();
-              setPushTest((prev) => ({ ...prev, status, lastError, updatedAt }));
-              if (status && status !== 'pending') { try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {} }
-              if (status === 'error' && lastError) {
-                setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
-              }
-              if (status === 'sent') {
-                // Let SW handle the visible notification; this toast is just feedback.
-                showToast('Server-Test gesendet');
-              }
-            } catch (_) {}
-          });
+          const unsub = onSnapshot(ref,
+            (snap) => {
+              try {
+                if (!snap.exists()) return;
+                const d = snap.data() || {};
+                const status = String(d.status || '').toLowerCase();
+                const lastError = d.lastError ? String(d.lastError) : '';
+                const updatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : Date.now();
+                setPushTest((prev) => ({ ...prev, status, lastError, updatedAt }));
+                if (status && status !== 'pending') { try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {} }
+                if (status === 'error' && lastError) {
+                  setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
+                }
+                if (status === 'sent') {
+                  // Let SW handle the visible notification; this toast is just feedback.
+                  showToast('Server-Test gesendet');
+                }
+              } catch (_) {}
+            },
+            (err) => {
+              try {
+                const code = String(err?.code || '').toLowerCase();
+                const blocked = code === 'permission-denied' || code === 'unauthenticated';
+                setPushTest((prev) => ({
+                  ...prev,
+                  status: blocked ? 'status_read_blocked' : 'status_read_error',
+                  lastError: blocked
+                    ? 'Status-Lesen blockiert (Rules/Shield/Adblock). Push kann trotzdem zugestellt werden.'
+                    : `Status-Lesen fehlgeschlagen (${code || 'unknown'})`,
+                  updatedAt: Date.now()
+                }));
+                setPushDiag((p) => ({
+                  ...p,
+                  lastError: blocked
+                    ? 'SERVER_TEST_STATUS_READ_BLOCKED'
+                    : `SERVER_TEST_STATUS_READ_ERROR: ${code || 'unknown'}`
+                }));
+                try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {}
+              } catch (_) {}
+            }
+          );
           return () => { try { unsub(); } catch (_) {} };
         } catch (_) {}
       }, [pushTest.id, user]);
@@ -5008,7 +5035,7 @@ useEffect(() => {
       // --- REMINDER ENGINE (Kalender) ---
       const remindersIndexRef = useRef([]);
 
-      // Same hashing as oxynoti server (FNV-1a 32-bit) => enables notification tag dedupe
+      // Same hashing as FCM payload tags (FNV-1a 32-bit) => keeps notification tag dedupe stable
       const fnv1a32 = (str) => {
         let h = 0x811c9dc5;
         const s = String(str || '');
@@ -5105,9 +5132,9 @@ useEffect(() => {
 
           // System Notification falls erlaubt
           try {
-            // Wichtig: oft existiert zwar ein Web-Token, aber der Server-Worker (oxynoti)
-            // ist nicht aktiv oder sendet nicht an Web. Daher IMMER lokal als Fallback.
-            // Tag ist kompatibel mit oxynoti (dedupe über `tag`).
+            // Wichtig: oft existiert zwar ein Web-Token, aber der FCM-Zustellweg kann lokal blockiert sein
+            // oder im Hintergrund noch nicht aktiv sein. Daher IMMER lokal als Fallback.
+            // Tag bleibt kompatibel zum FCM-`data.tag` (dedupe über `tag`).
             const canNotify = ('Notification' in window) && Notification.permission === 'granted';
             if (canNotify) {
                 const dedupeKey = `${user?.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;

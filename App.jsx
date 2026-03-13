@@ -362,14 +362,12 @@ function AmoledCalendarApp() {
       const [workClockTick, setWorkClockTick] = useState(Date.now());
       const [workClockModalOpen, setWorkClockModalOpen] = useState(false);
       const [workClockDraftTitle, setWorkClockDraftTitle] = useState('');
-      const [workClockDraftUsePreset, setWorkClockDraftUsePreset] = useState(true);
       const [workClockPresetInput, setWorkClockPresetInput] = useState('Büro\nBaustelle\nSupport');
       const [workClockDraftLevel, setWorkClockDraftLevel] = useState('mittel');
       const [workClockSaving, setWorkClockSaving] = useState(false);
       const [workClockEditOpen, setWorkClockEditOpen] = useState(false);
       const [workClockEditingSession, setWorkClockEditingSession] = useState(null);
       const [workClockEditTitle, setWorkClockEditTitle] = useState('');
-      const [workClockEditUsePreset, setWorkClockEditUsePreset] = useState(true);
       const [workClockEditLevel, setWorkClockEditLevel] = useState('mittel');
       const [workClockEditStartValue, setWorkClockEditStartValue] = useState('');
       const [workClockEditEndValue, setWorkClockEditEndValue] = useState('');
@@ -3286,6 +3284,19 @@ const requestNotificationPermission = async (currentUser) => {
         } catch (_) { return getDefaultWorkClockPresets(); }
       }
 
+      function getWorkClockTaskSuggestions(input) {
+        try {
+          const raw = Array.isArray(input)
+            ? input
+            : String(input || '').split(/[\n,;]+/g);
+          return raw
+            .map(v => String(v || '').trim())
+            .filter(Boolean)
+            .filter((value, index, arr) => arr.findIndex(x => x.toLowerCase() === value.toLowerCase()) === index)
+            .slice(0, 24);
+        } catch (_) { return []; }
+      }
+
       function readWorkClockSessionsLocal(uid) {
         try {
           if (!uid) return [];
@@ -3435,9 +3446,7 @@ const requestNotificationPermission = async (currentUser) => {
 
       const requestStopWorkClock = () => {
         if (!workClockActive?.startedAt) return;
-        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
-        setWorkClockDraftUsePreset(true);
-        setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
+        setWorkClockDraftTitle('');
         setWorkClockDraftLevel('mittel');
         setWorkClockModalOpen(true);
       };
@@ -3482,7 +3491,9 @@ const requestNotificationPermission = async (currentUser) => {
           }
           setWorkClockActive(null);
           persistWorkClockActiveLocal(null);
-          await saveWorkClockProfilePatch({ workClockActive: null, updatedAt: now, workClockLastTitle: finalTitle });
+          const nextTaskOptions = getWorkClockTaskSuggestions([...(Array.isArray(userProfile?.workClockTaskOptions) ? userProfile.workClockTaskOptions : []), finalTitle]);
+          await saveWorkClockProfilePatch({ workClockActive: null, updatedAt: now, workClockLastTitle: finalTitle, workClockTaskOptions: nextTaskOptions });
+          setUserProfile(prev => ({ ...(prev || {}), workClockActive: null, workClockLastTitle: finalTitle, workClockTaskOptions: nextTaskOptions, updatedAt: now }));
           setWorkClockModalOpen(false);
           showToast('Arbeitszeit gespeichert');
         } catch (err) {
@@ -3496,12 +3507,9 @@ const requestNotificationPermission = async (currentUser) => {
 
       const openEditWorkClockSession = (session) => {
         if (!session) return;
-        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
         const rawTitle = String(session?.title || 'Arbeit');
-        const usePreset = presets.some(p => String(p).toLowerCase() === rawTitle.toLowerCase());
         setWorkClockEditingSession(session);
-        setWorkClockEditUsePreset(usePreset);
-        setWorkClockEditTitle(rawTitle || presets[0] || 'Arbeit');
+        setWorkClockEditTitle(rawTitle);
         setWorkClockEditLevel(String(session?.level || 'mittel'));
         setWorkClockEditStartValue(formatDateTimeInputValue(session?.startedAt || Date.now()));
         setWorkClockEditEndValue(formatDateTimeInputValue(session?.endedAt || session?.startedAt || Date.now()));
@@ -3552,7 +3560,10 @@ const requestNotificationPermission = async (currentUser) => {
           } catch (remoteErr) {
             console.warn('saveEditedWorkClockSession remote update skipped', remoteErr);
           }
-          await saveWorkClockProfilePatch({ workClockLastTitle: nextTitle, updatedAt: Date.now() });
+          const nextTaskOptions = getWorkClockTaskSuggestions([...(Array.isArray(userProfile?.workClockTaskOptions) ? userProfile.workClockTaskOptions : []), nextTitle]);
+          const nextUpdatedAt = Date.now();
+          await saveWorkClockProfilePatch({ workClockLastTitle: nextTitle, workClockTaskOptions: nextTaskOptions, updatedAt: nextUpdatedAt });
+          setUserProfile(prev => ({ ...(prev || {}), workClockLastTitle: nextTitle, workClockTaskOptions: nextTaskOptions, updatedAt: nextUpdatedAt }));
           setWorkClockEditOpen(false);
           setWorkClockEditingSession(null);
           showToast('Session aktualisiert');
@@ -3663,13 +3674,7 @@ const requestNotificationPermission = async (currentUser) => {
       useEffect(() => {
         const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
         setWorkClockPresetInput(presets.join('\n'));
-        setWorkClockDraftUsePreset(true);
       }, [userProfile?.workClockTaskOptions]);
-
-      useEffect(() => {
-        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
-        setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
-      }, [userProfile?.workClockLastTitle, userProfile?.workClockTaskOptions]);
 
 
       useEffect(() => {
@@ -7398,13 +7403,30 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             </div>
           </aside>
 
-          <nav className="md:hidden fixed bottom-0 inset-x-0 w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 flex items-center justify-between gap-1 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]">
-            <button onClick={() => setCurrentView('dashboard')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
-            <button onClick={() => setCurrentView('calendar')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
-            <div className="flex-1 min-w-0 flex items-center justify-center">
-              <button onClick={() => setPlusMenuOpen(true)} className="p-4 bg-white text-black rounded-full -mt-7 border-4 border-black shadow-lg"><Plus className="w-7 h-7" /></button>
+          <nav className="md:hidden fixed bottom-0 inset-x-0 w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)] relative">
+            <div className="grid grid-cols-5 items-center w-full h-full">
+              <button onClick={() => setCurrentView('dashboard')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
+              <button onClick={() => setCurrentView('calendar')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
+              <div aria-hidden="true" />
+              <button
+                onClick={() => {
+                  setCurrentView('dashboard');
+                  try { mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) {}
+                }}
+                className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}
+                title="Stempeluhr Übersicht"
+              >
+                <Timer className="w-7 h-7" />
+              </button>
+              <button onClick={() => setCurrentView('settings')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
             </div>
-            <button onClick={() => setCurrentView('settings')} className={`flex-1 min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
+            <button
+              onClick={() => setPlusMenuOpen(true)}
+              className="absolute left-1/2 -translate-x-1/2 -top-7 p-4 bg-white text-black rounded-full border-4 border-black shadow-lg z-10"
+              title="Neu"
+            >
+              <Plus className="w-7 h-7" />
+            </button>
           </nav>
 
           <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
@@ -9921,8 +9943,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                           </div>
                         )}
 
-                        <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
-                          <div ref={attachmentMenuRef} className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-visible`}>
+                        <form ref={attachmentMenuRef} onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
+                          <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-visible`}>
                             <button
                               type="button"
                               onClick={() => {
@@ -9935,78 +9957,59 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                               <Paperclip className="w-5 h-5" />
                             </button>
 
-                            {isAttachmentMenuOpen && !editingMessage && (
-                              <div className="absolute bottom-14 left-0 z-50 min-w-[235px] rounded-2xl border border-neutral-800 bg-neutral-950 p-2 shadow-2xl flex flex-col gap-1">
-                                <label
-                                  className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
-                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                >
-                                  <ImageIcon className="w-4 h-4 text-neutral-400" /> Bild senden
-                                  <input
-                                    type="file"
-                                    accept="image/*,.heic,.heif"
-                                    className="hidden"
-                                    onClick={() => temporarilySuspendSecretAutoHide(180000)}
-                                    onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
-                                  />
-                                </label>
-
-                                <label
-                                  className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
-                                  onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
-                                  onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
-                                >
-                                  <Camera className="w-4 h-4 text-neutral-400" /> Kamera
-                                  <input
-                                    type="file"
-                                    accept="image/*,.heic,.heif"
-                                    capture="environment"
-                                    className="hidden"
-                                    onClick={() => temporarilySuspendSecretAutoHide(180000)}
-                                    onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
-                                  />
-                                </label>
-
-                                <div className="h-px bg-neutral-800 my-1" />
-                                <div className="px-3 pt-1 text-[11px] uppercase tracking-wider text-red-300">1x Ansicht</div>
-                                <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
-                                  <Bomb className="w-4 h-4" /> Bild hochladen
-                                  <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
-                                </label>
-                                <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
-                                  <Bomb className="w-4 h-4" /> Kamera öffnen
-                                  <input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
-                                </label>
-                              </div>
-                            )}
-
                             <button type="button" onClick={() => { setIsShareEventModalOpen(true); setIsAttachmentMenuOpen(false); }} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
                               <CalendarPlus className="w-5 h-5" />
                             </button>
                           </div>
 
-                          {imageSendMode === 'viewonce' && !editingMessage && (
-                            <div
-                              className="absolute left-0 right-0 -top-24 z-30 rounded-2xl border border-red-900/40 bg-black/95 p-3"
-                              onDragOver={(e) => { e.preventDefault(); }}
-                              onDrop={(e) => handleImageDrop(e, 'viewonce')}
-                            >
-                              <div className="text-[11px] text-red-300 mb-2 flex items-center gap-2"><Bomb className="w-3.5 h-3.5" /> 1x Ansicht aktiv (10s nach Öffnen)</div>
-                              <div className="flex flex-wrap gap-2">
-                                <label className="cursor-pointer px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:border-neutral-500">Bild hochladen
-                                  <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => handleImageUpload(e, 'viewonce')} />
-                                </label>
-                                <label className="cursor-pointer px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:border-neutral-500">Kamera
-                                  <input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={(e) => handleImageUpload(e, 'viewonce')} />
-                                </label>
-                                <div className="px-3 py-2 rounded-xl border border-dashed border-neutral-700 text-xs text-neutral-400">Bild hierher ziehen</div>
-                              </div>
+                          {isAttachmentMenuOpen && !editingMessage && (
+                            <div className="absolute left-0 right-0 bottom-full mb-2 z-50 rounded-2xl border border-neutral-800 bg-neutral-950 p-2 shadow-2xl flex flex-col gap-1">
+                              <label
+                                className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                              >
+                                <ImageIcon className="w-4 h-4 text-neutral-400" /> Bild senden
+                                <input
+                                  type="file"
+                                  accept="image/*,.heic,.heif"
+                                  className="hidden"
+                                  onClick={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
+                                />
+                              </label>
+
+                              <label
+                                className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                              >
+                                <Camera className="w-4 h-4 text-neutral-400" /> Kamera
+                                <input
+                                  type="file"
+                                  accept="image/*,.heic,.heif"
+                                  capture="environment"
+                                  className="hidden"
+                                  onClick={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
+                                />
+                              </label>
+
+                              <div className="h-px bg-neutral-800 my-1" />
+                              <div className="px-3 pt-1 text-[11px] uppercase tracking-wider text-red-300">1x Ansicht</div>
+                              <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
+                                <Bomb className="w-4 h-4" /> Bild hochladen
+                                <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
+                              </label>
+                              <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
+                                <Bomb className="w-4 h-4" /> Kamera öffnen
+                                <input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
+                              </label>
                             </div>
                           )}
-                          
+
                           <div className="flex-1 relative">
                             {isRecording ? (
                               <div className="w-full bg-red-950 border border-red-900 text-red-500 rounded-2xl pl-4 pr-12 py-3 flex items-center justify-between animate-pulse">
@@ -10075,34 +10078,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 <div className="space-y-3">
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
-                    {workClockEditUsePreset ? (
-                      <div className="mt-1 space-y-2">
-                        <select
-                          value={workClockEditTitle}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            if (value === '__other__') {
-                              setWorkClockEditUsePreset(false);
-                              setWorkClockEditTitle('');
-                            } else {
-                              setWorkClockEditTitle(value);
-                            }
-                          }}
-                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                        >
-                          {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
-                            <option key={preset} value={preset}>{preset}</option>
-                          ))}
-                          <option value="__other__">Andere Tätigkeit…</option>
-                        </select>
-                        <button type="button" onClick={() => { setWorkClockEditUsePreset(false); setWorkClockEditTitle(workClockEditingSession?.title || ''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene Tätigkeit eingeben</button>
-                      </div>
-                    ) : (
-                      <div className="mt-1 space-y-2">
-                        <input value={workClockEditTitle} onChange={(e) => setWorkClockEditTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockEditUsePreset(true); setWorkClockEditTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
-                      </div>
-                    )}
+                    <div className="mt-1 space-y-2">
+                      <input list="workClockTaskSuggestionsEdit" value={workClockEditTitle} onChange={(e) => setWorkClockEditTitle(e.target.value)} placeholder="Tätigkeit eingeben" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                      <datalist id="workClockTaskSuggestionsEdit">
+                        {getWorkClockTaskSuggestions(userProfile?.workClockTaskOptions).map((preset) => (
+                          <option key={preset} value={preset} />
+                        ))}
+                      </datalist>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Level</label>
@@ -10149,34 +10132,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 <div className="space-y-3">
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
-                    {workClockDraftUsePreset ? (
-                      <div className="mt-1 space-y-2">
-                        <select
-                          value={workClockDraftTitle}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            if (value === '__other__') {
-                              setWorkClockDraftUsePreset(false);
-                              setWorkClockDraftTitle('');
-                            } else {
-                              setWorkClockDraftTitle(value);
-                            }
-                          }}
-                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                        >
-                          {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
-                            <option key={preset} value={preset}>{preset}</option>
-                          ))}
-                          <option value="__other__">Andere Tätigkeit…</option>
-                        </select>
-                        <button type="button" onClick={() => { setWorkClockDraftUsePreset(false); setWorkClockDraftTitle(''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene Tätigkeit eingeben</button>
-                      </div>
-                    ) : (
-                      <div className="mt-1 space-y-2">
-                        <input value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockDraftUsePreset(true); setWorkClockDraftTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
-                      </div>
-                    )}
+                    <div className="mt-1 space-y-2">
+                      <input list="workClockTaskSuggestionsDraft" value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="Tätigkeit eingeben" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                      <datalist id="workClockTaskSuggestionsDraft">
+                        {getWorkClockTaskSuggestions(userProfile?.workClockTaskOptions).map((preset) => (
+                          <option key={preset} value={preset} />
+                        ))}
+                      </datalist>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Level</label>

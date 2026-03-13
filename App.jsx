@@ -7417,10 +7417,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             </div>
             <button
               onClick={() => setPlusMenuOpen(true)}
-              className="absolute left-1/2 -translate-x-1/2 -top-7 p-4 bg-white text-black rounded-full border-4 border-black shadow-lg z-10"
+              className="absolute left-1/2 -translate-x-1/2 -top-5 p-3.5 bg-white text-black rounded-full border-4 border-black shadow-lg z-10"
               title="Neu"
             >
-              <Plus className="w-7 h-7" />
+              <Plus className="w-6 h-6" />
             </button>
           </nav>
 

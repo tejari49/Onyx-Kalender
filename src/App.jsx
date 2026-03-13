@@ -28,7 +28,7 @@ import React, { useState, useEffect, useRef } from 'react';
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-	    const DEFAULT_EXTRAS_ORDER = ['smartday','workclock','focus','week','freewindows','goals','sollist','notes','weather'];
+	    const DEFAULT_EXTRAS_ORDER = ['workclock','goals','sollist','notes','weather'];
 	    const APP_VIEWS = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
 
 	    function normalizeAppView(input) {
@@ -6835,24 +6835,7 @@ setSelfDestruct(false);
       const weekCalendarEvents = weekEventDates.flatMap((dateStr) => {
         try { return (getEventsForDate(dateStr) || []).map(ev => ({ ...ev, __date: dateStr })); } catch (_) { return []; }
       });
-      const weekEventCount = weekCalendarEvents.length;
-      const todayEventCount = todaysEvents.length;
       const monthHeaderKw = getIsoWeekNumber(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1));
-      const nextFreeBlock = (() => {
-        if (!timedEventsToday.length) return 'Ganzer Tag frei';
-        const first = timedEventsToday[0];
-        if (Number.isFinite(first.startMs) && first.startMs > nowMs + 45 * 60000) return `Aktuell frei bis ${first.event.time || 'später'}`;
-        for (let i = 0; i < timedEventsToday.length - 1; i += 1) {
-          const a = timedEventsToday[i];
-          const b = timedEventsToday[i + 1];
-          if (Number.isFinite(a.startMs) && Number.isFinite(b.startMs)) {
-            const gapMin = Math.round((b.startMs - a.startMs) / 60000) - 60;
-            if (gapMin >= 45) return `${a.event.time || ''}-${b.event.time || ''} frei`;
-          }
-        }
-        return freeWindowText;
-      })();
-      const focusTodayMs = (focusHistory || []).filter((x) => localDateKey(x.startedAt || Date.now()) === todayDateStr).reduce((sum, x) => sum + Number(x.elapsedMs || 0), 0) + (focusState?.startedAt ? getFocusElapsedMs(focusState, focusTick) : 0);
       const bestWeatherWindow = (() => {
         try {
           const times = hourlyForecast?.time || [];
@@ -6868,18 +6851,12 @@ setSelfDestruct(false);
           return todayWeatherAdvice;
         } catch (_) { return todayWeatherAdvice; }
       })();
-      const compactHomeSmartDay = (userProfile?.smartDayEnabled !== false) && (userProfile?.smartDayHomeEnabled !== false);
-      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled !== false);
-      const extrasEnabled = userProfile?.extrasEnabled !== false;
-      const showExtrasSmartDay = extrasEnabled && (userProfile?.smartDayEnabled !== false);
-      const showExtrasWorkClock = extrasEnabled && (userProfile?.workClockEnabled === true);
-      const showExtrasFocus = extrasEnabled && (userProfile?.focusModeEnabled !== false);
-      const showExtrasWeek = extrasEnabled && (userProfile?.weeklyOverviewEnabled !== false);
-      const showExtrasNotes = extrasEnabled && (userProfile?.quickNotesEnabled !== false);
-      const showExtrasWeather = extrasEnabled && (userProfile?.weatherPlannerEnabled !== false);
-      const showExtrasTimeBalance = extrasEnabled && (userProfile?.timeBalanceEnabled !== false);
-      const showExtrasFreeWindows = extrasEnabled && (userProfile?.freeWindowsEnabled !== false);
-      const showExtrasGoals = extrasEnabled && (userProfile?.dailyGoalsEnabled !== false);
+      const compactHomeWorkClock = userProfile?.workClockEnabled !== false;
+      const showExtrasWorkClock = userProfile?.workClockEnabled !== false;
+      const showExtrasNotes = userProfile?.quickNotesEnabled !== false;
+      const showExtrasWeather = userProfile?.weatherPlannerEnabled !== false;
+      const showExtrasTimeBalance = userProfile?.timeBalanceEnabled !== false;
+      const showExtrasGoals = userProfile?.dailyGoalsEnabled !== false;
       const weeklyTargetMs = Math.max(0, (Number(String(weeklyTargetHours || '0').replace(',', '.')) || 0) * 3600000);
       const weekDeltaMs = weekWorkMs - weeklyTargetMs;
       const weekTargetPct = weeklyTargetMs > 0 ? Math.max(0, Math.min(100, Math.round((weekWorkMs / weeklyTargetMs) * 100))) : 0;
@@ -7789,21 +7766,6 @@ setSelfDestruct(false);
                   {body}
                 </section>
               );
-
-              if (showExtrasSmartDay) {
-                extraCards.push({ key: 'smartday', node: slotChrome('smartday', 'Smart Day', 'Tageskarte mit Termin, Wetter und freiem Fenster.', (
-                  <>
-                    <div className="text-xl md:text-2xl font-semibold text-white">{nextEventLabel}</div>
-                    <div className="mt-1 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Nächster Termin</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextTimedEvent ? (nextTimedEvent.event.time || 'Heute') : 'Keiner mehr'}</div></div>
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Freies Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
-                      <div className={`px-3 py-2 rounded-xl border ${weatherBadgeMeta.tone}`}><div className="text-[10px] uppercase tracking-widest text-current/70">Wetter-Hinweis</div><div className="mt-1 text-sm font-medium flex items-center gap-2"><span>{weatherBadgeMeta.icon}</span><span>{weatherBadgeMeta.text}</span></div></div>
-                    </div>
-                  </>
-                ), 'xl:col-span-2')});
-              }
-
               if (showExtrasWorkClock) {
                 extraCards.push({ key: 'workclock', node: slotChrome('workclock', 'Stempeluhr', 'Start, Kaffee-Pause, Stopp und kurze Rapporte.', (
                   <>
@@ -7851,68 +7813,6 @@ setSelfDestruct(false);
                   </>
                 ), 'xl:col-span-2')});
               }
-
-              if (showExtrasFocus) {
-                extraCards.push({ key: 'focus', node: slotChrome('focus', 'Fokusmodus', '25/50/90-Minuten Fokusblöcke mit Verlauf.', (
-                  <>
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-xl font-semibold text-white">{focusState?.startedAt ? formatDurationCompact(focusRemainingMs) : `${focusDurationMin} Min.`}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{focusState?.startedAt ? (focusState?.isPaused ? 'Fokus pausiert' : 'Konzentrierter Block läuft') : 'Starte einen Fokusblock für ruhiges Arbeiten.'}</div>
-                      </div>
-                      <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-sm text-neutral-300">Heute {formatDurationVerbose(focusTodayMs)}</div>
-                    </div>
-                    <select value={String(focusDurationMin)} onChange={(e) => setFocusDurationMin(parseInt(e.target.value, 10) || 25)} className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500">
-                      <option value="25">25 Minuten</option>
-                      <option value="50">50 Minuten</option>
-                      <option value="90">90 Minuten</option>
-                    </select>
-                    <div className="flex flex-wrap gap-2">
-                      {!focusState?.startedAt ? (
-                        <button onClick={startFocusMode} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Fokus starten</button>
-                      ) : (
-                        <>
-                          <button onClick={toggleFocusPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{focusState?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{focusState?.isPaused ? 'Weiter' : 'Pause'}</button>
-                          <button onClick={() => stopFocusMode(true)} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">Als Fokusblock speichern</button>
-                        </>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-neutral-500">Letzte Fokusblöcke: {(focusHistory || []).slice(0, 3).map((x) => `${formatDurationCompact(x.elapsedMs || 0)} am ${new Date(x.startedAt).toLocaleDateString('de-CH')}`).join(' · ') || 'Noch keine'}</div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasWeek) {
-                extraCards.push({ key: 'week', node: slotChrome('week', 'Wochenübersicht', 'Termine, Arbeit und nächste Freiflächen in einer Karte.', (
-                  <>
-                    <div className="text-xl font-semibold text-white">{weekEventCount} Termine · {formatDurationVerbose(weekWorkMs)} Arbeit</div>
-                    <div className="mt-2 text-sm text-neutral-400">{nextFreeBlock} · {workLevelSummary.map(x => `${x.level}: ${x.count}`).join(' · ')}</div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute Termine</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayEventCount}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Frei-Fenster</div><div className="mt-1 text-sm font-medium text-neutral-100">{nextFreeBlock}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Wetter</div><div className="mt-1 text-sm font-medium text-neutral-100">{weatherBadgeMeta.text}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ø pro Session</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekAvgMs)}</div></div>
-                    </div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasFreeWindows) {
-                extraCards.push({ key: 'freewindows', node: slotChrome('freewindows', 'Freie Zeitfenster', 'Zeigt die nächsten freien Blöcke des heutigen Tages.', (
-                  <div className="space-y-2">
-                    {freeWindowsToday.map((slot, idx) => (
-                      <div key={`${slot}_${idx}`} className="px-3 py-3 rounded-xl border border-neutral-800 bg-black flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-medium text-neutral-100">{slot}</div>
-                          <div className="text-[11px] text-neutral-500">Ideal für Fokus, Aufgaben oder Pause</div>
-                        </div>
-                        <Clock className="w-4 h-4 text-neutral-500" />
-                      </div>
-                    ))}
-                  </div>
-                ))});
-              }
-
               if (showExtrasGoals) {
                 extraCards.push({ key: 'goals', node: slotChrome('goals', 'Tagesziele', 'Drei wichtige Ziele für heute - mit Cloud-Sync.', (
                   <>
@@ -8011,7 +7911,7 @@ setSelfDestruct(false);
     };
     const SETTINGS_SECTIONS = [
       { id: 'account', label: 'Design & Konto', icon: User, keys: ['account', 'design', 'theme', 'datenschutz', 'abmelden', 'email'] },
-      { id: 'notifications', label: 'Produktivität & Extras', icon: Activity, keys: ['extras', 'smart day', 'stempelung', 'fokus', 'notiz', 'tagesziel', 'soll ist', 'freie zeitfenster', 'wochenziel', 'reihenfolge'] },
+      { id: 'notifications', label: 'Produktivität & Extras', icon: Activity, keys: ['extras', 'stempeluhr', 'notiz', 'tagesziel', 'soll ist', 'wochenziel', 'reihenfolge', 'wetter'] },
       { id: 'pushdiag', label: 'Push & Diagnose', icon: Bell, keys: ['push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token', 'test', 'diagnose', 'service worker'] },
       { id: 'calendars', label: 'Kalender & Schichten', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'privat', 'freigabe', 'teilen', 'share', 'busy'] },
       { id: 'links', label: 'Freigaben & Links', icon: Link2, keys: ['public', 'link', 'busy', 'passcode', 'magic', 'ablauf'] },
@@ -8195,79 +8095,6 @@ setSelfDestruct(false);
                       </div>
                     </div>
                   ))}
-                  <div className="border border-neutral-800 rounded-xl bg-black p-4 space-y-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-medium text-white flex items-center gap-2"><Briefcase className="w-4 h-4" /> Stempelung</p>
-                        <p className="text-xs text-neutral-500 mt-1">Aktiviert die Stempeluhr im Extras-Bereich. Optional kann sie zusätzlich kompakt auf der Startseite erscheinen.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            const next = !(userProfile?.workClockEnabled === true);
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { workClockEnabled: next, updatedAt: Date.now() }, { merge: true });
-                            setUserProfile(prev => ({ ...(prev || {}), workClockEnabled: next }));
-                            showToast(next ? 'Stempelung aktiviert' : 'Stempelung deaktiviert');
-                          } catch (_) { showToast('Fehler'); }
-                        }}
-                        className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + ((userProfile?.workClockEnabled === true) ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}
-                      >
-                        {(userProfile?.workClockEnabled === true) ? 'Aktiv' : 'Aus'}
-                      </button>
-                    </div>
-
-                    {(userProfile?.workClockEnabled === true) && (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div>
-                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div>
-                          </div>
-                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Diese Woche</div>
-                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div>
-                          </div>
-                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Dieser Monat</div>
-                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Tätigkeiten im Dropdown</label>
-                          <textarea
-                            value={workClockPresetInput}
-                            onChange={(e) => setWorkClockPresetInput(e.target.value)}
-                            onFocus={() => { workClockPresetEditingRef.current = true; }}
-                            onBlur={() => { workClockPresetEditingRef.current = false; }}
-                            rows={4}
-                            placeholder={"Büro\nBaustelle\nSupport"}
-                            className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                          />
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  const nextPresets = normalizeWorkClockPresets(workClockPresetInput);
-                                  setWorkClockPresetInput(nextPresets.join('\n'));
-                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { workClockTaskOptions: nextPresets, updatedAt: Date.now() }, { merge: true });
-                                  setUserProfile(prev => ({ ...(prev || {}), workClockTaskOptions: nextPresets }));
-                                  showToast('Dropdown gespeichert');
-                                } catch (_) { showToast('Fehler'); }
-                              }}
-                              className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-neutral-200 transition-colors"
-                            >
-                              Dropdown speichern
-                            </button>
-                            <span className="text-[11px] text-neutral-500">Eine Tätigkeit pro Zeile. Diese Auswahl erscheint beim Stopp der Stempelung.</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-
                 </div>
               </section>
             </AccordionItem>
@@ -8283,13 +8110,6 @@ setSelfDestruct(false);
                 <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {[
-                      ['extrasEnabled','Extras-Bereich','Blendet den neuen Extras-Tab ein und aus.'],
-                      ['smartDayEnabled','Smart Day in Extras','Detaillierte Tageskarte im Extras-Bereich.'],
-                      ['smartDayHomeEnabled','Smart Day auf Home','Kompakte Karte auf der Startseite.'],
-                      ['workClockHomeEnabled','Stempeluhr auf Home','Nur kompakte Stempeluhr-Zeile auf Home.'],
-                      ['focusModeEnabled','Fokusmodus','25/50/90-Minuten Fokusblöcke in Extras.'],
-                      ['weeklyOverviewEnabled','Wochenübersicht','Arbeitszeit, Termine und freie Fenster bündeln.'],
-                      ['freeWindowsEnabled','Freie Zeitfenster','Eigene Karte mit freien Blöcken des Tages.'],
                       ['dailyGoalsEnabled','Tagesziele','Drei Tagesziele mit Häkchen und Cloud-Sync.'],
                       ['timeBalanceEnabled','Soll-/Ist-Stunden','Wochenziel gegen echte Arbeitszeit vergleichen.'],
                       ['quickNotesEnabled','Schnellnotizen','Mit Firebase-Sync auf allen Geräten verfügbar.'],

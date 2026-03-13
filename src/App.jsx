@@ -23,6 +23,9 @@ import React, { useState, useEffect, useRef } from 'react';
     const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : customFirebaseConfig;
     const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'onyx-pwa-live';
     const BASE_PATH = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/Onyx-Kalender/';
+    const FCM_WEB_VAPID_KEY = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
+      ? String(import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
+      : 'BLif9DBsVeYOPqRfhhBZsftnDbJvWfbfVrkjf14s7HsygsnYh4yfIKOr30oM58jIakPKBDu0arXj5oEZWhWG-E0';
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -2899,7 +2902,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
     if (!swRegistration) throw new Error('SERVICE_WORKER_NOT_READY');
 
     const token = await getToken(messaging, {
-      vapidKey: 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI',
+      vapidKey: FCM_WEB_VAPID_KEY,
       serviceWorkerRegistration: swRegistration
     });
 
@@ -4392,7 +4395,7 @@ Kalender aktuell` : 'Kalender aktuell';
             },
             { merge: true }
           );
-          showToast('Server-Test ausgelöst (oxynoti)');
+          showToast('Server-Test ausgelöst (FCM)');
           pushTestTimeoutRef.current = setTimeout(() => {
             try {
               setPushTest((prev) => {
@@ -5031,7 +5034,7 @@ useEffect(() => {
       // --- REMINDER ENGINE (Kalender) ---
       const remindersIndexRef = useRef([]);
 
-      // Same hashing as oxynoti server (FNV-1a 32-bit) => enables notification tag dedupe
+      // Same hashing as FCM payload tags (FNV-1a 32-bit) => keeps notification tag dedupe stable
       const fnv1a32 = (str) => {
         let h = 0x811c9dc5;
         const s = String(str || '');
@@ -5128,9 +5131,9 @@ useEffect(() => {
 
           // System Notification falls erlaubt
           try {
-            // Wichtig: oft existiert zwar ein Web-Token, aber der Server-Worker (oxynoti)
-            // ist nicht aktiv oder sendet nicht an Web. Daher IMMER lokal als Fallback.
-            // Tag ist kompatibel mit oxynoti (dedupe über `tag`).
+            // Wichtig: oft existiert zwar ein Web-Token, aber der FCM-Zustellweg kann lokal blockiert sein
+            // oder im Hintergrund noch nicht aktiv sein. Daher IMMER lokal als Fallback.
+            // Tag bleibt kompatibel zum FCM-`data.tag` (dedupe über `tag`).
             const canNotify = ('Notification' in window) && Notification.permission === 'granted';
             if (canNotify) {
                 const dedupeKey = `${user?.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;

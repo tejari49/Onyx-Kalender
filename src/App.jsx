@@ -4414,24 +4414,47 @@ Kalender aktuell` : 'Kalender aktuell';
           if (!user) return;
           if (!pushTest.id) return;
           const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', pushTest.id);
-          const unsub = onSnapshot(ref, (snap) => {
-            try {
-              if (!snap.exists()) return;
-              const d = snap.data() || {};
-              const status = String(d.status || '').toLowerCase();
-              const lastError = d.lastError ? String(d.lastError) : '';
-              const updatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : Date.now();
-              setPushTest((prev) => ({ ...prev, status, lastError, updatedAt }));
-              if (status && status !== 'pending') { try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {} }
-              if (status === 'error' && lastError) {
-                setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
-              }
-              if (status === 'sent') {
-                // Let SW handle the visible notification; this toast is just feedback.
-                showToast('Server-Test gesendet');
-              }
-            } catch (_) {}
-          });
+          const unsub = onSnapshot(ref,
+            (snap) => {
+              try {
+                if (!snap.exists()) return;
+                const d = snap.data() || {};
+                const status = String(d.status || '').toLowerCase();
+                const lastError = d.lastError ? String(d.lastError) : '';
+                const updatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : Date.now();
+                setPushTest((prev) => ({ ...prev, status, lastError, updatedAt }));
+                if (status && status !== 'pending') { try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {} }
+                if (status === 'error' && lastError) {
+                  setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
+                }
+                if (status === 'sent') {
+                  // Let SW handle the visible notification; this toast is just feedback.
+                  showToast('Server-Test gesendet');
+                }
+              } catch (_) {}
+            },
+            (err) => {
+              try {
+                const code = String(err?.code || '').toLowerCase();
+                const blocked = code === 'permission-denied' || code === 'unauthenticated';
+                setPushTest((prev) => ({
+                  ...prev,
+                  status: blocked ? 'status_read_blocked' : 'status_read_error',
+                  lastError: blocked
+                    ? 'Status-Lesen blockiert (Rules/Shield/Adblock). Push kann trotzdem zugestellt werden.'
+                    : `Status-Lesen fehlgeschlagen (${code || 'unknown'})`,
+                  updatedAt: Date.now()
+                }));
+                setPushDiag((p) => ({
+                  ...p,
+                  lastError: blocked
+                    ? 'SERVER_TEST_STATUS_READ_BLOCKED'
+                    : `SERVER_TEST_STATUS_READ_ERROR: ${code || 'unknown'}`
+                }));
+                try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {}
+              } catch (_) {}
+            }
+          );
           return () => { try { unsub(); } catch (_) {} };
         } catch (_) {}
       }, [pushTest.id, user]);

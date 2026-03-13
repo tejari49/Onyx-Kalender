@@ -28,7 +28,7 @@ import React, { useState, useEffect, useRef } from 'react';
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const DEFAULT_EXTRAS_ORDER = ['smartday','workclock','focus','week','freewindows','goals','sollist','notes','weather'];
+    const DEFAULT_EXTRAS_ORDER = ['workclock','goals','sollist','notes','weather'];
 
     function normalizeShoppingItems(input) {
       const rows = Array.isArray(input) ? input : [];
@@ -69,6 +69,20 @@ import React, { useState, useEffect, useRef } from 'react';
       }));
       while (out.length < 3) out.push({ id: `goal_${out.length + 1}`, text: '', done: false });
       return out;
+    }
+
+
+    function normalizeQuickCaptureNotes(input) {
+      const arr = Array.isArray(input) ? input : [];
+      return arr
+        .map((item, idx) => ({
+          id: String(item?.id || `note_${idx + 1}`),
+          text: String(item?.text || '').trim().slice(0, 400),
+          createdAt: Number(item?.createdAt || Date.now()),
+        }))
+        .filter((item) => item.text.length > 0)
+        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+        .slice(0, 40);
     }
 
     function normalizeExtrasOrder(input) {
@@ -336,10 +350,9 @@ function AmoledCalendarApp() {
         } catch (_) { return 'dark'; }
       });
       const [extrasSectionsOpen, setExtrasSectionsOpen] = useState({
-        basics: true,
-        home: false,
-        planning: false,
-        notes: false,
+        planning: true,
+        push: true,
+        workclock: false,
       });
 
       useEffect(() => {
@@ -388,6 +401,11 @@ function AmoledCalendarApp() {
       const [shoppingListsUpdatedAt, setShoppingListsUpdatedAt] = useState(0);
       const [activeShoppingListId, setActiveShoppingListId] = useState('');
       const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+      const [quickNoteModalOpen, setQuickNoteModalOpen] = useState(false);
+      const [quickCaptureNoteInput, setQuickCaptureNoteInput] = useState('');
+      const [quickCaptureNotes, setQuickCaptureNotes] = useState([]);
+      const [homeNotesOpen, setHomeNotesOpen] = useState(false);
+      const [editingQuickNoteId, setEditingQuickNoteId] = useState('');
       const [shoppingListModalOpen, setShoppingListModalOpen] = useState(false);
       const [shoppingDraftTitle, setShoppingDraftTitle] = useState('Neue Einkaufsliste');
       const [shoppingDraftStore, setShoppingDraftStore] = useState('');
@@ -2093,7 +2111,7 @@ const handleTouchEnd = () => {
 
       const toggleTheme = () => setUiTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
       const isExtraFieldEnabled = (field) => {
-        const defaultOn = !['workClockHomeEnabled'].includes(field);
+        const defaultOn = true;
         return ((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn) === true;
       };
       const saveExtraFieldToggle = async (field) => {
@@ -3687,6 +3705,19 @@ const requestNotificationPermission = async (currentUser) => {
         return () => { try { unsub(); } catch (_) {} };
       }, [user?.uid]);
 
+      useEffect(() => {
+        if (!user?.uid || !workClockActive?.startedAt) return;
+        const id = setInterval(async () => {
+          try {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+              workClockActive: { ...(workClockActive || {}), heartbeatAt: Date.now() },
+              updatedAt: Date.now(),
+            }, { merge: true });
+          } catch (_) {}
+        }, 15000);
+        return () => clearInterval(id);
+      }, [user?.uid, workClockActive?.startedAt, workClockActive?.isPaused, workClockActive?.pausedAccumulatedMs]);
+
       function getShoppingStorageKey(uid) { return `onyx_shopping_lists_${uid || 'guest'}`; }
       function readShoppingListsLocal(uid) {
         try {
@@ -3761,6 +3792,50 @@ const requestNotificationPermission = async (currentUser) => {
         const next = normalizeShoppingLists(shoppingLists).filter((list) => list.id !== listId);
         await persistShoppingLists(next);
         setActiveShoppingListId((prev) => prev === listId ? (next[0]?.id || '') : prev);
+      };
+      const saveQuickCaptureNote = async () => {
+        const text = String(quickCaptureNoteInput || '').trim();
+        if (!text) return;
+        const now = Date.now();
+        const next = editingQuickNoteId
+          ? normalizeQuickCaptureNotes((quickCaptureNotes || []).map((note) => String(note?.id || '') === String(editingQuickNoteId) ? { ...note, text, updatedAt: now } : note))
+          : normalizeQuickCaptureNotes([
+              { id: `note_${now}_${Math.random().toString(36).slice(2, 6)}`, text, createdAt: now },
+              ...quickCaptureNotes,
+            ]);
+        setQuickCaptureNotes(next);
+        setQuickCaptureNoteInput('');
+        setEditingQuickNoteId('');
+        setQuickNoteModalOpen(false);
+        setPlusMenuOpen(false);
+        setHomeNotesOpen(true);
+        showToast(editingQuickNoteId ? 'Notiz aktualisiert' : 'Notiz gespeichert');
+        if (user?.uid) {
+          try {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { quickCaptureNotes: next, updatedAt: now }, { merge: true });
+          } catch (_) {}
+        }
+      };
+      const openEditQuickCaptureNote = (note) => {
+        if (!note?.id) return;
+        setEditingQuickNoteId(String(note.id));
+        setQuickCaptureNoteInput(String(note.text || ''));
+        setQuickNoteModalOpen(true);
+      };
+      const deleteQuickCaptureNote = async (noteId) => {
+        const next = normalizeQuickCaptureNotes((quickCaptureNotes || []).filter((note) => String(note?.id || '') !== String(noteId || '')));
+        setQuickCaptureNotes(next);
+        if (editingQuickNoteId && String(editingQuickNoteId) === String(noteId || '')) {
+          setEditingQuickNoteId('');
+          setQuickCaptureNoteInput('');
+          setQuickNoteModalOpen(false);
+        }
+        showToast('Notiz gelöscht');
+        if (user?.uid) {
+          try {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { quickCaptureNotes: next, updatedAt: Date.now() }, { merge: true });
+          } catch (_) {}
+        }
       };
 
       useEffect(() => {
@@ -6942,6 +7017,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           const rawTarget = localStorage.getItem(getStorageKey('weeklyTargetHours'));
           const rawOrder = localStorage.getItem(getStorageKey('extrasSlotOrder'));
           const rawUpdatedAt = localStorage.getItem(getStorageKey('extrasUpdatedAt'));
+          const rawQuickCaptureNotes = localStorage.getItem(getStorageKey('quickCaptureNotes'));
           if (rawState) setFocusState(JSON.parse(rawState));
           if (rawHistory) setFocusHistory(JSON.parse(rawHistory));
           if (typeof rawNotes === 'string') setQuickNotes(rawNotes);
@@ -6949,6 +7025,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           if (typeof rawTarget === 'string' && rawTarget.length) setWeeklyTargetHours(rawTarget);
           if (rawOrder) setExtrasSlotOrder(normalizeExtrasOrder(JSON.parse(rawOrder)));
           if (rawUpdatedAt) setExtrasUpdatedAt(Number(rawUpdatedAt || 0));
+          if (rawQuickCaptureNotes) setQuickCaptureNotes(normalizeQuickCaptureNotes(JSON.parse(rawQuickCaptureNotes)));
         } catch (_) {}
       }, [user?.uid]);
       useEffect(() => {
@@ -6973,6 +7050,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         try { localStorage.setItem(getStorageKey('extrasUpdatedAt'), String(extrasUpdatedAt || 0)); } catch (_) {}
       }, [extrasUpdatedAt, user?.uid]);
       useEffect(() => {
+        try { localStorage.setItem(getStorageKey('quickCaptureNotes'), JSON.stringify(normalizeQuickCaptureNotes(quickCaptureNotes))); } catch (_) {}
+      }, [quickCaptureNotes, user?.uid]);
+      useEffect(() => {
         if (!user) return;
         const remoteTs = Number(userProfile?.extrasUpdatedAt || 0);
         if (!remoteTs || remoteTs <= Number(extrasUpdatedAt || 0)) return;
@@ -6981,10 +7061,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           if (Array.isArray(userProfile?.dailyGoals)) setDailyGoals(normalizeDailyGoals(userProfile?.dailyGoals));
           if (!isWeeklyTargetEditing && userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) setWeeklyTargetHours(String(userProfile?.weeklyTargetHours));
           if (Array.isArray(userProfile?.extrasSlotOrder)) setExtrasSlotOrder(normalizeExtrasOrder(userProfile?.extrasSlotOrder));
+          if (Array.isArray(userProfile?.quickCaptureNotes)) setQuickCaptureNotes(normalizeQuickCaptureNotes(userProfile?.quickCaptureNotes));
           setExtrasUpdatedAt(remoteTs);
           extrasCloudReadyRef.current = true;
         } catch (_) {}
-      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder, isWeeklyTargetEditing]);
+      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder, userProfile?.quickCaptureNotes, isWeeklyTargetEditing]);
       useEffect(() => {
         if (!user) return;
         if (isWeeklyTargetEditing) return;
@@ -7310,18 +7391,12 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           return todayWeatherAdvice;
         } catch (_) { return todayWeatherAdvice; }
       })();
-      const compactHomeSmartDay = (userProfile?.smartDayEnabled !== false) && (userProfile?.smartDayHomeEnabled !== false);
-      const compactHomeWorkClock = (userProfile?.workClockEnabled === true) && (userProfile?.workClockHomeEnabled !== false);
-      const extrasEnabled = userProfile?.extrasEnabled !== false;
-      const showExtrasSmartDay = extrasEnabled && (userProfile?.smartDayEnabled !== false);
-      const showExtrasWorkClock = extrasEnabled && (userProfile?.workClockEnabled === true);
-      const showExtrasFocus = extrasEnabled && (userProfile?.focusModeEnabled !== false);
-      const showExtrasWeek = extrasEnabled && (userProfile?.weeklyOverviewEnabled !== false);
-      const showExtrasNotes = extrasEnabled && (userProfile?.quickNotesEnabled !== false);
-      const showExtrasWeather = extrasEnabled && (userProfile?.weatherPlannerEnabled !== false);
-      const showExtrasTimeBalance = extrasEnabled && (userProfile?.timeBalanceEnabled !== false);
-      const showExtrasFreeWindows = extrasEnabled && (userProfile?.freeWindowsEnabled !== false);
-      const showExtrasGoals = extrasEnabled && (userProfile?.dailyGoalsEnabled !== false);
+      const compactHomeWorkClock = userProfile?.workClockEnabled !== false;
+      const showExtrasWorkClock = userProfile?.workClockEnabled !== false;
+      const showExtrasNotes = userProfile?.quickNotesEnabled !== false;
+      const showExtrasWeather = userProfile?.weatherPlannerEnabled !== false;
+      const showExtrasTimeBalance = userProfile?.timeBalanceEnabled !== false;
+      const showExtrasGoals = userProfile?.dailyGoalsEnabled !== false;
       const weeklyTargetMs = Math.max(0, (Number(String(weeklyTargetHours || '0').replace(',', '.')) || 0) * 3600000);
       const weekDeltaMs = weekWorkMs - weeklyTargetMs;
       const weekTargetPct = weeklyTargetMs > 0 ? Math.max(0, Math.min(100, Math.round((weekWorkMs / weeklyTargetMs) * 100))) : 0;
@@ -7454,21 +7529,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   </div>
                 </div>
 
-                {(compactHomeSmartDay || compactHomeWorkClock) && (
+                {compactHomeWorkClock && (
                   <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {compactHomeSmartDay && (
-                      <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Smart Day</div>
-                            <div className="text-lg md:text-xl font-semibold text-white">{nextEventLabel}</div>
-                            <div className="mt-2 text-sm text-neutral-400">{nextEventCountdownText} · {freeWindowText}</div>
-                          </div>
-                          <button onClick={() => { setSettingsTab('notifications'); setCurrentView('settings'); }} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Öffnen</button>
-                        </div>
-                      </div>
-                    )}
-                    {compactHomeWorkClock && (
                       <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
                         <div className="flex flex-col gap-3">
                           <div className="flex items-center justify-between gap-3">
@@ -7477,7 +7539,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                               <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
                               <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
                             </div>
-                            <button onClick={() => { setSettingsTab('notifications'); setCurrentView('settings'); }} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Historie</button>
+                            <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Historie</button>
                           </div>
 
                           <div className="flex flex-wrap gap-2">
@@ -7492,9 +7554,41 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                           </div>
                         </div>
                       </div>
-                    )}
                   </div>
                 )}
+
+                <div className="mb-6 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                  <button
+                    type="button"
+                    onClick={() => setHomeNotesOpen((v) => !v)}
+                    className="w-full flex items-center justify-between gap-3"
+                  >
+                    <div className="text-left">
+                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">Notizen</div>
+                      <div className="text-sm text-neutral-300 mt-1">{quickCaptureNotes.length} Einträge</div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform ${homeNotesOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {homeNotesOpen && (
+                    <div className="mt-3 space-y-2">
+                      {quickCaptureNotes.length === 0 ? (
+                        <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-lg px-3 py-3">Noch keine Notizen vorhanden.</div>
+                      ) : quickCaptureNotes.slice(0, 8).map((note) => (
+                        <div key={note.id} className="border border-neutral-800 rounded-lg px-3 py-2 bg-black/70">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-xs text-neutral-500 mb-1">{new Date(note.createdAt).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</div>
+                            <div className="flex items-center gap-1">
+                              <button type="button" onClick={() => openEditQuickCaptureNote(note)} className="p-1.5 rounded-md border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-500" title="Notiz bearbeiten"><Edit2 className="w-3.5 h-3.5" /></button>
+                              <button type="button" onClick={() => deleteQuickCaptureNote(note.id)} className="p-1.5 rounded-md border border-red-900/40 text-red-300 hover:bg-red-950/40" title="Notiz löschen"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
+                          </div>
+                          <div className="text-sm text-neutral-200 whitespace-pre-wrap break-words">{note.text}</div>
+                        </div>
+                      ))
+                      }
+                    </div>
+                  )}
+                </div>
                 <div>
                   <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda für heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
                   {hasUnreadMessages && (
@@ -8122,7 +8216,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             )}
 
             {currentView === 'extras' && (() => {
-              if (!(extrasEnabled && (userProfile?.workClockEnabled === true))) {
+              if (!showExtrasWorkClock) {
                 return (
                   <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
                     <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
@@ -8215,14 +8309,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const TABS = [
       { id: 'account', label: 'Account & Sicherheit', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'sicherheit', 'datenschutz', 'abmelden', 'email'] },
       { id: 'calendars', label: 'Kalender & Freigaben', subtitle: 'Farben, Schichtpläne und Teilen', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
-      { id: 'notifications', label: 'Produktivität & Push', subtitle: 'Extras, Stempeluhr, Erinnerungen, Push', icon: Activity, keys: ['extras', 'smart day', 'stempelung', 'fokus', 'notiz', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
+      { id: 'notifications', label: 'Produktivität & Push', subtitle: 'Extras, Stempeluhr, Erinnerungen, Push', icon: Activity, keys: ['extras', 'stempeluhr', 'notiz', 'tagesziel', 'wetter', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
       { id: 'links', label: 'Public Links', subtitle: 'Busy-only Links und Ablauf', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
       { id: 'ics', label: 'Import/Export', subtitle: 'ICS Export und Import', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
       { id: 'audit', label: 'Audit & Verlauf', subtitle: 'Aktionsprotokoll und Kalenderhistorie', icon: History, keys: ['audit', 'verlauf', 'log', 'aenderung', 'wer'] },
     ];
     const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
     const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
-    const enabledExtraCount = ['extrasEnabled', 'smartDayEnabled', 'focusModeEnabled', 'weeklyOverviewEnabled', 'freeWindowsEnabled', 'dailyGoalsEnabled', 'timeBalanceEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled', 'workClockEnabled']
+    const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
       .filter((field) => isExtraFieldEnabled(field))
       .length;
 
@@ -8415,7 +8509,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             </AccordionItem>
 
             {/* EXTRAS */}
-            <AccordionItem id="notifications" label="Produktivität & Push" icon={Activity} keys={['extras','smart day','stempelung','fokus','notiz','tagesziel','soll ist','freie zeitfenster','push','benachr','erinnerung','pwa','token','test']} >
+            <AccordionItem id="notifications" label="Produktivität & Push" icon={Activity} keys={['extras','stempeluhr','notiz','tagesziel','wetter','push','benachr','erinnerung','pwa','token','test']} >
               <section id="settings-notifications">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <Activity className="w-4 h-4" /> Produktivität & Push
@@ -8424,22 +8518,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 {/* Core settings */}
                 <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-3">
                   {[
-                    ['basics', 'Grundmodule', [
-                      ['extrasEnabled','Extras-Bereich','Blendet den neuen Extras-Tab ein und aus.'],
-                      ['smartDayEnabled','Smart Day in Extras','Detaillierte Tageskarte im Extras-Bereich.'],
-                      ['focusModeEnabled','Fokusmodus','25/50/90-Minuten Fokusblöcke in Extras.'],
-                      ['weeklyOverviewEnabled','Wochenübersicht','Arbeitszeit, Termine und freie Fenster bündeln.'],
-                      ['freeWindowsEnabled','Freie Zeitfenster','Eigene Karte mit freien Blöcken des Tages.'],
-                    ]],
-                    ['home', 'Startseite', [
-                      ['smartDayHomeEnabled','Smart Day auf Home','Kompakte Karte auf der Startseite.'],
-                      ['workClockHomeEnabled','Stempeluhr auf Home','Nur kompakte Stempeluhr-Zeile auf Home.'],
-                    ]],
-                    ['planning', 'Planung & Ziele', [
+                    ['planning', 'Produktivität', [
                       ['dailyGoalsEnabled','Tagesziele','Drei Tagesziele mit Häkchen und Cloud-Sync.'],
-                      ['timeBalanceEnabled','Soll-/Ist-Stunden','Wochenziel gegen echte Arbeitszeit vergleichen.'],
-                    ]],
-                    ['notes', 'Notizen & Wetter', [
                       ['quickNotesEnabled','Schnellnotizen','Mit Firebase-Sync auf allen Geräten verfügbar.'],
                       ['weatherPlannerEnabled','Wetter-Planer','Zusätzliche Wetter-/Kleidungs-Hinweise in Extras.'],
                     ]],
@@ -8475,187 +8555,135 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </div>
                   ))}
 
-                  <div className="border border-neutral-800 rounded-xl bg-black p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-medium text-white">Bereichsstruktur</p>
-                        <p className="text-xs text-neutral-500 mt-1">Oben: Modul-Schalter (Extras/Home). Mitte: Planung, Zielstunden, Stempeluhr. Unten: Push, Diagnose und Tests.</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-medium text-white">Kalender-Erinnerungen</p>
-                      <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit „Standard“). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
-                    </div>
-                    <div className="flex gap-2">
-                      {!isStandalone && canInstallPwa && (
-                        <button
-                          type="button"
-                          onClick={() => { try { promptInstallPwa(); } catch(e) {} }}
-                          className="px-4 py-2 bg-white text-black rounded-md text-sm font-semibold hover:bg-gray-200 transition-colors"
-                        >
-                          Installieren
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        disabled={!isStandalone}
-                        onClick={() => { try { requestNotificationPermission(user); } catch(e) {} }}
-                        className={"px-4 py-2 rounded-md text-sm transition-colors " + (isStandalone ? "bg-neutral-900 border border-neutral-800 hover:text-white" : "bg-neutral-950 border border-neutral-900 text-neutral-600 cursor-not-allowed")}
-                        title={isStandalone ? "Benachrichtigungen aktivieren" : (isIosUA ? "iPhone/iPad: Teilen → Zum Home-Bildschirm" : "Bitte zuerst installieren")}
-                      >
-                        Erlauben
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Standard-Erinnerung</label>
-                      <select
-                        value={(() => {
-                          const v = (userProfile && typeof userProfile?.defaultReminderMinutes === 'number') ? String(userProfile?.defaultReminderMinutes) : 'none';
-                          return v;
-                        })()}
-                        onChange={async (e) => {
-                          try {
-                            const v = e.target.value;
-                            const next = (v === 'none') ? null : (parseInt(v, 10) || 0);
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { defaultReminderMinutes: next }, { merge: true });
-                            showToast('Gespeichert');
-                          } catch (err) {
-                            showToast('Fehler');
-                          }
-                        }}
-                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                      >
-                        <option value="none">Keine</option>
-                        <option value="0">Bei Beginn</option>
-                        <option value="5">5 Minuten vorher</option>
-                        <option value="10">10 Minuten vorher</option>
-                        <option value="15">15 Minuten vorher</option>
-                        <option value="30">30 Minuten vorher</option>
-                        <option value="60">1 Stunde vorher</option>
-                        <option value="120">2 Stunden vorher</option>
-                        <option value="1440">1 Tag vorher</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benachrichtigungston</label>
-                      <select
-                        value={(() => {
-                          const v = (userProfile && userProfile?.notificationSoundMode) ? String(userProfile?.notificationSoundMode) : 'system';
-                          return (v === 'silent') ? 'silent' : 'system';
-                        })()}
-                        onChange={async (e) => {
-                          try {
-                            const v = e.target.value;
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { notificationSoundMode: v }, { merge: true });
-                            showToast('Gespeichert');
-                          } catch (err) {
-                            showToast('Fehler');
-                          }
-                        }}
-                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                      >
-                        <option value="system">System (Standard)</option>
-                        <option value="silent">Stumm</option>
-                      </select>
-                      <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – du kannst nur Systemton nutzen oder stumm schalten.</p>
-                    </div>
-                  </div>
-
-                  <div className="border border-neutral-800 rounded-xl bg-black p-4 space-y-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-medium text-white flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Wochenziel & Extras-Reihenfolge</p>
-                        <p className="text-xs text-neutral-500 mt-1">Definiert dein Soll pro Woche. Im Extras-Bereich kannst du die Karten direkt per Drag & Drop verschieben.</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wochenziel in Stunden</label>
-                        <input value={weeklyTargetHours} onFocus={() => setIsWeeklyTargetEditing(true)} onBlur={() => setIsWeeklyTargetEditing(false)} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                      </div>
-                      <div className="flex items-end">
-                        <button type="button" onClick={() => { setExtrasSlotOrder(normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER)); showToast('Extras-Reihenfolge zurückgesetzt'); }} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Reihenfolge zurücksetzen</button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border border-neutral-800 rounded-xl bg-black p-4 space-y-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-medium text-white flex items-center gap-2"><Briefcase className="w-4 h-4" /> Stempelung</p>
-                        <p className="text-xs text-neutral-500 mt-1">Aktiviert die Stempeluhr im Extras-Bereich. Optional kann sie zusätzlich kompakt auf der Startseite erscheinen.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            const next = !(userProfile?.workClockEnabled === true);
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { workClockEnabled: next, updatedAt: Date.now() }, { merge: true });
-                            setUserProfile(prev => ({ ...(prev || {}), workClockEnabled: next }));
-                            showToast(next ? 'Stempelung aktiviert' : 'Stempelung deaktiviert');
-                          } catch (_) { showToast('Fehler'); }
-                        }}
-                        className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + ((userProfile?.workClockEnabled === true) ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}
-                      >
-                        {(userProfile?.workClockEnabled === true) ? 'Aktiv' : 'Aus'}
-                      </button>
-                    </div>
-
-                    {(userProfile?.workClockEnabled === true) && (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div>
-                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div>
+                  <div className="border border-neutral-800 rounded-xl bg-black">
+                    <button
+                      type="button"
+                      onClick={() => toggleExtrasSection('push')}
+                      className="w-full px-4 py-3 flex items-center justify-between text-left"
+                    >
+                      <span className="text-sm font-medium text-white">Erinnerungen & Push</span>
+                      <ChevronDown className={"w-4 h-4 text-neutral-500 transition-transform " + (extrasSectionsOpen?.push ? 'rotate-180' : '')} />
+                    </button>
+                    {extrasSectionsOpen?.push && (
+                      <div className="px-4 pb-4 space-y-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="font-medium text-white">Kalender-Erinnerungen</p>
+                            <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit „Standard“). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
                           </div>
-                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Diese Woche</div>
-                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div>
-                          </div>
-                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Dieser Monat</div>
-                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Tätigkeiten im Dropdown</label>
-                          <textarea
-                            value={workClockPresetInput}
-                            onChange={(e) => setWorkClockPresetInput(e.target.value)}
-                            rows={4}
-                            placeholder={"Büro\nBaustelle\nSupport"}
-                            className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                          />
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <div className="flex gap-2">
+                            {!isStandalone && canInstallPwa && (
+                              <button
+                                type="button"
+                                onClick={() => { try { promptInstallPwa(); } catch(e) {} }}
+                                className="px-4 py-2 bg-white text-black rounded-md text-sm font-semibold hover:bg-gray-200 transition-colors"
+                              >
+                                Installieren
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={async () => {
-                                try {
-                                  const nextPresets = normalizeWorkClockPresets(workClockPresetInput);
-                                  setWorkClockPresetInput(nextPresets.join('\n'));
-                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { workClockTaskOptions: nextPresets, updatedAt: Date.now() }, { merge: true });
-                                  setUserProfile(prev => ({ ...(prev || {}), workClockTaskOptions: nextPresets }));
-                                  showToast('Dropdown gespeichert');
-                                } catch (_) { showToast('Fehler'); }
-                              }}
-                              className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-neutral-200 transition-colors"
+                              disabled={!isStandalone}
+                              onClick={() => { try { requestNotificationPermission(user); } catch(e) {} }}
+                              className={"px-4 py-2 rounded-md text-sm transition-colors " + (isStandalone ? "bg-neutral-900 border border-neutral-800 hover:text-white" : "bg-neutral-950 border border-neutral-900 text-neutral-600 cursor-not-allowed")}
+                              title={isStandalone ? "Benachrichtigungen aktivieren" : (isIosUA ? "iPhone/iPad: Teilen -> Zum Home‑Bildschirm" : "Bitte zuerst installieren")}
                             >
-                              Dropdown speichern
+                              Erlauben
                             </button>
-                            <span className="text-[11px] text-neutral-500">Eine Tätigkeit pro Zeile. Diese Auswahl erscheint beim Stopp der Stempelung.</span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Standard-Erinnerung</label>
+                            <select
+                              value={(() => {
+                                const v = (userProfile && userProfile?.defaultReminderMinutes !== undefined && userProfile?.defaultReminderMinutes !== null) ? String(userProfile?.defaultReminderMinutes) : 'none';
+                                return v;
+                              })()}
+                              onChange={async (e) => {
+                                try {
+                                  const v = e.target.value;
+                                  const next = (v === 'none') ? null : Number(v);
+                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { defaultReminderMinutes: next }, { merge: true });
+                                  showToast('Gespeichert');
+                                } catch (err) {
+                                  showToast('Fehler');
+                                }
+                              }}
+                              className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                            >
+                              <option value="none">Keine</option>
+                              <option value="0">Bei Beginn</option>
+                              <option value="5">5 Minuten vorher</option>
+                              <option value="10">10 Minuten vorher</option>
+                              <option value="15">15 Minuten vorher</option>
+                              <option value="30">30 Minuten vorher</option>
+                              <option value="60">1 Stunde vorher</option>
+                              <option value="120">2 Stunden vorher</option>
+                              <option value="1440">1 Tag vorher</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benachrichtigungston</label>
+                            <select
+                              value={(() => {
+                                const v = (userProfile && userProfile?.notificationSoundMode) ? String(userProfile?.notificationSoundMode) : 'system';
+                                return (v === 'silent') ? 'silent' : 'system';
+                              })()}
+                              onChange={async (e) => {
+                                try {
+                                  const v = e.target.value;
+                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { notificationSoundMode: v }, { merge: true });
+                                  showToast('Gespeichert');
+                                } catch (err) {
+                                  showToast('Fehler');
+                                }
+                              }}
+                              className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                            >
+                              <option value="system">System (Standard)</option>
+                              <option value="silent">Stumm</option>
+                            </select>
+                            <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – du kannst nur Systemton nutzen oder stumm schalten.</p>
                           </div>
                         </div>
                       </div>
                     )}
                   </div>
 
-
+                  <div className="border border-neutral-800 rounded-xl bg-black">
+                    <button
+                      type="button"
+                      onClick={() => toggleExtrasSection('workclock')}
+                      className="w-full px-4 py-3 flex items-center justify-between text-left"
+                    >
+                      <span className="text-sm font-medium text-white">Stempeluhr & Reihenfolge</span>
+                      <ChevronDown className={"w-4 h-4 text-neutral-500 transition-transform " + (extrasSectionsOpen?.workclock ? 'rotate-180' : '')} />
+                    </button>
+                    {extrasSectionsOpen?.workclock && (
+                      <div className="px-4 pb-4 space-y-4">
+                        <div className="border border-neutral-800 rounded-xl bg-neutral-950/60 p-4 space-y-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <p className="font-medium text-white flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Wochenziel & Extras-Reihenfolge</p>
+                              <p className="text-xs text-neutral-500 mt-1">Definiert dein Soll pro Woche. Im Extras-Bereich kannst du die Karten direkt per Drag & Drop verschieben.</p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wochenziel in Stunden</label>
+                              <input value={weeklyTargetHours} onFocus={() => setIsWeeklyTargetEditing(true)} onBlur={() => setIsWeeklyTargetEditing(false)} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                            </div>
+                            <div className="flex items-end">
+                              <button type="button" onClick={() => { setExtrasSlotOrder(normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER)); showToast('Extras-Reihenfolge zurückgesetzt'); }} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Reihenfolge zurücksetzen</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <div className="border border-neutral-800 rounded-xl bg-black p-4">
                     <button
                       type="button"
@@ -10227,6 +10255,33 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 <div className="text-sm font-semibold text-white flex items-center gap-2"><ShoppingCart className="w-4 h-4" /> Einkaufsliste</div>
                 <div className="text-xs text-neutral-500 mt-1">Liste mit Artikeln, Preisen und Durchstreichen anlegen.</div>
               </button>
+              <button onClick={() => { setEditingQuickNoteId(''); setQuickCaptureNoteInput(''); setQuickNoteModalOpen(true); setPlusMenuOpen(false); }} className="p-4 rounded-2xl border border-neutral-800 hover:border-neutral-500 transition-colors text-left">
+                <div className="text-sm font-semibold text-white flex items-center gap-2"><NotebookText className="w-4 h-4" /> Notiz</div>
+                <div className="text-xs text-neutral-500 mt-1">Kurze Notiz sofort erfassen und speichern.</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {quickNoteModalOpen && (
+        <div className="fixed inset-0 z-[141] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setQuickNoteModalOpen(false)}>
+          <div className="w-full max-w-lg rounded-3xl border border-neutral-800 bg-neutral-950 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-semibold text-white">{editingQuickNoteId ? 'Notiz bearbeiten' : 'Neue Notiz'}</h3><button onClick={() => { setQuickNoteModalOpen(false); setEditingQuickNoteId(''); setQuickCaptureNoteInput(''); }} className="p-2 rounded-xl border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-500"><X className="w-4 h-4" /></button></div>
+            <div className="space-y-4">
+              <textarea
+                value={quickCaptureNoteInput}
+                onChange={(e) => setQuickCaptureNoteInput(e.target.value)}
+                rows={5}
+                placeholder="Notiz eingeben..."
+                className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+              />
+              <div className="flex justify-end gap-3">
+                <button onClick={() => { setQuickNoteModalOpen(false); setEditingQuickNoteId(''); setQuickCaptureNoteInput(''); }} className="px-4 py-3 rounded-xl border border-neutral-800 text-neutral-300 hover:border-neutral-500 transition-colors">Abbrechen</button>
+                {editingQuickNoteId && (<button onClick={() => deleteQuickCaptureNote(editingQuickNoteId)} className="px-4 py-3 rounded-xl border border-red-900/40 text-red-300 hover:bg-red-950/40 transition-colors">Löschen</button>)}
+                <button onClick={saveQuickCaptureNote} className="px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-neutral-200 transition-colors">Speichern</button>
+              </div>
             </div>
           </div>
         </div>

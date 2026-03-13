@@ -8195,79 +8195,6 @@ setSelfDestruct(false);
                       </div>
                     </div>
                   ))}
-                  <div className="border border-neutral-800 rounded-xl bg-black p-4 space-y-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-medium text-white flex items-center gap-2"><Briefcase className="w-4 h-4" /> Stempelung</p>
-                        <p className="text-xs text-neutral-500 mt-1">Aktiviert die Stempeluhr im Extras-Bereich. Optional kann sie zusätzlich kompakt auf der Startseite erscheinen.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            const next = !(userProfile?.workClockEnabled === true);
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { workClockEnabled: next, updatedAt: Date.now() }, { merge: true });
-                            setUserProfile(prev => ({ ...(prev || {}), workClockEnabled: next }));
-                            showToast(next ? 'Stempelung aktiviert' : 'Stempelung deaktiviert');
-                          } catch (_) { showToast('Fehler'); }
-                        }}
-                        className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + ((userProfile?.workClockEnabled === true) ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}
-                      >
-                        {(userProfile?.workClockEnabled === true) ? 'Aktiv' : 'Aus'}
-                      </button>
-                    </div>
-
-                    {(userProfile?.workClockEnabled === true) && (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div>
-                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div>
-                          </div>
-                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Diese Woche</div>
-                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div>
-                          </div>
-                          <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-neutral-950/40">
-                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Dieser Monat</div>
-                            <div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Tätigkeiten im Dropdown</label>
-                          <textarea
-                            value={workClockPresetInput}
-                            onChange={(e) => setWorkClockPresetInput(e.target.value)}
-                            onFocus={() => { workClockPresetEditingRef.current = true; }}
-                            onBlur={() => { workClockPresetEditingRef.current = false; }}
-                            rows={4}
-                            placeholder={"Büro\nBaustelle\nSupport"}
-                            className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                          />
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  const nextPresets = normalizeWorkClockPresets(workClockPresetInput);
-                                  setWorkClockPresetInput(nextPresets.join('\n'));
-                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { workClockTaskOptions: nextPresets, updatedAt: Date.now() }, { merge: true });
-                                  setUserProfile(prev => ({ ...(prev || {}), workClockTaskOptions: nextPresets }));
-                                  showToast('Dropdown gespeichert');
-                                } catch (_) { showToast('Fehler'); }
-                              }}
-                              className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-neutral-200 transition-colors"
-                            >
-                              Dropdown speichern
-                            </button>
-                            <span className="text-[11px] text-neutral-500">Eine Tätigkeit pro Zeile. Diese Auswahl erscheint beim Stopp der Stempelung.</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-
                 </div>
               </section>
             </AccordionItem>
@@ -8283,13 +8210,6 @@ setSelfDestruct(false);
                 <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {[
-                      ['extrasEnabled','Extras-Bereich','Blendet den neuen Extras-Tab ein und aus.'],
-                      ['smartDayEnabled','Smart Day in Extras','Detaillierte Tageskarte im Extras-Bereich.'],
-                      ['smartDayHomeEnabled','Smart Day auf Home','Kompakte Karte auf der Startseite.'],
-                      ['workClockHomeEnabled','Stempeluhr auf Home','Nur kompakte Stempeluhr-Zeile auf Home.'],
-                      ['focusModeEnabled','Fokusmodus','25/50/90-Minuten Fokusblöcke in Extras.'],
-                      ['weeklyOverviewEnabled','Wochenübersicht','Arbeitszeit, Termine und freie Fenster bündeln.'],
-                      ['freeWindowsEnabled','Freie Zeitfenster','Eigene Karte mit freien Blöcken des Tages.'],
                       ['dailyGoalsEnabled','Tagesziele','Drei Tagesziele mit Häkchen und Cloud-Sync.'],
                       ['timeBalanceEnabled','Soll-/Ist-Stunden','Wochenziel gegen echte Arbeitszeit vergleichen.'],
                       ['quickNotesEnabled','Schnellnotizen','Mit Firebase-Sync auf allen Geräten verfügbar.'],

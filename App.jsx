@@ -71,6 +71,20 @@ import React, { useState, useEffect, useRef } from 'react';
       return out;
     }
 
+
+    function normalizeQuickCaptureNotes(input) {
+      const arr = Array.isArray(input) ? input : [];
+      return arr
+        .map((item, idx) => ({
+          id: String(item?.id || `note_${idx + 1}`),
+          text: String(item?.text || '').trim().slice(0, 400),
+          createdAt: Number(item?.createdAt || Date.now()),
+        }))
+        .filter((item) => item.text.length > 0)
+        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+        .slice(0, 40);
+    }
+
     function normalizeExtrasOrder(input) {
       const raw = Array.isArray(input) ? input.map((x) => String(x || '').trim().toLowerCase()).filter(Boolean) : [];
       const seen = new Set();
@@ -388,6 +402,10 @@ function AmoledCalendarApp() {
       const [shoppingListsUpdatedAt, setShoppingListsUpdatedAt] = useState(0);
       const [activeShoppingListId, setActiveShoppingListId] = useState('');
       const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+      const [quickNoteModalOpen, setQuickNoteModalOpen] = useState(false);
+      const [quickCaptureNoteInput, setQuickCaptureNoteInput] = useState('');
+      const [quickCaptureNotes, setQuickCaptureNotes] = useState([]);
+      const [homeNotesOpen, setHomeNotesOpen] = useState(false);
       const [shoppingListModalOpen, setShoppingListModalOpen] = useState(false);
       const [shoppingDraftTitle, setShoppingDraftTitle] = useState('Neue Einkaufsliste');
       const [shoppingDraftStore, setShoppingDraftStore] = useState('');
@@ -3762,6 +3780,25 @@ const requestNotificationPermission = async (currentUser) => {
         await persistShoppingLists(next);
         setActiveShoppingListId((prev) => prev === listId ? (next[0]?.id || '') : prev);
       };
+      const saveQuickCaptureNote = async () => {
+        const text = String(quickCaptureNoteInput || '').trim();
+        if (!text) return;
+        const next = normalizeQuickCaptureNotes([
+          { id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, text, createdAt: Date.now() },
+          ...quickCaptureNotes,
+        ]);
+        setQuickCaptureNotes(next);
+        setQuickCaptureNoteInput('');
+        setQuickNoteModalOpen(false);
+        setPlusMenuOpen(false);
+        setHomeNotesOpen(true);
+        showToast('Notiz gespeichert');
+        if (user?.uid) {
+          try {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { quickCaptureNotes: next, updatedAt: Date.now() }, { merge: true });
+          } catch (_) {}
+        }
+      };
 
       useEffect(() => {
         if (!user?.uid) return;
@@ -6942,6 +6979,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           const rawTarget = localStorage.getItem(getStorageKey('weeklyTargetHours'));
           const rawOrder = localStorage.getItem(getStorageKey('extrasSlotOrder'));
           const rawUpdatedAt = localStorage.getItem(getStorageKey('extrasUpdatedAt'));
+          const rawQuickCaptureNotes = localStorage.getItem(getStorageKey('quickCaptureNotes'));
           if (rawState) setFocusState(JSON.parse(rawState));
           if (rawHistory) setFocusHistory(JSON.parse(rawHistory));
           if (typeof rawNotes === 'string') setQuickNotes(rawNotes);
@@ -6949,6 +6987,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           if (typeof rawTarget === 'string' && rawTarget.length) setWeeklyTargetHours(rawTarget);
           if (rawOrder) setExtrasSlotOrder(normalizeExtrasOrder(JSON.parse(rawOrder)));
           if (rawUpdatedAt) setExtrasUpdatedAt(Number(rawUpdatedAt || 0));
+          if (rawQuickCaptureNotes) setQuickCaptureNotes(normalizeQuickCaptureNotes(JSON.parse(rawQuickCaptureNotes)));
         } catch (_) {}
       }, [user?.uid]);
       useEffect(() => {
@@ -6973,6 +7012,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         try { localStorage.setItem(getStorageKey('extrasUpdatedAt'), String(extrasUpdatedAt || 0)); } catch (_) {}
       }, [extrasUpdatedAt, user?.uid]);
       useEffect(() => {
+        try { localStorage.setItem(getStorageKey('quickCaptureNotes'), JSON.stringify(normalizeQuickCaptureNotes(quickCaptureNotes))); } catch (_) {}
+      }, [quickCaptureNotes, user?.uid]);
+      useEffect(() => {
         if (!user) return;
         const remoteTs = Number(userProfile?.extrasUpdatedAt || 0);
         if (!remoteTs || remoteTs <= Number(extrasUpdatedAt || 0)) return;
@@ -6981,10 +7023,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           if (Array.isArray(userProfile?.dailyGoals)) setDailyGoals(normalizeDailyGoals(userProfile?.dailyGoals));
           if (!isWeeklyTargetEditing && userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) setWeeklyTargetHours(String(userProfile?.weeklyTargetHours));
           if (Array.isArray(userProfile?.extrasSlotOrder)) setExtrasSlotOrder(normalizeExtrasOrder(userProfile?.extrasSlotOrder));
+          if (Array.isArray(userProfile?.quickCaptureNotes)) setQuickCaptureNotes(normalizeQuickCaptureNotes(userProfile?.quickCaptureNotes));
           setExtrasUpdatedAt(remoteTs);
           extrasCloudReadyRef.current = true;
         } catch (_) {}
-      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder, isWeeklyTargetEditing]);
+      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder, userProfile?.quickCaptureNotes, isWeeklyTargetEditing]);
       useEffect(() => {
         if (!user) return;
         if (isWeeklyTargetEditing) return;
@@ -7450,7 +7493,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
                 {compactHomeWorkClock && (
                   <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-
                       <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
                         <div className="flex flex-col gap-3">
                           <div className="flex items-center justify-between gap-3">
@@ -7476,6 +7518,33 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       </div>
                   </div>
                 )}
+
+                <div className="mb-6 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                  <button
+                    type="button"
+                    onClick={() => setHomeNotesOpen((v) => !v)}
+                    className="w-full flex items-center justify-between gap-3"
+                  >
+                    <div className="text-left">
+                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">Notizen</div>
+                      <div className="text-sm text-neutral-300 mt-1">{quickCaptureNotes.length} Einträge</div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform ${homeNotesOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {homeNotesOpen && (
+                    <div className="mt-3 space-y-2">
+                      {quickCaptureNotes.length === 0 ? (
+                        <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-lg px-3 py-3">Noch keine Notizen vorhanden.</div>
+                      ) : quickCaptureNotes.slice(0, 8).map((note) => (
+                        <div key={note.id} className="border border-neutral-800 rounded-lg px-3 py-2 bg-black/70">
+                          <div className="text-xs text-neutral-500 mb-1">{new Date(note.createdAt).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</div>
+                          <div className="text-sm text-neutral-200 whitespace-pre-wrap break-words">{note.text}</div>
+                        </div>
+                      ))
+                      }
+                    </div>
+                  )}
+                </div>
                 <div>
                   <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda für heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
                   {hasUnreadMessages && (
@@ -8196,14 +8265,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const TABS = [
       { id: 'account', label: 'Account & Sicherheit', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'sicherheit', 'datenschutz', 'abmelden', 'email'] },
       { id: 'calendars', label: 'Kalender & Freigaben', subtitle: 'Farben, Schichtpläne und Teilen', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
-      { id: 'notifications', label: 'Produktivität & Push', subtitle: 'Extras, Stempeluhr, Erinnerungen, Push', icon: Activity, keys: ['extras', 'stempeluhr', 'notiz', 'tagesziel', 'soll ist', 'wetter', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
+      { id: 'notifications', label: 'Produktivität & Push', subtitle: 'Extras, Stempeluhr, Erinnerungen, Push', icon: Activity, keys: ['extras', 'stempeluhr', 'notiz', 'tagesziel', 'wetter', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
       { id: 'links', label: 'Public Links', subtitle: 'Busy-only Links und Ablauf', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
       { id: 'ics', label: 'Import/Export', subtitle: 'ICS Export und Import', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
       { id: 'audit', label: 'Audit & Verlauf', subtitle: 'Aktionsprotokoll und Kalenderhistorie', icon: History, keys: ['audit', 'verlauf', 'log', 'aenderung', 'wer'] },
     ];
     const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
     const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
-    const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'timeBalanceEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
+    const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
       .filter((field) => isExtraFieldEnabled(field))
       .length;
 
@@ -8407,7 +8476,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   {[
                     ['planning', 'Planung & Ziele', [
                       ['dailyGoalsEnabled','Tagesziele','Drei Tagesziele mit Häkchen und Cloud-Sync.'],
-                      ['timeBalanceEnabled','Soll-/Ist-Stunden','Wochenziel gegen echte Arbeitszeit vergleichen.'],
                     ]],
                     ['notes', 'Notizen & Wetter', [
                       ['quickNotesEnabled','Schnellnotizen','Mit Firebase-Sync auf allen Geräten verfügbar.'],
@@ -10120,6 +10188,32 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 <div className="text-sm font-semibold text-white flex items-center gap-2"><ShoppingCart className="w-4 h-4" /> Einkaufsliste</div>
                 <div className="text-xs text-neutral-500 mt-1">Liste mit Artikeln, Preisen und Durchstreichen anlegen.</div>
               </button>
+              <button onClick={() => { setQuickNoteModalOpen(true); setPlusMenuOpen(false); }} className="p-4 rounded-2xl border border-neutral-800 hover:border-neutral-500 transition-colors text-left">
+                <div className="text-sm font-semibold text-white flex items-center gap-2"><NotebookText className="w-4 h-4" /> Notiz</div>
+                <div className="text-xs text-neutral-500 mt-1">Kurze Notiz sofort erfassen und speichern.</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {quickNoteModalOpen && (
+        <div className="fixed inset-0 z-[141] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setQuickNoteModalOpen(false)}>
+          <div className="w-full max-w-lg rounded-3xl border border-neutral-800 bg-neutral-950 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-semibold text-white">Neue Notiz</h3><button onClick={() => setQuickNoteModalOpen(false)} className="p-2 rounded-xl border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-500"><X className="w-4 h-4" /></button></div>
+            <div className="space-y-4">
+              <textarea
+                value={quickCaptureNoteInput}
+                onChange={(e) => setQuickCaptureNoteInput(e.target.value)}
+                rows={5}
+                placeholder="Notiz eingeben..."
+                className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+              />
+              <div className="flex justify-end gap-3">
+                <button onClick={() => setQuickNoteModalOpen(false)} className="px-4 py-3 rounded-xl border border-neutral-800 text-neutral-300 hover:border-neutral-500 transition-colors">Abbrechen</button>
+                <button onClick={saveQuickCaptureNote} className="px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-neutral-200 transition-colors">Speichern</button>
+              </div>
             </div>
           </div>
         </div>

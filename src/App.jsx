@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment } from "firebase/firestore";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment, deleteField } from "firebase/firestore";
     import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
     import heic2any from 'heic2any';
 
@@ -126,6 +126,16 @@ import React, { useState, useEffect, useRef } from 'react';
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
       return next;
+    }
+
+    function toMillis(value) {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (value instanceof Date) return Number(value.getTime() || 0);
+      if (value && typeof value.toMillis === 'function') {
+        try { return Number(value.toMillis() || 0); } catch (_) { return 0; }
+      }
+      const parsed = Number(value || 0);
+      return Number.isFinite(parsed) ? parsed : 0;
     }
 
 
@@ -2425,8 +2435,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         const unsubscribeChats = onSnapshot(chatsQ, (snapshot) => {
           const loadedChats = [];
           snapshot.forEach(doc => loadedChats.push({ id: doc.id, ...doc.data() }));
-          const safeChats = loadedChats.filter(chat => chat && chat.id).map((chat) => ({ ...chat, participants: Array.isArray(chat.participants) ? chat.participants.filter(Boolean) : [], admins: Array.isArray(chat.admins) ? chat.admins.filter(Boolean) : [] }));
-          safeChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          const safeChats = loadedChats.filter(chat => chat && chat.id).map((chat) => ({
+            ...chat,
+            updatedAt: toMillis(chat?.updatedAt),
+            participants: Array.isArray(chat.participants) ? chat.participants.filter(Boolean) : [],
+            admins: Array.isArray(chat.admins) ? chat.admins.filter(Boolean) : []
+          }));
+          safeChats.sort((a, b) => toMillis(b.updatedAt) - toMillis(a.updatedAt));
           setMyChats(safeChats);
         });
 
@@ -4111,7 +4126,7 @@ const requestNotificationPermission = async (currentUser) => {
           if (document.visibilityState !== 'visible') return;
 
           for (const c of myChats) {
-            const updatedAt = (c && typeof c.updatedAt === 'number') ? c.updatedAt : 0;
+            const updatedAt = toMillis(c?.updatedAt);
             if (!updatedAt) continue;
             if (c.lastMessageSenderId === user?.uid) {
               // keep watermark up to date
@@ -5868,6 +5883,24 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
+      const removeAvatar = async () => {
+        if (!user) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            avatarBase64: deleteField(),
+            avatarThumbBase64: deleteField(),
+            avatarFullBase64: deleteField()
+          }, { merge: true });
+          try {
+            setUserProfile(prev => ({ ...(prev || {}), avatarBase64: '', avatarThumbBase64: '', avatarFullBase64: '' }));
+          } catch (_) {}
+          showToast('Profilbild entfernt');
+        } catch (err) {
+          console.warn('remove avatar failed', err);
+          showToast('Profilbild konnte nicht entfernt werden');
+        }
+      };
+
       function getProfile(uid) { return (Array.isArray(allProfiles) ? allProfiles : []).find(p => p && p.id === uid) || null; }
 
       function normalizeChatId(raw) { return String(raw || '').replace(/\D/g, '').slice(0, 5); }
@@ -6485,7 +6518,25 @@ setSelfDestruct(false);
       };
 
       const getChatParticipants = (chat) => Array.isArray(chat.participants) ? chat.participants : [];
-      const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
+      const isChatUnread = (chat) => {
+        if (!chat || !user?.uid) return false;
+        if (chat.lastMessageSenderId === user?.uid) return false;
+        const updatedAt = toMillis(chat?.updatedAt);
+        const lastReadAt = toMillis(chat?.lastRead?.[user?.uid]);
+        const lastVisitAt = toMillis(lastChatVisit);
+        return updatedAt > Math.max(lastReadAt, lastVisitAt);
+      };
+      const unreadChatCount = myChats.filter(isChatUnread).length;
+      const hasUnreadMessages = unreadChatCount > 0;
+
+      useEffect(() => {
+        if (typeof navigator === 'undefined' || !window.isSecureContext) return;
+        const setBadge = navigator.setAppBadge;
+        const clearBadge = navigator.clearAppBadge;
+        if (typeof setBadge !== 'function' || typeof clearBadge !== 'function') return;
+        if (hasUnreadMessages) setBadge.call(navigator).catch(() => {});
+        else clearBadge.call(navigator).catch(() => {});
+      }, [hasUnreadMessages]);
       
       const exportICS = (exportAll = true) => {
         let eventsToExport = allEvents;
@@ -6967,7 +7018,7 @@ setSelfDestruct(false);
               <button onClick={() => setPlusMenuOpen(true)} className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 px-4 rounded-md font-medium hover:bg-gray-200 transition-colors mb-8"><Plus className="w-5 h-5" /> Neuer Termin</button>
               <nav className="space-y-2 mb-8">
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
-                <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
+                <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${hasUnreadMessages ? 'text-red-500' : (currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white')}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
                 <button onClick={() => setCurrentView('shopping')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'shopping' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><ShoppingCart className="w-5 h-5" /> Einkauf</button>
                 <button onClick={() => setCurrentView('extras')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'extras' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Activity className="w-5 h-5" /> Extras</button>
                 <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
@@ -6998,7 +7049,12 @@ setSelfDestruct(false);
 
           <nav className="md:hidden fixed bottom-0 left-0 w-full h-16 bg-black border-t border-neutral-800 flex items-center justify-between z-40 px-3 pb-safe">
             <button onClick={() => setCurrentView('dashboard')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`} title="Dashboard"><Home className="w-5 h-5" /></button>
-            <button onClick={() => setCurrentView('calendar')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`} title="Kalender"><CalendarIcon className="w-5 h-5" /></button>
+            <button onClick={() => setCurrentView('calendar')} className={`relative p-2 rounded-xl flex flex-col items-center gap-1 ${hasUnreadMessages ? 'text-red-500' : (currentView === 'calendar' ? 'text-white' : 'text-neutral-500')}`} title="Kalender">
+              <CalendarIcon className="w-5 h-5" />
+              {hasUnreadMessages && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500" aria-hidden="true"></span>
+              )}
+            </button>
             <button onClick={() => setCurrentView('shopping')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'shopping' ? 'text-white' : 'text-neutral-500'}`} title="Einkauf"><ShoppingCart className="w-5 h-5" /></button>
             <button onClick={() => setPlusMenuOpen(true)} className="p-2.5 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg" title="Neuer Termin"><Plus className="w-5 h-5" /></button>
             <button onClick={() => setCurrentView('extras')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`} title="Extras"><Activity className="w-5 h-5" /></button>
@@ -8864,6 +8920,16 @@ setSelfDestruct(false);
                           ) : (
                             <div className="w-32 h-32 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-4xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile?.email || '')}</div>
                           )}
+                          <button
+                            type="button"
+                            onClick={removeAvatar}
+                            disabled={!userProfile?.avatarBase64}
+                            title="Profilbild entfernen"
+                            aria-label="Profilbild entfernen"
+                            className={`absolute bottom-0 left-0 p-2 rounded-full shadow-lg transition-colors ${userProfile?.avatarBase64 ? 'bg-red-950/70 text-red-200 hover:bg-red-900 border border-red-800' : 'bg-neutral-900 text-neutral-600 border border-neutral-800 cursor-not-allowed'}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                           <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
                             <Camera className="w-4 h-4" />
                             <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleAvatarUpload} />
@@ -9073,7 +9139,7 @@ setSelfDestruct(false);
                                   </div>
                                   <div className="flex-1 overflow-hidden">
                                     <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
-                                    {chat.lastMessageSenderId !== user?.uid && chat.updatedAt > lastChatVisit ? (
+                                    {isChatUnread(chat) ? (
                                       <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
                                     ) : (
                                       <p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>

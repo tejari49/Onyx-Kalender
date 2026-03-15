@@ -8839,6 +8839,17 @@ setSelfDestruct(false);
                         <Settings className="w-5 h-5" />
                       </button>
                     )}
+                    {userProfile && secretView === 'settings' && (
+                      <button
+                        type="button"
+                        onClick={removeAvatar}
+                        disabled={!userProfile?.avatarBase64}
+                        title="Profilbild entfernen"
+                        className={`px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${userProfile?.avatarBase64 ? 'border-red-500 text-red-200 bg-red-950/40 hover:bg-red-900/50' : 'border-neutral-800 text-neutral-500 bg-neutral-950 cursor-not-allowed'}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                     {secretView === 'chat' && activeChat && (
                       <div className="hidden md:flex items-center px-3 py-1.5 rounded-xl border border-neutral-800 bg-neutral-950 text-[11px] text-neutral-400">
                         <span className="text-neutral-200 font-semibold mr-1">{Number(chatTotalCount || 0)}</span> Nachrichten

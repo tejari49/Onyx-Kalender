@@ -7008,6 +7008,11 @@ setSelfDestruct(false);
             </div>
           </div>
 
+          <div className="fixed top-4 left-4 z-[60] pointer-events-none">
+            <div className="px-2.5 py-1 rounded-full border border-neutral-700 bg-black/85 text-[11px] font-semibold tracking-wide text-neutral-200 shadow-lg">
+              Build {BUILD_VERSION}
+            </div>
+          </div>
           <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
             {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in pointer-events-auto"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
           </div>

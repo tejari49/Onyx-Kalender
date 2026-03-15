@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment } from "firebase/firestore";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment, deleteField } from "firebase/firestore";
     import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
     import heic2any from 'heic2any';
 
@@ -5887,9 +5887,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         if (!user) return;
         try {
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
-            avatarBase64: '',
-            avatarThumbBase64: '',
-            avatarFullBase64: ''
+            avatarBase64: deleteField(),
+            avatarThumbBase64: deleteField(),
+            avatarFullBase64: deleteField()
           }, { merge: true });
           try {
             setUserProfile(prev => ({ ...(prev || {}), avatarBase64: '', avatarThumbBase64: '', avatarFullBase64: '' }));
@@ -6518,7 +6518,14 @@ setSelfDestruct(false);
       };
 
       const getChatParticipants = (chat) => Array.isArray(chat.participants) ? chat.participants : [];
-      const unreadChatCount = myChats.filter(chat => toMillis(chat?.updatedAt) > toMillis(lastChatVisit) && chat.lastMessageSenderId !== user?.uid).length;
+      const isChatUnread = (chat) => {
+        if (!chat || !user?.uid) return false;
+        if (chat.lastMessageSenderId === user?.uid) return false;
+        const updatedAt = toMillis(chat?.updatedAt);
+        const lastReadAt = toMillis(chat?.lastRead?.[user?.uid]);
+        return updatedAt > lastReadAt;
+      };
+      const unreadChatCount = myChats.filter(isChatUnread).length;
       const hasUnreadMessages = unreadChatCount > 0;
 
       useEffect(() => {
@@ -9131,7 +9138,7 @@ setSelfDestruct(false);
                                   </div>
                                   <div className="flex-1 overflow-hidden">
                                     <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
-                                    {chat.lastMessageSenderId !== user?.uid && toMillis(chat?.updatedAt) > toMillis(lastChatVisit) ? (
+                                    {isChatUnread(chat) ? (
                                       <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
                                     ) : (
                                       <p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>

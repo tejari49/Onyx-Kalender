@@ -128,3 +128,25 @@ Onyx Kalender ist eine moderne, dunkle Kalender‑PWA mit Fokus auf Terminplanun
 
 ### GitHub Pages CI Hinweis
 - Falls der Deploy-Job mit `Unable to resolve action actions/deploy-pages@v5` fehlschlägt, verwende in `.github/workflows/Page.yml` die gültige Version `actions/deploy-pages@v4`.
+
+
+## Push-Reminder: Cloud Console / Firebase Setup (wichtig)
+
+Wenn Reminder nur beim Öffnen der App erscheinen, liegt es häufig **nicht** an Berechtigungen am Handy, sondern daran, dass der Server-Reminder-Job nicht aktiv ist.
+
+Checkliste:
+
+1. Firebase-Projekt auf **Blaze Plan** (Cloud Scheduler benötigt Abrechnung).
+2. Deploy der Functions ausführen:
+   - `cd functions && npm i`
+   - `firebase deploy --only functions`
+3. In Google Cloud Console prüfen:
+   - API `Cloud Scheduler` aktiviert
+   - API `Cloud Functions` aktiviert
+   - API `Cloud Build` aktiviert
+4. In Firebase Console > Functions muss `sendDueEventReminders` sichtbar sein.
+5. In Cloud Scheduler muss ein Job für diese Function existieren (Intervall: 1 Minute).
+6. Web Push Token muss im Profil vorhanden sein (`fcmTokenWeb` oder `fcmToken`).
+
+Hinweis: Die Reminder-Berechnung läuft in der Function jetzt explizit in `Europe/Zurich` Zeitzone.
+

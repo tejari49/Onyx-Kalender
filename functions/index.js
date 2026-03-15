@@ -6,7 +6,9 @@ admin.initializeApp();
 
 const REGION = "europe-west6";
 const APP_LINK = process.env.APP_LINK || ""; // optional, z.B. https://deine-domain.tld
+const APP_TIME_ZONE = "Europe/Zurich";
 const REMINDER_LOOKAHEAD_MS = 90 * 1000;
+const PROFILE_PAGE_SIZE = 250;
 
 const fnv1a32 = (input) => {
   let h = 0x811c9dc5;
@@ -18,29 +20,86 @@ const fnv1a32 = (input) => {
   return (h >>> 0);
 };
 
-const parseDateTimeLocalMs = (dateStr, timeStr) => {
+const parseIntSafe = (v) => {
+  const n = parseInt(v, 10);
+  return Number.isNaN(n) ? null : n;
+};
+
+const getPartsInZone = (timestampMs, timeZone = APP_TIME_ZONE) => {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = fmt.formatToParts(new Date(timestampMs));
+  const map = {};
+  for (const p of parts) {
+    if (p.type !== "literal") map[p.type] = p.value;
+  }
+  return {
+    year: parseIntSafe(map.year),
+    month: parseIntSafe(map.month),
+    day: parseIntSafe(map.day),
+    hour: parseIntSafe(map.hour),
+    minute: parseIntSafe(map.minute),
+    second: parseIntSafe(map.second) || 0,
+  };
+};
+
+const getZoneOffsetMsAtUtc = (utcTs, timeZone = APP_TIME_ZONE) => {
+  const p = getPartsInZone(utcTs, timeZone);
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second, 0);
+  return asUtc - utcTs;
+};
+
+const parseDateTimeInZoneMs = (dateStr, timeStr, timeZone = APP_TIME_ZONE) => {
   if (!dateStr || !timeStr) return null;
-  const [y, m, d] = String(dateStr).split("-").map((n) => parseInt(n, 10));
-  const [hh, mm] = String(timeStr).split(":").map((n) => parseInt(n, 10));
-  if (!y || !m || !d || Number.isNaN(hh) || Number.isNaN(mm)) return null;
-  return new Date(y, m - 1, d, hh, mm, 0, 0).getTime();
+  const dateParts = String(dateStr).split("-").map((n) => parseIntSafe(n));
+  const timeParts = String(timeStr).split(":").map((n) => parseIntSafe(n));
+  if (dateParts.some((n) => n === null) || timeParts.some((n) => n === null)) return null;
+
+  const [y, m, d] = dateParts;
+  const hh = timeParts[0];
+  const mm = timeParts[1];
+
+  let utcTs = Date.UTC(y, m - 1, d, hh, mm, 0, 0);
+  const offset1 = getZoneOffsetMsAtUtc(utcTs, timeZone);
+  utcTs -= offset1;
+
+  const offset2 = getZoneOffsetMsAtUtc(utcTs, timeZone);
+  if (offset2 !== offset1) utcTs -= (offset2 - offset1);
+
+  return utcTs;
+};
+
+const dateStrInZone = (ts = Date.now(), timeZone = APP_TIME_ZONE) => {
+  const p = getPartsInZone(ts, timeZone);
+  if (!p.year || !p.month || !p.day) return new Date(ts).toISOString().slice(0, 10);
+  return `${String(p.year).padStart(4, "0")}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
 };
 
 const addDaysStr = (dateStr, delta) => {
-  const d = new Date(`${dateStr}T00:00:00`);
-  d.setDate(d.getDate() + delta);
-  return d.toISOString().slice(0, 10);
+  const [y, m, d] = String(dateStr).split("-").map((n) => parseIntSafe(n));
+  if (!y || !m || !d) return dateStr;
+  const ts = Date.UTC(y, m - 1, d, 0, 0, 0, 0) + (delta * 86400000);
+  const dt = new Date(ts);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
 };
 
 const effectiveReminderMinutes = (eventData = {}, profileData = {}) => {
   const mode = String(eventData.reminderMode || "default");
   if (mode === "none") return null;
   if (mode === "custom") {
-    const m = parseInt(eventData.reminderMinutes, 10);
-    return Number.isNaN(m) ? null : Math.max(0, m);
+    const m = parseIntSafe(eventData.reminderMinutes);
+    return m === null ? null : Math.max(0, m);
   }
-  const def = parseInt(profileData.defaultReminderMinutes, 10);
-  return Number.isNaN(def) ? null : Math.max(0, def);
+  const def = parseIntSafe(profileData.defaultReminderMinutes);
+  return def === null ? null : Math.max(0, def);
 };
 
 const isValidHttpsUrl = (value) => {
@@ -146,7 +205,7 @@ exports.sendDueEventReminders = onSchedule(
   {
     region: REGION,
     schedule: "every 1 minutes",
-    timeZone: "Europe/Zurich",
+    timeZone: APP_TIME_ZONE,
     retryCount: 0,
   },
   async () => {
@@ -154,97 +213,109 @@ exports.sendDueEventReminders = onSchedule(
     const now = Date.now();
     const dueMin = now - 30 * 1000;
     const dueMax = now + REMINDER_LOOKAHEAD_MS;
+    const today = dateStrInZone(now);
+    const tomorrow = addDaysStr(today, 1);
 
     const artifactDocs = await db.collection("artifacts").listDocuments();
 
     for (const artifactRef of artifactDocs) {
       const appId = artifactRef.id;
-      const profilesSnap = await db
-        .collection(`artifacts/${appId}/public/data/profiles`)
-        .where("fcmTokenWeb", "!=", null)
-        .limit(200)
-        .get();
 
-      for (const profileDoc of profilesSnap.docs) {
-        const uid = profileDoc.id;
-        const profile = profileDoc.data() || {};
-        const token = String(profile.fcmTokenWeb || profile.fcmToken || "").trim();
-        if (!token) continue;
+      let lastDoc = null;
+      while (true) {
+        let query = db
+          .collection(`artifacts/${appId}/public/data/profiles`)
+          .orderBy(admin.firestore.FieldPath.documentId())
+          .limit(PROFILE_PAGE_SIZE);
+        if (lastDoc) query = query.startAfter(lastDoc);
 
-        const today = new Date().toISOString().slice(0, 10);
-        const tomorrow = addDaysStr(today, 1);
-        const eventsSnap = await db
-          .collection(`artifacts/${appId}/users/${uid}/events`)
-          .where("date", ">=", today)
-          .where("date", "<=", tomorrow)
-          .get();
+        const profilesSnap = await query.get();
+        if (profilesSnap.empty) break;
 
-        for (const evDoc of eventsSnap.docs) {
-          const ev = evDoc.data() || {};
-          if (!ev.time || !ev.date) continue;
-          if (String(ev.type || "") === "shift") continue;
+        for (const profileDoc of profilesSnap.docs) {
+          const uid = profileDoc.id;
+          const profile = profileDoc.data() || {};
+          const token = String(profile.fcmTokenWeb || profile.fcmToken || "").trim();
+          if (!token) continue;
 
-          const mins = effectiveReminderMinutes(ev, profile);
-          if (mins === null) continue;
+          const eventsSnap = await db
+            .collection(`artifacts/${appId}/users/${uid}/events`)
+            .where("date", ">=", today)
+            .where("date", "<=", tomorrow)
+            .get();
 
-          const startMs = parseDateTimeLocalMs(ev.date, ev.time);
-          if (!startMs) continue;
-          const dueMs = startMs - mins * 60000;
-          if (dueMs < dueMin || dueMs > dueMax) continue;
+          for (const evDoc of eventsSnap.docs) {
+            const ev = evDoc.data() || {};
+            if (!ev.time || !ev.date) continue;
+            if (String(ev.type || "") === "shift") continue;
 
-          const dedupeRaw = `${appId}:${uid}:${evDoc.id}:${ev.date}:${ev.time}:${mins}`;
-          const dedupeId = `r_${fnv1a32(dedupeRaw)}`;
-          const lockRef = db.doc(`artifacts/${appId}/public/data/reminderLocks/${dedupeId}`);
+            const mins = effectiveReminderMinutes(ev, profile);
+            if (mins === null) continue;
 
-          let lockCreated = false;
-          try {
-            await db.runTransaction(async (tx) => {
-              const lockSnap = await tx.get(lockRef);
-              if (lockSnap.exists) return;
-              tx.set(lockRef, {
-                uid,
-                eventId: evDoc.id,
-                dueMs,
-                createdAt: Date.now(),
+            const startMs = parseDateTimeInZoneMs(ev.date, ev.time, APP_TIME_ZONE);
+            if (!startMs) continue;
+            const dueMs = startMs - mins * 60000;
+            if (dueMs < dueMin || dueMs > dueMax) continue;
+
+            const dedupeRaw = `${appId}:${uid}:${evDoc.id}:${ev.date}:${ev.time}:${mins}`;
+            const dedupeId = `r_${fnv1a32(dedupeRaw)}`;
+            const lockRef = db.doc(`artifacts/${appId}/public/data/reminderLocks/${dedupeId}`);
+
+            let lockCreated = false;
+            try {
+              await db.runTransaction(async (tx) => {
+                const lockSnap = await tx.get(lockRef);
+                if (lockSnap.exists) return;
+                tx.set(lockRef, {
+                  uid,
+                  eventId: evDoc.id,
+                  dueMs,
+                  createdAt: Date.now(),
+                });
+                lockCreated = true;
               });
-              lockCreated = true;
-            });
-          } catch (_) {
-            continue;
-          }
-          if (!lockCreated) continue;
+            } catch (_) {
+              continue;
+            }
+            if (!lockCreated) continue;
 
-          const title = "Erinnerung";
-          const body = `${String(ev.title || "Termin")} • ${String(ev.time || "")}`;
-          const tag = `onyx_event_${fnv1a32(`${uid}:${evDoc.id}:${mins}:${dueMs}`)}`;
+            const title = "Erinnerung";
+            const body = `${String(ev.title || "Termin")} • ${String(ev.time || "")}`;
+            const tag = `onyx_event_${fnv1a32(`${uid}:${evDoc.id}:${mins}:${dueMs}`)}`;
 
-          try {
-            await admin.messaging().send({
-              token,
-              notification: { title, body },
-              data: {
-                kind: "reminder",
-                title,
-                body,
-                tag,
-                eventId: evDoc.id,
-                occurrenceDate: String(ev.date || ""),
-              },
-              webpush: {
-                headers: { Urgency: "high", TTL: "120" },
-                fcmOptions: isValidHttpsUrl(APP_LINK) ? { link: APP_LINK } : undefined,
-              },
-            });
-          } catch (e) {
-            await lockRef.set(
-              {
-                sendError: `${String(e?.code || "unknown")}: ${String(e?.message || e)}`.slice(0, 300),
-                failedAt: Date.now(),
-              },
-              { merge: true }
-            );
+            try {
+              const hasLink = isValidHttpsUrl(APP_LINK);
+              await admin.messaging().send({
+                token,
+                notification: { title, body },
+                data: {
+                  kind: "reminder",
+                  title,
+                  body,
+                  tag,
+                  eventId: evDoc.id,
+                  occurrenceDate: String(ev.date || ""),
+                },
+                webpush: {
+                  headers: { Urgency: "high", TTL: "120" },
+                  ...(hasLink ? { fcmOptions: { link: APP_LINK } } : {}),
+                },
+              });
+              await lockRef.set({ sentAt: Date.now() }, { merge: true });
+            } catch (e) {
+              await lockRef.set(
+                {
+                  sendError: `${String(e?.code || "unknown")}: ${String(e?.message || e)}`.slice(0, 300),
+                  failedAt: Date.now(),
+                },
+                { merge: true }
+              );
+            }
           }
         }
+
+        lastDoc = profilesSnap.docs[profilesSnap.docs.length - 1];
+        if (profilesSnap.size < PROFILE_PAGE_SIZE) break;
       }
     }
   }

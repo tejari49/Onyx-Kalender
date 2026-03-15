@@ -128,6 +128,16 @@ import React, { useState, useEffect, useRef } from 'react';
       return next;
     }
 
+    function toMillis(value) {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (value instanceof Date) return Number(value.getTime() || 0);
+      if (value && typeof value.toMillis === 'function') {
+        try { return Number(value.toMillis() || 0); } catch (_) { return 0; }
+      }
+      const parsed = Number(value || 0);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
 
     // --- Auth hardening: if the browser keeps a stale Firebase auth cache after project reset,
     // identitytoolkit accounts:lookup can return 400 and break flows. We auto-signout + clear caches.
@@ -2425,8 +2435,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         const unsubscribeChats = onSnapshot(chatsQ, (snapshot) => {
           const loadedChats = [];
           snapshot.forEach(doc => loadedChats.push({ id: doc.id, ...doc.data() }));
-          const safeChats = loadedChats.filter(chat => chat && chat.id).map((chat) => ({ ...chat, participants: Array.isArray(chat.participants) ? chat.participants.filter(Boolean) : [], admins: Array.isArray(chat.admins) ? chat.admins.filter(Boolean) : [] }));
-          safeChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          const safeChats = loadedChats.filter(chat => chat && chat.id).map((chat) => ({
+            ...chat,
+            updatedAt: toMillis(chat?.updatedAt),
+            participants: Array.isArray(chat.participants) ? chat.participants.filter(Boolean) : [],
+            admins: Array.isArray(chat.admins) ? chat.admins.filter(Boolean) : []
+          }));
+          safeChats.sort((a, b) => toMillis(b.updatedAt) - toMillis(a.updatedAt));
           setMyChats(safeChats);
         });
 
@@ -4111,7 +4126,7 @@ const requestNotificationPermission = async (currentUser) => {
           if (document.visibilityState !== 'visible') return;
 
           for (const c of myChats) {
-            const updatedAt = (c && typeof c.updatedAt === 'number') ? c.updatedAt : 0;
+            const updatedAt = toMillis(c?.updatedAt);
             if (!updatedAt) continue;
             if (c.lastMessageSenderId === user?.uid) {
               // keep watermark up to date
@@ -5868,6 +5883,24 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
+      const removeAvatar = async () => {
+        if (!user) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            avatarBase64: '',
+            avatarThumbBase64: '',
+            avatarFullBase64: ''
+          }, { merge: true });
+          try {
+            setUserProfile(prev => ({ ...(prev || {}), avatarBase64: '', avatarThumbBase64: '', avatarFullBase64: '' }));
+          } catch (_) {}
+          showToast('Profilbild entfernt');
+        } catch (err) {
+          console.warn('remove avatar failed', err);
+          showToast('Profilbild konnte nicht entfernt werden');
+        }
+      };
+
       function getProfile(uid) { return (Array.isArray(allProfiles) ? allProfiles : []).find(p => p && p.id === uid) || null; }
 
       function normalizeChatId(raw) { return String(raw || '').replace(/\D/g, '').slice(0, 5); }
@@ -6485,7 +6518,17 @@ setSelfDestruct(false);
       };
 
       const getChatParticipants = (chat) => Array.isArray(chat.participants) ? chat.participants : [];
-      const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
+      const unreadChatCount = myChats.filter(chat => toMillis(chat?.updatedAt) > toMillis(lastChatVisit) && chat.lastMessageSenderId !== user?.uid).length;
+      const hasUnreadMessages = unreadChatCount > 0;
+
+      useEffect(() => {
+        if (typeof navigator === 'undefined' || !window.isSecureContext) return;
+        const setBadge = navigator.setAppBadge;
+        const clearBadge = navigator.clearAppBadge;
+        if (typeof setBadge !== 'function' || typeof clearBadge !== 'function') return;
+        if (hasUnreadMessages) setBadge.call(navigator).catch(() => {});
+        else clearBadge.call(navigator).catch(() => {});
+      }, [hasUnreadMessages]);
       
       const exportICS = (exportAll = true) => {
         let eventsToExport = allEvents;
@@ -6998,7 +7041,12 @@ setSelfDestruct(false);
 
           <nav className="md:hidden fixed bottom-0 left-0 w-full h-16 bg-black border-t border-neutral-800 flex items-center justify-between z-40 px-3 pb-safe">
             <button onClick={() => setCurrentView('dashboard')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`} title="Dashboard"><Home className="w-5 h-5" /></button>
-            <button onClick={() => setCurrentView('calendar')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`} title="Kalender"><CalendarIcon className="w-5 h-5" /></button>
+            <button onClick={() => setCurrentView('calendar')} className={`relative p-2 rounded-xl flex flex-col items-center gap-1 ${hasUnreadMessages ? 'text-red-500' : (currentView === 'calendar' ? 'text-white' : 'text-neutral-500')}`} title="Kalender">
+              <CalendarIcon className="w-5 h-5" />
+              {hasUnreadMessages && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500" aria-hidden="true"></span>
+              )}
+            </button>
             <button onClick={() => setCurrentView('shopping')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'shopping' ? 'text-white' : 'text-neutral-500'}`} title="Einkauf"><ShoppingCart className="w-5 h-5" /></button>
             <button onClick={() => setPlusMenuOpen(true)} className="p-2.5 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg" title="Neuer Termin"><Plus className="w-5 h-5" /></button>
             <button onClick={() => setCurrentView('extras')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`} title="Extras"><Activity className="w-5 h-5" /></button>
@@ -8869,6 +8917,16 @@ setSelfDestruct(false);
                             <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleAvatarUpload} />
                           </label>
                         </div>
+                        <div className="w-full max-w-xs mb-4">
+                          <button
+                            type="button"
+                            onClick={removeAvatar}
+                            disabled={!userProfile?.avatarBase64}
+                            className={`w-full py-2.5 rounded-lg border text-sm font-medium transition-colors ${userProfile?.avatarBase64 ? 'border-red-800 text-red-200 bg-red-950/30 hover:bg-red-950/50' : 'border-neutral-800 text-neutral-500 bg-neutral-950 cursor-not-allowed'}`}
+                          >
+                            Profilbild entfernen
+                          </button>
+                        </div>
                         <form onSubmit={updateProfileSettings} className="w-full max-w-xs space-y-4">
                           <input type="text" name="displayName" defaultValue={userProfile?.displayName || userProfile?.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
                           <div className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
@@ -9073,7 +9131,7 @@ setSelfDestruct(false);
                                   </div>
                                   <div className="flex-1 overflow-hidden">
                                     <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
-                                    {chat.lastMessageSenderId !== user?.uid && chat.updatedAt > lastChatVisit ? (
+                                    {chat.lastMessageSenderId !== user?.uid && toMillis(chat?.updatedAt) > toMillis(lastChatVisit) ? (
                                       <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
                                     ) : (
                                       <p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>

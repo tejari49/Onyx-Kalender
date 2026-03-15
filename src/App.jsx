@@ -8931,25 +8931,23 @@ setSelfDestruct(false);
                             disabled={!userProfile?.avatarBase64}
                             title="Profilbild entfernen"
                             aria-label="Profilbild entfernen"
-                            className={`absolute bottom-0 left-0 p-2 rounded-full shadow-lg transition-colors ${userProfile?.avatarBase64 ? 'bg-red-950/70 text-red-200 hover:bg-red-900 border border-red-800' : 'bg-neutral-900 text-neutral-600 border border-neutral-800 cursor-not-allowed'}`}
+                            className={`absolute -left-2 bottom-0 p-2.5 rounded-full shadow-lg transition-colors border-2 ${userProfile?.avatarBase64 ? 'bg-red-600 text-white hover:bg-red-500 border-red-300' : 'bg-red-600/45 text-white/80 border-red-300/70 cursor-not-allowed'}`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                          <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
+                          <label className="absolute -right-2 bottom-0 p-2.5 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg border-2 border-neutral-300">
                             <Camera className="w-4 h-4" />
                             <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleAvatarUpload} />
                           </label>
                         </div>
-                        <div className="w-full max-w-xs mb-4">
-                          <button
-                            type="button"
-                            onClick={removeAvatar}
-                            disabled={!userProfile?.avatarBase64}
-                            className={`w-full py-2.5 rounded-lg border text-sm font-medium transition-colors ${userProfile?.avatarBase64 ? 'border-red-800 text-red-200 bg-red-950/30 hover:bg-red-950/50' : 'border-neutral-800 text-neutral-500 bg-neutral-950 cursor-not-allowed'}`}
-                          >
-                            Profilbild entfernen
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={removeAvatar}
+                          disabled={!userProfile?.avatarBase64}
+                          className={`w-full max-w-xs mb-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${userProfile?.avatarBase64 ? 'border-red-500 text-red-200 bg-red-950/40 hover:bg-red-900/50' : 'border-neutral-700 text-neutral-500 bg-neutral-900 cursor-not-allowed'}`}
+                        >
+                          Profilbild entfernen
+                        </button>
                         <form onSubmit={updateProfileSettings} className="w-full max-w-xs space-y-4">
                           <input type="text" name="displayName" defaultValue={userProfile?.displayName || userProfile?.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
                           <div className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3">

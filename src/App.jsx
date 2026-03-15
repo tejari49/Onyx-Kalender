@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment } from "firebase/firestore";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment, deleteField } from "firebase/firestore";
     import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
     import heic2any from 'heic2any';
 
@@ -126,6 +126,16 @@ import React, { useState, useEffect, useRef } from 'react';
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
       return next;
+    }
+
+    function toMillis(value) {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (value instanceof Date) return Number(value.getTime() || 0);
+      if (value && typeof value.toMillis === 'function') {
+        try { return Number(value.toMillis() || 0); } catch (_) { return 0; }
+      }
+      const parsed = Number(value || 0);
+      return Number.isFinite(parsed) ? parsed : 0;
     }
 
 
@@ -655,6 +665,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       
 
       const typingTimeoutRef = useRef(null);
+      const typingStateRef = useRef(false);
+      const typingLastWriteRef = useRef(0);
       const messagesEndRef = useRef(null);
       const chatScrollRef = useRef(null);
 
@@ -696,7 +708,6 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [groupMemberSearch, setGroupMemberSearch] = useState('');
       const [groupEditSearch, setGroupEditSearch] = useState('');
       const lastReadWriteRef = useRef(0);
-      const presenceHeartbeatRef = useRef(null);
 
       const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
       const [messageSearchQuery, setMessageSearchQuery] = useState('');
@@ -2127,23 +2138,25 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       useEffect(() => {
         if (!user) return;
         const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid);
-        const setPresence = (status) => {
-          setDoc(profileRef, { presenceStatus: status, presenceLastSeen: Date.now() }, { merge: true }).catch(()=>{});
+        let lastPresenceWrite = 0;
+        const MIN_PRESENCE_WRITE_MS = 5 * 60 * 1000; // avoid write storms
+        const setPresence = (status, force = false) => {
+          const now = Date.now();
+          if (!force && now - lastPresenceWrite < MIN_PRESENCE_WRITE_MS) return;
+          lastPresenceWrite = now;
+          setDoc(profileRef, { presenceStatus: status, presenceLastSeen: now }, { merge: true }).catch(()=>{});
         };
-        setPresence('online');
+        setPresence('online', true);
         const onVisibility = () => {
           if (document.visibilityState === 'visible') setPresence('online');
-          else setPresence('offline');
+          else setPresence('offline', true);
         };
+        const onBeforeUnload = () => { try { setPresence('offline', true); } catch (e) {} };
         document.addEventListener('visibilitychange', onVisibility);
-        window.addEventListener('beforeunload', () => { try { setPresence('offline'); } catch(e) {} });
-        if (presenceHeartbeatRef.current) clearInterval(presenceHeartbeatRef.current);
-        presenceHeartbeatRef.current = setInterval(() => {
-          if (document.visibilityState === 'visible') setPresence('online');
-        }, 25000);
+        window.addEventListener('beforeunload', onBeforeUnload);
         return () => {
           document.removeEventListener('visibilitychange', onVisibility);
-          if (presenceHeartbeatRef.current) { clearInterval(presenceHeartbeatRef.current); presenceHeartbeatRef.current = null; }
+          window.removeEventListener('beforeunload', onBeforeUnload);
         };
       }, [user]);
 
@@ -2414,19 +2427,32 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         const allProfilesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
-        const unsubscribeAllProfiles = onSnapshot(query(allProfilesRef), (snapshot) => {
-          const loaded = [];
-          snapshot.forEach(doc => loaded.push({ id: doc.id, ...doc.data() }));
-          setAllProfiles(loaded);
-        });
+        let allProfilesTimer = null;
+        const loadProfilesOnce = async () => {
+          try {
+            const snap = await getDocs(query(allProfilesRef, limit(400)));
+            const loaded = [];
+            snap.forEach(d => loaded.push({ id: d.id, ...d.data() }));
+            setAllProfiles(loaded);
+          } catch (err) {
+            console.warn('[Profiles] refresh failed', err?.code || err);
+          }
+        };
+        loadProfilesOnce();
+        allProfilesTimer = setInterval(loadProfilesOnce, 10 * 60 * 1000);
 
         const chatsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats');
         const chatsQ = query(chatsRef, where('participants', 'array-contains', user?.uid));
         const unsubscribeChats = onSnapshot(chatsQ, (snapshot) => {
           const loadedChats = [];
           snapshot.forEach(doc => loadedChats.push({ id: doc.id, ...doc.data() }));
-          const safeChats = loadedChats.filter(chat => chat && chat.id).map((chat) => ({ ...chat, participants: Array.isArray(chat.participants) ? chat.participants.filter(Boolean) : [], admins: Array.isArray(chat.admins) ? chat.admins.filter(Boolean) : [] }));
-          safeChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          const safeChats = loadedChats.filter(chat => chat && chat.id).map((chat) => ({
+            ...chat,
+            updatedAt: toMillis(chat?.updatedAt),
+            participants: Array.isArray(chat.participants) ? chat.participants.filter(Boolean) : [],
+            admins: Array.isArray(chat.admins) ? chat.admins.filter(Boolean) : []
+          }));
+          safeChats.sort((a, b) => toMillis(b.updatedAt) - toMillis(a.updatedAt));
           setMyChats(safeChats);
         });
 
@@ -2514,7 +2540,16 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           recomputeCals();
         });
 
-        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeShares(); unsubscribeAudit(); unsubscribeOwnerCals(); unsubscribeSharedCals(); };
+        return () => {
+          unsubscribeEvents();
+          unsubscribeProfile();
+          unsubscribeChats();
+          unsubscribeShares();
+          unsubscribeAudit();
+          unsubscribeOwnerCals();
+          unsubscribeSharedCals();
+          if (allProfilesTimer) clearInterval(allProfilesTimer);
+        };
       }, [user]);
 
       // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---
@@ -4111,7 +4146,7 @@ const requestNotificationPermission = async (currentUser) => {
           if (document.visibilityState !== 'visible') return;
 
           for (const c of myChats) {
-            const updatedAt = (c && typeof c.updatedAt === 'number') ? c.updatedAt : 0;
+            const updatedAt = toMillis(c?.updatedAt);
             if (!updatedAt) continue;
             if (c.lastMessageSenderId === user?.uid) {
               // keep watermark up to date
@@ -5868,6 +5903,24 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
+      const removeAvatar = async () => {
+        if (!user) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            avatarBase64: deleteField(),
+            avatarThumbBase64: deleteField(),
+            avatarFullBase64: deleteField()
+          }, { merge: true });
+          try {
+            setUserProfile(prev => ({ ...(prev || {}), avatarBase64: '', avatarThumbBase64: '', avatarFullBase64: '' }));
+          } catch (_) {}
+          showToast('Profilbild entfernt');
+        } catch (err) {
+          console.warn('remove avatar failed', err);
+          showToast('Profilbild konnte nicht entfernt werden');
+        }
+      };
+
       function getProfile(uid) { return (Array.isArray(allProfiles) ? allProfiles : []).find(p => p && p.id === uid) || null; }
 
       function normalizeChatId(raw) { return String(raw || '').replace(/\D/g, '').slice(0, 5); }
@@ -6095,10 +6148,20 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
          const value = e.target.value;
          setNewMessageText(value);
          if (!activeChatId || !user) return;
-         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: value.length > 0, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
+         const nextTypingState = value.length > 0;
+         const now = Date.now();
+         if (typingStateRef.current !== nextTypingState || (now - (typingLastWriteRef.current || 0) > 4000 && nextTypingState)) {
+           typingStateRef.current = nextTypingState;
+           typingLastWriteRef.current = now;
+           updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: nextTypingState, [`typingAt.${user?.uid}`]: now }).catch(()=>{});
+         }
          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
          typingTimeoutRef.current = setTimeout(() => {
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: false, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
+            if (typingStateRef.current !== false) {
+              typingStateRef.current = false;
+              typingLastWriteRef.current = Date.now();
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: false, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
+            }
          }, 2200);
       }
 
@@ -6485,7 +6548,24 @@ setSelfDestruct(false);
       };
 
       const getChatParticipants = (chat) => Array.isArray(chat.participants) ? chat.participants : [];
-      const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
+      const isChatUnread = (chat) => {
+        if (!chat || !user?.uid) return false;
+        if (chat.lastMessageSenderId === user?.uid) return false;
+        const updatedAt = toMillis(chat?.updatedAt);
+        const lastReadAt = toMillis(chat?.lastRead?.[user?.uid]);
+        return updatedAt > lastReadAt;
+      };
+      const unreadChatCount = myChats.filter(isChatUnread).length;
+      const hasUnreadMessages = unreadChatCount > 0;
+
+      useEffect(() => {
+        if (typeof navigator === 'undefined' || !window.isSecureContext) return;
+        const setBadge = navigator.setAppBadge;
+        const clearBadge = navigator.clearAppBadge;
+        if (typeof setBadge !== 'function' || typeof clearBadge !== 'function') return;
+        if (hasUnreadMessages) setBadge.call(navigator).catch(() => {});
+        else clearBadge.call(navigator).catch(() => {});
+      }, [hasUnreadMessages]);
       
       const exportICS = (exportAll = true) => {
         let eventsToExport = allEvents;
@@ -6958,6 +7038,11 @@ setSelfDestruct(false);
             </div>
           </div>
 
+          <div className="fixed top-4 left-4 z-[60] pointer-events-none">
+            <div className="px-2.5 py-1 rounded-full border border-neutral-700 bg-black/85 text-[11px] font-semibold tracking-wide text-neutral-200 shadow-lg">
+              Build {BUILD_VERSION}
+            </div>
+          </div>
           <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
             {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in pointer-events-auto"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
           </div>
@@ -6967,7 +7052,13 @@ setSelfDestruct(false);
               <button onClick={() => setPlusMenuOpen(true)} className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 px-4 rounded-md font-medium hover:bg-gray-200 transition-colors mb-8"><Plus className="w-5 h-5" /> Neuer Termin</button>
               <nav className="space-y-2 mb-8">
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
-                <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
+                <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${hasUnreadMessages ? 'text-red-500 bg-neutral-900/60' : (currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white')}`}>
+                  <div className="relative">
+                    <CalendarIcon className="w-5 h-5" />
+                    {hasUnreadMessages && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500" aria-hidden="true"></span>}
+                  </div>
+                  Kalender
+                </button>
                 <button onClick={() => setCurrentView('shopping')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'shopping' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><ShoppingCart className="w-5 h-5" /> Einkauf</button>
                 <button onClick={() => setCurrentView('extras')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'extras' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Activity className="w-5 h-5" /> Extras</button>
                 <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
@@ -6998,7 +7089,12 @@ setSelfDestruct(false);
 
           <nav className="md:hidden fixed bottom-0 left-0 w-full h-16 bg-black border-t border-neutral-800 flex items-center justify-between z-40 px-3 pb-safe">
             <button onClick={() => setCurrentView('dashboard')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`} title="Dashboard"><Home className="w-5 h-5" /></button>
-            <button onClick={() => setCurrentView('calendar')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`} title="Kalender"><CalendarIcon className="w-5 h-5" /></button>
+            <button onClick={() => setCurrentView('calendar')} className={`relative p-2 rounded-xl flex flex-col items-center gap-1 ${hasUnreadMessages ? 'text-red-500' : (currentView === 'calendar' ? 'text-white' : 'text-neutral-500')}`} title="Kalender">
+              <CalendarIcon className="w-5 h-5" />
+              {hasUnreadMessages && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500" aria-hidden="true"></span>
+              )}
+            </button>
             <button onClick={() => setCurrentView('shopping')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'shopping' ? 'text-white' : 'text-neutral-500'}`} title="Einkauf"><ShoppingCart className="w-5 h-5" /></button>
             <button onClick={() => setPlusMenuOpen(true)} className="p-2.5 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg" title="Neuer Termin"><Plus className="w-5 h-5" /></button>
             <button onClick={() => setCurrentView('extras')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`} title="Extras"><Activity className="w-5 h-5" /></button>
@@ -8778,6 +8874,17 @@ setSelfDestruct(false);
                         <Settings className="w-5 h-5" />
                       </button>
                     )}
+                    {userProfile && secretView === 'settings' && (
+                      <button
+                        type="button"
+                        onClick={removeAvatar}
+                        disabled={!userProfile?.avatarBase64}
+                        title="Profilbild entfernen"
+                        className={`px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${userProfile?.avatarBase64 ? 'border-red-500 text-red-200 bg-red-950/40 hover:bg-red-900/50' : 'border-neutral-800 text-neutral-500 bg-neutral-950 cursor-not-allowed'}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                     {secretView === 'chat' && activeChat && (
                       <div className="hidden md:flex items-center px-3 py-1.5 rounded-xl border border-neutral-800 bg-neutral-950 text-[11px] text-neutral-400">
                         <span className="text-neutral-200 font-semibold mr-1">{Number(chatTotalCount || 0)}</span> Nachrichten
@@ -8864,11 +8971,29 @@ setSelfDestruct(false);
                           ) : (
                             <div className="w-32 h-32 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-4xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile?.email || '')}</div>
                           )}
-                          <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
+                          <button
+                            type="button"
+                            onClick={removeAvatar}
+                            disabled={!userProfile?.avatarBase64}
+                            title="Profilbild entfernen"
+                            aria-label="Profilbild entfernen"
+                            className={`absolute -left-2 bottom-0 p-2.5 rounded-full shadow-lg transition-colors border-2 ${userProfile?.avatarBase64 ? 'bg-red-600 text-white hover:bg-red-500 border-red-300' : 'bg-red-600/45 text-white/80 border-red-300/70 cursor-not-allowed'}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          <label className="absolute -right-2 bottom-0 p-2.5 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg border-2 border-neutral-300">
                             <Camera className="w-4 h-4" />
                             <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleAvatarUpload} />
                           </label>
                         </div>
+                        <button
+                          type="button"
+                          onClick={removeAvatar}
+                          disabled={!userProfile?.avatarBase64}
+                          className={`w-full max-w-xs mb-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${userProfile?.avatarBase64 ? 'border-red-500 text-red-200 bg-red-950/40 hover:bg-red-900/50' : 'border-neutral-700 text-neutral-500 bg-neutral-900 cursor-not-allowed'}`}
+                        >
+                          Profilbild entfernen
+                        </button>
                         <form onSubmit={updateProfileSettings} className="w-full max-w-xs space-y-4">
                           <input type="text" name="displayName" defaultValue={userProfile?.displayName || userProfile?.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
                           <div className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
@@ -9073,7 +9198,7 @@ setSelfDestruct(false);
                                   </div>
                                   <div className="flex-1 overflow-hidden">
                                     <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
-                                    {chat.lastMessageSenderId !== user?.uid && chat.updatedAt > lastChatVisit ? (
+                                    {isChatUnread(chat) ? (
                                       <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
                                     ) : (
                                       <p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>

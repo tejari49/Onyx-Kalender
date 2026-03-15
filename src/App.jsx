@@ -6523,7 +6523,8 @@ setSelfDestruct(false);
         if (chat.lastMessageSenderId === user?.uid) return false;
         const updatedAt = toMillis(chat?.updatedAt);
         const lastReadAt = toMillis(chat?.lastRead?.[user?.uid]);
-        return updatedAt > lastReadAt;
+        const lastVisitAt = toMillis(lastChatVisit);
+        return updatedAt > Math.max(lastReadAt, lastVisitAt);
       };
       const unreadChatCount = myChats.filter(isChatUnread).length;
       const hasUnreadMessages = unreadChatCount > 0;
@@ -7017,7 +7018,7 @@ setSelfDestruct(false);
               <button onClick={() => setPlusMenuOpen(true)} className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 px-4 rounded-md font-medium hover:bg-gray-200 transition-colors mb-8"><Plus className="w-5 h-5" /> Neuer Termin</button>
               <nav className="space-y-2 mb-8">
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
-                <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
+                <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${hasUnreadMessages ? 'text-red-500' : (currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white')}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
                 <button onClick={() => setCurrentView('shopping')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'shopping' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><ShoppingCart className="w-5 h-5" /> Einkauf</button>
                 <button onClick={() => setCurrentView('extras')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'extras' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Activity className="w-5 h-5" /> Extras</button>
                 <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>

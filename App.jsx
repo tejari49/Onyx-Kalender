@@ -210,6 +210,28 @@ const FCM_WEB_VAPID_KEY_LEGACY = 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlgl
       return list[idx];
     };
 
+    const QUOTE_COLOR_CLASSES = [
+      'text-emerald-300',
+      'text-cyan-300',
+      'text-sky-300',
+      'text-violet-300',
+      'text-fuchsia-300',
+      'text-amber-300',
+      'text-rose-300',
+      'text-lime-300',
+    ];
+
+    const colorForQuote = (quote, prevColor = '') => {
+      const text = String(quote || '').trim();
+      if (!text) return 'text-neutral-100';
+      const baseIdx = stableHash(text) % QUOTE_COLOR_CLASSES.length;
+      let next = QUOTE_COLOR_CLASSES[baseIdx] || 'text-neutral-100';
+      if (prevColor && QUOTE_COLOR_CLASSES.length > 1 && next === prevColor) {
+        next = QUOTE_COLOR_CLASSES[(baseIdx + 1) % QUOTE_COLOR_CLASSES.length] || next;
+      }
+      return next;
+    };
+
 
     const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
     const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
@@ -389,6 +411,7 @@ function AmoledCalendarApp() {
       const [workClockEditEndValue, setWorkClockEditEndValue] = useState('');
       const [workClockDeletingId, setWorkClockDeletingId] = useState('');
       const [dailyFact, setDailyFact] = useState('');
+      const [dailyFactColor, setDailyFactColor] = useState('text-neutral-100');
       const [quotes, setQuotes] = useState([]);
       const [focusDurationMin, setFocusDurationMin] = useState(25);
       const [focusState, setFocusState] = useState(null);
@@ -2106,10 +2129,17 @@ const handleTouchEnd = () => {
       const partnerId = (activeChatData && !isGroupChat(activeChatData) && Array.isArray(activeChatData.participants)) ? activeChatData.participants.find(id => id !== user?.uid) : null;
       const isPartnerTyping = activeChatData ? (getTypingUsers(activeChatData).length > 0) : false;
 
+      const setDailyFactWithColor = (quote) => {
+        const q = String(quote || '').trim();
+        if (!q) return;
+        setDailyFact(q);
+        setDailyFactColor((prev) => colorForQuote(q, prev));
+      };
+
       const refreshDailyFact = () => {
         const list = (quotes && quotes.length) ? quotes : DEFAULT_QUOTES;
         const q = list[Math.floor(Math.random() * list.length)];
-        setDailyFact(q);
+        setDailyFactWithColor(q);
         try { localStorage.setItem('onyx_quote_override', q); localStorage.setItem('onyx_quote_override_day', todayKey); } catch(e) {}
       };
 
@@ -2208,7 +2238,7 @@ const handleTouchEnd = () => {
         try {
           const od = localStorage.getItem('onyx_quote_override_day');
           const oq = localStorage.getItem('onyx_quote_override');
-          if (od === dayKey && oq) setDailyFact(oq);
+          if (od === dayKey && oq) setDailyFactWithColor(oq);
         } catch (e) {}
 
         const loadQuotes = async () => {
@@ -2218,10 +2248,10 @@ const handleTouchEnd = () => {
             const list = Array.isArray(data) ? data : (Array.isArray(data.quotes) ? data.quotes : []);
             setQuotes(list);
             const q = pickQuoteForDay(list, dayKey);
-            setDailyFact(q);
+            setDailyFactWithColor(q);
           } catch (e) {
             const q = pickQuoteForDay(DEFAULT_QUOTES, dayKey);
-            setDailyFact(q);
+            setDailyFactWithColor(q);
           }
         };
         loadQuotes();
@@ -2532,7 +2562,8 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
                 merged.usernameLower = String(prevAlias).toLowerCase();
               }
 
-              if (localAlias && (!merged.username || incomingUpdatedAt < prevUpdatedAt || localAlias !== incomingAlias)) {
+              // Local storage is only a fallback when server fields are missing.
+              if (localAlias && !merged.username) {
                 merged.username = localAlias;
                 merged.usernameLower = String(localAlias).toLowerCase();
               }
@@ -2540,6 +2571,12 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
               if (localDisplayName && !merged.displayName) {
                 merged.displayName = localDisplayName;
               }
+
+              // Keep fallback cache in sync with the newest merged profile to prevent stale rollbacks.
+              try {
+                if (merged.username) localStorage.setItem(`onyx_username_${user?.uid}`, String(merged.username));
+                if (merged.displayName) localStorage.setItem(`onyx_displayName_${user?.uid}`, String(merged.displayName));
+              } catch (_) {}
               try {
                 const localClockRaw = localStorage.getItem(`onyx_work_clock_active_${user?.uid}`);
                 if (localClockRaw) {
@@ -7548,7 +7585,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   </div>
                   <div className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-start gap-4">
                     <Info className="w-5 h-5 md:w-6 md:h-6 text-neutral-400 shrink-0 mt-1" />
-                    <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className="text-xl md:text-2xl font-semibold text-neutral-100 leading-snug">“{dailyFact}”</p></div>
+                    <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className={`text-xl md:text-2xl font-semibold leading-snug ${dailyFactColor}`}>“{dailyFact}”</p></div>
                   </div>
                 </div>
 

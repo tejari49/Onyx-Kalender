@@ -8919,6 +8919,16 @@ setSelfDestruct(false);
                           ) : (
                             <div className="w-32 h-32 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-4xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile?.email || '')}</div>
                           )}
+                          <button
+                            type="button"
+                            onClick={removeAvatar}
+                            disabled={!userProfile?.avatarBase64}
+                            title="Profilbild entfernen"
+                            aria-label="Profilbild entfernen"
+                            className={`absolute bottom-0 left-0 p-2 rounded-full shadow-lg transition-colors ${userProfile?.avatarBase64 ? 'bg-red-950/70 text-red-200 hover:bg-red-900 border border-red-800' : 'bg-neutral-900 text-neutral-600 border border-neutral-800 cursor-not-allowed'}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                           <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
                             <Camera className="w-4 h-4" />
                             <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleAvatarUpload} />

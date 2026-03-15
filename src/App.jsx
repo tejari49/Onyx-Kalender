@@ -128,6 +128,16 @@ import React, { useState, useEffect, useRef } from 'react';
       return next;
     }
 
+    function toMillis(value) {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (value instanceof Date) return Number(value.getTime() || 0);
+      if (value && typeof value.toMillis === 'function') {
+        try { return Number(value.toMillis() || 0); } catch (_) { return 0; }
+      }
+      const parsed = Number(value || 0);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
 
     // --- Auth hardening: if the browser keeps a stale Firebase auth cache after project reset,
     // identitytoolkit accounts:lookup can return 400 and break flows. We auto-signout + clear caches.
@@ -2425,8 +2435,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         const unsubscribeChats = onSnapshot(chatsQ, (snapshot) => {
           const loadedChats = [];
           snapshot.forEach(doc => loadedChats.push({ id: doc.id, ...doc.data() }));
-          const safeChats = loadedChats.filter(chat => chat && chat.id).map((chat) => ({ ...chat, participants: Array.isArray(chat.participants) ? chat.participants.filter(Boolean) : [], admins: Array.isArray(chat.admins) ? chat.admins.filter(Boolean) : [] }));
-          safeChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          const safeChats = loadedChats.filter(chat => chat && chat.id).map((chat) => ({
+            ...chat,
+            updatedAt: toMillis(chat?.updatedAt),
+            participants: Array.isArray(chat.participants) ? chat.participants.filter(Boolean) : [],
+            admins: Array.isArray(chat.admins) ? chat.admins.filter(Boolean) : []
+          }));
+          safeChats.sort((a, b) => toMillis(b.updatedAt) - toMillis(a.updatedAt));
           setMyChats(safeChats);
         });
 
@@ -4111,7 +4126,7 @@ const requestNotificationPermission = async (currentUser) => {
           if (document.visibilityState !== 'visible') return;
 
           for (const c of myChats) {
-            const updatedAt = (c && typeof c.updatedAt === 'number') ? c.updatedAt : 0;
+            const updatedAt = toMillis(c?.updatedAt);
             if (!updatedAt) continue;
             if (c.lastMessageSenderId === user?.uid) {
               // keep watermark up to date
@@ -6485,11 +6500,11 @@ setSelfDestruct(false);
       };
 
       const getChatParticipants = (chat) => Array.isArray(chat.participants) ? chat.participants : [];
-      const unreadChatCount = myChats.filter(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid).length;
+      const unreadChatCount = myChats.filter(chat => toMillis(chat?.updatedAt) > toMillis(lastChatVisit) && chat.lastMessageSenderId !== user?.uid).length;
       const hasUnreadMessages = unreadChatCount > 0;
 
       useEffect(() => {
-        if (typeof navigator === 'undefined') return;
+        if (typeof navigator === 'undefined' || !window.isSecureContext) return;
         const setBadge = navigator.setAppBadge;
         const clearBadge = navigator.clearAppBadge;
         if (typeof setBadge !== 'function' || typeof clearBadge !== 'function') return;
@@ -9088,7 +9103,7 @@ setSelfDestruct(false);
                                   </div>
                                   <div className="flex-1 overflow-hidden">
                                     <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
-                                    {chat.lastMessageSenderId !== user?.uid && chat.updatedAt > lastChatVisit ? (
+                                    {chat.lastMessageSenderId !== user?.uid && toMillis(chat?.updatedAt) > toMillis(lastChatVisit) ? (
                                       <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
                                     ) : (
                                       <p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>

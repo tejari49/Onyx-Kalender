@@ -7467,7 +7467,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
                 <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
                 <button onClick={() => setCurrentView('shopping')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'shopping' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><ShoppingCart className="w-5 h-5" /> Einkauf</button>
-                <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
+                <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen <span aria-hidden="true" className="text-[13px]">✨</span></button>
               </nav>
 
               {/* Kalender Liste in der Sidebar */}
@@ -8251,7 +8251,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                         <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Einstellungen</button>
                       </div>
                     </header>
-                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-5 text-sm text-neutral-400">Stempeluhr ist aktuell deaktiviert. Aktiviere sie unter Einstellungen → Produktivität & Push.</div>
+                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-5 text-sm text-neutral-400">Stempeluhr ist aktuell deaktiviert.</div>
                   </div>
                 );
               }
@@ -8332,7 +8332,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const TABS = [
       { id: 'account', label: 'Account & Sicherheit', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'sicherheit', 'datenschutz', 'abmelden', 'email'] },
       { id: 'calendars', label: 'Kalender & Freigaben', subtitle: 'Farben, Schichtpläne und Teilen', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
-      { id: 'notifications', label: 'Produktivität & Push', subtitle: 'Extras, Stempeluhr, Erinnerungen, Push', icon: Activity, keys: ['extras', 'stempeluhr', 'notiz', 'tagesziel', 'wetter', 'push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token'] },
       { id: 'links', label: 'Public Links', subtitle: 'Busy-only Links und Ablauf', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
       { id: 'ics', label: 'Import/Export', subtitle: 'ICS Export und Import', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
       { id: 'audit', label: 'Audit & Verlauf', subtitle: 'Aktionsprotokoll und Kalenderhistorie', icon: History, keys: ['audit', 'verlauf', 'log', 'aenderung', 'wer'] },
@@ -8363,7 +8362,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-3">
-                <h2 className="text-3xl md:text-4xl font-light">Einstellungen</h2>
+                <h2 className="text-3xl md:text-4xl font-light flex items-center gap-2">Einstellungen <span aria-hidden="true" className="text-2xl">✨</span></h2>
                 <button
                   type="button"
                   onClick={toggleTheme}
@@ -8453,12 +8452,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 );
               })}
             </div>
-            <div className="rounded-xl border border-neutral-800 bg-black/40 p-3 text-[11px] text-neutral-500 leading-relaxed">
-              <div className="flex items-center gap-2">
-                <Info className="w-3.5 h-3.5" />
-                <span>Server-Push-Test benoetigt Firestore-Zugriff (kein Shield/Adblock).</span>
-              </div>
-            </div>
           </aside>
 
           <main className="space-y-4 min-w-0">
@@ -8467,7 +8460,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               <section id="settings-calendars">
                 <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-4">
                   <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-2">
-                    <CalendarIcon className="w-4 h-4" /> Meine Kalender & Schichten
+                    <CalendarIcon className="w-4 h-4" /> Meine Kalender & Schichten <span aria-hidden="true">🗓️</span>
                   </h3>
                   <button onClick={() => { setCalForm({ id: null, name: '', type: 'normal', color: PASTEL_COLORS[(Date.now() % PASTEL_COLORS.length)], shifts: [] }); setIsCalManageModalOpen(true); }} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">+ Neu</button>
                 </div>
@@ -8531,263 +8524,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               </section>
             </AccordionItem>
 
-            {/* EXTRAS */}
-            <AccordionItem id="notifications" label="Produktivität & Push" icon={Activity} keys={['extras','stempeluhr','notiz','tagesziel','wetter','push','benachr','erinnerung','pwa','token','test']} >
-              <section id="settings-notifications">
-                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Activity className="w-4 h-4" /> Produktivität & Push
-                </h3>
-
-                {/* Core settings */}
-                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-3">
-                  {[
-                    ['planning', 'Produktivität', [
-                      ['dailyGoalsEnabled','Tagesziele','Drei Tagesziele mit Häkchen und Cloud-Sync.'],
-                      ['quickNotesEnabled','Schnellnotizen','Mit Firebase-Sync auf allen Geräten verfügbar.'],
-                      ['weatherPlannerEnabled','Wetter-Planer','Zusätzliche Wetter-/Kleidungs-Hinweise in Extras.'],
-                    ]],
-                  ].map(([groupKey, groupLabel, fields]) => (
-                    <div key={groupKey} className="border border-neutral-800 rounded-xl bg-black">
-                      <button
-                        type="button"
-                        onClick={() => toggleExtrasSection(groupKey)}
-                        className="w-full px-4 py-3 flex items-center justify-between text-left"
-                      >
-                        <span className="text-sm font-medium text-white">{groupLabel}</span>
-                        <ChevronDown className={"w-4 h-4 text-neutral-500 transition-transform " + (extrasSectionsOpen?.[groupKey] ? 'rotate-180' : '')} />
-                      </button>
-                      {extrasSectionsOpen?.[groupKey] && (
-                        <div className="px-4 pb-4 space-y-3">
-                          {fields.map(([field, label, desc]) => (
-                            <div key={field} className="border border-neutral-800 rounded-xl bg-neutral-950/60 p-4 flex items-start justify-between gap-4">
-                              <div>
-                                <p className="font-medium text-white">{label}</p>
-                                <p className="text-xs text-neutral-500 mt-1">{desc}</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => saveExtraFieldToggle(field)}
-                                className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + (isExtraFieldEnabled(field) ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}
-                              >
-                                {isExtraFieldEnabled(field) ? 'Aktiv' : 'Aus'}
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  <div className="border border-neutral-800 rounded-xl bg-black">
-                    <button
-                      type="button"
-                      onClick={() => toggleExtrasSection('push')}
-                      className="w-full px-4 py-3 flex items-center justify-between text-left"
-                    >
-                      <span className="text-sm font-medium text-white">Erinnerungen & Push</span>
-                      <ChevronDown className={"w-4 h-4 text-neutral-500 transition-transform " + (extrasSectionsOpen?.push ? 'rotate-180' : '')} />
-                    </button>
-                    {extrasSectionsOpen?.push && (
-                      <div className="px-4 pb-4 space-y-4">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <p className="font-medium text-white">Kalender-Erinnerungen</p>
-                            <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit „Standard“). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
-                          </div>
-                          <div className="flex gap-2">
-                            {!isStandalone && canInstallPwa && (
-                              <button
-                                type="button"
-                                onClick={() => { try { promptInstallPwa(); } catch(e) {} }}
-                                className="px-4 py-2 bg-white text-black rounded-md text-sm font-semibold hover:bg-gray-200 transition-colors"
-                              >
-                                Installieren
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              disabled={!isStandalone}
-                              onClick={() => { try { requestNotificationPermission(user); } catch(e) {} }}
-                              className={"px-4 py-2 rounded-md text-sm transition-colors " + (isStandalone ? "bg-neutral-900 border border-neutral-800 hover:text-white" : "bg-neutral-950 border border-neutral-900 text-neutral-600 cursor-not-allowed")}
-                              title={isStandalone ? "Benachrichtigungen aktivieren" : (isIosUA ? "iPhone/iPad: Teilen -> Zum Home‑Bildschirm" : "Bitte zuerst installieren")}
-                            >
-                              Erlauben
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Standard-Erinnerung</label>
-                            <select
-                              value={(() => {
-                                const v = (userProfile && userProfile?.defaultReminderMinutes !== undefined && userProfile?.defaultReminderMinutes !== null) ? String(userProfile?.defaultReminderMinutes) : 'none';
-                                return v;
-                              })()}
-                              onChange={async (e) => {
-                                try {
-                                  const v = e.target.value;
-                                  const next = (v === 'none') ? null : Number(v);
-                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { defaultReminderMinutes: next }, { merge: true });
-                                  showToast('Gespeichert');
-                                } catch (err) {
-                                  showToast('Fehler');
-                                }
-                              }}
-                              className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                            >
-                              <option value="none">Keine</option>
-                              <option value="0">Bei Beginn</option>
-                              <option value="5">5 Minuten vorher</option>
-                              <option value="10">10 Minuten vorher</option>
-                              <option value="15">15 Minuten vorher</option>
-                              <option value="30">30 Minuten vorher</option>
-                              <option value="60">1 Stunde vorher</option>
-                              <option value="120">2 Stunden vorher</option>
-                              <option value="1440">1 Tag vorher</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benachrichtigungston</label>
-                            <select
-                              value={(() => {
-                                const v = (userProfile && userProfile?.notificationSoundMode) ? String(userProfile?.notificationSoundMode) : 'system';
-                                return (v === 'silent') ? 'silent' : 'system';
-                              })()}
-                              onChange={async (e) => {
-                                try {
-                                  const v = e.target.value;
-                                  await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { notificationSoundMode: v }, { merge: true });
-                                  showToast('Gespeichert');
-                                } catch (err) {
-                                  showToast('Fehler');
-                                }
-                              }}
-                              className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                            >
-                              <option value="system">System (Standard)</option>
-                              <option value="silent">Stumm</option>
-                            </select>
-                            <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – du kannst nur Systemton nutzen oder stumm schalten.</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="border border-neutral-800 rounded-xl bg-black">
-                    <button
-                      type="button"
-                      onClick={() => toggleExtrasSection('workclock')}
-                      className="w-full px-4 py-3 flex items-center justify-between text-left"
-                    >
-                      <span className="text-sm font-medium text-white">Stempeluhr & Reihenfolge</span>
-                      <ChevronDown className={"w-4 h-4 text-neutral-500 transition-transform " + (extrasSectionsOpen?.workclock ? 'rotate-180' : '')} />
-                    </button>
-                    {extrasSectionsOpen?.workclock && (
-                      <div className="px-4 pb-4 space-y-4">
-                        <div className="border border-neutral-800 rounded-xl bg-neutral-950/60 p-4 space-y-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <p className="font-medium text-white flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Wochenziel & Extras-Reihenfolge</p>
-                              <p className="text-xs text-neutral-500 mt-1">Definiert dein Soll pro Woche. Im Extras-Bereich kannst du die Karten direkt per Drag & Drop verschieben.</p>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wochenziel in Stunden</label>
-                              <input value={weeklyTargetHours} onFocus={() => setIsWeeklyTargetEditing(true)} onBlur={() => setIsWeeklyTargetEditing(false)} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} placeholder="42" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                            </div>
-                            <div className="flex items-end">
-                              <button type="button" onClick={() => { setExtrasSlotOrder(normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER)); showToast('Extras-Reihenfolge zurückgesetzt'); }} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Reihenfolge zurücksetzen</button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="border border-neutral-800 rounded-xl bg-black p-4">
-                    <button
-                      type="button"
-                      onClick={() => setDiagTestsOpen(v => !v)}
-                      className="w-full flex items-center justify-between gap-3 text-xs text-neutral-300 font-semibold"
-                      aria-expanded={diagTestsOpen ? 'true' : 'false'}
-                    >
-                      <span className="flex items-center gap-2"><Activity className="w-4 h-4" /> Diagnostik & Tests</span>
-                      <ChevronDown className={`w-4 h-4 transition-transform ${diagTestsOpen ? 'rotate-180' : ''}`} />
-                    </button>
-
-                    {diagTestsOpen && (
-                    <div className="mt-3 space-y-3">
-                      <div className="text-[11px] text-neutral-600">
-                        Status: <span className="text-neutral-300">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstuetzt'}</span>
-                      </div>
-
-                      <div className="text-[11px] text-neutral-600">
-                        Service Worker: <span className="text-neutral-300">{pushDiag.sw}</span>{pushDiag.controlling ? <span className="text-neutral-500"> · controlling ✅</span> : <span className="text-neutral-500"> · not controlling</span>}
-                      </div>
-
-                      <div className="text-[11px] text-neutral-600">
-                        Web Token: <span className="text-neutral-300">{(userProfile && userProfile?.fcmTokenWeb) ? 'vorhanden ✅' : 'nicht gesetzt'}</span>
-                      </div>
-
-                      <div className="text-[11px] text-neutral-600">
-                        Letzter Push-Empfang: <span className="text-neutral-300">{pushDiag.lastReceivedAt ? `${new Date(pushDiag.lastReceivedAt).toLocaleString()}${pushDiag.lastReceivedTitle ? ` · ${pushDiag.lastReceivedTitle}` : ''}` : '—'}</span>
-                      </div>
-
-                      {!!pushTest?.id && (
-                        <div className="text-[11px] text-neutral-600 break-words">
-                          Server-Test Status: <span className="text-neutral-300">{(() => { const st = String(pushTest.status || 'pending'); if (st === 'timeout') return 'timeout (keine Rückmeldung)'; if (st === 'submitted') return 'übermittelt (kein Leserecht auf Status)'; return st; })()}</span>
-                          {pushTest.lastError && String(pushTest.lastError) !== 'STATUS_READ_BLOCKED (optional)' ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
-                          {String(pushTest.status || '').toLowerCase() === 'timeout' ? <div className="mt-1 text-[11px] text-amber-300">Server hat nicht geantwortet. Bitte Adblock/Shield deaktivieren und Push-Cloud-Function prüfen.</div> : null}
-                        </div>
-                      )}
-
-                      {!isStandalone && (
-                        <div className="text-[11px] text-amber-400">
-                          {isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren.' : 'Bitte installieren, dann „Erlauben“. '}
-                        </div>
-                      )}
-
-                      {!!(pushDiag && pushDiag.lastError) && (
-                        <div className="text-[11px] text-amber-400 break-words">
-                          Push-Fehler: {String(pushDiag.lastError)}
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => { try { sendLocalPushTest(); } catch(_) {} }}
-                          className="px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-xs hover:border-neutral-500"
-                        >
-                          Test (lokal)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { try { sendServerPushTest(); } catch(_) {} }}
-                          className="px-3 py-2 bg-white text-black rounded-md text-xs font-semibold hover:bg-gray-200"
-                        >
-                          Test (Server)
-                        </button>
-                      </div>
-
-                      <div className="text-[11px] text-neutral-600 leading-relaxed">
-                        Hinweis: "Test (Server)" braucht Firestore-Schreibzugriff auf <span className="text-neutral-300">public/data/pushTests:create</span>. Status-Lesen ist optional; bei Blockern/Rules kann trotzdem eine Push-Nachricht ankommen.
-                      </div>
-                    </div>
-                    )}
-                  </div>
-                </div>
-              </section>
-            </AccordionItem>
-
-            {/* PUBLIC LINKS */}
             <AccordionItem id="links" label="Public Links" icon={Link2} keys={['public','link','busy','passcode','magic','ablauf']} >
               <section id="settings-links">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Link2 className="w-4 h-4" /> Public Links
+                  <Link2 className="w-4 h-4" /> Public Links <span aria-hidden="true">🔗</span>
                 </h3>
 
                 <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
@@ -9129,7 +8869,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             <AccordionItem id="ics" label="Import/Export" icon={Download} keys={['ics','import','export','download','upload']} >
               <section id="settings-ics">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Download className="w-4 h-4" /> Import / Export (.ics)
+                  <Download className="w-4 h-4" /> Import / Export (.ics) <span aria-hidden="true">📥</span>
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">

@@ -665,6 +665,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       
 
       const typingTimeoutRef = useRef(null);
+      const typingStateRef = useRef(false);
+      const typingLastWriteRef = useRef(0);
       const messagesEndRef = useRef(null);
       const chatScrollRef = useRef(null);
 
@@ -706,7 +708,6 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [groupMemberSearch, setGroupMemberSearch] = useState('');
       const [groupEditSearch, setGroupEditSearch] = useState('');
       const lastReadWriteRef = useRef(0);
-      const presenceHeartbeatRef = useRef(null);
 
       const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
       const [messageSearchQuery, setMessageSearchQuery] = useState('');
@@ -2137,23 +2138,25 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       useEffect(() => {
         if (!user) return;
         const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid);
-        const setPresence = (status) => {
-          setDoc(profileRef, { presenceStatus: status, presenceLastSeen: Date.now() }, { merge: true }).catch(()=>{});
+        let lastPresenceWrite = 0;
+        const MIN_PRESENCE_WRITE_MS = 5 * 60 * 1000; // avoid write storms
+        const setPresence = (status, force = false) => {
+          const now = Date.now();
+          if (!force && now - lastPresenceWrite < MIN_PRESENCE_WRITE_MS) return;
+          lastPresenceWrite = now;
+          setDoc(profileRef, { presenceStatus: status, presenceLastSeen: now }, { merge: true }).catch(()=>{});
         };
-        setPresence('online');
+        setPresence('online', true);
         const onVisibility = () => {
           if (document.visibilityState === 'visible') setPresence('online');
-          else setPresence('offline');
+          else setPresence('offline', true);
         };
+        const onBeforeUnload = () => { try { setPresence('offline', true); } catch (e) {} };
         document.addEventListener('visibilitychange', onVisibility);
-        window.addEventListener('beforeunload', () => { try { setPresence('offline'); } catch(e) {} });
-        if (presenceHeartbeatRef.current) clearInterval(presenceHeartbeatRef.current);
-        presenceHeartbeatRef.current = setInterval(() => {
-          if (document.visibilityState === 'visible') setPresence('online');
-        }, 25000);
+        window.addEventListener('beforeunload', onBeforeUnload);
         return () => {
           document.removeEventListener('visibilitychange', onVisibility);
-          if (presenceHeartbeatRef.current) { clearInterval(presenceHeartbeatRef.current); presenceHeartbeatRef.current = null; }
+          window.removeEventListener('beforeunload', onBeforeUnload);
         };
       }, [user]);
 
@@ -2424,11 +2427,19 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         const allProfilesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
-        const unsubscribeAllProfiles = onSnapshot(query(allProfilesRef), (snapshot) => {
-          const loaded = [];
-          snapshot.forEach(doc => loaded.push({ id: doc.id, ...doc.data() }));
-          setAllProfiles(loaded);
-        });
+        let allProfilesTimer = null;
+        const loadProfilesOnce = async () => {
+          try {
+            const snap = await getDocs(query(allProfilesRef, limit(400)));
+            const loaded = [];
+            snap.forEach(d => loaded.push({ id: d.id, ...d.data() }));
+            setAllProfiles(loaded);
+          } catch (err) {
+            console.warn('[Profiles] refresh failed', err?.code || err);
+          }
+        };
+        loadProfilesOnce();
+        allProfilesTimer = setInterval(loadProfilesOnce, 10 * 60 * 1000);
 
         const chatsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats');
         const chatsQ = query(chatsRef, where('participants', 'array-contains', user?.uid));
@@ -2529,7 +2540,16 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           recomputeCals();
         });
 
-        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeShares(); unsubscribeAudit(); unsubscribeOwnerCals(); unsubscribeSharedCals(); };
+        return () => {
+          unsubscribeEvents();
+          unsubscribeProfile();
+          unsubscribeChats();
+          unsubscribeShares();
+          unsubscribeAudit();
+          unsubscribeOwnerCals();
+          unsubscribeSharedCals();
+          if (allProfilesTimer) clearInterval(allProfilesTimer);
+        };
       }, [user]);
 
       // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---
@@ -6128,10 +6148,20 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
          const value = e.target.value;
          setNewMessageText(value);
          if (!activeChatId || !user) return;
-         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: value.length > 0, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
+         const nextTypingState = value.length > 0;
+         const now = Date.now();
+         if (typingStateRef.current !== nextTypingState || (now - (typingLastWriteRef.current || 0) > 4000 && nextTypingState)) {
+           typingStateRef.current = nextTypingState;
+           typingLastWriteRef.current = now;
+           updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: nextTypingState, [`typingAt.${user?.uid}`]: now }).catch(()=>{});
+         }
          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
          typingTimeoutRef.current = setTimeout(() => {
-            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: false, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
+            if (typingStateRef.current !== false) {
+              typingStateRef.current = false;
+              typingLastWriteRef.current = Date.now();
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: false, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
+            }
          }, 2200);
       }
 

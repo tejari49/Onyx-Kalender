@@ -7467,7 +7467,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
                 <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
                 <button onClick={() => setCurrentView('shopping')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'shopping' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><ShoppingCart className="w-5 h-5" /> Einkauf</button>
-                <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
+                <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen <span aria-hidden="true" className="text-[13px]">✨</span></button>
               </nav>
 
               {/* Kalender Liste in der Sidebar */}
@@ -8362,7 +8362,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-3">
-                <h2 className="text-3xl md:text-4xl font-light">Einstellungen</h2>
+                <h2 className="text-3xl md:text-4xl font-light flex items-center gap-2">Einstellungen <span aria-hidden="true" className="text-2xl">✨</span></h2>
                 <button
                   type="button"
                   onClick={toggleTheme}
@@ -8460,7 +8460,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               <section id="settings-calendars">
                 <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-4">
                   <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-2">
-                    <CalendarIcon className="w-4 h-4" /> Meine Kalender & Schichten
+                    <CalendarIcon className="w-4 h-4" /> Meine Kalender & Schichten <span aria-hidden="true">🗓️</span>
                   </h3>
                   <button onClick={() => { setCalForm({ id: null, name: '', type: 'normal', color: PASTEL_COLORS[(Date.now() % PASTEL_COLORS.length)], shifts: [] }); setIsCalManageModalOpen(true); }} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">+ Neu</button>
                 </div>
@@ -8527,7 +8527,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             <AccordionItem id="links" label="Public Links" icon={Link2} keys={['public','link','busy','passcode','magic','ablauf']} >
               <section id="settings-links">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Link2 className="w-4 h-4" /> Public Links
+                  <Link2 className="w-4 h-4" /> Public Links <span aria-hidden="true">🔗</span>
                 </h3>
 
                 <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
@@ -8869,7 +8869,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             <AccordionItem id="ics" label="Import/Export" icon={Download} keys={['ics','import','export','download','upload']} >
               <section id="settings-ics">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Download className="w-4 h-4" /> Import / Export (.ics)
+                  <Download className="w-4 h-4" /> Import / Export (.ics) <span aria-hidden="true">📥</span>
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">

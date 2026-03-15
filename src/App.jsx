@@ -6998,7 +6998,7 @@ setSelfDestruct(false);
 
           <nav className="md:hidden fixed bottom-0 left-0 w-full h-16 bg-black border-t border-neutral-800 flex items-center justify-between z-40 px-3 pb-safe">
             <button onClick={() => setCurrentView('dashboard')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`} title="Dashboard"><Home className="w-5 h-5" /></button>
-            <button onClick={() => setCurrentView('calendar')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`} title="Kalender"><CalendarIcon className="w-5 h-5" /></button>
+            <button onClick={() => setCurrentView('calendar')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${hasUnreadMessages ? 'text-red-500' : (currentView === 'calendar' ? 'text-white' : 'text-neutral-500')}`} title="Kalender"><CalendarIcon className="w-5 h-5" /></button>
             <button onClick={() => setCurrentView('shopping')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'shopping' ? 'text-white' : 'text-neutral-500'}`} title="Einkauf"><ShoppingCart className="w-5 h-5" /></button>
             <button onClick={() => setPlusMenuOpen(true)} className="p-2.5 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg" title="Neuer Termin"><Plus className="w-5 h-5" /></button>
             <button onClick={() => setCurrentView('extras')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`} title="Extras"><Activity className="w-5 h-5" /></button>

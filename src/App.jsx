@@ -6487,6 +6487,15 @@ setSelfDestruct(false);
       const getChatParticipants = (chat) => Array.isArray(chat.participants) ? chat.participants : [];
       const unreadChatCount = myChats.filter(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid).length;
       const hasUnreadMessages = unreadChatCount > 0;
+
+      useEffect(() => {
+        if (typeof navigator === 'undefined') return;
+        const setBadge = navigator.setAppBadge;
+        const clearBadge = navigator.clearAppBadge;
+        if (typeof setBadge !== 'function' || typeof clearBadge !== 'function') return;
+        if (hasUnreadMessages) setBadge.call(navigator).catch(() => {});
+        else clearBadge.call(navigator).catch(() => {});
+      }, [hasUnreadMessages]);
       
       const exportICS = (exportAll = true) => {
         let eventsToExport = allEvents;
@@ -7002,7 +7011,7 @@ setSelfDestruct(false);
             <button onClick={() => setCurrentView('calendar')} className={`relative p-2 rounded-xl flex flex-col items-center gap-1 ${hasUnreadMessages ? 'text-red-500' : (currentView === 'calendar' ? 'text-white' : 'text-neutral-500')}`} title="Kalender">
               <CalendarIcon className="w-5 h-5" />
               {hasUnreadMessages && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] leading-4 font-semibold text-center">{Math.min(unreadChatCount, 9)}</span>
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500" aria-hidden="true"></span>
               )}
             </button>
             <button onClick={() => setCurrentView('shopping')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'shopping' ? 'text-white' : 'text-neutral-500'}`} title="Einkauf"><ShoppingCart className="w-5 h-5" /></button>

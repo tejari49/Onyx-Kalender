@@ -8935,6 +8935,16 @@ setSelfDestruct(false);
                             <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleAvatarUpload} />
                           </label>
                         </div>
+                        <div className="w-full max-w-xs mb-4">
+                          <button
+                            type="button"
+                            onClick={removeAvatar}
+                            disabled={!userProfile?.avatarBase64}
+                            className={`w-full py-2.5 rounded-lg border text-sm font-medium transition-colors ${userProfile?.avatarBase64 ? 'border-red-800 text-red-200 bg-red-950/30 hover:bg-red-950/50' : 'border-neutral-800 text-neutral-500 bg-neutral-950 cursor-not-allowed'}`}
+                          >
+                            Profilbild entfernen
+                          </button>
+                        </div>
                         <form onSubmit={updateProfileSettings} className="w-full max-w-xs space-y-4">
                           <input type="text" name="displayName" defaultValue={userProfile?.displayName || userProfile?.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
                           <div className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3">

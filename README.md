@@ -1,152 +1,275 @@
 # Onyx Kalender
 
-Onyx Kalender ist eine moderne, dunkle Kalender‑PWA mit Fokus auf Terminplanung, Produktivität und private Kommunikation. Die App kombiniert klassische Kalenderfunktionen mit Extras wie Stempeluhr, Smart Day, Fokusmodus, Einkaufslisten, Wetter-Hinweisen und einem geschützten Secret‑Bereich.
+Onyx Kalender ist eine datenschutzorientierte Kalender‑PWA mit Fokus auf Planung, Zusammenarbeit und persönliche Produktivität. Neben dem klassischen Kalender enthält die App einen geschützten Secret‑Bereich mit Chat, eine Einkaufsliste, eine Stempeluhr, Fokus‑Timer und weitere Alltags‑Tools.
 
 ## Inhaltsverzeichnis
 
-- [Funktionsumfang](#funktionsumfang)
+- [Überblick](#überblick)
+- [Hauptfunktionen](#hauptfunktionen)
+  - [1) Kalender & Termine](#1-kalender--termine)
+  - [2) Dashboard](#2-dashboard)
+  - [3) Extras](#3-extras)
+  - [4) Einkauf](#4-einkauf)
+  - [5) Secret‑Bereich](#5-secretbereich)
+  - [6) Profile & Benutzerkonto](#6-profile--benutzerkonto)
+  - [7) Push, PWA & Offline-Verhalten](#7-push-pwa--offline-verhalten)
 - [Technologie-Stack](#technologie-stack)
 - [Projektstruktur](#projektstruktur)
 - [Voraussetzungen](#voraussetzungen)
-- [Installation & lokaler Start](#installation--lokaler-start)
+- [Lokale Entwicklung](#lokale-entwicklung)
 - [Build & Preview](#build--preview)
-- [Firebase-Setup](#firebase-setup)
+- [Firebase Setup](#firebase-setup)
 - [Cloud Functions](#cloud-functions)
-- [PWA, Push & Service Worker](#pwa-push--service-worker)
+- [Firestore Sicherheitsregeln](#firestore-sicherheitsregeln)
+- [Datenmodell (vereinfacht)](#datenmodell-vereinfacht)
+- [Konfiguration](#konfiguration)
 - [Deployment](#deployment)
-- [Firestore Rules Hinweise](#firestore-rules-hinweise)
 - [Troubleshooting](#troubleshooting)
-- [Roadmap-Ideen](#roadmap-ideen)
-- [Lizenz](#lizenz)
+- [Bekannte Grenzen](#bekannte-grenzen)
 
-## Funktionsumfang
+## Überblick
 
-### Kalender
+Die App kombiniert mehrere Bereiche in einer einzigen Oberfläche:
 
-- Privater Standardkalender
-- Zusätzliche eigene Kalender
-- Farben, Freigaben, Busy-only und Public Links
-- Tagesansicht mit Agenda und Feed
-- Wiederkehrende Termine
-- Audit-/Verlaufsfunktionen
-- ICS Import/Export
+- **Mehrere Kalender** (eigene + geteilte Kalender)
+- **Terminverwaltung** inkl. Wiederholungen, Erinnerungen, Import/Export, Kommentare, Verlauf
+- **Dashboard mit Wetter, Agenda und Tagesfokus**
+- **Produktivitäts-Module** (Stempeluhr, Fokusmodus, Ziele, Notizen, Soll/Ist)
+- **Einkaufslisten** mit Summen und Ausgabenhistorie
+- **Secret Chat** mit PIN-Schutz, Medien und Sprachmemos
+- **PWA + Push-Benachrichtigungen** über Firebase Cloud Messaging
 
-### Dashboard / Startseite
+## Hauptfunktionen
 
-- Wetterkarte mit 4h-Hinweisen
-- Smarte Wetter-Badges (z. B. „Regen ab xx:xx“)
-- Spruch des Tages
-- Agenda für heute
-- Optional kompakte Smart-Day-Karte
-- Optional kompakte Stempeluhr-Karte
+### 1) Kalender & Termine
 
-### Extras
+- Privater Standardkalender pro Benutzer
+- Zusätzliche Kalender anlegen und farblich verwalten
+- Freigaben pro Kalender mit Rollen:
+  - **read** (nur lesen)
+  - **write** (bearbeiten)
+- Teilen per öffentlichem Link:
+  - Busy-only Ansicht
+  - optional voll sichtbare Terminansicht
+  - optional Passwort / Ablaufdatum / Widerruf
+- Monatsansicht + Agendaansicht
+- Termin-Details mit:
+  - Titel, Zeit, Datum, Farbe
+  - Notizen/Beschreibung
+  - Wiederkehrung
+  - Kommentare
+- Löschen einzelner Vorkommen oder ganzer Serien
+- Audit/Verlaufseinträge bei Änderungen
+- ICS-Import/Export
 
-- Smart Day (nächster Termin, Countdown, freie Zeitfenster, Wetterhinweis)
-- Stempeluhr (Start/Pause/Weiter/Stopp, Tätigkeiten, Belastungslevel)
-- Fokusmodus (25/50/90 Minuten inkl. Historie)
-- Wochenübersicht (Termine, Arbeitszeit, Belastung)
-- Schnellnotizen
-- Wetter-Planer
-- Tagesziele & Soll-/Ist-Stunden
-- Drag-&-Drop Sortierung der Extras-Karten
+### 2) Dashboard
 
-### Einkauf
+- Tagesübersicht mit wichtigen Terminen
+- Wetterkarte inkl. kurzfristiger Hinweise
+- Smart-Day-Kompaktanzeige mit nächstem Termin
+- „Spruch des Tages“ aus `quotes.json` (mit Fallback-Texten)
 
-- Eigene Einkaufs-Ansicht
+### 3) Extras
+
+Die Extras sind als Karten organisiert und per Drag & Drop sortierbar.
+
+- **Stempeluhr**
+  - Start/Pause/Weiter/Stopp
+  - Sessions bearbeiten und löschen
+  - Tätigkeit + Belastungslevel
+- **Fokusmodus**
+  - Timer-Längen (z. B. 25/50/90 Min.)
+  - Verlaufsdaten
+- **Tagesziele**
+- **Soll-/Ist-Stunden**
+- **Schnellnotizen**
+- **Wetter-Planer**
+- **Wochen-/Leistungsübersicht**
+
+### 4) Einkauf
+
 - Mehrere Einkaufslisten pro Benutzer
-- Artikel als gekauft markieren
-- Menge und Preis pro Artikel
-- Automatische Summen für gekaufte Positionen
-- Lokal + Firebase-Profil Sync
+- Liste anpinnen
+- Positionen mit:
+  - Name
+  - Menge
+  - Preis
+  - Erledigt-Status
+- Summenberechnung erledigter Positionen
+- Kauf-/Zahlungshistorie pro Liste
+- Sync über Firestore-Profilfelder
 
-### Secret-Bereich
+### 5) Secret‑Bereich
 
-- Secret Chat mit PIN
-- Panic Mode / optional Auto-Panic
-- Diskrete Benachrichtigungen
-- Medien-Galerie und Vollbild-Viewer
-- Voice-Nachrichten
+- Zugriff über Long-Press-Geste
+- Optionaler Secret-PIN-Schutz (4–8 Ziffern)
+- 1:1- und Gruppenchat-Strukturen
+- Freundesuche über 5-stellige Chat-ID
+- Medienversand (Bilder) mit Vollbildanzeige
+- Sprachmemos (Audio-Nachrichten)
+- Antwort-/Bearbeiten-/Löschen-Funktionen im Chat
+- Medien-Galerie mit Bildübersicht
+- Privacy-Funktionen wie Panic-/Auto-Panic-Modi
+
+### 6) Profile & Benutzerkonto
+
+- Registrierung, Login, Logout
+- Profilname/Display Name
+- Freundescode/Chat-ID
+- Passwort-Reset
+- Web-Push-Token im Profil gespeichert
+- **Profilbild hochladen, anzeigen und entfernen**
+  - Upload inkl. Komprimierung/Cropping
+  - Entfernen löscht alle Avatar-Felder (`avatarBase64`, `avatarThumbBase64`, `avatarFullBase64`)
+
+### 7) Push, PWA & Offline-Verhalten
+
+- Installierbare PWA
+- Service Worker mit Push-Handling
+- FCM-Vordergrund-/Hintergrundnachrichten
+- Dedupe gegen doppelte Benachrichtigungen
+- Test-Mechanismus für Push im Backend
+- Serverseitige Termin-Reminder per Scheduler-Funktion
 
 ## Technologie-Stack
 
 - **Frontend:** React 18 + Vite
-- **Styling:** CSS + Tailwind/PostCSS Tooling
-- **Backend-Dienste:** Firebase (Auth, Firestore, Cloud Messaging)
-- **Push / Backend-Logik:** Firebase Cloud Functions (Node.js 20)
-- **PWA:** Service Worker + Manifest
+- **Styling:** CSS, Tailwind, PostCSS
+- **Backend:** Firebase (Auth, Firestore, Messaging)
+- **Serverlogik:** Firebase Cloud Functions (Node.js 20)
+- **PWA:** Manifest + Service Worker
 
 ## Projektstruktur
 
 ```text
 .
-├─ App.jsx                        # Hauptanwendung (UI + Logik)
-├─ main.jsx                       # React-Einstiegspunkt
-├─ firebase-messaging-sw.js       # Service Worker für Push/PWA
-├─ index.html                     # App-Shell
-├─ package.json                   # Frontend-Skripte und Dependencies
+├─ src/
+│  ├─ App.jsx
+│  ├─ main.jsx
+│  └─ styles.css
 ├─ functions/
-│  ├─ index.js                    # Firebase Cloud Function(s)
-│  └─ package.json                # Functions Abhängigkeiten/Skripte
-├─ FIRESTORE_RULES_SHARING.txt    # Beispielregeln für Public Sharing
-└─ FIRESTORE_RULES_EVENT_THREADS.txt # Beispielregeln für Event Threads/Polls
+│  ├─ index.js
+│  ├─ package.json
+│  └─ .eslintrc.js
+├─ firestore.rules
+├─ firebase-messaging-sw.js
+├─ package.json
+├─ vite.config.js
+└─ README.md
 ```
 
 ## Voraussetzungen
 
-- **Node.js 20+** (empfohlen, passend zu Functions Engine)
-- **npm 9+**
-- Optional für Deployment: **Firebase CLI**
+- Node.js **20+** (empfohlen)
+- npm **9+**
+- Firebase CLI (für Deploys)
 
-## Installation & lokaler Start
+## Lokale Entwicklung
 
-### Extras
-- Smart Day
-- Stempeluhr
-- Fokusmodus
-- Wochenübersicht
-- Freie Zeitfenster
-- Tagesziele
-- Soll-/Ist-Stunden
-- Schnellnotizen
-- Wetter-Planer
-- Karten in Extras per Drag & Drop sortierbar
+```bash
+npm install
+npm run dev
+```
 
-### Benachrichtigungen / PWA
-- überarbeiteter `firebase-messaging-sw.js`
-- **Raw Push Fallback** zusätzlich zu Firebase `onBackgroundMessage`
-- Dedupe-System gegen doppelte Notifications
-- neues `badge-icon.png` für Android-Badge / Statusleisten-Symbol
-- `requireInteraction` für wichtige Erinnerungen
-- Notification Actions: **Öffnen** und **OK**
-- periodisches FCM-Token-Refresh in `App.jsx`
-- Service-Worker-Update-Check mit `SKIP_WAITING`
-- Manifest um monochromes Badge-Icon ergänzt
+App lokal starten und im Browser öffnen (Vite-Ausgabe beachten, meist `http://localhost:5173`).
 
-- Secret Chat: Medien-Galerie mit allen Bildern als Miniaturen, Vollbild-Viewer und echtem Gesamt-Nachrichtenzähler pro Chat.
-- Voice-Nachrichten: Recorder mit stabileren Audio-Parametern (Opus/WebM bevorzugt, 1 Kanal, Echo-/Noise-Suppression) gegen stotternde Aufnahmen.
+## Build & Preview
 
-### GitHub Pages CI Hinweis
-- Falls der Deploy-Job mit `Unable to resolve action actions/deploy-pages@v5` fehlschlägt, verwende in `.github/workflows/Page.yml` die gültige Version `actions/deploy-pages@v4`.
+```bash
+npm run build
+npm run preview
+```
 
+## Firebase Setup
 
-## Push-Reminder: Cloud Console / Firebase Setup (wichtig)
+1. Firebase-Projekt erstellen/verwenden.
+2. Authentifizierung aktivieren (E-Mail/Passwort).
+3. Firestore aktivieren.
+4. Cloud Messaging (Web Push) konfigurieren.
+5. Firestore Rules aus `firestore.rules` deployen:
 
-Wenn Reminder nur beim Öffnen der App erscheinen, liegt es häufig **nicht** an Berechtigungen am Handy, sondern daran, dass der Server-Reminder-Job nicht aktiv ist.
+```bash
+firebase deploy --only firestore:rules
+```
 
-Checkliste:
+## Cloud Functions
 
-1. Firebase-Projekt auf **Blaze Plan** (Cloud Scheduler benötigt Abrechnung).
-2. Deploy der Functions ausführen:
-   - `cd functions && npm i`
-   - `firebase deploy --only functions`
-3. In Google Cloud Console prüfen:
-   - API `Cloud Scheduler` aktiviert
-   - API `Cloud Functions` aktiviert
-   - API `Cloud Build` aktiviert
-4. In Firebase Console > Functions muss `sendDueEventReminders` sichtbar sein.
-5. In Cloud Scheduler muss ein Job für diese Function existieren (Intervall: 1 Minute).
-6. Web Push Token muss im Profil vorhanden sein (`fcmTokenWeb` oder `fcmToken`).
+Im Ordner `functions/`:
 
-Hinweis: Die Reminder-Berechnung läuft in der Function jetzt explizit in `Europe/Zurich` Zeitzone.
+```bash
+npm install
+firebase deploy --only functions
+```
 
+Wichtige Funktionen:
+
+- `sendPushTestOnCreate`: sendet einen Server-Test-Push bei neuen `pushTests`-Dokumenten.
+- `sendDueEventReminders`: geplanter Job (jede Minute), der fällige Terminerinnerungen versendet.
+
+## Firestore Sicherheitsregeln
+
+`firestore.rules` deckt u. a. ab:
+
+- Profile nur durch eigenen User schreibbar
+- Kalender lesbar für Owner oder freigegebene Nutzer
+- Kalender schreibbar nur mit Owner-/write-Recht
+- Event-Kommentare mit Sender-/Owner-Regeln
+- Chats nur für Teilnehmer
+- `friendCodes` als immutable Registry
+- Public Shares mit Ablauf-/Widerrufslogik
+
+## Datenmodell (vereinfacht)
+
+```text
+artifacts/{appId}/
+  users/{uid}/events/{eventId}
+  users/{uid}/auditLogs/{logId}
+  public/data/profiles/{uid}
+  public/data/friendCodes/{code}
+  public/data/calendars/{calId}
+    events/{eventId}
+    auditLogs/{logId}
+  public/data/chats/{chatId}
+    messages/{msgId}
+  public/data/shares/{token}
+  public/data/pushTests/{id}
+```
+
+## Konfiguration
+
+- Firebase Web-Konfig ist im Frontend hinterlegt (kann über `__firebase_config` überschrieben werden).
+- `APP_ID` ist per Runtime (`__app_id`) überschreibbar.
+- VAPID Key kann über `VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY` gesetzt werden.
+
+## Deployment
+
+Typische Optionen:
+
+- Firebase Hosting
+- GitHub Pages (Vite-Build als statische Seite)
+
+Bei GitHub Actions auf korrekte Action-Versionen achten (z. B. `actions/deploy-pages@v4`).
+
+## Troubleshooting
+
+### Profilbild kann nicht gelöscht werden
+
+- Das Entfernen löscht drei Felder im Profil: `avatarBase64`, `avatarThumbBase64`, `avatarFullBase64`.
+- Wenn der Entfernen-Button deaktiviert wirkt, obwohl ein Bild sichtbar ist, liegt es oft an uneinheitlichen Alt-/Legacy-Datenfeldern.
+- Der aktuelle Stand berücksichtigt alle Avatar-Felder bei der Verfügbarkeitsprüfung des Entfernen-Buttons.
+
+### Push kommt nur beim Öffnen der App
+
+- Prüfen, ob Functions deployed sind.
+- Prüfen, ob Cloud Scheduler aktiv ist.
+- Prüfen, ob ein gültiger FCM-Token im Profil steht.
+
+### Login-/Auth-Probleme nach Projektwechsel
+
+Die App enthält einen Auth-Hardening-Mechanismus, der bei ungültigem Firebase-Cache lokale Auth-Daten bereinigt.
+
+## Bekannte Grenzen
+
+- Kein vollständiges Backend-RBAC außerhalb Firestore Rules.
+- Push hängt von Browser-/OS-Einschränkungen ab.
+- Einige Features benötigen stabile Echtzeitverbindung (Firestore).

@@ -456,6 +456,7 @@ function AmoledCalendarApp() {
       const [searchResults, setSearchResults] = useState([]);
       const activeShoppingList = shoppingLists.find((row) => row.id === activeShoppingListId) || shoppingLists[0] || null;
       const pinnedShoppingList = (Array.isArray(shoppingLists) ? shoppingLists : []).find((row) => row.id === userProfile?.pinnedShoppingListId) || null;
+      const hasUserAvatar = !!(userProfile?.avatarBase64 || userProfile?.avatarThumbBase64 || userProfile?.avatarFullBase64);
 
       // --- BILD-VOLLBILD VIEWER ---
       const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
@@ -8878,9 +8879,9 @@ setSelfDestruct(false);
                       <button
                         type="button"
                         onClick={removeAvatar}
-                        disabled={!userProfile?.avatarBase64}
+                        disabled={!hasUserAvatar}
                         title="Profilbild entfernen"
-                        className={`px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${userProfile?.avatarBase64 ? 'border-red-500 text-red-200 bg-red-950/40 hover:bg-red-900/50' : 'border-neutral-800 text-neutral-500 bg-neutral-950 cursor-not-allowed'}`}
+                        className={`px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${hasUserAvatar ? 'border-red-500 text-red-200 bg-red-950/40 hover:bg-red-900/50' : 'border-neutral-800 text-neutral-500 bg-neutral-950 cursor-not-allowed'}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -8961,7 +8962,7 @@ setSelfDestruct(false);
                     <div className="flex-1 overflow-y-auto p-6 max-w-2xl w-full mx-auto space-y-8">
                       <div className="flex flex-col items-center border border-neutral-800 rounded-xl p-8 bg-neutral-950/50">
                         <div className="relative mb-6">
-                          {userProfile?.avatarBase64 ? (
+                          {hasUserAvatar ? (
                             <img
                               src={userProfile?.avatarThumbBase64 || userProfile?.avatarBase64}
                               className="w-32 h-32 rounded-full border-2 border-neutral-700 object-cover cursor-zoom-in"
@@ -8974,10 +8975,10 @@ setSelfDestruct(false);
                           <button
                             type="button"
                             onClick={removeAvatar}
-                            disabled={!userProfile?.avatarBase64}
+                            disabled={!hasUserAvatar}
                             title="Profilbild entfernen"
                             aria-label="Profilbild entfernen"
-                            className={`absolute -left-2 bottom-0 p-2.5 rounded-full shadow-lg transition-colors border-2 ${userProfile?.avatarBase64 ? 'bg-red-600 text-white hover:bg-red-500 border-red-300' : 'bg-red-600/45 text-white/80 border-red-300/70 cursor-not-allowed'}`}
+                            className={`absolute -left-2 bottom-0 p-2.5 rounded-full shadow-lg transition-colors border-2 ${hasUserAvatar ? 'bg-red-600 text-white hover:bg-red-500 border-red-300' : 'bg-red-600/45 text-white/80 border-red-300/70 cursor-not-allowed'}`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -8989,8 +8990,8 @@ setSelfDestruct(false);
                         <button
                           type="button"
                           onClick={removeAvatar}
-                          disabled={!userProfile?.avatarBase64}
-                          className={`w-full max-w-xs mb-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${userProfile?.avatarBase64 ? 'border-red-500 text-red-200 bg-red-950/40 hover:bg-red-900/50' : 'border-neutral-700 text-neutral-500 bg-neutral-900 cursor-not-allowed'}`}
+                          disabled={!hasUserAvatar}
+                          className={`w-full max-w-xs mb-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${hasUserAvatar ? 'border-red-500 text-red-200 bg-red-950/40 hover:bg-red-900/50' : 'border-neutral-700 text-neutral-500 bg-neutral-900 cursor-not-allowed'}`}
                         >
                           Profilbild entfernen
                         </button>

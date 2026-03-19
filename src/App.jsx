@@ -2067,6 +2067,30 @@ const handleTouchEnd = () => {
         return true;
       };
 
+      const isViewOnceImageMessage = (msg) => !!(msg && msg.image && msg.selfDestruct);
+      const hasViewOnceImageBeenConsumed = (msg) => !!(msg && msg.viewOnceConsumedAt);
+      const canOpenViewOnceImage = (msg) => {
+        if (!isViewOnceImageMessage(msg)) return false;
+        if (msg.senderId === user?.uid) return false;
+        return !hasViewOnceImageBeenConsumed(msg);
+      };
+
+      const openChatImageMessage = async (msg) => {
+        if (!msg?.image) return;
+        openImageViewer(msg.image);
+        if (!canOpenViewOnceImage(msg) || !activeChatId) return;
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msg.id), {
+            image: null,
+            viewOnceConsumedAt: Date.now(),
+            viewOnceConsumedBy: user?.uid || null,
+          });
+          showToast('1x-Bild geöffnet');
+        } catch (error) {
+          console.warn('view-once image consume failed', error);
+        }
+      };
+
       const escapeRegExp = (s) => String(s || '').replace(/[.*+^${}()|[\]\\]/g, '\\$&');
 
       function renderHighlightedText(text, query, opts = {}) {
@@ -2790,7 +2814,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             if (cancelled) return;
             const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             const media = all
-              .filter(m => m && !m.deleted && !!m.image)
+              .filter(m => m && !m.deleted && !!m.image && !isViewOnceImageMessage(m))
               .map(m => ({
                 id: m.id,
                 src: m.image,
@@ -9392,13 +9416,33 @@ setSelfDestruct(false);
                                     );
                                   })()
                                 )}
-{!msg.deleted && msg.image && (
-                                  <img
-                                    src={msg.image}
-                                    alt="Upload"
-                                    className="rounded-lg mb-2 max-h-64 object-contain cursor-zoom-in"
-                                    onClick={(e) => { e.stopPropagation(); openImageViewer(msg.image); }}
-                                  />
+                                {!msg.deleted && msg.image && (
+                                  <button
+                                    type="button"
+                                    className="relative block mb-2 rounded-lg overflow-hidden"
+                                    onClick={(e) => { e.stopPropagation(); openChatImageMessage(msg); }}
+                                  >
+                                    <img
+                                      src={msg.image}
+                                      alt="Upload"
+                                      className={`rounded-lg max-h-64 object-contain transition-all ${canOpenViewOnceImage(msg) ? 'blur-xl scale-[1.03] brightness-75' : 'cursor-zoom-in'}`}
+                                    />
+                                    {isViewOnceImageMessage(msg) && (
+                                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/25 text-white px-4 text-center">
+                                        <div className="px-3 py-1 rounded-full border border-white/30 bg-black/45 text-[11px] font-semibold uppercase tracking-[0.2em]">
+                                          1x Ansicht
+                                        </div>
+                                        <div className="text-xs text-white/90">
+                                          {canOpenViewOnceImage(msg) ? 'Tippen zum einmaligen Öffnen' : 'Dieses Bild ist nur einmal sichtbar'}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </button>
+                                )}
+                                {!msg.deleted && !msg.image && msg.selfDestruct && msg.viewOnceConsumedAt && (
+                                  <div className={`mb-2 rounded-xl border px-3 py-3 text-xs ${isMe ? 'bg-black/10 border-black/20 text-black/70' : 'bg-black/40 border-neutral-700 text-neutral-300'}`}>
+                                    1x-Bild bereits geöffnet{msg.viewOnceConsumedBy === user?.uid ? ' von dir' : ''}.
+                                  </div>
                                 )}
                                 {!msg.deleted && msg.audio && <AudioMessageBubble src={msg.audio} msgId={msg.id} isMe={isMe} />}
                                 

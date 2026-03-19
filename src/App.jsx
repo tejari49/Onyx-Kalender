@@ -1087,42 +1087,51 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
     };
 
     if (!existing || !normalizeFriendCode(existing.friendCode)) {
-      let claimed = '';
+      const localFriendCode = normalizeFriendCode((() => {
+        try { return localStorage.getItem(`onyx_friendCode_${authUser.uid}`) || ''; } catch (_) { return ''; }
+      })());
+      const buildDeterministicCandidate = (attempt = 0) => {
+        const seed = `${authUser.uid || 'user'}:${attempt}`;
+        return String(stableHash(seed) % 100000).padStart(5, '0');
+      };
+      let claimed = localFriendCode || '';
       for (let i = 0; i < 25 && !claimed; i++) {
-        const candidate = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+        const candidate = buildDeterministicCandidate(i);
         const codeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendCodes', candidate);
         try {
           await runTransaction(db, async (tx) => {
             const ds = await tx.get(codeRef);
-            if (ds.exists()) throw new Error('CODE_TAKEN');
+            if (ds.exists()) {
+              const data = ds.data() || {};
+              if (data.uid !== authUser.uid) throw new Error('CODE_TAKEN');
+              claimed = candidate;
+              return;
+            }
             tx.set(codeRef, { uid: authUser.uid, createdAt: Date.now() });
+            claimed = candidate;
           });
-          claimed = candidate;
         } catch (e) {
           const code = String(e.code || '');
           const msg = String(e.message || '');
-          // Wenn friendCodes wegen Rules nicht erlaubt ist, fallback auf random ohne Reservierung
+          // Wenn friendCodes wegen Rules nicht erlaubt ist, fallback auf deterministische Prüfung im Profilbestand
           if (code === 'permission-denied' || msg.toLowerCase().includes('permission')) {
-            // friendCodes-Registry nicht erlaubt -> uniqueness best-effort über profiles Query
             try {
               const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
               const q2 = query(profilesCol, where('friendCode', '==', candidate), limit(1));
               const s2 = await getDocs(q2);
-              if (s2.empty) {
+              if (s2.empty || s2.docs[0]?.id === authUser.uid) {
                 claimed = candidate;
                 break;
               }
-              // sonst weiter versuchen
             } catch (_) {
-              // im Zweifel trotzdem setzen
               claimed = candidate;
               break;
             }
           }
-          // sonst: erneut versuchen
+          // sonst: nächsten deterministischen Kandidaten probieren
         }
       }
-      if (!claimed) claimed = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+      if (!claimed) claimed = buildDeterministicCandidate(99);
       next.friendCode = claimed;
       next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
     } else {

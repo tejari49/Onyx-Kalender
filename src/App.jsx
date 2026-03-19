@@ -198,6 +198,20 @@ import React, { useState, useEffect, useRef } from 'react';
       return (h >>> 0);
     };
 
+    const normalizeFriendCodeValue = (value) => {
+      const s = String(value ?? '').trim();
+      if (/^\d{5}$/.test(s)) return s;
+      if (/^\d+$/.test(s)) {
+        try { return String(parseInt(s, 10)).padStart(5, '0'); } catch (_) { return ''; }
+      }
+      return '';
+    };
+
+    const deterministicFriendCodeForUid = (uid, attempt = 0) => {
+      const seed = `${String(uid || 'user')}:${attempt}`;
+      return String(stableHash(seed) % 100000).padStart(5, '0');
+    };
+
     const _bufToHex = (buffer) => {
       const bytes = new Uint8Array(buffer);
       let out = '';
@@ -1079,26 +1093,13 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
     }
 
     // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt (bombensicher, ohne Full-Scan)
-    const normalizeFriendCode = (v) => {
-      const s = String(v ?? '').trim();
-      if (/^\d{5}$/.test(s)) return s;
-      if (/^\d+$/.test(s)) {
-        try { return String(parseInt(s, 10)).padStart(5, '0'); } catch(e) { return ''; }
-      }
-      return '';
-    };
-
-    if (!existing || !normalizeFriendCode(existing.friendCode)) {
-      const localFriendCode = normalizeFriendCode((() => {
+    if (!existing || !normalizeFriendCodeValue(existing.friendCode)) {
+      const localFriendCode = normalizeFriendCodeValue((() => {
         try { return localStorage.getItem(`onyx_friendCode_${authUser.uid}`) || ''; } catch (_) { return ''; }
       })());
-      const buildDeterministicCandidate = (attempt = 0) => {
-        const seed = `${authUser.uid || 'user'}:${attempt}`;
-        return String(stableHash(seed) % 100000).padStart(5, '0');
-      };
       let claimed = localFriendCode || '';
       for (let i = 0; i < 25 && !claimed; i++) {
-        const candidate = buildDeterministicCandidate(i);
+        const candidate = deterministicFriendCodeForUid(authUser.uid, i);
         const codeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendCodes', candidate);
         try {
           await runTransaction(db, async (tx) => {
@@ -1133,11 +1134,11 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
           // sonst: nächsten deterministischen Kandidaten probieren
         }
       }
-      if (!claimed) claimed = buildDeterministicCandidate(99);
+      if (!claimed) claimed = localFriendCode || deterministicFriendCodeForUid(authUser.uid, 0);
       next.friendCode = claimed;
       next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
     } else {
-      next.friendCode = normalizeFriendCode(existing.friendCode);
+      next.friendCode = normalizeFriendCodeValue(existing.friendCode);
     }
 
 
@@ -2424,6 +2425,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             try {
               const localAlias = String(localStorage.getItem(`onyx_username_${user?.uid}`) || '').trim();
               const localDisplayName = String(localStorage.getItem(`onyx_displayName_${user?.uid}`) || '').trim();
+              const localFriendCode = normalizeFriendCodeValue(localStorage.getItem(`onyx_friendCode_${user?.uid}`) || deterministicFriendCodeForUid(user?.uid, 0));
               const prevAlias = String(prev.username || '').trim();
               const incomingAlias = String(incoming.username || '').trim();
               const prevUpdatedAt = Number(prev.updatedAt || 0);
@@ -2445,9 +2447,14 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
                 merged.displayName = localDisplayName;
               }
 
+              if (!normalizeFriendCodeValue(merged.friendCode) && localFriendCode) {
+                merged.friendCode = localFriendCode;
+              }
+
               try {
                 if (merged.username) localStorage.setItem(`onyx_username_${user?.uid}`, String(merged.username));
                 if (merged.displayName) localStorage.setItem(`onyx_displayName_${user?.uid}`, String(merged.displayName));
+                if (merged.friendCode) localStorage.setItem(`onyx_friendCode_${user?.uid}`, String(merged.friendCode));
               } catch (_) {}
               try {
                 const localClockRaw = localStorage.getItem(`onyx_work_clock_active_${user?.uid}`);
@@ -2464,6 +2471,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
               return incoming;
             }
           });
+          try {
+            const incomingFriendCode = normalizeFriendCodeValue(incoming.friendCode);
+            const fallbackFriendCode = normalizeFriendCodeValue(localStorage.getItem(`onyx_friendCode_${user?.uid}`) || deterministicFriendCodeForUid(user?.uid, 0));
+            if (!incomingFriendCode && fallbackFriendCode) {
+              setDoc(profileRef, { friendCode: fallbackFriendCode, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+            }
+          } catch (_) {}
         });
 
         const allProfilesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');

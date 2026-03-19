@@ -9,6 +9,7 @@ import React, { useState, useEffect, useRef } from 'react';
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
     import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment, deleteField } from "firebase/firestore";
     import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
+    import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
     import heic2any from 'heic2any';
 
     const customFirebaseConfig = {
@@ -30,6 +31,7 @@ import React, { useState, useEffect, useRef } from 'react';
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
 
 	    const DEFAULT_EXTRAS_ORDER = ['workclock','goals','sollist','notes','weather'];
 	    const APP_VIEWS = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
@@ -194,6 +196,20 @@ import React, { useState, useEffect, useRef } from 'react';
         h = Math.imul(h, 16777619);
       }
       return (h >>> 0);
+    };
+
+    const normalizeFriendCodeValue = (value) => {
+      const s = String(value ?? '').trim();
+      if (/^\d{5}$/.test(s)) return s;
+      if (/^\d+$/.test(s)) {
+        try { return String(parseInt(s, 10)).padStart(5, '0'); } catch (_) { return ''; }
+      }
+      return '';
+    };
+
+    const deterministicFriendCodeForUid = (uid, attempt = 0) => {
+      const seed = `${String(uid || 'user')}:${attempt}`;
+      return String(stableHash(seed) % 100000).padStart(5, '0');
     };
 
     const _bufToHex = (buffer) => {
@@ -1077,26 +1093,13 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
     }
 
     // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt (bombensicher, ohne Full-Scan)
-    const normalizeFriendCode = (v) => {
-      const s = String(v ?? '').trim();
-      if (/^\d{5}$/.test(s)) return s;
-      if (/^\d+$/.test(s)) {
-        try { return String(parseInt(s, 10)).padStart(5, '0'); } catch(e) { return ''; }
-      }
-      return '';
-    };
-
-    if (!existing || !normalizeFriendCode(existing.friendCode)) {
-      const localFriendCode = normalizeFriendCode((() => {
+    if (!existing || !normalizeFriendCodeValue(existing.friendCode)) {
+      const localFriendCode = normalizeFriendCodeValue((() => {
         try { return localStorage.getItem(`onyx_friendCode_${authUser.uid}`) || ''; } catch (_) { return ''; }
       })());
-      const buildDeterministicCandidate = (attempt = 0) => {
-        const seed = `${authUser.uid || 'user'}:${attempt}`;
-        return String(stableHash(seed) % 100000).padStart(5, '0');
-      };
       let claimed = localFriendCode || '';
       for (let i = 0; i < 25 && !claimed; i++) {
-        const candidate = buildDeterministicCandidate(i);
+        const candidate = deterministicFriendCodeForUid(authUser.uid, i);
         const codeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendCodes', candidate);
         try {
           await runTransaction(db, async (tx) => {
@@ -1131,11 +1134,11 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
           // sonst: nächsten deterministischen Kandidaten probieren
         }
       }
-      if (!claimed) claimed = buildDeterministicCandidate(99);
+      if (!claimed) claimed = localFriendCode || deterministicFriendCodeForUid(authUser.uid, 0);
       next.friendCode = claimed;
       next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
     } else {
-      next.friendCode = normalizeFriendCode(existing.friendCode);
+      next.friendCode = normalizeFriendCodeValue(existing.friendCode);
     }
 
 
@@ -2082,9 +2085,13 @@ const handleTouchEnd = () => {
         try {
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msg.id), {
             image: null,
+            imageStoragePath: null,
             viewOnceConsumedAt: Date.now(),
             viewOnceConsumedBy: user?.uid || null,
           });
+          if (msg.imageStoragePath) {
+            deleteObject(storageRef(storage, msg.imageStoragePath)).catch(() => {});
+          }
           showToast('1x-Bild geöffnet');
         } catch (error) {
           console.warn('view-once image consume failed', error);
@@ -2418,6 +2425,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             try {
               const localAlias = String(localStorage.getItem(`onyx_username_${user?.uid}`) || '').trim();
               const localDisplayName = String(localStorage.getItem(`onyx_displayName_${user?.uid}`) || '').trim();
+              const localFriendCode = normalizeFriendCodeValue(localStorage.getItem(`onyx_friendCode_${user?.uid}`) || deterministicFriendCodeForUid(user?.uid, 0));
               const prevAlias = String(prev.username || '').trim();
               const incomingAlias = String(incoming.username || '').trim();
               const prevUpdatedAt = Number(prev.updatedAt || 0);
@@ -2439,9 +2447,14 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
                 merged.displayName = localDisplayName;
               }
 
+              if (!normalizeFriendCodeValue(merged.friendCode) && localFriendCode) {
+                merged.friendCode = localFriendCode;
+              }
+
               try {
                 if (merged.username) localStorage.setItem(`onyx_username_${user?.uid}`, String(merged.username));
                 if (merged.displayName) localStorage.setItem(`onyx_displayName_${user?.uid}`, String(merged.displayName));
+                if (merged.friendCode) localStorage.setItem(`onyx_friendCode_${user?.uid}`, String(merged.friendCode));
               } catch (_) {}
               try {
                 const localClockRaw = localStorage.getItem(`onyx_work_clock_active_${user?.uid}`);
@@ -2458,6 +2471,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
               return incoming;
             }
           });
+          try {
+            const incomingFriendCode = normalizeFriendCodeValue(incoming.friendCode);
+            const fallbackFriendCode = normalizeFriendCodeValue(localStorage.getItem(`onyx_friendCode_${user?.uid}`) || deterministicFriendCodeForUid(user?.uid, 0));
+            if (!incomingFriendCode && fallbackFriendCode) {
+              setDoc(profileRef, { friendCode: fallbackFriendCode, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+            }
+          } catch (_) {}
         });
 
         const allProfilesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
@@ -5775,6 +5795,24 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         } catch (e) { reject(e); }
       });
 
+      const dataUrlToBlob = async (dataUrl) => {
+        const src = String(dataUrl || '');
+        if (!src.startsWith('data:')) throw new Error('INVALID_DATA_URL');
+        const res = await fetch(src);
+        return await res.blob();
+      };
+
+      const canvasToBlob = (canvas, type = 'image/jpeg', quality = 0.82) => new Promise((resolve, reject) => {
+        try {
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error('CANVAS_BLOB_ERROR'));
+          }, type, quality);
+        } catch (error) {
+          reject(error);
+        }
+      });
+
       const looksLikeHeic = (file) => {
         try {
           const name = String(file.name || '').toLowerCase();
@@ -5886,6 +5924,72 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         } finally {
           try { decoded.cleanup && decoded.cleanup(); } catch (_) {}
         }
+      };
+
+      const compressImageFileToBlob = async (file, { maxDim = 1600, quality = 0.72 } = {}) => {
+        const decoded = await decodeImageFromBlob(file);
+        try {
+          const w = decoded.w || 0;
+          const h = decoded.h || 0;
+          if (!w || !h) throw new Error('BAD_DIMENSIONS');
+
+          const scale = Math.min(1, maxDim / Math.max(w, h));
+          const nw = Math.max(1, Math.round(w * scale));
+          const nh = Math.max(1, Math.round(h * scale));
+
+          const canvas = document.createElement('canvas');
+          canvas.width = nw;
+          canvas.height = nh;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(decoded.obj, 0, 0, nw, nh);
+
+          try {
+            return await canvasToBlob(canvas, 'image/webp', quality);
+          } catch (_) {
+            return await canvasToBlob(canvas, 'image/jpeg', quality);
+          }
+        } finally {
+          try { decoded.cleanup && decoded.cleanup(); } catch (_) {}
+        }
+      };
+
+      const extFromMime = (mime, fallback = 'bin') => {
+        const type = String(mime || '').toLowerCase();
+        if (type.includes('webp')) return 'webp';
+        if (type.includes('jpeg') || type.includes('jpg')) return 'jpg';
+        if (type.includes('png')) return 'png';
+        if (type.includes('gif')) return 'gif';
+        if (type.includes('ogg')) return 'ogg';
+        if (type.includes('mpeg')) return 'mp3';
+        if (type.includes('mp4')) return 'm4a';
+        if (type.includes('aac')) return 'aac';
+        if (type.includes('wav')) return 'wav';
+        if (type.includes('webm')) return 'webm';
+        return fallback;
+      };
+
+      const uploadChatMediaToStorage = async (input, kind = 'image') => {
+        if (!input || !user?.uid) return { url: null, path: null, contentType: '' };
+        let blob = null;
+        if (input instanceof Blob) {
+          blob = input;
+        } else if (typeof input === 'string') {
+          if (/^https?:\/\//i.test(input)) return { url: input, path: null, contentType: '' };
+          if (input.startsWith('data:')) blob = await dataUrlToBlob(input);
+        } else if (input && typeof input === 'object' && input.blob instanceof Blob) {
+          blob = input.blob;
+        }
+        if (!blob) throw new Error(`UNSUPPORTED_${kind.toUpperCase()}_INPUT`);
+
+        const contentType = String(blob.type || (kind === 'audio' ? 'audio/webm' : 'image/jpeg'));
+        const ext = extFromMime(contentType, kind === 'audio' ? 'webm' : 'jpg');
+        const chatKey = String(activeChatId || 'pending');
+        const fileKey = `${Date.now()}_${randomToken(8)}`;
+        const path = `chatMedia/${APP_ID}/${user.uid}/${chatKey}/${kind}_${fileKey}.${ext}`;
+        const fileRef = storageRef(storage, path);
+        await uploadBytes(fileRef, blob, { contentType });
+        const url = await getDownloadURL(fileRef);
+        return { url, path, contentType };
       };
 
       const compressAvatarFileToDataUrl = async (file, { size = 256, quality = 0.82 } = {}) => {
@@ -6319,7 +6423,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         return () => window.removeEventListener('online', tryFlush);
       }, [user?.uid, activeChatId]);
 
-      const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null) => {
+      const sendMessage = async (e, imageInput = null, audioInput = null, eventDetails = null) => {
         if (e) e.preventDefault();
 
         if (!activeChatId || !user) return;
@@ -6345,7 +6449,18 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
 
         const textVal = (newMessageText || '').trim();
-        if (!textVal && !imageBase64 && !audioBase64 && !eventDetails) return;
+        if (!textVal && !imageInput && !audioInput && !eventDetails) return;
+
+        let uploadedImage = { url: null, path: null, contentType: '' };
+        let uploadedAudio = { url: null, path: null, contentType: '' };
+        try {
+          if (imageInput) uploadedImage = await uploadChatMediaToStorage(imageInput, 'image');
+          if (audioInput) uploadedAudio = await uploadChatMediaToStorage(audioInput, 'audio');
+        } catch (mediaError) {
+          console.error('chat media upload failed', mediaError);
+          showToast('Upload zu Firebase Storage fehlgeschlagen');
+          return;
+        }
 
         const replyTo = replyToMessage ? {
           id: replyToMessage.id,
@@ -6358,8 +6473,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           clientMsgId,
           senderId: user?.uid,
           text: textVal,
-          image: imageBase64,
-          audio: audioBase64,
+          image: uploadedImage.url,
+          imageStoragePath: uploadedImage.path,
+          audio: uploadedAudio.url,
+          audioStoragePath: uploadedAudio.path,
           event: eventDetails,
           replyTo: replyTo,
           selfDestruct: !!selfDestruct,
@@ -6391,7 +6508,7 @@ setSelfDestruct(false);
             updatedAt: Date.now(),
             lastMessageSenderId: user?.uid,
             messageCount: increment(1),
-            mediaCount: imageBase64 ? increment(1) : increment(0),
+            mediaCount: uploadedImage.url ? increment(1) : increment(0),
             [`typing.${user?.uid}`]: false,
             [`typingAt.${user?.uid}`]: Date.now()
           });
@@ -6424,6 +6541,9 @@ setSelfDestruct(false);
       const deleteMessage = async (msgId) => {
         if (!activeChat || !user) return;
         try {
+          const msg = (chatMessages || []).find((entry) => entry && entry.id === msgId) || null;
+          if (msg?.imageStoragePath) deleteObject(storageRef(storage, msg.imageStoragePath)).catch(() => {});
+          if (msg?.audioStoragePath) deleteObject(storageRef(storage, msg.audioStoragePath)).catch(() => {});
           // Soft-delete: keep message visible with a "gelöscht" hint instead of removing it.
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), {
             deleted: true,
@@ -6431,7 +6551,9 @@ setSelfDestruct(false);
             deletedBy: user?.uid,
             text: '',
             image: null,
+            imageStoragePath: null,
             audio: null,
+            audioStoragePath: null,
             event: null
           });
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
@@ -6455,7 +6577,7 @@ setSelfDestruct(false);
 
         try {
           const file = await ensureJpegBlobIfHeic(file0);
-          const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
+          const compressed = await compressImageFileToBlob(file, { maxDim: 1600, quality: 0.72 });
           await sendMessage(null, compressed);
         } catch (err) {
           console.warn('image compress/upload failed', err);

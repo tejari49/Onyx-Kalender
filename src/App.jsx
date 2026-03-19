@@ -1087,42 +1087,51 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
     };
 
     if (!existing || !normalizeFriendCode(existing.friendCode)) {
-      let claimed = '';
+      const localFriendCode = normalizeFriendCode((() => {
+        try { return localStorage.getItem(`onyx_friendCode_${authUser.uid}`) || ''; } catch (_) { return ''; }
+      })());
+      const buildDeterministicCandidate = (attempt = 0) => {
+        const seed = `${authUser.uid || 'user'}:${attempt}`;
+        return String(stableHash(seed) % 100000).padStart(5, '0');
+      };
+      let claimed = localFriendCode || '';
       for (let i = 0; i < 25 && !claimed; i++) {
-        const candidate = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+        const candidate = buildDeterministicCandidate(i);
         const codeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendCodes', candidate);
         try {
           await runTransaction(db, async (tx) => {
             const ds = await tx.get(codeRef);
-            if (ds.exists()) throw new Error('CODE_TAKEN');
+            if (ds.exists()) {
+              const data = ds.data() || {};
+              if (data.uid !== authUser.uid) throw new Error('CODE_TAKEN');
+              claimed = candidate;
+              return;
+            }
             tx.set(codeRef, { uid: authUser.uid, createdAt: Date.now() });
+            claimed = candidate;
           });
-          claimed = candidate;
         } catch (e) {
           const code = String(e.code || '');
           const msg = String(e.message || '');
-          // Wenn friendCodes wegen Rules nicht erlaubt ist, fallback auf random ohne Reservierung
+          // Wenn friendCodes wegen Rules nicht erlaubt ist, fallback auf deterministische Prüfung im Profilbestand
           if (code === 'permission-denied' || msg.toLowerCase().includes('permission')) {
-            // friendCodes-Registry nicht erlaubt -> uniqueness best-effort über profiles Query
             try {
               const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
               const q2 = query(profilesCol, where('friendCode', '==', candidate), limit(1));
               const s2 = await getDocs(q2);
-              if (s2.empty) {
+              if (s2.empty || s2.docs[0]?.id === authUser.uid) {
                 claimed = candidate;
                 break;
               }
-              // sonst weiter versuchen
             } catch (_) {
-              // im Zweifel trotzdem setzen
               claimed = candidate;
               break;
             }
           }
-          // sonst: erneut versuchen
+          // sonst: nächsten deterministischen Kandidaten probieren
         }
       }
-      if (!claimed) claimed = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+      if (!claimed) claimed = buildDeterministicCandidate(99);
       next.friendCode = claimed;
       next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
     } else {
@@ -2058,6 +2067,30 @@ const handleTouchEnd = () => {
         return true;
       };
 
+      const isViewOnceImageMessage = (msg) => !!(msg && msg.image && msg.selfDestruct);
+      const hasViewOnceImageBeenConsumed = (msg) => !!(msg && msg.viewOnceConsumedAt);
+      const canOpenViewOnceImage = (msg) => {
+        if (!isViewOnceImageMessage(msg)) return false;
+        if (msg.senderId === user?.uid) return false;
+        return !hasViewOnceImageBeenConsumed(msg);
+      };
+
+      const openChatImageMessage = async (msg) => {
+        if (!msg?.image) return;
+        openImageViewer(msg.image);
+        if (!canOpenViewOnceImage(msg) || !activeChatId) return;
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msg.id), {
+            image: null,
+            viewOnceConsumedAt: Date.now(),
+            viewOnceConsumedBy: user?.uid || null,
+          });
+          showToast('1x-Bild geöffnet');
+        } catch (error) {
+          console.warn('view-once image consume failed', error);
+        }
+      };
+
       const escapeRegExp = (s) => String(s || '').replace(/[.*+^${}()|[\]\\]/g, '\\$&');
 
       function renderHighlightedText(text, query, opts = {}) {
@@ -2781,7 +2814,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             if (cancelled) return;
             const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             const media = all
-              .filter(m => m && !m.deleted && !!m.image)
+              .filter(m => m && !m.deleted && !!m.image && !isViewOnceImageMessage(m))
               .map(m => ({
                 id: m.id,
                 src: m.image,
@@ -9383,13 +9416,33 @@ setSelfDestruct(false);
                                     );
                                   })()
                                 )}
-{!msg.deleted && msg.image && (
-                                  <img
-                                    src={msg.image}
-                                    alt="Upload"
-                                    className="rounded-lg mb-2 max-h-64 object-contain cursor-zoom-in"
-                                    onClick={(e) => { e.stopPropagation(); openImageViewer(msg.image); }}
-                                  />
+                                {!msg.deleted && msg.image && (
+                                  <button
+                                    type="button"
+                                    className="relative block mb-2 rounded-lg overflow-hidden"
+                                    onClick={(e) => { e.stopPropagation(); openChatImageMessage(msg); }}
+                                  >
+                                    <img
+                                      src={msg.image}
+                                      alt="Upload"
+                                      className={`rounded-lg max-h-64 object-contain transition-all ${canOpenViewOnceImage(msg) ? 'blur-xl scale-[1.03] brightness-75' : 'cursor-zoom-in'}`}
+                                    />
+                                    {isViewOnceImageMessage(msg) && (
+                                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/25 text-white px-4 text-center">
+                                        <div className="px-3 py-1 rounded-full border border-white/30 bg-black/45 text-[11px] font-semibold uppercase tracking-[0.2em]">
+                                          1x Ansicht
+                                        </div>
+                                        <div className="text-xs text-white/90">
+                                          {canOpenViewOnceImage(msg) ? 'Tippen zum einmaligen Öffnen' : 'Dieses Bild ist nur einmal sichtbar'}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </button>
+                                )}
+                                {!msg.deleted && !msg.image && msg.selfDestruct && msg.viewOnceConsumedAt && (
+                                  <div className={`mb-2 rounded-xl border px-3 py-3 text-xs ${isMe ? 'bg-black/10 border-black/20 text-black/70' : 'bg-black/40 border-neutral-700 text-neutral-300'}`}>
+                                    1x-Bild bereits geöffnet{msg.viewOnceConsumedBy === user?.uid ? ' von dir' : ''}.
+                                  </div>
                                 )}
                                 {!msg.deleted && msg.audio && <AudioMessageBubble src={msg.audio} msgId={msg.id} isMe={isMe} />}
                                 

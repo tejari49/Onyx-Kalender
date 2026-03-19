@@ -1093,7 +1093,11 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
     }
 
     // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt (bombensicher, ohne Full-Scan)
-    if (!existing || !normalizeFriendCodeValue(existing.friendCode)) {
+    const existingStableFriendCode = normalizeFriendCodeValue(existing?.friendCodeStable || existing?.friendCodePinned || '');
+    if (existingStableFriendCode) {
+      next.friendCode = existingStableFriendCode;
+      next.friendCodeStable = existingStableFriendCode;
+    } else if (!existing || !normalizeFriendCodeValue(existing.friendCode)) {
       const localFriendCode = normalizeFriendCodeValue((() => {
         try { return localStorage.getItem(`onyx_friendCode_${authUser.uid}`) || ''; } catch (_) { return ''; }
       })());
@@ -1136,9 +1140,11 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
       }
       if (!claimed) claimed = localFriendCode || deterministicFriendCodeForUid(authUser.uid, 0);
       next.friendCode = claimed;
+      next.friendCodeStable = claimed;
       next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
     } else {
       next.friendCode = normalizeFriendCodeValue(existing.friendCode);
+      next.friendCodeStable = next.friendCode;
     }
 
 
@@ -2447,8 +2453,15 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
                 merged.displayName = localDisplayName;
               }
 
+              const incomingStableFriendCode = normalizeFriendCodeValue(incoming.friendCodeStable || incoming.friendCodePinned || '');
+              if (!normalizeFriendCodeValue(merged.friendCode) && incomingStableFriendCode) {
+                merged.friendCode = incomingStableFriendCode;
+              }
               if (!normalizeFriendCodeValue(merged.friendCode) && localFriendCode) {
                 merged.friendCode = localFriendCode;
+              }
+              if (normalizeFriendCodeValue(merged.friendCode) && !normalizeFriendCodeValue(merged.friendCodeStable)) {
+                merged.friendCodeStable = normalizeFriendCodeValue(merged.friendCode);
               }
 
               try {
@@ -2473,9 +2486,14 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           });
           try {
             const incomingFriendCode = normalizeFriendCodeValue(incoming.friendCode);
+            const incomingStableFriendCode = normalizeFriendCodeValue(incoming.friendCodeStable || incoming.friendCodePinned || '');
             const fallbackFriendCode = normalizeFriendCodeValue(localStorage.getItem(`onyx_friendCode_${user?.uid}`) || deterministicFriendCodeForUid(user?.uid, 0));
-            if (!incomingFriendCode && fallbackFriendCode) {
-              setDoc(profileRef, { friendCode: fallbackFriendCode, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+            const patch = {};
+            if (!incomingFriendCode && fallbackFriendCode) patch.friendCode = fallbackFriendCode;
+            if (!incomingStableFriendCode && fallbackFriendCode) patch.friendCodeStable = fallbackFriendCode;
+            if (Object.keys(patch).length > 0) {
+              patch.updatedAt = Date.now();
+              setDoc(profileRef, patch, { merge: true }).catch(() => {});
             }
           } catch (_) {}
         });

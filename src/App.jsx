@@ -1092,59 +1092,20 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
       }
     }
 
-    // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt (bombensicher, ohne Full-Scan)
-    const existingStableFriendCode = normalizeFriendCodeValue(existing?.friendCodeStable || existing?.friendCodePinned || '');
-    if (existingStableFriendCode) {
-      next.friendCode = existingStableFriendCode;
-      next.friendCodeStable = existingStableFriendCode;
-    } else if (!existing || !normalizeFriendCodeValue(existing.friendCode)) {
-      const localFriendCode = normalizeFriendCodeValue((() => {
-        try { return localStorage.getItem(`onyx_friendCode_${authUser.uid}`) || ''; } catch (_) { return ''; }
-      })());
-      let claimed = localFriendCode || '';
-      for (let i = 0; i < 25 && !claimed; i++) {
-        const candidate = deterministicFriendCodeForUid(authUser.uid, i);
-        const codeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendCodes', candidate);
-        try {
-          await runTransaction(db, async (tx) => {
-            const ds = await tx.get(codeRef);
-            if (ds.exists()) {
-              const data = ds.data() || {};
-              if (data.uid !== authUser.uid) throw new Error('CODE_TAKEN');
-              claimed = candidate;
-              return;
-            }
-            tx.set(codeRef, { uid: authUser.uid, createdAt: Date.now() });
-            claimed = candidate;
-          });
-        } catch (e) {
-          const code = String(e.code || '');
-          const msg = String(e.message || '');
-          // Wenn friendCodes wegen Rules nicht erlaubt ist, fallback auf deterministische Prüfung im Profilbestand
-          if (code === 'permission-denied' || msg.toLowerCase().includes('permission')) {
-            try {
-              const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
-              const q2 = query(profilesCol, where('friendCode', '==', candidate), limit(1));
-              const s2 = await getDocs(q2);
-              if (s2.empty || s2.docs[0]?.id === authUser.uid) {
-                claimed = candidate;
-                break;
-              }
-            } catch (_) {
-              claimed = candidate;
-              break;
-            }
-          }
-          // sonst: nächsten deterministischen Kandidaten probieren
-        }
-      }
-      if (!claimed) claimed = localFriendCode || deterministicFriendCodeForUid(authUser.uid, 0);
-      next.friendCode = claimed;
-      next.friendCodeStable = claimed;
-      next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
-    } else {
-      next.friendCode = normalizeFriendCodeValue(existing.friendCode);
-      next.friendCodeStable = next.friendCode;
+    // 5-stellige Chat-ID (friendCode): immer denselben kanonischen Wert wiederverwenden.
+    const localFriendCode = normalizeFriendCodeValue((() => {
+      try { return localStorage.getItem(`onyx_friendCode_${authUser.uid}`) || ''; } catch (_) { return ''; }
+    })());
+    const canonicalFriendCode =
+      normalizeFriendCodeValue(existing?.friendCodeStable || existing?.friendCodePinned || '')
+      || localFriendCode
+      || normalizeFriendCodeValue(existing?.friendCode)
+      || deterministicFriendCodeForUid(authUser.uid, 0);
+
+    next.friendCode = canonicalFriendCode;
+    next.friendCodeStable = canonicalFriendCode;
+    if (!existing || !existing.createdAt) {
+      next.createdAt = Date.now();
     }
 
 
@@ -2453,21 +2414,18 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
                 merged.displayName = localDisplayName;
               }
 
-              const incomingStableFriendCode = normalizeFriendCodeValue(incoming.friendCodeStable || incoming.friendCodePinned || '');
-              if (!normalizeFriendCodeValue(merged.friendCode) && incomingStableFriendCode) {
-                merged.friendCode = incomingStableFriendCode;
-              }
-              if (!normalizeFriendCodeValue(merged.friendCode) && localFriendCode) {
-                merged.friendCode = localFriendCode;
-              }
-              if (normalizeFriendCodeValue(merged.friendCode) && !normalizeFriendCodeValue(merged.friendCodeStable)) {
-                merged.friendCodeStable = normalizeFriendCodeValue(merged.friendCode);
-              }
+              const canonicalFriendCode =
+                normalizeFriendCodeValue(incoming.friendCodeStable || incoming.friendCodePinned || '')
+                || localFriendCode
+                || normalizeFriendCodeValue(incoming.friendCode)
+                || deterministicFriendCodeForUid(user?.uid, 0);
+              merged.friendCode = canonicalFriendCode;
+              merged.friendCodeStable = canonicalFriendCode;
 
               try {
                 if (merged.username) localStorage.setItem(`onyx_username_${user?.uid}`, String(merged.username));
                 if (merged.displayName) localStorage.setItem(`onyx_displayName_${user?.uid}`, String(merged.displayName));
-                if (merged.friendCode) localStorage.setItem(`onyx_friendCode_${user?.uid}`, String(merged.friendCode));
+                if (canonicalFriendCode) localStorage.setItem(`onyx_friendCode_${user?.uid}`, String(canonicalFriendCode));
               } catch (_) {}
               try {
                 const localClockRaw = localStorage.getItem(`onyx_work_clock_active_${user?.uid}`);
@@ -2489,8 +2447,8 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const incomingStableFriendCode = normalizeFriendCodeValue(incoming.friendCodeStable || incoming.friendCodePinned || '');
             const fallbackFriendCode = normalizeFriendCodeValue(localStorage.getItem(`onyx_friendCode_${user?.uid}`) || deterministicFriendCodeForUid(user?.uid, 0));
             const patch = {};
-            if (!incomingFriendCode && fallbackFriendCode) patch.friendCode = fallbackFriendCode;
-            if (!incomingStableFriendCode && fallbackFriendCode) patch.friendCodeStable = fallbackFriendCode;
+            if (fallbackFriendCode && incomingFriendCode !== fallbackFriendCode) patch.friendCode = fallbackFriendCode;
+            if (fallbackFriendCode && incomingStableFriendCode !== fallbackFriendCode) patch.friendCodeStable = fallbackFriendCode;
             if (Object.keys(patch).length > 0) {
               patch.updatedAt = Date.now();
               setDoc(profileRef, patch, { merge: true }).catch(() => {});

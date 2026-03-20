@@ -2006,6 +2006,11 @@ const handleTouchEnd = () => {
       const pinnedChatIds = (userProfile && Array.isArray(userProfile?.pinnedChats)) ? userProfile?.pinnedChats : [];
       const hiddenChatIds = (userProfile && Array.isArray(userProfile?.hiddenChats)) ? userProfile?.hiddenChats : [];
       const friendIds = (userProfile && Array.isArray(userProfile?.friends)) ? userProfile?.friends : [];
+      const incomingFriendRequestsMap = (userProfile && userProfile.friendRequestsIncoming && typeof userProfile.friendRequestsIncoming === 'object') ? userProfile.friendRequestsIncoming : {};
+      const incomingFriendRequests = Object.entries(incomingFriendRequestsMap)
+        .map(([fromUid, request]) => ({ fromUid, ...(request || {}) }))
+        .filter((request) => request && request.fromUid && request.fromUid !== user?.uid && !friendIds.includes(request.fromUid))
+        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
       const removedFriendChats = (Array.isArray(myChats) ? myChats : []).filter((chat) => {
         if (!chat || !chat.id || !Array.isArray(chat.participants) || chat.participants.length !== 2) return false;
         if (!hiddenChatIds.includes(chat.id)) return false;
@@ -6080,6 +6085,33 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
+      const syncFriendRequestState = async (targetUserId, chatId) => {
+        if (!user?.uid || !targetUserId || targetUserId === user?.uid) return;
+        const now = Date.now();
+        const myRequestPayload = {
+          toUid: targetUserId,
+          chatId: chatId || '',
+          createdAt: now,
+          updatedAt: now,
+        };
+        const incomingRequestPayload = {
+          fromUid: user?.uid,
+          chatId: chatId || '',
+          createdAt: now,
+          updatedAt: now,
+          fromDisplayName: userProfile?.displayName || userProfile?.username || user?.email || 'Kontakt',
+        };
+        await Promise.all([
+          setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            [`friendRequestsSent.${targetUserId}`]: myRequestPayload,
+            friends: arrayUnion(targetUserId)
+          }, { merge: true }),
+          setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUserId), {
+            [`friendRequestsIncoming.${user?.uid}`]: incomingRequestPayload,
+          }, { merge: true })
+        ]);
+      };
+
       const startChatWithProfile = async (profileOrId) => {
         if (!user) return;
         const targetUserId = (typeof profileOrId === 'string') ? profileOrId : (profileOrId && profileOrId.id);
@@ -6095,6 +6127,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               friends: arrayUnion(targetUserId),
               hiddenChats: arrayRemove(existingChat.id)
             }, { merge: true });
+            await syncFriendRequestState(targetUserId, existingChat.id);
             await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${targetProfile.displayName || targetProfile.username || targetProfile.email || shortId(targetUserId,6)}` });
           } catch (_) {}
           setActiveChat(existingChat);
@@ -6120,9 +6153,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             lastRead: { [user?.uid]: Date.now() }
           });
 
-          // Save to friends
+          // Save to friends + create visible request for the other user
           try {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { friends: arrayUnion(targetUserId) }, { merge: true });
+            await syncFriendRequestState(targetUserId, newChat.id);
             await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${otherName}` });
           } catch (_) {}
 
@@ -6187,6 +6220,51 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         } catch (e) {
           console.warn('restoreFriend failed', e);
           showToast('Fehler');
+        }
+      };
+
+
+      const acceptFriendRequest = async (request) => {
+        const fromUid = String(request?.fromUid || '');
+        if (!user?.uid || !fromUid) return;
+        const chatId = String(request?.chatId || '');
+        try {
+          const myUpdates = {
+            friends: arrayUnion(fromUid),
+            [`friendRequestsIncoming.${fromUid}`]: deleteField(),
+          };
+          if (chatId) myUpdates.hiddenChats = arrayRemove(chatId);
+          await Promise.all([
+            setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), myUpdates, { merge: true }),
+            setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', fromUid), {
+              friends: arrayUnion(user?.uid),
+              [`friendRequestsSent.${user?.uid}`]: deleteField(),
+            }, { merge: true })
+          ]);
+          await writeAudit({ calId: 'default', action: 'friend.accept', targetType: 'friend', targetId: fromUid, summary: `Freundschaftsanfrage angenommen: ${getProfile(fromUid)?.displayName || getProfile(fromUid)?.username || shortId(fromUid,6)}` });
+          showToast('Freundschaftsanfrage angenommen');
+        } catch (e) {
+          console.warn('acceptFriendRequest failed', e);
+          showToast('Fehler beim Annehmen');
+        }
+      };
+
+      const declineFriendRequest = async (request) => {
+        const fromUid = String(request?.fromUid || '');
+        if (!user?.uid || !fromUid) return;
+        try {
+          await Promise.all([
+            setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+              [`friendRequestsIncoming.${fromUid}`]: deleteField(),
+            }, { merge: true }),
+            setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', fromUid), {
+              [`friendRequestsSent.${user?.uid}`]: deleteField(),
+            }, { merge: true })
+          ]);
+          showToast('Anfrage abgelehnt');
+        } catch (e) {
+          console.warn('declineFriendRequest failed', e);
+          showToast('Fehler beim Ablehnen');
         }
       };
 
@@ -9272,6 +9350,30 @@ setSelfDestruct(false);
                           <Users className="w-4 h-4" /> Gruppe erstellen
                         </button>
                       </div>
+                      {incomingFriendRequests.length > 0 && (
+                        <div className="mb-4 p-3 border border-sky-900/40 bg-sky-950/20 rounded-xl">
+                          <h4 className="text-[11px] uppercase tracking-widest text-sky-300 mb-2">Offene Anfragen</h4>
+                          <div className="space-y-2">
+                            {incomingFriendRequests.map((request) => {
+                              const fromProfile = getProfile(request.fromUid);
+                              const fromName = fromProfile?.displayName || fromProfile?.username || fromProfile?.email || request.fromDisplayName || shortId(request.fromUid, 6);
+                              return (
+                                <div key={`request_${request.fromUid}`} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-neutral-800 bg-black/40">
+                                  <div className="min-w-0">
+                                    <p className="text-sm text-white truncate">{fromName}</p>
+                                    <p className="text-[11px] text-neutral-500">Möchte dich im Secret Chat hinzufügen.</p>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <button type="button" onClick={() => declineFriendRequest(request)} className="px-3 py-2 rounded-lg border border-red-900/40 bg-red-900/20 text-red-300 hover:bg-red-900/30 text-xs font-semibold">Ablehnen</button>
+                                    <button type="button" onClick={() => acceptFriendRequest(request)} className="px-3 py-2 rounded-lg border border-emerald-900/40 bg-emerald-900/20 text-emerald-300 hover:bg-emerald-900/30 text-xs font-semibold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Annehmen</button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {removedFriendChats.length > 0 && (
                         <div className="mb-4 p-3 border border-amber-900/40 bg-amber-950/20 rounded-xl">
                           <h4 className="text-[11px] uppercase tracking-widest text-amber-300 mb-2">Kürzlich entfernte Freunde</h4>

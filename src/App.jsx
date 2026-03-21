@@ -15,8 +15,30 @@ import {
     import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment } from "firebase/firestore";
     import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
     import heic2any from 'heic2any';
-import { 
-  DEFAULT_EXTRAS_ORDER, normalizeShoppingItems, rows, normalizeShoppingLists, rows, formatCurrencyCHF, num, normalizeDailyGoals, arr, out, normalizeQuickCaptureNotes, arr, normalizeExtrasOrder, raw, seen, ordered, reorderExtraKeys, src, from, to, next, PASTEL_COLORS, QUOTES_URL, DEFAULT_QUOTES, stableHash, _bufToHex, bytes, sha256Hex, s, enc, buf, randomToken, arr, pickQuoteForDay, list, idx, QUOTE_COLOR_CLASSES, colorForQuote, text, baseIdx, MONATE, WOCHENTAGE, safeTrim, initialsFrom, s, parts, first, second, a, b, out, shortId, s 
+import {
+  DEFAULT_EXTRAS_ORDER,
+  normalizeShoppingItems,
+  normalizeShoppingLists,
+  formatCurrencyCHF,
+  normalizeDailyGoals,
+  normalizeQuickCaptureNotes,
+  normalizeExtrasOrder,
+  reorderExtraKeys,
+  PASTEL_COLORS,
+  QUOTES_URL,
+  DEFAULT_QUOTES,
+  stableHash,
+  _bufToHex,
+  sha256Hex,
+  randomToken,
+  pickQuoteForDay,
+  QUOTE_COLOR_CLASSES,
+  colorForQuote,
+  MONATE,
+  WOCHENTAGE,
+  safeTrim,
+  initialsFrom,
+  shortId,
 } from './utils/helpers.js';
 
 
@@ -3055,7 +3077,10 @@ const requestNotificationPermission = async (currentUser) => {
     } catch (_) { return false; }
   };
 
-  if (!isStandaloneNow() && isIosUA) { showToast('iPhone/iPad benötigt ggf. PWA-Installation für Push.'); }  }
+  if (!isStandaloneNow()) {
+    showToast(isIosUA ? 'iPhone/iPad: Teilen -> "Zum Home-Bildschirm" installieren, dann Benachrichtigungen aktivieren.' : 'Bitte als PWA installieren, dann Benachrichtigungen aktivieren.');
+    return;
+  }
 
   try {
     await ensureWebPushToken(currentUser, { forcePrompt: true });
@@ -8333,6 +8358,16 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     ];
     const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
     const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
+    const APP_THEME_OPTIONS = [
+      { id: 'obsidian', name: 'Deep Obsidian', desc: 'Reines AMOLED-Schwarz (Default)' },
+      { id: 'midnight', name: 'Midnight Blue', desc: 'Dunkles Marineblau' },
+      { id: 'gold', name: 'Onyx Gold', desc: 'Schwarz mit Gold-Akzenten' },
+    ];
+    const APP_BG_OPTIONS = [
+      { id: 'none', name: 'Mattes Schwarz', desc: 'Standard UI' },
+      { id: 'glass-1', name: 'Neon Blur', desc: 'Animierte Farbverläufe mit Glassmorphism' },
+      { id: 'glass-2', name: 'Gold Blur', desc: 'Elegantes Gold-Ambient' },
+    ];
     const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
       .filter((field) => isExtraFieldEnabled(field))
       .length;
@@ -8393,8 +8428,88 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           </div>
         </section>
 
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-4 md:p-5 space-y-5">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">Schnellzugriff</p>
+              <h3 className="mt-1 text-lg font-semibold text-white flex items-center gap-2"><Palette className="w-5 h-5" /> Design & Themes sofort sichtbar</h3>
+              <p className="mt-1 text-sm text-neutral-400">Falls der Tab leicht zu übersehen ist, kannst du die Theme-Änderung direkt hier oben vornehmen.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => { setSettingsTab('design'); setSettingsQuery(''); }}
+                className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
+              >
+                <Palette className="w-4 h-4" /> Theme-Tab öffnen
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSettingsTab('notifications'); setSettingsQuery(''); }}
+                className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-neutral-200 text-xs font-semibold hover:border-neutral-600 transition-colors inline-flex items-center gap-2"
+              >
+                <Bell className="w-4 h-4" /> Benachrichtigungen öffnen
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-neutral-800 bg-black p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">App Theme</p>
+                  <p className="text-sm text-neutral-400 mt-1">Farbschema der Oberfläche</p>
+                </div>
+                <div className="px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-950 text-xs text-neutral-300">Aktiv: <span className="text-white">{selectedAppTheme === 'midnight' ? 'Midnight Blue' : selectedAppTheme === 'gold' ? 'Onyx Gold' : 'Deep Obsidian'}</span></div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {APP_THEME_OPTIONS.map((t) => (
+                  <button
+                    key={`quick-theme-${t.id}`}
+                    type="button"
+                    onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
+                    className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-600'}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-semibold text-white text-sm">{t.name}</div>
+                      {(userProfile?.appTheme || 'obsidian') === t.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
+                    </div>
+                    <div className="text-xs text-neutral-400 mt-2">{t.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-neutral-800 bg-black p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">Hintergrund</p>
+                  <p className="text-sm text-neutral-400 mt-1">Glassmorphism und Ambient-Look</p>
+                </div>
+                <div className="px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-950 text-xs text-neutral-300">Aktiv: <span className="text-white">{selectedAppBg === 'glass-1' ? 'Neon Blur' : selectedAppBg === 'glass-2' ? 'Gold Blur' : 'Mattes Schwarz'}</span></div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {APP_BG_OPTIONS.map((bg) => (
+                  <button
+                    key={`quick-bg-${bg.id}`}
+                    type="button"
+                    onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}
+                    className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-600'}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-semibold text-white text-sm">{bg.name}</div>
+                      {(userProfile?.appBg || 'none') === bg.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
+                    </div>
+                    <div className="text-xs text-neutral-400 mt-2">{bg.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
         <div className="lg:hidden -mt-2">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-1">
             {(q ? visibleTabs : TABS).map((t) => {
               const Icon = t.icon;
               const active = settingsTab === t.id && !q;
@@ -8404,7 +8519,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   type="button"
                   onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
                   className={
-                    "shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs transition-colors " +
+                    "w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs transition-colors " +
                     (active
                       ? "bg-white text-black border-white"
                       : "bg-neutral-950/60 text-neutral-300 border-neutral-800 hover:border-neutral-600")
@@ -8850,11 +8965,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                      <MonitorSmartphone className="w-4 h-4" /> App Theme
                    </h3>
                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-3">
-                     {[
-                       { id: 'obsidian', name: 'Deep Obsidian', desc: 'Reines AMOLED-Schwarz (Default)' },
-                       { id: 'midnight', name: 'Midnight Blue', desc: 'Dunkles Marineblau' },
-                       { id: 'gold', name: 'Onyx Gold', desc: 'Schwarz mit Gold-Akzenten' }
-                     ].map(t => (
+                     {APP_THEME_OPTIONS.map(t => (
                        <button
                          key={t.id}
                          onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
@@ -8875,11 +8986,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                      <LayoutDashboard className="w-4 h-4" /> Glassmorphism & Hintergrund
                    </h3>
                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-3">
-                     {[
-                       { id: 'none', name: 'Mattes Schwarz', desc: 'Standard UI' },
-                       { id: 'glass-1', name: 'Neon Blur', desc: 'Animierte Farbverläufe mit Glassmorphism' },
-                       { id: 'glass-2', name: 'Gold Blur', desc: 'Elegantes Gold-Ambient' }
-                     ].map(bg => (
+                     {APP_BG_OPTIONS.map(bg => (
                        <button
                          key={bg.id}
                          onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}

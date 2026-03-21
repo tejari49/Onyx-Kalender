@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import BookingApp from './BookingApp.jsx';
 import './styles.css';
+import './themes.css';
 
 const root = createRoot(document.getElementById('root'));
 const searchParams = new URLSearchParams(window.location.search);

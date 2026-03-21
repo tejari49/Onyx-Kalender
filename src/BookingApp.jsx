@@ -19,6 +19,26 @@ export default function BookingApp({ code }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const mode = 'dark';
+    const theme = profile?.appTheme || 'obsidian';
+    const bg = profile?.appBg || 'none';
+
+    const syncNode = (node) => {
+      if (!node) return;
+      node.setAttribute('data-mode', mode);
+      node.classList.remove('onyx-theme-light');
+      node.setAttribute('data-theme', theme);
+      if (bg && bg !== 'none') node.setAttribute('data-bg', bg);
+      else node.removeAttribute('data-bg');
+    };
+
+    syncNode(html);
+    syncNode(body);
+  }, [profile?.appTheme, profile?.appBg]);
+
+  useEffect(() => {
     async function loadProfile() {
       if (!code) {
         setError('Kein Booking-Code angegeben.');
@@ -39,18 +59,34 @@ export default function BookingApp({ code }) {
           setLoading(false);
           return;
         }
-        setProfile(data);
-        
-        // Fetch busy times if a share token is provided
+
+        const normalizedProfile = {
+          ...data,
+          uid: data.uid || data.ownerUid || data.createdByUid || '',
+          title: data.title || 'Termin buchen',
+          duration: Number(data.duration || 30) || 30,
+          appTheme: data.appTheme || 'obsidian',
+          appBg: data.appBg || 'none',
+          schedule: data.schedule || {}
+        };
+
+        setProfile(normalizedProfile);
+
+        if (Array.isArray(data.busyEvents) && data.busyEvents.length > 0) {
+          setBusyEvents(data.busyEvents);
+          setLoading(false);
+          return;
+        }
+
+        // Fallback: fetch busy times from shared busy-only feed if provided
         if (data.shareToken) {
           const shareRef = doc(db, `artifacts/${APP_ID}/public/data/shares`, data.shareToken);
           const shareSnap = await getDoc(shareRef);
           if (shareSnap.exists()) {
             const shareData = shareSnap.data();
-            // check if active
             const isRevoked = shareData.revokedAtMs > 0;
             const isExpired = shareData.expiresAtMs > 0 && Date.now() > shareData.expiresAtMs;
-            if (!isRevoked && !isExpired && shareData.events) {
+            if (!isRevoked && !isExpired && Array.isArray(shareData.events)) {
               setBusyEvents(shareData.events);
             }
           }
@@ -163,6 +199,9 @@ export default function BookingApp({ code }) {
     setSubmitting(true);
     
     try {
+      if (!profile?.uid) {
+        throw new Error('BOOKING_PROFILE_UID_MISSING');
+      }
       const reqRef = collection(db, `artifacts/${APP_ID}/users/${profile.uid}/bookingRequests`);
       await addDoc(reqRef, {
         guestName,
@@ -176,18 +215,19 @@ export default function BookingApp({ code }) {
       setStep('success');
     } catch (err) {
       console.error(err);
-      alert('Fehler beim Buchen!');
+      alert(err?.message === 'BOOKING_PROFILE_UID_MISSING' ? 'Dieses Booking-Profil ist unvollständig. Bitte im Onyx-Konto einmal speichern.' : 'Fehler beim Buchen!');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-200 font-sans selection:bg-neutral-800">
-       <div className="max-w-2xl mx-auto p-4 md:p-8 pt-12">
+    <div className="min-h-screen bg-[var(--onyx-app-shell-bg)] text-neutral-200 font-sans selection:bg-neutral-800">
+       <div className="max-w-3xl mx-auto p-4 md:p-8 pt-10 md:pt-14">
           
           <div className="mb-8 text-center">
-             <div className="w-16 h-16 bg-neutral-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-neutral-700 shadow-xl">
+             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-neutral-800 bg-neutral-950/70 text-[11px] uppercase tracking-[0.22em] text-neutral-400 mb-4">Öffentliche Terminbuchung</div>
+             <div className="w-16 h-16 bg-neutral-900/80 rounded-full flex items-center justify-center mx-auto mb-4 border border-neutral-700 shadow-xl">
                 <User className="w-8 h-8 text-neutral-400" />
              </div>
              <h1 className="text-2xl font-bold text-white tracking-tight">{profile.title || 'Termin buchen'}</h1>

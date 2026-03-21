@@ -478,19 +478,35 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 
       useEffect(() => {
         try {
-          document.documentElement.setAttribute('data-mode', uiTheme);
-          document.documentElement.setAttribute('data-theme', selectedAppTheme || 'obsidian');
-          document.documentElement.setAttribute('data-bg', selectedAppBg || 'none');
-          if (document.body) {
-            document.body.setAttribute('data-mode', uiTheme);
-            document.body.setAttribute('data-theme', selectedAppTheme || 'obsidian');
-            document.body.setAttribute('data-bg', selectedAppBg || 'none');
-          }
-          document.documentElement.classList.toggle('onyx-theme-light', uiTheme === 'light');
+          const themeValue = selectedAppTheme || 'obsidian';
+          const bgValue = selectedAppBg || 'none';
+          const applyDarkTheme = uiTheme === 'dark';
+          const html = document.documentElement;
+          const body = document.body;
+
+          html.setAttribute('data-mode', uiTheme);
+          html.classList.toggle('onyx-theme-light', uiTheme === 'light');
+
+          const syncNode = (node) => {
+            if (!node) return;
+            node.setAttribute('data-mode', uiTheme);
+            if (applyDarkTheme) {
+              node.setAttribute('data-theme', themeValue);
+              if (bgValue && bgValue !== 'none') node.setAttribute('data-bg', bgValue);
+              else node.removeAttribute('data-bg');
+            } else {
+              node.removeAttribute('data-theme');
+              node.removeAttribute('data-bg');
+            }
+          };
+
+          syncNode(html);
+          syncNode(body);
+
           localStorage.setItem('onyx_theme_mode', uiTheme);
           localStorage.setItem('onyx_theme', uiTheme);
-          localStorage.setItem('onyx_app_theme', selectedAppTheme || 'obsidian');
-          localStorage.setItem('onyx_app_bg', selectedAppBg || 'none');
+          localStorage.setItem('onyx_app_theme', themeValue);
+          localStorage.setItem('onyx_app_bg', bgValue);
         } catch (_) {}
       }, [uiTheme, selectedAppTheme, selectedAppBg]);
 
@@ -12054,8 +12070,19 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
   const save = async () => {
     if (!code) return;
     const busyEvents = (events || []).map(e => ({ startMs: e.startMs, endMs: e.endMs, isAllDay: e.isAllDay === true }));
-    const toSave = { ...bProfile, busyEvents };
-    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code), toSave);
+    const toSave = {
+      ...bProfile,
+      uid: user?.uid || bProfile?.uid || '',
+      code,
+      title: (bProfile?.title || userProfile?.displayName || 'Termin buchen').trim(),
+      duration: Number(bProfile?.duration || 30) || 30,
+      appTheme: userProfile?.appTheme || null,
+      appBg: userProfile?.appBg || null,
+      busyEvents,
+      updatedAt: Date.now(),
+    };
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code), toSave, { merge: true });
+    setBProfile(prev => ({ ...(prev || {}), ...toSave }));
     alert('Booking-Profil gespeichert!');
   };
 

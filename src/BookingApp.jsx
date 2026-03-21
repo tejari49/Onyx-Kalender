@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { db, APP_ID } from './utils/firebase.js';
+import { db, APP_ID, BASE_PATH } from './utils/firebase.js';
 import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { Loader2, Calendar as CalendarIcon, Clock, User, MessageSquare, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, Clock, User, MessageSquare, CheckCircle2, AlertCircle, Sun, Moon } from 'lucide-react';
 import './themes.css';
 
 export default function BookingApp({ code }) {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState('');
+  const [uiTheme, setUiTheme] = useState(() => document.documentElement.classList.contains('onyx-theme-light') ? 'light' : 'dark');
   
   const [busyEvents, setBusyEvents] = useState([]);
   
@@ -20,6 +21,14 @@ export default function BookingApp({ code }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      if (!cancelled) {
+        setError('Der Booking-Link antwortet nicht. Bitte Seite neu laden oder Link erneut speichern.');
+        setLoading(false);
+      }
+    }, 12000);
+
     async function loadProfile() {
       if (!code) {
         setError('Kein Booking-Code angegeben.');
@@ -29,12 +38,13 @@ export default function BookingApp({ code }) {
       try {
         const docRef = doc(db, `artifacts/${APP_ID}/public/data/bookingProfiles`, code);
         const snap = await getDoc(docRef);
+        if (cancelled) return;
         if (!snap.exists()) {
           setError(`Der Link ist ungültig oder wurde deaktiviert.`);
           setLoading(false);
           return;
         }
-        const data = snap.data();
+        const data = snap.data() || {};
         if (!data.isActive) {
           setError(`Dieser Kalender akzeptiert derzeit keine Termine.`);
           setLoading(false);
@@ -46,8 +56,8 @@ export default function BookingApp({ code }) {
         if (data.shareToken) {
           const shareRef = doc(db, `artifacts/${APP_ID}/public/data/shares`, data.shareToken);
           const shareSnap = await getDoc(shareRef);
-          if (shareSnap.exists()) {
-            const shareData = shareSnap.data();
+          if (!cancelled && shareSnap.exists()) {
+            const shareData = shareSnap.data() || {};
             const isRevoked = shareData.revokedAtMs > 0;
             const isExpired = shareData.expiresAtMs > 0 && Date.now() > shareData.expiresAtMs;
             if (!isRevoked && !isExpired && Array.isArray(shareData.events)) {
@@ -55,56 +65,106 @@ export default function BookingApp({ code }) {
             }
           }
         }
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       } catch (err) {
         console.error(err);
-        setError('Netzwerkfehler beim Laden.');
-        setLoading(false);
+        if (!cancelled) {
+          setError('Netzwerkfehler beim Laden.');
+          setLoading(false);
+        }
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     }
     loadProfile();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [code]);
 
   useEffect(() => {
     const theme = String(profile?.appTheme || 'obsidian');
     const bg = String(profile?.appBg || 'none');
     try {
-      document.documentElement.classList.remove('onyx-theme-light');
-      document.documentElement.setAttribute('data-theme', theme);
-      document.documentElement.setAttribute('data-bg', bg);
-      if (document.body) {
-        document.body.classList.remove('onyx-theme-light');
-        document.body.setAttribute('data-theme', theme);
-        document.body.setAttribute('data-bg', bg);
+      if (uiTheme === 'light') {
+        document.documentElement.classList.add('onyx-theme-light');
+        document.documentElement.removeAttribute('data-theme');
+        document.documentElement.removeAttribute('data-bg');
+        if (document.body) {
+          document.body.classList.add('onyx-theme-light');
+          document.body.removeAttribute('data-theme');
+          document.body.removeAttribute('data-bg');
+        }
+      } else {
+        document.documentElement.classList.remove('onyx-theme-light');
+        document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.setAttribute('data-bg', bg);
+        if (document.body) {
+          document.body.classList.remove('onyx-theme-light');
+          document.body.setAttribute('data-theme', theme);
+          document.body.setAttribute('data-bg', bg);
+        }
       }
     } catch (_) {}
     return () => {
       try {
+        document.documentElement.classList.remove('onyx-theme-light');
         document.documentElement.removeAttribute('data-theme');
         document.documentElement.removeAttribute('data-bg');
         if (document.body) {
+          document.body.classList.remove('onyx-theme-light');
           document.body.removeAttribute('data-theme');
           document.body.removeAttribute('data-bg');
         }
       } catch (_) {}
     };
-  }, [profile?.appTheme, profile?.appBg]);
+  }, [profile?.appTheme, profile?.appBg, uiTheme]);
+
+  const toggleTheme = () => setUiTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  const bookingBaseUrl = `${window.location.origin}${String(BASE_PATH || '/').startsWith('/') ? String(BASE_PATH || '/') : `/${String(BASE_PATH || '/')}`}`.replace(/\/$/, '') + `?book=${encodeURIComponent(String(code || ''))}`;
+  const headerBar = (
+    <div className="sticky top-0 z-20 border-b border-neutral-800 bg-black/90 backdrop-blur supports-[backdrop-filter]:bg-black/75">
+      <div className="max-w-2xl mx-auto px-4 md:px-8 py-3 flex items-center justify-between gap-3">
+        <div className="text-base md:text-lg font-semibold tracking-[0.28em] uppercase text-white select-none">Onyx</div>
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors shrink-0"
+          title={uiTheme === 'light' ? 'Dunkelmodus aktivieren' : 'Hellmodus aktivieren'}
+          aria-label={uiTheme === 'light' ? 'Dunkelmodus aktivieren' : 'Hellmodus aktivieren'}
+        >
+          {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-neutral-500" />
+      <div className="min-h-screen bg-neutral-950 text-white">
+        {headerBar}
+        <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-neutral-500" />
+          <div>
+            <div className="text-white font-medium">Booking-Link wird geladen</div>
+            <div className="text-sm text-neutral-500 mt-1 break-all">{bookingBaseUrl}</div>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error || !profile) {
     return (
-      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center">
-           <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
-           <h2 className="text-xl font-bold mb-2">Termin-Buchung</h2>
-           <p className="text-neutral-400">{error}</p>
+      <div className="min-h-screen bg-neutral-950 text-white">
+        {headerBar}
+        <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6">
+          <div className="max-w-md w-full text-center">
+             <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
+             <h2 className="text-xl font-bold mb-2">Termin-Buchung</h2>
+             <p className="text-neutral-400">{error}</p>
+          </div>
         </div>
       </div>
     );
@@ -209,7 +269,8 @@ export default function BookingApp({ code }) {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-200 font-sans selection:bg-neutral-800">
-       <div className="max-w-2xl mx-auto p-4 md:p-8 pt-12">
+       {headerBar}
+       <div className="max-w-2xl mx-auto p-4 md:p-8 pt-8 md:pt-10">
           
           <div className="mb-8 text-center">
              <div className="w-16 h-16 bg-neutral-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-neutral-700 shadow-xl">

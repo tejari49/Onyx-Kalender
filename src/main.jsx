@@ -7,7 +7,9 @@ import './themes.css';
 
 const root = createRoot(document.getElementById('root'));
 const searchParams = new URLSearchParams(window.location.search);
-const bookCode = searchParams.get('book');
+const hashQuery = (window.location.hash && window.location.hash.includes('?')) ? window.location.hash.split('?')[1] : '';
+const hashParams = new URLSearchParams(hashQuery);
+const bookCode = searchParams.get('book') || hashParams.get('book');
 
 if (bookCode) {
   root.render(

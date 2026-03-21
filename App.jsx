@@ -801,6 +801,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const isLongPressAction = useRef(false);
       const secretPressTimer = useRef(null);
       const secretGateTriggered = useRef(false);
+      const onyxTapHistoryRef = useRef([]);
       const [secretPinModalOpen, setSecretPinModalOpen] = useState(false);
       const [secretPinInput, setSecretPinInput] = useState('');
       const [secretPinError, setSecretPinError] = useState('');
@@ -2000,6 +2001,18 @@ const requestSecretEntry = () => {
     return;
   }
   revealSecretChat();
+};
+
+const handleOnyxSecretTap = () => {
+  if (!isLoggedIn) return;
+  const now = Date.now();
+  const recent = (onyxTapHistoryRef.current || []).filter((ts) => (now - ts) <= 1200);
+  recent.push(now);
+  onyxTapHistoryRef.current = recent;
+  if (recent.length >= 3) {
+    onyxTapHistoryRef.current = [];
+    requestSecretEntry();
+  }
 };
 
 const verifySecretPinAndEnter = async () => {
@@ -7488,7 +7501,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
             </div>
             <div className="max-w-md w-full p-8 flex flex-col items-center bg-black border border-neutral-800 rounded-2xl shadow-2xl z-10">
-              <div className="w-10 h-10 bg-white rounded-sm mb-6"></div><h1 className="text-3xl font-bold tracking-widest mb-2">ONYX</h1>
+              <div className="w-10 h-10 bg-white rounded-sm mb-6"></div><button type="button" onClick={handleOnyxSecretTap} className="text-3xl font-bold tracking-widest mb-2 select-none">ONYX</button>
               <p className="text-neutral-500 mb-8 text-center text-sm">{isRegistering ? 'Erstelle deinen Account.' : 'Melde dich an, um fortzufahren.'}</p>
               {authError && <div className="w-full bg-red-950/30 border border-red-900/50 text-red-400 p-3 rounded-lg mb-6 text-xs flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><p>{authError}</p></div>}
               <form onSubmit={handleAuth} className="w-full space-y-4">
@@ -7638,7 +7651,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
           <aside className="hidden md:flex w-64 border-r border-neutral-800 flex-col shrink-0 bg-black z-10">
             <div className="p-6 flex-1 overflow-y-auto">
-              <h1 className="text-xl font-bold tracking-wider mb-8 flex items-center gap-3"><div className="w-4 h-4 bg-white rounded-sm"></div>ONYX</h1>
+              <button type="button" onClick={handleOnyxSecretTap} className="text-xl font-bold tracking-wider mb-8 flex items-center gap-3 select-none"><div className="w-4 h-4 bg-white rounded-sm"></div>ONYX</button>
               <button onClick={() => setPlusMenuOpen(true)} className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 px-4 rounded-md font-medium hover:bg-gray-200 transition-colors mb-8"><Plus className="w-5 h-5" /> Neuer Termin</button>
               <nav className="space-y-2 mb-8">
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
@@ -7702,8 +7715,17 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
             {currentView === 'dashboard' && (
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
-                <header className="flex justify-between items-center mb-8 md:mb-10">
-                  <h2 className="text-3xl md:text-4xl font-light">Guten Morgen{dashboardName ? `, ${dashboardName}` : ''}.</h2>
+                <header className="flex justify-between items-center mb-8 md:mb-10 gap-4">
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handleOnyxSecretTap}
+                      className="mb-2 text-[10px] uppercase tracking-[0.32em] text-neutral-600 hover:text-neutral-300 transition-colors select-none"
+                    >
+                      ONYX
+                    </button>
+                    <h2 className="text-3xl md:text-4xl font-light">Guten Morgen{dashboardName ? `, ${dashboardName}` : ''}.</h2>
+                  </div>
                   <button
                     type="button"
                     onClick={toggleTheme}

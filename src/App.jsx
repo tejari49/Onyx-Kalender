@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 
     import { 
-      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip,
-      Copy, Link2, History, UserMinus, UserPlus
+      Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip, Paperclip,
+      Copy, Link2, History, Star, SmilePlus
     } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment, deleteField } from "firebase/firestore";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment } from "firebase/firestore";
     import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
-    import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
     import heic2any from 'heic2any';
 
     const customFirebaseConfig = {
@@ -24,69 +23,39 @@ import React, { useState, useEffect, useRef } from 'react';
     const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : customFirebaseConfig;
     const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'onyx-pwa-live';
     const BASE_PATH = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/Onyx-Kalender/';
-    const FCM_WEB_VAPID_KEY = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
-      ? String(import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
-      : 'BLif9DBsVeYOPqRfhhBZsftnDbJvWfbfVrkjf14s7HsygsnYh4yfIKOr30oM58jIakPKBDu0arXj5oEZWhWG-E0';
+const FCM_WEB_VAPID_KEY = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
+  ? String(import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
+  : 'BLif9DBsVeYOPqRfhhBZsftnDbJvWfbfVrkjf14s7HsygsnYh4yfIKOr30oM58jIakPKBDu0arXj5oEZWhWG-E0';
+const FCM_WEB_VAPID_KEY_LEGACY = 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI';
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    const storage = getStorage(app);
 
-	    const DEFAULT_EXTRAS_ORDER = ['workclock','goals','sollist','notes','weather'];
-	    const APP_VIEWS = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
-
-	    function normalizeAppView(input) {
-	      const raw = String(input || '').trim();
-	      if (!APP_VIEWS.has(raw)) return 'dashboard';
-	      // Secret chat should never auto-open on app restart.
-	      return raw === 'secret_chat' ? 'calendar' : raw;
-	    }
+    const DEFAULT_EXTRAS_ORDER = ['workclock','goals','sollist','notes','weather'];
 
     function normalizeShoppingItems(input) {
-      const rows = Array.isArray(input) ? input.filter(Boolean) : [];
-      return rows.map((item, idx) => {
-        const safeItem = item && typeof item === 'object' ? item : {};
-        return {
-          id: String(safeItem.id || `item_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
-          text: String(safeItem.text || ''),
-          qty: String(safeItem.qty || ''),
-          price: safeItem.price === 0 ? '0' : String(safeItem.price || ''),
-          done: safeItem.done === true,
-          checkedAt: Number(safeItem.checkedAt || 0) || 0,
-        };
-      });
+      const rows = Array.isArray(input) ? input : [];
+      return rows.map((item, idx) => ({
+        id: String(item?.id || `item_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
+        text: String(item?.text || ''),
+        qty: String(item?.qty || ''),
+        price: item?.price === 0 ? '0' : String(item?.price || ''),
+        done: item?.done === true,
+        checkedAt: Number(item?.checkedAt || 0) || 0,
+      }));
     }
 
     function normalizeShoppingLists(input) {
-      const rows = Array.isArray(input) ? input.filter(Boolean) : [];
-      return rows.map((list, idx) => {
-        const safeList = list && typeof list === 'object' ? list : {};
-        return {
-          id: String(safeList.id || `shop_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
-          title: String(safeList.title || 'Einkaufsliste'),
-          store: String(safeList.store || ''),
-          createdAt: Number(safeList.createdAt || Date.now()) || Date.now(),
-          updatedAt: Number(safeList.updatedAt || Date.now()) || Date.now(),
-          items: normalizeShoppingItems(safeList.items),
-          purchases: normalizeShoppingPurchases(safeList.purchases),
-        };
-      }).sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
-    }
-
-    function normalizeShoppingPurchases(input) {
-      const rows = Array.isArray(input) ? input.filter(Boolean) : [];
-      return rows.map((entry, idx) => {
-        const safeEntry = entry && typeof entry === 'object' ? entry : {};
-        return {
-          id: String(safeEntry.id || `pay_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
-          amount: Number(safeEntry.amount || 0) || 0,
-          store: String(safeEntry.store || ''),
-          paidAt: Number(safeEntry.paidAt || Date.now()) || Date.now(),
-          note: String(safeEntry.note || ''),
-        };
-      }).filter((entry) => Number.isFinite(entry.amount) && entry.amount > 0)
-        .sort((a, b) => Number(b.paidAt || 0) - Number(a.paidAt || 0));
+      const rows = Array.isArray(input) ? input : [];
+      return rows.map((list, idx) => ({
+        id: String(list?.id || `shop_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
+        title: String(list?.title || 'Einkaufsliste'),
+        store: String(list?.store || ''),
+        createdAt: Number(list?.createdAt || Date.now()) || Date.now(),
+        updatedAt: Number(list?.updatedAt || Date.now()) || Date.now(),
+        items: normalizeShoppingItems(list?.items),
+      })).sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
     }
 
     function formatCurrencyCHF(value) {
@@ -98,12 +67,26 @@ import React, { useState, useEffect, useRef } from 'react';
     function normalizeDailyGoals(input) {
       const arr = Array.isArray(input) ? input : [];
       const out = arr.slice(0, 6).map((item, idx) => ({
-        id: String(item.id || `goal_${idx + 1}`),
-        text: String(item.text || ''),
-        done: item.done === true,
+        id: String(item?.id || `goal_${idx + 1}`),
+        text: String(item?.text || ''),
+        done: item?.done === true,
       }));
       while (out.length < 3) out.push({ id: `goal_${out.length + 1}`, text: '', done: false });
       return out;
+    }
+
+
+    function normalizeQuickCaptureNotes(input) {
+      const arr = Array.isArray(input) ? input : [];
+      return arr
+        .map((item, idx) => ({
+          id: String(item?.id || `note_${idx + 1}`),
+          text: String(item?.text || '').trim().slice(0, 400),
+          createdAt: Number(item?.createdAt || Date.now()),
+        }))
+        .filter((item) => item.text.length > 0)
+        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+        .slice(0, 40);
     }
 
     function normalizeExtrasOrder(input) {
@@ -128,16 +111,6 @@ import React, { useState, useEffect, useRef } from 'react';
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
       return next;
-    }
-
-    function toMillis(value) {
-      if (typeof value === 'number' && Number.isFinite(value)) return value;
-      if (value instanceof Date) return Number(value.getTime() || 0);
-      if (value && typeof value.toMillis === 'function') {
-        try { return Number(value.toMillis() || 0); } catch (_) { return 0; }
-      }
-      const parsed = Number(value || 0);
-      return Number.isFinite(parsed) ? parsed : 0;
     }
 
 
@@ -170,14 +143,14 @@ import React, { useState, useEffect, useRef } from 'react';
         if (!supported) return null;
         return getMessaging(app);
       } catch (error) {
-        console.warn("[FCM] Browser unsupported:", error.message || error);
+        console.warn("[FCM] Browser unsupported:", error?.message || error);
         return null;
       }
     };
 
     const PASTEL_COLORS = ['#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#E8BAFF', '#D3D3D3', '#FFC8DD'];
 
-    
+
     const QUOTES_URL = 'quotes.json';
 
     // Fallback quotes (wird genutzt, falls quotes.json nicht geladen werden kann)
@@ -186,7 +159,7 @@ import React, { useState, useEffect, useRef } from 'react';
       "Fokus ist eine Entscheidung.",
       "Kleine Schritte, große Wirkung.",
       "Wenn&apos;s brennt: Wasser. Wenn&apos;s chaotisch ist: Kalender.",
-      "Planung ist die halbe Miete - die andere Hälfte ist Kaffee."
+      "Planung ist die halbe Miete – die andere Hälfte ist Kaffee."
     ];
 
     const stableHash = (str) => {
@@ -196,20 +169,6 @@ import React, { useState, useEffect, useRef } from 'react';
         h = Math.imul(h, 16777619);
       }
       return (h >>> 0);
-    };
-
-    const normalizeFriendCodeValue = (value) => {
-      const s = String(value ?? '').trim();
-      if (/^\d{5}$/.test(s)) return s;
-      if (/^\d+$/.test(s)) {
-        try { return String(parseInt(s, 10)).padStart(5, '0'); } catch (_) { return ''; }
-      }
-      return '';
-    };
-
-    const deterministicFriendCodeForUid = (uid, attempt = 0) => {
-      const seed = `${String(uid || 'user')}:${attempt}`;
-      return String(stableHash(seed) % 100000).padStart(5, '0');
     };
 
     const _bufToHex = (buffer) => {
@@ -222,7 +181,7 @@ import React, { useState, useEffect, useRef } from 'react';
     const sha256Hex = async (input) => {
       const s = String(input ?? '');
       try {
-        if (crypto.subtle.digest) {
+        if (crypto?.subtle?.digest) {
           const enc = new TextEncoder();
           const buf = await crypto.subtle.digest('SHA-256', enc.encode(s));
           return _bufToHex(buf);
@@ -251,10 +210,31 @@ import React, { useState, useEffect, useRef } from 'react';
       return list[idx];
     };
 
+    const QUOTE_COLOR_CLASSES = [
+      'text-emerald-300',
+      'text-cyan-300',
+      'text-sky-300',
+      'text-violet-300',
+      'text-fuchsia-300',
+      'text-amber-300',
+      'text-rose-300',
+      'text-lime-300',
+    ];
+
+    const colorForQuote = (quote, prevColor = '') => {
+      const text = String(quote || '').trim();
+      if (!text) return 'text-neutral-100';
+      const baseIdx = stableHash(text) % QUOTE_COLOR_CLASSES.length;
+      let next = QUOTE_COLOR_CLASSES[baseIdx] || 'text-neutral-100';
+      if (prevColor && QUOTE_COLOR_CLASSES.length > 1 && next === prevColor) {
+        next = QUOTE_COLOR_CLASSES[(baseIdx + 1) % QUOTE_COLOR_CLASSES.length] || next;
+      }
+      return next;
+    };
+
 
     const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
     const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-    const DEFAULT_WEATHER_LOCATION = { name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 };
 
     
     // --- ERROR BOUNDARY (verhindert "schwarzer Screen" bei Runtime-Fehlern) ---
@@ -274,7 +254,7 @@ import React, { useState, useEffect, useRef } from 'react';
           return (
             <div className="absolute inset-0 bg-black text-white flex items-center justify-center p-6">
               <div className="max-w-md w-full border border-neutral-800 rounded-2xl p-6 bg-neutral-950/60">
-                <h3 className="text-lg font-semibold mb-2">Ups - ein Fehler ist passiert</h3>
+                <h3 className="text-lg font-semibold mb-2">Ups – ein Fehler ist passiert</h3>
                 <p className="text-sm text-neutral-400 mb-4">
                   Die Ansicht konnte nicht gerendert werden. Du kannst zurückgehen oder neu laden.
                 </p>
@@ -308,9 +288,10 @@ import React, { useState, useEffect, useRef } from 'react';
     }
 
 
-// ===== Build marker (v10) =====
-const BUILD_VERSION = 'v35';
-console.log(`[Onyx-Kalender] build ${BUILD_VERSION} loaded @`, new Date().toISOString()); // Ensure isGroupChat is always available (avoids hoisting/scope issues)
+// ===== Build marker (v9) =====
+console.log('[Onyx-Kalender] build v27 loaded @', new Date().toISOString());
+
+// Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
   try {
     if (!chat) return false;
@@ -326,14 +307,14 @@ window.isGroupChat = window.isGroupChat || function(chat) {
     }
     function initialsFrom(nameOrEmail) {
       const s = safeTrim(nameOrEmail);
-      if (!s) return "";
+      if (!s) return "??";
       const parts = s.split(/\s+/).filter(Boolean);
       const first = (parts[0] || "");
       const second = (parts[1] || "");
       const a = first.charAt(0);
       const b = (second.charAt(0) || first.charAt(1));
       const out = (a + b).toUpperCase();
-      return out || "";
+      return out || "??";
     }
 
     function shortId(id, n = 6) {
@@ -357,7 +338,9 @@ function AmoledCalendarApp() {
           window.removeEventListener('resize', setAppHeight);
           window.removeEventListener('orientationchange', setAppHeight);
         };
-      }, []); // Stable alias
+      }, []);
+
+// Stable alias
   const isGroupChat = window.isGroupChat;
 
       const [isAppReady, setIsAppReady] = useState(false);
@@ -372,8 +355,11 @@ function AmoledCalendarApp() {
       
       const [currentView, setCurrentView] = useState(() => {
         try {
-          const saved = localStorage.getItem('onyx_last_view');
-          return normalizeAppView(saved);
+          const raw = String(localStorage.getItem('onyx_last_view') || '').trim();
+          const allowed = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
+          if (!allowed.has(raw)) return 'dashboard';
+          if (raw === 'secret_chat') return 'calendar';
+          return raw;
         } catch (_) {
           return 'dashboard';
         }
@@ -381,6 +367,26 @@ function AmoledCalendarApp() {
       const [settingsTab, setSettingsTab] = useState('account');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
+      const [uiTheme, setUiTheme] = useState(() => {
+        try {
+          const stored = localStorage.getItem('onyx_theme');
+          if (stored === 'light' || stored === 'dark') return stored;
+          const prefersDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          return prefersDark ? 'dark' : 'light';
+        } catch (_) { return 'dark'; }
+      });
+      const [extrasSectionsOpen, setExtrasSectionsOpen] = useState({
+        planning: true,
+        push: true,
+        workclock: false,
+      });
+
+      useEffect(() => {
+        try {
+          document.documentElement.setAttribute('data-theme', uiTheme);
+          localStorage.setItem('onyx_theme', uiTheme);
+        } catch (_) {}
+      }, [uiTheme]);
 
       const [currentDate, setCurrentDate] = useState(new Date());
       
@@ -388,25 +394,24 @@ function AmoledCalendarApp() {
       const [dailyForecast, setDailyForecast] = useState(null);
       const [hourlyForecast, setHourlyForecast] = useState(null);
       const [selectedForecastDay, setSelectedForecastDay] = useState(null);
-      const [location, setLocation] = useState(DEFAULT_WEATHER_LOCATION);
+      const [location, setLocation] = useState({ name: 'Oberbüren, SG', lat: 47.45, lon: 9.11 });
       const [workClockActive, setWorkClockActive] = useState(null);
       const [workClockSessions, setWorkClockSessions] = useState([]);
       const [workClockTick, setWorkClockTick] = useState(Date.now());
       const [workClockModalOpen, setWorkClockModalOpen] = useState(false);
       const [workClockDraftTitle, setWorkClockDraftTitle] = useState('');
-      const [workClockDraftUsePreset, setWorkClockDraftUsePreset] = useState(true);
       const [workClockPresetInput, setWorkClockPresetInput] = useState('Büro\nBaustelle\nSupport');
       const [workClockDraftLevel, setWorkClockDraftLevel] = useState('mittel');
       const [workClockSaving, setWorkClockSaving] = useState(false);
       const [workClockEditOpen, setWorkClockEditOpen] = useState(false);
       const [workClockEditingSession, setWorkClockEditingSession] = useState(null);
       const [workClockEditTitle, setWorkClockEditTitle] = useState('');
-      const [workClockEditUsePreset, setWorkClockEditUsePreset] = useState(true);
       const [workClockEditLevel, setWorkClockEditLevel] = useState('mittel');
       const [workClockEditStartValue, setWorkClockEditStartValue] = useState('');
       const [workClockEditEndValue, setWorkClockEditEndValue] = useState('');
       const [workClockDeletingId, setWorkClockDeletingId] = useState('');
       const [dailyFact, setDailyFact] = useState('');
+      const [dailyFactColor, setDailyFactColor] = useState('text-neutral-100');
       const [quotes, setQuotes] = useState([]);
       const [focusDurationMin, setFocusDurationMin] = useState(25);
       const [focusState, setFocusState] = useState(null);
@@ -415,6 +420,7 @@ function AmoledCalendarApp() {
       const [quickNotes, setQuickNotes] = useState('');
       const [dailyGoals, setDailyGoals] = useState(() => normalizeDailyGoals([]));
       const [weeklyTargetHours, setWeeklyTargetHours] = useState('42');
+      const [isWeeklyTargetEditing, setIsWeeklyTargetEditing] = useState(false);
       const [extrasSlotOrder, setExtrasSlotOrder] = useState(() => normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER));
       const [extrasUpdatedAt, setExtrasUpdatedAt] = useState(0);
       const [draggedExtraSlot, setDraggedExtraSlot] = useState('');
@@ -422,23 +428,16 @@ function AmoledCalendarApp() {
       const [shoppingListsUpdatedAt, setShoppingListsUpdatedAt] = useState(0);
       const [activeShoppingListId, setActiveShoppingListId] = useState('');
       const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+      const [quickNoteModalOpen, setQuickNoteModalOpen] = useState(false);
+      const [quickCaptureNoteInput, setQuickCaptureNoteInput] = useState('');
+      const [quickCaptureNotes, setQuickCaptureNotes] = useState([]);
+      const [homeNotesOpen, setHomeNotesOpen] = useState(false);
+      const [editingQuickNoteId, setEditingQuickNoteId] = useState('');
       const [shoppingListModalOpen, setShoppingListModalOpen] = useState(false);
       const [shoppingDraftTitle, setShoppingDraftTitle] = useState('Neue Einkaufsliste');
       const [shoppingDraftStore, setShoppingDraftStore] = useState('');
       const [shoppingSaving, setShoppingSaving] = useState(false);
       const [shoppingQuickItem, setShoppingQuickItem] = useState('');
-      const [shoppingPaidAmount, setShoppingPaidAmount] = useState('');
-      const [shoppingPaidNote, setShoppingPaidNote] = useState('');
-      const [homeCalendarScope, setHomeCalendarScope] = useState('today');
-      const [homeCalendarCustomDate, setHomeCalendarCustomDate] = useState(() => new Date().toISOString().slice(0, 10));
-      const [themeMode, setThemeMode] = useState(() => {
-        try {
-          const stored = localStorage.getItem('onyx_theme_mode');
-          return (stored === 'light' || stored === 'dark') ? stored : 'dark';
-        } catch (_) {
-          return 'dark';
-        }
-      });
       const [isStandalone, setIsStandalone] = useState(false);
       const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
       const [canInstallPwa, setCanInstallPwa] = useState(false);
@@ -446,6 +445,7 @@ function AmoledCalendarApp() {
       // Push diagnostics (helps to debug when users report "Push geht nicht")
       const [pushDiag, setPushDiag] = useState({ sw: 'unknown', controlling: false, lastError: '', lastTokenAt: 0, lastReceivedAt: 0, lastReceivedTitle: '' });
       const [pushTest, setPushTest] = useState({ id: '', status: '', lastError: '', updatedAt: 0 });
+      const [diagTestsOpen, setDiagTestsOpen] = useState(false);
 
       // Account alias editor
       const [aliasEditOpen, setAliasEditOpen] = useState(false);
@@ -465,14 +465,32 @@ function AmoledCalendarApp() {
 
 
 
+function getSupportedAudioRecorderConfig() {
+  const MR = (typeof window !== 'undefined' && window.MediaRecorder) ? window.MediaRecorder : null;
+  const isIOS = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+  const supports = (mime) => {
+    try { return !!(MR && MR.isTypeSupported && MR.isTypeSupported(mime)); }
+    catch (_) { return false; }
+  };
+  if (isIOS) {
+    if (supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
+    if (supports('audio/webm;codecs=opus')) return { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 };
+    if (supports('audio/webm')) return { mimeType: 'audio/webm', audioBitsPerSecond: 96000 };
+    return { mimeType: '', audioBitsPerSecond: 96000 };
+  }
+  if (supports('audio/webm;codecs=opus')) return { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 };
+  if (supports('audio/ogg;codecs=opus')) return { mimeType: 'audio/ogg;codecs=opus', audioBitsPerSecond: 128000 };
+  if (supports('audio/mp4')) return { mimeType: 'audio/mp4', audioBitsPerSecond: 128000 };
+  if (supports('audio/webm')) return { mimeType: 'audio/webm', audioBitsPerSecond: 96000 };
+  return { mimeType: '', audioBitsPerSecond: 96000 };
+}
+
       const isIosUA = (typeof navigator !== 'undefined') && /iphone|ipad|ipod/i.test(navigator.userAgent || '');
       
       const [isWeatherModalOpen, setIsWeatherModalOpen] = useState(false);
       const [searchQuery, setSearchQuery] = useState('');
       const [searchResults, setSearchResults] = useState([]);
       const activeShoppingList = shoppingLists.find((row) => row.id === activeShoppingListId) || shoppingLists[0] || null;
-      const pinnedShoppingList = (Array.isArray(shoppingLists) ? shoppingLists : []).find((row) => row.id === userProfile?.pinnedShoppingListId) || null;
-      const hasUserAvatar = !!(userProfile?.avatarBase64 || userProfile?.avatarThumbBase64 || userProfile?.avatarFullBase64);
 
       // --- BILD-VOLLBILD VIEWER ---
       const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
@@ -545,13 +563,17 @@ function AmoledCalendarApp() {
       const [visibleCalendars, setVisibleCalendars] = useState(['default']);
       
       const [isModalOpen, setIsModalOpen] = useState(false);
+
 const [showEventComments, setShowEventComments] = useState(false);
 const [showEventPoll, setShowEventPoll] = useState(false);
+
 const [eventComments, setEventComments] = useState([]);
 const [newCommentText, setNewCommentText] = useState('');
 const eventCommentsUnsubRef = useRef(null);
 const autoFinalizedPollsRef = useRef({});
+
 const eventModalScrollRef = useRef(null);
+
 const [pollDraft, setPollDraft] = useState([
   { date: '', time: '' },
   { date: '', time: '' },
@@ -665,27 +687,32 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [chatFriendLoading, setChatFriendLoading] = useState(false);
       const [chatFriendError, setChatFriendError] = useState('');
       const chatFriendLookupTimer = useRef(null);
+      const [incomingFriendRequestDocs, setIncomingFriendRequestDocs] = useState([]);
+      const [outgoingFriendRequestDocs, setOutgoingFriendRequestDocs] = useState([]);
+      const secretPanicBypassUntilRef = useRef(0);
 
       const [myChats, setMyChats] = useState([]);
       const [activeChat, setActiveChat] = useState(null);
-      const activeChatId = activeChat?.id || null;
-      const pendingOutgoingRef = useRef([]);
-      const pendingFlushInFlightRef = useRef(false);
       const [chatMessages, setChatMessages] = useState([]);
       const [newMessageText, setNewMessageText] = useState('');
       const [editingMessage, setEditingMessage] = useState(null);
       const [replyToMessage, setReplyToMessage] = useState(null); // { id, senderId, text, image, audio, event }
       const [playingAudioId, setPlayingAudioId] = useState(null);
       const [selectedMessageId, setSelectedMessageId] = useState(null); 
+      const [messageReactionPickerFor, setMessageReactionPickerFor] = useState(null);
       const [selfDestruct, setSelfDestruct] = useState(false);
+      const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
       
+      const [isRecording, setIsRecording] = useState(false);
+      const mediaRecorderRef = useRef(null);
+      const audioChunksRef = useRef([]);
 
       const typingTimeoutRef = useRef(null);
-      const typingStateRef = useRef(false);
-      const typingLastWriteRef = useRef(0);
       const messagesEndRef = useRef(null);
       const chatScrollRef = useRef(null);
+      const chatInputRef = useRef(null);
+      const attachmentMenuRef = useRef(null);
 
       // --- Chat scroll UX ---
       // Keep the viewport stable when prepending older messages and avoid auto-jumping to bottom
@@ -695,7 +722,6 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const chatOldestCursorRef = useRef(null);
       const chatLoadedMoreRef = useRef(false);
       const chatAutoLoadLockRef = useRef(false);
-      const lastResetChatIdRef = useRef(null);
       const CHAT_PAGE_SIZE = 25;
       const [chatHasMore, setChatHasMore] = useState(false);
       const [chatLoadingMore, setChatLoadingMore] = useState(false);
@@ -707,14 +733,14 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const userProfileRef = useRef(null);
       const extrasCloudReadyRef = useRef(false);
       const extrasCloudTimerRef = useRef(null);
-      const workClockPresetEditingRef = useRef(false);
-      const weeklyTargetEditingRef = useRef(false);
       const activeChatIdRef = useRef(null);
+      const chatSubscribedIdRef = useRef('');
       const currentViewRef = useRef(null);
       const lastChatPingRef = useRef({});
       const myChatsRef = useRef([]);
       const quoteRotationRef = useRef({ idx: -1, last: '' });
       const pushTestTimeoutRef = useRef(null);
+      const ephemeralDeleteTimersRef = useRef({});
       
       const [chatStats, setChatStats] = useState({ sent: 0, received: 0, total: 0 });
       const [showPartnerStats, setShowPartnerStats] = useState(false);
@@ -725,11 +751,25 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [groupMemberSearch, setGroupMemberSearch] = useState('');
       const [groupEditSearch, setGroupEditSearch] = useState('');
       const lastReadWriteRef = useRef(0);
+      const presenceHeartbeatRef = useRef(null);
 
       const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
       const [messageSearchQuery, setMessageSearchQuery] = useState('');
       const [messageMatchIndex, setMessageMatchIndex] = useState(0);
       const [messageSearchFilter, setMessageSearchFilter] = useState('all');
+      const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '👏', '🙏', '😎', '🤔', '✅'];
+      const reactionKeyForEmoji = (emoji) => `u${Array.from(String(emoji || '')).map(ch => ch.codePointAt(0).toString(16)).join('_')}`;
+      const reactionEmojiFromKey = (key) => {
+        const raw = String(key || '');
+        if (!raw.startsWith('u')) return raw;
+        try {
+          const parts = raw.slice(1).split('_').filter(Boolean);
+          if (!parts.length) return raw;
+          return String.fromCodePoint(...parts.map((p) => parseInt(p, 16)).filter((n) => Number.isFinite(n)));
+        } catch (_) { return raw; }
+      };
+      const chatRetryTimersRef = useRef({});
+      const pushTestWatchdogRef = useRef(null);
 
       const [chatMetaPrefs, setChatMetaPrefs] = useState(() => {
         try {
@@ -774,32 +814,31 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [pullDistance, setPullDistance] = useState(0);
       const touchStartY = useRef(0);
       const touchCurrentY = useRef(0);
+      const chatSearchScrollTargetRef = useRef('');
 
 
 // --- PULL TO REFRESH (GLOBAL TOUCH) ---
 const mainRef = useRef(null);
 const canPullRef = useRef(false);
+
 const handleGlobalTouchStart = (e) => {
   if (!e.touches || e.touches.length === 0) return;
-  if (currentViewRef.current === 'settings') {
-    canPullRef.current = false;
-    setPullDistance(0);
-    return;
-  }
-  const tagName = String(e.target.tagName || '').toLowerCase();
-  if (['input', 'textarea', 'select', 'button'].includes(tagName) || e.target.isContentEditable) {
-    canPullRef.current = false;
-    setPullDistance(0);
-    return;
-  }
+
+  // Pull-to-refresh nur im Dashboard auslösen, nicht in Chat/Settings/Formularen.
+  if (currentView !== 'dashboard') { canPullRef.current = false; return; }
+  const target = e?.target;
+  const isInteractive = !!(target && typeof target.closest === 'function' && target.closest('input, textarea, select, button, [contenteditable="true"], [data-no-pull-refresh="true"]'));
+  if (isInteractive) { canPullRef.current = false; return; }
+
   touchStartY.current = e.touches[0].clientY;
   touchCurrentY.current = touchStartY.current;
   setPullDistance(0);
 
   // Nur ziehen, wenn der Scroll-Container oben ist
-  const atTop = (mainRef.current.scrollTop ?? 0) <= 0;
+  const atTop = (mainRef.current?.scrollTop ?? 0) <= 0;
   canPullRef.current = atTop && !isRefreshing;
 };
+
 const handleGlobalTouchMove = (e) => {
   if (!canPullRef.current || isRefreshing) return;
   if (!e.touches || e.touches.length === 0) return;
@@ -810,13 +849,14 @@ const handleGlobalTouchMove = (e) => {
   if (delta > 0) {
     // iOS / mobile: verhindern, dass der Browser selbst "bounce" scrollt
     // React registriert Touch-Events oft als passive -> preventDefault würde warnen
-    const cancelable = (e.cancelable ?? e.nativeEvent.cancelable);
+    const cancelable = (e?.cancelable ?? e?.nativeEvent?.cancelable);
     if (cancelable !== false && typeof e.preventDefault === 'function') e.preventDefault();
     setPullDistance(Math.min(delta, 120));
   } else {
     setPullDistance(0);
   }
 };
+
 const handleGlobalTouchEnd = async () => {
   if (!canPullRef.current) { setPullDistance(0); return; }
   canPullRef.current = false;
@@ -835,7 +875,9 @@ const handleGlobalTouchEnd = async () => {
   } finally {
     setIsRefreshing(false);
   }
-}; // --- MODALS / ACTIONS (fehlende Handler) ---
+};
+
+// --- MODALS / ACTIONS (fehlende Handler) ---
 const openNewEventModal = (dateStr = null) => {
   const d = dateStr || new Date().toISOString().split('T')[0];
 
@@ -885,6 +927,7 @@ initPollDraftFromEvent({ date: d, time: '', calendarId: targetCalId });
   setEventCanEdit(true);
   setIsModalOpen(true);
 };
+
 const persistDisplayName = async (rawName, opts = {}) => {
   if (!user) return;
   const uname = String(rawName || '').trim();
@@ -932,17 +975,19 @@ const persistDisplayName = async (rawName, opts = {}) => {
     // Best-effort: displayName in bestehenden Chats aktualisieren (damit es überall konsistent ist)
     try {
       const updates = myChats.slice(0, 75).map(c => {
-        if (!c.id) return null;
+        if (!c?.id) return null;
         return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user?.uid}`]: uname }).catch(()=>{});
       }).filter(Boolean);
       await Promise.all(updates);
     } catch (_) {}
+
     showToast((opts && opts.toast) ? opts.toast : 'Profil gespeichert');
   } catch (err) {
     console.error('persistDisplayName failed', err);
     showToast('Fehler beim Speichern');
   }
 };
+
 const sanitizeAlias = (raw) => {
   const s = String(raw ?? '').trim();
   // Allow: letters, numbers, dot, underscore, dash. Spaces become underscore.
@@ -950,6 +995,7 @@ const sanitizeAlias = (raw) => {
   const cleaned = underscored.replace(/[^a-zA-Z0-9._-]/g, '');
   return cleaned.slice(0, 20);
 };
+
 const persistAliasUsername = async (rawAlias) => {
   if (!user) return;
   const nextAlias = sanitizeAlias(rawAlias);
@@ -984,7 +1030,7 @@ const persistAliasUsername = async (rawAlias) => {
     try {
       const nameForChats = (patch.displayName || userProfile?.displayName || nextAlias);
       const updates = (myChats || []).slice(0, 75).map(c => {
-        if (!c.id) return null;
+        if (!c?.id) return null;
         return updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', c.id), { [`displayNames.${user?.uid}`]: nameForChats }).catch(()=>{});
       }).filter(Boolean);
       await Promise.all(updates);
@@ -998,7 +1044,9 @@ const persistAliasUsername = async (rawAlias) => {
   } finally {
     try { setAliasSaving(false); } catch (_) {}
   }
+
 };
+
 const hasPasswordProvider = () => {
   try {
     const u = auth.currentUser;
@@ -1007,18 +1055,20 @@ const hasPasswordProvider = () => {
     return pd.some(p => p && p.providerId === 'password');
   } catch (_) { return false; }
 };
+
 const doSendPasswordReset = async () => {
   try {
     const u = auth.currentUser;
-    if (!u || !u.email) return showToast('Keine E-Mail');
+    if (!u || !u.email) return showToast('Keine E‑Mail');
     await sendPasswordResetEmail(auth, u.email);
     setPwResetSent(true);
-    showToast('Reset-Mail gesendet');
+    showToast('Reset‑Mail gesendet');
   } catch (e) {
     console.warn('sendPasswordResetEmail failed', e);
     showToast('Reset fehlgeschlagen');
   }
 };
+
 const doChangePassword = async () => {
   try {
     setPwSaving(true);
@@ -1041,15 +1091,16 @@ const doChangePassword = async () => {
     showToast('Passwort aktualisiert');
   } catch (e) {
     console.warn('doChangePassword failed', e);
-    const msg = String(e.code || e.message || e);
+    const msg = String(e?.code || e?.message || e);
     if (msg.includes('auth/wrong-password')) setPwError('Aktuelles Passwort ist falsch');
-    else if (msg.includes('auth/too-many-requests')) setPwError('Zu viele Versuche - später erneut');
+    else if (msg.includes('auth/too-many-requests')) setPwError('Zu viele Versuche – später erneut');
     else if (msg.includes('auth/requires-recent-login')) setPwError('Bitte neu anmelden und erneut versuchen');
     else setPwError('Änderung fehlgeschlagen');
   } finally {
     try { setPwSaving(false); } catch (_) {}
   }
 };
+
 const saveUsername = async (e) => {
 
   e.preventDefault();
@@ -1092,20 +1143,57 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
       }
     }
 
-    // 5-stellige Chat-ID (friendCode): immer denselben kanonischen Wert wiederverwenden.
-    const localFriendCode = normalizeFriendCodeValue((() => {
-      try { return localStorage.getItem(`onyx_friendCode_${authUser.uid}`) || ''; } catch (_) { return ''; }
-    })());
-    const canonicalFriendCode =
-      normalizeFriendCodeValue(existing?.friendCodeStable || existing?.friendCodePinned || '')
-      || localFriendCode
-      || normalizeFriendCodeValue(existing?.friendCode)
-      || deterministicFriendCodeForUid(authUser.uid, 0);
+    // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt (bombensicher, ohne Full-Scan)
+    const normalizeFriendCode = (v) => {
+      const s = String(v ?? '').trim();
+      if (/^\d{5}$/.test(s)) return s;
+      if (/^\d+$/.test(s)) {
+        try { return String(parseInt(s, 10)).padStart(5, '0'); } catch(e) { return ''; }
+      }
+      return '';
+    };
 
-    next.friendCode = canonicalFriendCode;
-    next.friendCodeStable = canonicalFriendCode;
-    if (!existing || !existing.createdAt) {
-      next.createdAt = Date.now();
+    if (!existing || !normalizeFriendCode(existing.friendCode)) {
+      let claimed = '';
+      for (let i = 0; i < 25 && !claimed; i++) {
+        const candidate = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+        const codeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendCodes', candidate);
+        try {
+          await runTransaction(db, async (tx) => {
+            const ds = await tx.get(codeRef);
+            if (ds.exists()) throw new Error('CODE_TAKEN');
+            tx.set(codeRef, { uid: authUser.uid, createdAt: Date.now() });
+          });
+          claimed = candidate;
+        } catch (e) {
+          const code = String(e?.code || '');
+          const msg = String(e?.message || '');
+          // Wenn friendCodes wegen Rules nicht erlaubt ist, fallback auf random ohne Reservierung
+          if (code === 'permission-denied' || msg.toLowerCase().includes('permission')) {
+            // friendCodes-Registry nicht erlaubt -> uniqueness best-effort über profiles Query
+            try {
+              const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+              const q2 = query(profilesCol, where('friendCode', '==', candidate), limit(1));
+              const s2 = await getDocs(q2);
+              if (s2.empty) {
+                claimed = candidate;
+                break;
+              }
+              // sonst weiter versuchen
+            } catch (_) {
+              // im Zweifel trotzdem setzen
+              claimed = candidate;
+              break;
+            }
+          }
+          // sonst: erneut versuchen
+        }
+      }
+      if (!claimed) claimed = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+      next.friendCode = claimed;
+      next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
+    } else {
+      next.friendCode = normalizeFriendCode(existing.friendCode);
     }
 
 
@@ -1117,14 +1205,16 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
 
     await setDoc(profileRef, next, { merge: true });
     // local fallback (falls Firestore offline/hakt)
-    try { localStorage.setItem(`onyx_username_${authUser.uid}`, (next.username || existing.username || ''));
-      localStorage.setItem(`onyx_displayName_${authUser.uid}`, (next.displayName || existing.displayName || next.username || existing.username || ''));
-      localStorage.setItem(`onyx_friendCode_${authUser.uid}`, (next.friendCode || existing.friendCode || ''));
+    try { localStorage.setItem(`onyx_username_${authUser.uid}`, (next.username || existing?.username || ''));
+      localStorage.setItem(`onyx_displayName_${authUser.uid}`, (next.displayName || existing?.displayName || next.username || existing?.username || ''));
+      localStorage.setItem(`onyx_friendCode_${authUser.uid}`, (next.friendCode || existing?.friendCode || ''));
     } catch(_) {}
   } catch (e) {
     console.warn("ensureProfileAfterAuth failed", e);
   }
-}; // --- EVENT CRUD (Modal) ---
+};
+
+// --- EVENT CRUD (Modal) ---
 const closeEventModal = () => {
   setIsModalOpen(false);
   setShowEventComments(false);
@@ -1153,6 +1243,7 @@ const initPollDraftFromEvent = (ev) => {
   setPollDeadlineTime(baseTime || '18:00');
   setPollAutoFinalize(true);
 };
+
 const countVotes = (votesObj) => {
   const votes = (votesObj && typeof votesObj === 'object') ? votesObj : {};
   const out = {};
@@ -1161,9 +1252,12 @@ const countVotes = (votesObj) => {
     out[v] = (out[v] || 0) + 1;
   }
   return out;
-}; // --- Abstimmung 2.0 (Matrix: Fix/Kann/Nein) ---
+};
+
+// --- Abstimmung 2.0 (Matrix: Fix/Kann/Nein) ---
 const POLL_STATE = { YES: 'yes', MAYBE: 'maybe', NO: 'no' };
 const isPollState = (v) => v === POLL_STATE.YES || v === POLL_STATE.MAYBE || v === POLL_STATE.NO;
+
 const makeDeadlineAt = (dateStr, timeStr) => {
   const d = (dateStr || '').trim();
   if (!d) return null;
@@ -1171,6 +1265,7 @@ const makeDeadlineAt = (dateStr, timeStr) => {
   const ms = new Date(`${d}T${t}`).getTime();
   return Number.isFinite(ms) ? ms : null;
 };
+
 const computePollTally = (poll, fallbackVoterIds = []) => {
   const p = poll || {};
   const version = Number(p.version || 1);
@@ -1269,7 +1364,8 @@ const computePollTally = (poll, fallbackVoterIds = []) => {
     canFinalizeNow: allResponded || deadlinePassed,
     winnerOptionId,
   };
-};
+}
+
 const formatDeadlineShort = (deadlineAt) => {
   if (!deadlineAt) return '';
   try {
@@ -1297,6 +1393,7 @@ const computePollVoterIdsForEvent = (ev) => {
   voters.add(user?.uid);
   return Array.from(voters).filter(Boolean);
 };
+
 const sendEventComment = async () => {
   if (!user || !eventToEdit) return;
   const txt = (newCommentText || '').trim();
@@ -1329,6 +1426,7 @@ const sendEventComment = async () => {
     showToast("Kommentar konnte nicht gesendet werden");
   }
 }
+
 useEffect(() => {
   // Live comments only while modal open and panel visible
   if (!user || !isModalOpen || !showEventComments || !eventToEdit) {
@@ -1359,6 +1457,7 @@ useEffect(() => {
     if (eventCommentsUnsubRef.current === unsub) eventCommentsUnsubRef.current = null;
   };
 }, [user?.uid, isModalOpen, showEventComments, eventToEdit?.id, eventToEdit?.calendarId]);
+
 const createPollForEvent = async () => {
   if (!user || !eventToEdit) return;
   const calId = eventToEdit.calendarId || 'default';
@@ -1366,8 +1465,8 @@ const createPollForEvent = async () => {
 
   const opts = (pollDraft || []).map((o, idx) => ({
     id: `opt_${Date.now()}_${idx}`,
-    date: (o.date || '').trim(),
-    time: (o.time || '').trim(),
+    date: (o?.date || '').trim(),
+    time: (o?.time || '').trim(),
   })).filter(o => o.date && o.time);
 
   if (opts.length < 2) return showToast("Bitte mind. 2 Vorschläge");
@@ -1402,6 +1501,7 @@ const createPollForEvent = async () => {
     setPollBusy(false);
   }
 };
+
 const upgradePollToV2 = async (ev) => {
   if (!user || !ev || !ev.id) return;
   const calId = ev.calendarId || 'default';
@@ -1434,6 +1534,7 @@ const upgradePollToV2 = async (ev) => {
     setPollBusy(false);
   }
 };
+
 const voteInPoll = async (optionId, state = POLL_STATE.YES) => {
   if (!user || !eventToEdit) return;
   const calId = eventToEdit.calendarId || 'default';
@@ -1459,6 +1560,7 @@ const voteInPoll = async (optionId, state = POLL_STATE.YES) => {
     showToast("Vote fehlgeschlagen");
   }
 };
+
 const finalizePollForEvent = async () => {
   if (!user || !eventToEdit) return;
   const calId = eventToEdit.calendarId || 'default';
@@ -1500,13 +1602,15 @@ const finalizePollForEvent = async () => {
   } finally {
     setPollBusy(false);
   }
-}; // --- POLL helpers for calendar bottom panel ---
+};
+
+// --- POLL helpers for calendar bottom panel ---
 const voteInPollForSpecificEvent = async (ev, optionId, state = POLL_STATE.YES) => {
   if (!user || !ev || !ev.id) return;
   const calId = ev.calendarId || 'default';
   if (calId !== 'default' && !canWriteCalendar(calId)) return showToast("Keine Schreibrechte");
 
-  const pollVer = Number(ev.poll.version || 1);
+  const pollVer = Number(ev?.poll?.version || 1);
 
   try {
     if (pollVer >= 2) {
@@ -1526,6 +1630,7 @@ const voteInPollForSpecificEvent = async (ev, optionId, state = POLL_STATE.YES) 
     showToast("Vote fehlgeschlagen");
   }
 };
+
 const finalizePollForSpecificEvent = async (ev) => {
   if (!user || !ev || !ev.id) return;
   const calId = ev.calendarId || 'default';
@@ -1568,12 +1673,14 @@ const finalizePollForSpecificEvent = async (ev) => {
     setPollBusy(false);
   }
 };
+
 const canWriteCalendar = (calId) => {
   if (calId === 'default') return true;
   const cal = customCalendars.find(c => c.id === calId);
   if (!cal) return false;
   return cal.ownerId === user?.uid || cal.sharedWith?.[user?.uid] === 'write';
 };
+
 const eventCollectionRefFor = (calId) => {
   if (!user) return null;
   if (calId === 'default') {
@@ -1581,13 +1688,16 @@ const eventCollectionRefFor = (calId) => {
   }
   return collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events');
 };
+
 function eventDocRefFor(calId, eventId) {
   if (!user) return null;
   if (calId === 'default') {
     return doc(db, 'artifacts', APP_ID, 'users', user?.uid, 'events', eventId);
   }
   return doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId, 'events', eventId);
-}; // --- AUDIT LOG ---
+};
+
+// --- AUDIT LOG ---
 const writeUserAudit = async (entry) => {
   try {
     if (!user) return;
@@ -1599,6 +1709,7 @@ const writeUserAudit = async (entry) => {
     });
   } catch (_) {}
 };
+
 const writeCalendarAudit = async (calId, entry) => {
   try {
     if (!user) return;
@@ -1612,6 +1723,7 @@ const writeCalendarAudit = async (calId, entry) => {
     });
   } catch (_) {}
 };
+
 const writeAudit = async ({ calId, action, targetType, targetId, summary, details }) => {
   const payload = {
     action: String(action || ''),
@@ -1623,6 +1735,7 @@ const writeAudit = async ({ calId, action, targetType, targetId, summary, detail
   await writeUserAudit(payload);
   await writeCalendarAudit(calId, payload);
 };
+
 const saveEvent = async (e) => {
   e.preventDefault();
   if (!user) return;
@@ -1714,8 +1827,8 @@ const saveEvent = async (e) => {
   if (!eventToEdit && createPollOnSave) {
     const opts = (pollDraft || []).map((o, idx) => ({
       id: `opt_${Date.now()}_${idx}`,
-      date: (o.date || '').trim(),
-      time: (o.time || '').trim(),
+      date: (o?.date || '').trim(),
+      time: (o?.time || '').trim(),
     })).filter(o => o.date && o.time);
 
     if (opts.length < 2) return showToast("Bitte mind. 2 Vorschläge");
@@ -1739,8 +1852,8 @@ const saveEvent = async (e) => {
     };
 
     // Wenn keine Zeit gesetzt ist, nimm den ersten Vorschlag als Anzeige-Default
-    if (!payload.time && opts[0].time) payload.time = opts[0].time;
-    if (!payload.date && opts[0].date) payload.date = opts[0].date;
+    if (!payload.time && opts[0]?.time) payload.time = opts[0].time;
+    if (!payload.date && opts[0]?.date) payload.date = opts[0].date;
   }
 
   try {
@@ -1763,14 +1876,14 @@ const saveEvent = async (e) => {
           movedAt: Date.now()
         });
         await deleteDoc(eventDocRefFor(fromCalId, eventToEdit.id));
-        await writeAudit({ calId: fromCalId, action: 'event.move', targetType: 'event', targetId: eventToEdit.id, summary: `Termin verschoben: ${title} -> ${getCalendarById(toCalId).name || toCalId}`, details: { toCalId, newEventId: newRef.id || null } });
+        await writeAudit({ calId: fromCalId, action: 'event.move', targetType: 'event', targetId: eventToEdit.id, summary: `Termin verschoben: ${title} → ${getCalendarById(toCalId)?.name || toCalId}`, details: { toCalId, newEventId: newRef?.id || null } });
         showToast("Termin verschoben");
         setActiveCalendarId(toCalId);
       }
     } else {
       const colRef = eventCollectionRefFor(targetCalId);
       const newRef = await addDoc(colRef, { ...payload, createdAt: Date.now() });
-      await writeAudit({ calId: targetCalId, action: 'event.create', targetType: 'event', targetId: newRef.id || '', summary: `Termin erstellt: ${title}` });
+      await writeAudit({ calId: targetCalId, action: 'event.create', targetType: 'event', targetId: newRef?.id || '', summary: `Termin erstellt: ${title}` });
       showToast("Termin erstellt");
     }
 
@@ -1779,6 +1892,7 @@ const saveEvent = async (e) => {
     showToast("Fehler beim Speichern");
   }
 };
+
 const deleteEvent = async (mode = null) => {
   if (!eventToEdit || !user) return;
   const calId = eventToEdit.calendarId || 'default';
@@ -1792,7 +1906,7 @@ const deleteEvent = async (mode = null) => {
   const effectiveMode = mode || (isInstance ? eventEditScope : 'series');
 
   if (isInstance && effectiveMode === 'single') {
-    if (!confirm("Dieses Vorkommen löschen")) return;
+    if (!confirm("Dieses Vorkommen löschen?")) return;
     try {
       const ex = Array.isArray(eventToEdit.exDates) ? eventToEdit.exDates : [];
       const nextEx = ex.includes(selectedDateForEvent) ? ex : [...ex, selectedDateForEvent];
@@ -1808,7 +1922,7 @@ const deleteEvent = async (mode = null) => {
     return;
   }
 
-  if (!confirm("Termin löschen")) return;
+  if (!confirm("Termin löschen?")) return;
   try {
     await deleteDoc(eventDocRefFor(calId, eventToEdit.id));
     await writeAudit({ calId, action: 'event.delete', targetType: 'event', targetId: eventToEdit.id, summary: `Termin gelöscht: ${eventToEdit.title || ''}` });
@@ -1828,7 +1942,9 @@ const openShiftPicker = (dateStr) => {
   }
   if (!activeCal.shifts || activeCal.shifts.length === 0) return showToast("Keine Schichten konfiguriert.");
   setShiftModalData({ dateStr, calId: activeCal.id, shifts: activeCal.shifts });
-}; // --- GEHEIMER CHAT (Long Press auf Tag-Zahl 5 für 3s) ---
+};
+
+// --- GEHEIMER CHAT (Long Press auf Tag-Zahl 5 für 3s) ---
 const revealSecretChat = () => {
   setSelectedMessageId(null);
   setIsMessageSearchOpen(false);
@@ -1839,6 +1955,7 @@ const revealSecretChat = () => {
   setSecretView('list');
   setCurrentView('secret_chat');
 };
+
 const hideSecretChatNow = (toast = 'Secret Chat versteckt') => {
   setSelectedMessageId(null);
   setIsMessageSearchOpen(false);
@@ -1848,6 +1965,7 @@ const hideSecretChatNow = (toast = 'Secret Chat versteckt') => {
   setCurrentView('calendar');
   if (toast) showToast(toast);
 };
+
 const requestSecretEntry = () => {
   const pinEnabled = !!(userProfile?.secretPinEnabled && userProfile?.secretPinHash);
   if (pinEnabled) {
@@ -1858,6 +1976,7 @@ const requestSecretEntry = () => {
   }
   revealSecretChat();
 };
+
 const verifySecretPinAndEnter = async () => {
   const raw = String(secretPinInput || '').trim();
   if (!/^\d{4,8}$/.test(raw)) {
@@ -1882,6 +2001,7 @@ const verifySecretPinAndEnter = async () => {
     setSecretPinBusy(false);
   }
 };
+
 const saveSecretPinSettings = async () => {
   if (!user?.uid) return;
   const nextPin = String(secretPinSetupNew || '').trim();
@@ -1914,6 +2034,7 @@ const saveSecretPinSettings = async () => {
     setSecretPinActionBusy(false);
   }
 };
+
 const disableSecretPin = async () => {
   if (!user?.uid) return;
   const currentPin = String(secretPinSetupCurrent || '').trim();
@@ -1940,6 +2061,7 @@ const disableSecretPin = async () => {
     setSecretPinActionBusy(false);
   }
 };
+
 const toggleSecretAutoHide = async () => {
   if (!user?.uid) return;
   const nextValue = !(userProfile?.secretPanicOnHide !== false);
@@ -1953,6 +2075,16 @@ const toggleSecretAutoHide = async () => {
     showToast('Einstellung konnte nicht gespeichert werden');
   }
 };
+
+const temporarilySuspendSecretAutoHide = (ms = 30000) => {
+  try {
+    if (currentView !== 'secret_chat') return;
+    if (userProfile?.secretPanicOnHide === false) return;
+    const ttl = Math.max(3000, Number(ms || 0));
+    secretPanicBypassUntilRef.current = Date.now() + ttl;
+  } catch (_) {}
+};
+
 const startSecretGate = () => {
   secretGateTriggered.current = false;
   if (secretPressTimer.current) clearTimeout(secretPressTimer.current);
@@ -1961,12 +2093,15 @@ const startSecretGate = () => {
     requestSecretEntry();
   }, 3000);
 };
+
 const endSecretGate = () => {
   if (secretPressTimer.current) {
     clearTimeout(secretPressTimer.current);
     secretPressTimer.current = null;
   }
-}; // Long-Press auf Tag (mobile) -> Shift-Auswahl (ersetzt ContextMenu)
+};
+
+// Long-Press auf Tag (mobile) -> Shift-Auswahl (ersetzt ContextMenu)
 const handleTouchStart = (dateStr) => {
   isLongPressAction.current = false;
   if (pressTimer.current) clearTimeout(pressTimer.current);
@@ -1975,6 +2110,7 @@ const handleTouchStart = (dateStr) => {
     openShiftPicker(dateStr);
   }, 550);
 };
+
 const handleTouchEnd = () => {
   if (pressTimer.current) {
     clearTimeout(pressTimer.current);
@@ -1995,31 +2131,66 @@ const handleTouchEnd = () => {
       const partnerId = (activeChatData && !isGroupChat(activeChatData) && Array.isArray(activeChatData.participants)) ? activeChatData.participants.find(id => id !== user?.uid) : null;
       const isPartnerTyping = activeChatData ? (getTypingUsers(activeChatData).length > 0) : false;
 
+      const setDailyFactWithColor = (quote) => {
+        const q = String(quote || '').trim();
+        if (!q) return;
+        setDailyFact(q);
+        setDailyFactColor((prev) => colorForQuote(q, prev));
+      };
+
       const refreshDailyFact = () => {
         const list = (quotes && quotes.length) ? quotes : DEFAULT_QUOTES;
         const q = list[Math.floor(Math.random() * list.length)];
-        setDailyFact(q);
+        setDailyFactWithColor(q);
         try { localStorage.setItem('onyx_quote_override', q); localStorage.setItem('onyx_quote_override_day', todayKey); } catch(e) {}
       };
+
+      const toggleTheme = () => setUiTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+      const isExtraFieldEnabled = (field) => {
+        const defaultOn = true;
+        return ((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn) === true;
+      };
+      const saveExtraFieldToggle = async (field) => {
+        try {
+          const next = !isExtraFieldEnabled(field);
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { [field]: next, updatedAt: Date.now() }, { merge: true });
+          setUserProfile(prev => ({ ...(prev || {}), [field]: next }));
+          showToast(next ? 'Aktiviert' : 'Deaktiviert');
+        } catch (_) { showToast('Fehler'); }
+      };
+      const toggleExtrasSection = (key) => setExtrasSectionsOpen((prev) => ({ ...(prev || {}), [key]: !prev?.[key] }));
 
 
       const pinnedChatIds = (userProfile && Array.isArray(userProfile?.pinnedChats)) ? userProfile?.pinnedChats : [];
       const hiddenChatIds = (userProfile && Array.isArray(userProfile?.hiddenChats)) ? userProfile?.hiddenChats : [];
       const friendIds = (userProfile && Array.isArray(userProfile?.friends)) ? userProfile?.friends : [];
-      const incomingFriendRequestsMap = (userProfile && userProfile.friendRequestsIncoming && typeof userProfile.friendRequestsIncoming === 'object') ? userProfile.friendRequestsIncoming : {};
-      const incomingFriendRequests = Object.entries(incomingFriendRequestsMap)
-        .map(([fromUid, request]) => ({ fromUid, ...(request || {}) }))
-        .filter((request) => request && request.fromUid && request.fromUid !== user?.uid && !friendIds.includes(request.fromUid))
-        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
-      const removedFriendChats = (Array.isArray(myChats) ? myChats : []).filter((chat) => {
-        if (!chat || !chat.id || !Array.isArray(chat.participants) || chat.participants.length !== 2) return false;
-        if (!hiddenChatIds.includes(chat.id)) return false;
-        const otherUid = chat.participants.find(id => id !== user?.uid);
-        if (!otherUid) return false;
-        return !friendIds.includes(otherUid);
-      });
+      const removedFriendIds = (userProfile && Array.isArray(userProfile?.removedFriendIds)) ? userProfile?.removedFriendIds : [];
+      const blockedUserIds = (userProfile && Array.isArray(userProfile?.blockedUsers)) ? userProfile?.blockedUsers : [];
+      const pendingIncomingFriendRequests = Object.values((Array.isArray(incomingFriendRequestDocs) ? incomingFriendRequestDocs : []).reduce((acc, request) => {
+        const fromUid = String(request?.fromUid || '');
+        const status = String(request?.status || 'pending');
+        if (!fromUid || fromUid === user?.uid || status !== 'pending' || friendIds.includes(fromUid) || blockedUserIds.includes(fromUid)) return acc;
+        const current = acc[fromUid];
+        if (!current || Number(request?.createdAt || 0) > Number(current?.createdAt || 0)) acc[fromUid] = request;
+        return acc;
+      }, {})).sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
+      const pendingOutgoingFriendRequests = Object.values((Array.isArray(outgoingFriendRequestDocs) ? outgoingFriendRequestDocs : []).reduce((acc, request) => {
+        const toUid = String(request?.toUid || '');
+        const status = String(request?.status || 'pending');
+        if (!toUid || toUid === user?.uid || status !== 'pending' || friendIds.includes(toUid) || blockedUserIds.includes(toUid)) return acc;
+        const current = acc[toUid];
+        if (!current || Number(request?.createdAt || 0) > Number(current?.createdAt || 0)) acc[toUid] = request;
+        return acc;
+      }, {})).sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
+      const friendRequestIncomingIds = pendingIncomingFriendRequests.map((request) => String(request?.fromUid || '')).filter(Boolean);
+      const friendRequestSentIds = pendingOutgoingFriendRequests.map((request) => String(request?.toUid || '')).filter(Boolean);
       const sortedMyChats = [...myChats]
         .filter(c => c && c.id && !hiddenChatIds.includes(c.id))
+        .filter((c) => {
+          if (isGroupChat(c)) return true;
+          const otherUid = Array.isArray(c?.participants) ? c.participants.find((id) => id !== user?.uid) : null;
+          return !otherUid || !blockedUserIds.includes(otherUid);
+        })
         .sort((a, b) => {
         const ap = pinnedChatIds.includes(a.id) ? 1 : 0;
         const bp = pinnedChatIds.includes(b.id) ? 1 : 0;
@@ -2028,8 +2199,8 @@ const handleTouchEnd = () => {
       });
 
       const messageHasLink = (m) => {
-        const t = String(m.text || '');
-        return /(https:\/\/|www\.)\S+/i.test(t);
+        const t = String(m?.text || '');
+        return /(https?:\/\/|www\.)\S+/i.test(t);
       };
 
       const messageTypeMatchesFilter = (m, filter) => {
@@ -2039,38 +2210,15 @@ const handleTouchEnd = () => {
         if (f === 'media') return !!(m.image);
         if (f === 'audio') return !!m.audio;
         if (f === 'links') return messageHasLink(m);
+        if (f === 'favorites') {
+          const msgStars = Array.isArray(m?.starredBy) ? m.starredBy : [];
+          const chatStars = Array.isArray(activeChatData?.messageStars?.[m?.id]) ? activeChatData.messageStars[m.id] : [];
+          return [...new Set([...(msgStars || []), ...(chatStars || [])])].includes(user?.uid);
+        }
         return true;
       };
 
-      const isViewOnceImageMessage = (msg) => !!(msg && msg.image && msg.selfDestruct);
-      const hasViewOnceImageBeenConsumed = (msg) => !!(msg && msg.viewOnceConsumedAt);
-      const canOpenViewOnceImage = (msg) => {
-        if (!isViewOnceImageMessage(msg)) return false;
-        if (msg.senderId === user?.uid) return false;
-        return !hasViewOnceImageBeenConsumed(msg);
-      };
-
-      const openChatImageMessage = async (msg) => {
-        if (!msg?.image) return;
-        openImageViewer(msg.image);
-        if (!canOpenViewOnceImage(msg) || !activeChatId) return;
-        try {
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msg.id), {
-            image: null,
-            imageStoragePath: null,
-            viewOnceConsumedAt: Date.now(),
-            viewOnceConsumedBy: user?.uid || null,
-          });
-          if (msg.imageStoragePath) {
-            deleteObject(storageRef(storage, msg.imageStoragePath)).catch(() => {});
-          }
-          showToast('1x-Bild geöffnet');
-        } catch (error) {
-          console.warn('view-once image consume failed', error);
-        }
-      };
-
-      const escapeRegExp = (s) => String(s || '').replace(/[.*+^${}()|[\]\\]/g, '\\$&');
+      const escapeRegExp = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
       function renderHighlightedText(text, query, opts = {}) {
         const q = String(query || '').trim();
@@ -2090,8 +2238,8 @@ const handleTouchEnd = () => {
           const isMe = !!opts.isMe;
           const isActive = !!opts.active;
           const cls = isActive
-            ? ((isMe ? 'bg-black text-white' : 'bg-white text-black') + ' rounded px-0.5')
-            : ((isMe ? 'bg-black/20 text-black' : 'bg-white/25 text-white') + ' rounded px-0.5');
+            ? (isMe ? 'bg-black text-white' : 'bg-white text-black') + ' rounded px-0.5'
+            : (isMe ? 'bg-black/20 text-black' : 'bg-white/25 text-white') + ' rounded px-0.5';
           out.push(<span key={`hl_${k++}`} className={cls}>{matchText}</span>);
           last = end;
           if (re.lastIndex === start) re.lastIndex++; // safety
@@ -2108,7 +2256,7 @@ const handleTouchEnd = () => {
         try {
           const od = localStorage.getItem('onyx_quote_override_day');
           const oq = localStorage.getItem('onyx_quote_override');
-          if (od === dayKey && oq) setDailyFact(oq);
+          if (od === dayKey && oq) setDailyFactWithColor(oq);
         } catch (e) {}
 
         const loadQuotes = async () => {
@@ -2118,10 +2266,10 @@ const handleTouchEnd = () => {
             const list = Array.isArray(data) ? data : (Array.isArray(data.quotes) ? data.quotes : []);
             setQuotes(list);
             const q = pickQuoteForDay(list, dayKey);
-            setDailyFact(q);
+            setDailyFactWithColor(q);
           } catch (e) {
             const q = pickQuoteForDay(DEFAULT_QUOTES, dayKey);
-            setDailyFact(q);
+            setDailyFactWithColor(q);
           }
         };
         loadQuotes();
@@ -2139,7 +2287,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       try { ensureWebPushToken(currentUser, { forcePrompt: false }); } catch(_) {}
     })();
   } else {
-    setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]);
+    setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]); setIncomingFriendRequestDocs([]); setOutgoingFriendRequestDocs([]);
     setCurrentView('dashboard');
   }
 });
@@ -2151,27 +2299,31 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       useEffect(() => {
         if (!user) return;
         const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid);
-        let lastPresenceWrite = 0;
-        const MIN_PRESENCE_WRITE_MS = 5 * 60 * 1000; // avoid write storms
-        const setPresence = (status, force = false) => {
-          const now = Date.now();
-          if (!force && now - lastPresenceWrite < MIN_PRESENCE_WRITE_MS) return;
-          lastPresenceWrite = now;
-          setDoc(profileRef, { presenceStatus: status, presenceLastSeen: now }, { merge: true }).catch(()=>{});
+        const setPresence = (status) => {
+          setDoc(profileRef, { presenceStatus: status, presenceLastSeen: Date.now() }, { merge: true }).catch(()=>{});
         };
-        setPresence('online', true);
+        setPresence('online');
         const onVisibility = () => {
           if (document.visibilityState === 'visible') setPresence('online');
-          else setPresence('offline', true);
+          else setPresence('offline');
         };
-        const onBeforeUnload = () => { try { setPresence('offline', true); } catch (e) {} };
         document.addEventListener('visibilitychange', onVisibility);
-        window.addEventListener('beforeunload', onBeforeUnload);
+        window.addEventListener('beforeunload', () => { try { setPresence('offline'); } catch(e) {} });
+        if (presenceHeartbeatRef.current) clearInterval(presenceHeartbeatRef.current);
+        presenceHeartbeatRef.current = setInterval(() => {
+          if (document.visibilityState === 'visible') setPresence('online');
+        }, 25000);
         return () => {
           document.removeEventListener('visibilitychange', onVisibility);
-          window.removeEventListener('beforeunload', onBeforeUnload);
+          if (presenceHeartbeatRef.current) { clearInterval(presenceHeartbeatRef.current); presenceHeartbeatRef.current = null; }
         };
       }, [user]);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('onyx_last_view', String(currentView || 'dashboard'));
+        } catch (_) {}
+      }, [currentView]);
 
       useEffect(() => {
         if (currentView === 'secret_chat') {
@@ -2182,10 +2334,6 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           setSecretView('list');
           setActiveChat(null);
         }
-
-        try {
-          localStorage.setItem('onyx_last_view', normalizeAppView(currentView));
-        } catch (_) {}
       }, [currentView]);
 
       // Message Search Reset
@@ -2247,42 +2395,66 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       useEffect(() => {
         if (!isMessageSearchOpen) return;
-        const qMsg = String(messageSearchQuery || '').trim().toLowerCase();
-        const baseByType = (messageSearchFilter !== 'all' && messageSearchFilter !== 'media')
-          ? chatMessages.filter(m => messageTypeMatchesFilter(m, messageSearchFilter))
-          : chatMessages;
-        const mediaMatches = (messageSearchFilter === 'media')
-          ? chatMediaItems.filter(m => {
-              if (!qMsg) return true;
-              const hay = `${String(m?.text || '')} ${senderLabelFromId(m?.senderId || '')}`.toLowerCase();
-              return hay.includes(qMsg);
-            })
-          : [];
-        const matches = (qMsg || messageSearchFilter !== 'all')
-          ? (messageSearchFilter === 'media'
-            ? mediaMatches
-            : baseByType.filter(m => !qMsg || String(m.text || '').toLowerCase().includes(qMsg)))
-          : [];
-        if (matches.length === 0) return;
-        const idx = Math.max(0, Math.min(messageMatchIndex, matches.length - 1));
-        const id = matches[idx].id;
+        const q = String(messageSearchQuery || '').trim().toLowerCase();
+        const matchesForScroll = ((chatMessages || []).filter(Boolean))
+          .filter((m) => {
+            if (messageSearchFilter === 'media') {
+              if (!m?.image) return false;
+              if (!q) return true;
+              return String(m?.text || '').toLowerCase().includes(q);
+            }
+            if (!messageTypeMatchesFilter(m, messageSearchFilter)) return false;
+            if (!q) return true;
+            return String(m?.text || '').toLowerCase().includes(q);
+          });
+        if (!matchesForScroll || matchesForScroll.length === 0) return;
+        const idx = Math.max(0, Math.min(messageMatchIndex, matchesForScroll.length - 1));
+        const id = matchesForScroll[idx].id;
+        const key = `${id}|${idx}|${q}|${messageSearchFilter}`;
+        if (chatSearchScrollTargetRef.current === key) return;
+        chatSearchScrollTargetRef.current = key;
         setTimeout(() => {
           const el = document.getElementById(`msg-${id}`);
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 0);
-      }, [messageMatchIndex, messageSearchQuery, messageSearchFilter, isMessageSearchOpen, chatMessages, chatMediaItems]);
+      }, [messageMatchIndex, messageSearchQuery, messageSearchFilter, isMessageSearchOpen, chatMessages]);
 
 
       useEffect(() => {
         setIsPaintbrushActive(false);
       }, [activeCalendarId]);
 
-      // --- Hash routing for public shares (#/share/<token>k=<magicKey>) ---
+      useEffect(() => {
+        const root = document.getElementById('root');
+        if (!root) return;
+
+        const normalizeDomText = () => {
+          try {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            const touched = [];
+            while (walker.nextNode()) touched.push(walker.currentNode);
+            touched.forEach((node) => {
+              const src = node?.nodeValue || '';
+              const fixed = repairMojibakeText(src);
+              if (fixed !== src) node.nodeValue = fixed;
+            });
+          } catch (_) {}
+        };
+
+        normalizeDomText();
+        const observer = new MutationObserver(() => normalizeDomText());
+        observer.observe(root, { childList: true, subtree: true, characterData: true });
+        return () => {
+          try { observer.disconnect(); } catch (_) {}
+        };
+      }, []);
+
+      // --- Hash routing for public shares (#/share/<token>?k=<magicKey>) ---
       useEffect(() => {
         const parseHash = () => {
           try {
             const h = String(window.location.hash || '');
-            // Example: #/share/AbCdEf123k=xyz
+            // Example: #/share/AbCdEf123?k=xyz
             const m = h.match(/^#\/share\/([A-Za-z0-9_-]{8,})/);
             const token = m ? m[1] : null;
             let key = '';
@@ -2397,11 +2569,10 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             try {
               const localAlias = String(localStorage.getItem(`onyx_username_${user?.uid}`) || '').trim();
               const localDisplayName = String(localStorage.getItem(`onyx_displayName_${user?.uid}`) || '').trim();
-              const localFriendCode = normalizeFriendCodeValue(localStorage.getItem(`onyx_friendCode_${user?.uid}`) || deterministicFriendCodeForUid(user?.uid, 0));
-              const prevAlias = String(prev.username || '').trim();
-              const incomingAlias = String(incoming.username || '').trim();
-              const prevUpdatedAt = Number(prev.updatedAt || 0);
-              const incomingUpdatedAt = Number(incoming.updatedAt || 0);
+              const prevAlias = String(prev?.username || '').trim();
+              const incomingAlias = String(incoming?.username || '').trim();
+              const prevUpdatedAt = Number(prev?.updatedAt || 0);
+              const incomingUpdatedAt = Number(incoming?.updatedAt || 0);
               const merged = { ...(prev || {}), ...incoming };
 
               if (prevAlias && incomingAlias && prevAlias !== incomingAlias && prevUpdatedAt > incomingUpdatedAt) {
@@ -2409,8 +2580,8 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
                 merged.usernameLower = String(prevAlias).toLowerCase();
               }
 
-              // Prefer server value for alias. Use localStorage only as fallback when server is empty.
-              if (!incomingAlias && localAlias) {
+              // Local storage is only a fallback when server fields are missing.
+              if (localAlias && !merged.username) {
                 merged.username = localAlias;
                 merged.usernameLower = String(localAlias).toLowerCase();
               }
@@ -2419,25 +2590,17 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
                 merged.displayName = localDisplayName;
               }
 
-              const canonicalFriendCode =
-                normalizeFriendCodeValue(incoming.friendCodeStable || incoming.friendCodePinned || '')
-                || localFriendCode
-                || normalizeFriendCodeValue(incoming.friendCode)
-                || deterministicFriendCodeForUid(user?.uid, 0);
-              merged.friendCode = canonicalFriendCode;
-              merged.friendCodeStable = canonicalFriendCode;
-
+              // Keep fallback cache in sync with the newest merged profile to prevent stale rollbacks.
               try {
                 if (merged.username) localStorage.setItem(`onyx_username_${user?.uid}`, String(merged.username));
                 if (merged.displayName) localStorage.setItem(`onyx_displayName_${user?.uid}`, String(merged.displayName));
-                if (canonicalFriendCode) localStorage.setItem(`onyx_friendCode_${user?.uid}`, String(canonicalFriendCode));
               } catch (_) {}
               try {
                 const localClockRaw = localStorage.getItem(`onyx_work_clock_active_${user?.uid}`);
                 if (localClockRaw) {
                   const localClock = JSON.parse(localClockRaw);
-                  const incomingClock = incoming.workClockActive || null;
-                  if (localClock.startedAt && (!incomingClock.startedAt || Number(localClock.startedAt) >= Number(incomingClock.startedAt || 0))) {
+                  const incomingClock = incoming?.workClockActive || null;
+                  if (localClock?.startedAt && (!incomingClock?.startedAt || Number(localClock.startedAt) >= Number(incomingClock.startedAt || 0))) {
                     merged.workClockActive = localClock;
                   }
                 }
@@ -2447,48 +2610,43 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
               return incoming;
             }
           });
-          try {
-            const incomingFriendCode = normalizeFriendCodeValue(incoming.friendCode);
-            const incomingStableFriendCode = normalizeFriendCodeValue(incoming.friendCodeStable || incoming.friendCodePinned || '');
-            const fallbackFriendCode = normalizeFriendCodeValue(localStorage.getItem(`onyx_friendCode_${user?.uid}`) || deterministicFriendCodeForUid(user?.uid, 0));
-            const patch = {};
-            if (fallbackFriendCode && incomingFriendCode !== fallbackFriendCode) patch.friendCode = fallbackFriendCode;
-            if (fallbackFriendCode && incomingStableFriendCode !== fallbackFriendCode) patch.friendCodeStable = fallbackFriendCode;
-            if (Object.keys(patch).length > 0) {
-              patch.updatedAt = Date.now();
-              setDoc(profileRef, patch, { merge: true }).catch(() => {});
-            }
-          } catch (_) {}
         });
 
         const allProfilesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
-        let allProfilesTimer = null;
-        const loadProfilesOnce = async () => {
-          try {
-            const snap = await getDocs(query(allProfilesRef, limit(400)));
-            const loaded = [];
-            snap.forEach(d => loaded.push({ id: d.id, ...d.data() }));
-            setAllProfiles(loaded);
-          } catch (err) {
-            console.warn('[Profiles] refresh failed', err?.code || err);
-          }
-        };
-        loadProfilesOnce();
-        allProfilesTimer = setInterval(loadProfilesOnce, 10 * 60 * 1000);
+        const unsubscribeAllProfiles = onSnapshot(query(allProfilesRef), (snapshot) => {
+          const loaded = [];
+          snapshot.forEach(doc => loaded.push({ id: doc.id, ...doc.data() }));
+          setAllProfiles(loaded);
+        });
 
         const chatsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats');
         const chatsQ = query(chatsRef, where('participants', 'array-contains', user?.uid));
         const unsubscribeChats = onSnapshot(chatsQ, (snapshot) => {
           const loadedChats = [];
           snapshot.forEach(doc => loadedChats.push({ id: doc.id, ...doc.data() }));
-          const safeChats = loadedChats.filter(chat => chat && chat.id).map((chat) => ({
-            ...chat,
-            updatedAt: toMillis(chat?.updatedAt),
-            participants: Array.isArray(chat.participants) ? chat.participants.filter(Boolean) : [],
-            admins: Array.isArray(chat.admins) ? chat.admins.filter(Boolean) : []
-          }));
-          safeChats.sort((a, b) => toMillis(b.updatedAt) - toMillis(a.updatedAt));
+          const safeChats = loadedChats.filter(chat => chat && chat.id).map((chat) => ({ ...chat, participants: Array.isArray(chat.participants) ? chat.participants.filter(Boolean) : [], admins: Array.isArray(chat.admins) ? chat.admins.filter(Boolean) : [] }));
+          safeChats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
           setMyChats(safeChats);
+        });
+
+        const friendRequestsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests');
+        const incomingFriendRequestsQ = query(friendRequestsRef, where('toUid', '==', user?.uid), limit(200));
+        const outgoingFriendRequestsQ = query(friendRequestsRef, where('fromUid', '==', user?.uid), limit(200));
+        const unsubscribeIncomingFriendRequests = onSnapshot(incomingFriendRequestsQ, (snapshot) => {
+          const loaded = [];
+          snapshot.forEach((docSnap) => loaded.push({ id: docSnap.id, ...docSnap.data() }));
+          setIncomingFriendRequestDocs(loaded);
+        }, (err) => {
+          console.warn('[FriendRequests] incoming subscribe failed', err?.code || err);
+          setIncomingFriendRequestDocs([]);
+        });
+        const unsubscribeOutgoingFriendRequests = onSnapshot(outgoingFriendRequestsQ, (snapshot) => {
+          const loaded = [];
+          snapshot.forEach((docSnap) => loaded.push({ id: docSnap.id, ...docSnap.data() }));
+          setOutgoingFriendRequestDocs(loaded);
+        }, (err) => {
+          console.warn('[FriendRequests] outgoing subscribe failed', err?.code || err);
+          setOutgoingFriendRequestDocs([]);
         });
 
         // Public share links created by this user
@@ -2501,7 +2659,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           setShareLinks(list);
         }, (err) => {
           // permission-denied is ok if rules are strict; feature still works for logged-in users if allowed
-          console.warn('[Sharing] shares subscribe failed', err.code || err);
+          console.warn('[Sharing] shares subscribe failed', err?.code || err);
           setShareLinks([]);
         });
 
@@ -2514,13 +2672,13 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           list.sort((a, b) => (b.tsMs || 0) - (a.tsMs || 0));
           setAuditEntries(list);
         }, (err) => {
-          console.warn('[Audit] subscribe failed', err.code || err);
+          console.warn('[Audit] subscribe failed', err?.code || err);
           setAuditEntries([]);
         });
 
         const calRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars');
 
-        // Wichtig für sichere Firestore Rules:
+        // 🔒 Wichtig für sichere Firestore Rules:
         // Wir dürfen NICHT die komplette calendars Collection lesen und client-side filtern,
         // sonst scheitert die Query mit permission-denied.
         const ownerQ = query(calRef, where('ownerId', '==', user?.uid));
@@ -2575,17 +2733,27 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           recomputeCals();
         });
 
-        return () => {
-          unsubscribeEvents();
-          unsubscribeProfile();
-          unsubscribeChats();
-          unsubscribeShares();
-          unsubscribeAudit();
-          unsubscribeOwnerCals();
-          unsubscribeSharedCals();
-          if (allProfilesTimer) clearInterval(allProfilesTimer);
-        };
+        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeIncomingFriendRequests(); unsubscribeOutgoingFriendRequests(); unsubscribeShares(); unsubscribeAudit(); unsubscribeOwnerCals(); unsubscribeSharedCals(); };
       }, [user]);
+
+      useEffect(() => {
+        if (!user?.uid) return;
+        const acceptedTargets = Array.from(new Set((Array.isArray(outgoingFriendRequestDocs) ? outgoingFriendRequestDocs : [])
+          .filter((request) => String(request?.status || '') === 'accepted')
+          .map((request) => String(request?.toUid || ''))
+          .filter((targetUid) => targetUid && !friendIds.includes(targetUid))));
+        if (acceptedTargets.length === 0) return;
+        acceptedTargets.forEach((targetUid) => {
+          setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            friends: arrayUnion(targetUid),
+            removedFriendIds: arrayRemove(targetUid),
+            blockedUsers: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true }).catch((err) => {
+            console.warn('syncAcceptedFriendRequest failed', err);
+          });
+        });
+      }, [user?.uid, outgoingFriendRequestDocs, friendIds]);
 
       // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---
       useEffect(() => {
@@ -2667,7 +2835,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           list.sort((a, b) => (b.tsMs || 0) - (a.tsMs || 0));
           setAuditCalEntries(list);
         }, (err) => {
-          console.warn('[Audit] calendar audit subscribe failed', err.code || err);
+          console.warn('[Audit] calendar audit subscribe failed', err?.code || err);
           setAuditCalEntries([]);
         });
         return () => { try { unsub(); } catch (_) {} };
@@ -2675,29 +2843,28 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
 
       // --- CHAT MESSAGES SYNC (Pagination: letzte 25 + Infinite Scroll nach oben) ---
       useEffect(() => {
-        if (!activeChatId || !user) {
-          lastResetChatIdRef.current = null;
-          return;
-        }
+        if (!activeChat || !user) return;
 
-        const switchedChat = lastResetChatIdRef.current !== activeChatId;
-        if (switchedChat) {
-          // Reset pagination + transient state only on real chat switch (prevents UI blinking on foreground/presence updates)
-          chatOldestCursorRef.current = null;
-          chatLoadedMoreRef.current = false;
-          chatAutoLoadLockRef.current = false;
+        const chatId = String(activeChat.id || '');
+        const participantCount = Array.isArray(activeChat?.participants) ? activeChat.participants.length : 0;
+
+        // Reset pagination state when switching chats
+        chatOldestCursorRef.current = null;
+        chatLoadedMoreRef.current = false;
+        chatAutoLoadLockRef.current = false;
+        setChatHasMore(false);
+        setChatLoadingMore(false);
+        // Nur beim echten Chatwechsel leeren (sonst flackert es bei jedem Re-Subscribe).
+        if (chatSubscribedIdRef.current !== chatId) {
           setChatMessages([]);
-          setChatHasMore(false);
-          setChatLoadingMore(false);
-          setChatTotalCount(0);
-          setChatMediaItems([]);
-          lastResetChatIdRef.current = activeChatId;
+          chatSubscribedIdRef.current = chatId;
         }
 
-        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages');
+        const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
         const latestQ = query(messagesRef, orderBy('timestamp', 'desc'), limit(CHAT_PAGE_SIZE));
 
         const unsubscribeMessages = onSnapshot(latestQ, (snapshot) => {
+          if ((activeChatIdRef.current || '') !== chatId) return;
           const loadedDesc = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
           const loaded = [...loadedDesc].reverse(); // ascending
 
@@ -2718,10 +2885,10 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           // Read/delivered marking only for messages in latest window
           for (const docSnap of snapshot.docs) {
             const data = docSnap.data() || {};
-            if (data.senderId !== user?.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
+            if (data.senderId !== user?.uid && !data.read && currentView === 'secret_chat' && secretView === 'chat' && (participantCount <= 2)) {
               unreadToUpdate.push(docSnap.id);
             }
-            if (data.senderId !== user?.uid && !data.deliveredAt && (!Array.isArray(activeChat.participants) || activeChat.participants.length <= 2)) {
+            if (data.senderId !== user?.uid && !data.deliveredAt && (participantCount <= 2)) {
               deliveredToUpdate.push(docSnap.id);
             }
           }
@@ -2731,12 +2898,20 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const prevList = Array.isArray(prev) ? prev : [];
             const pending = prevList.filter(m => m && m.pending && m.clientMsgId);
 
-            // Keep older messages that are not in the latest page
+            // Remove pending/failed local placeholders once the same clientMsgId exists on server.
+            const serverClientIds = new Set(loaded.map(m => m.clientMsgId).filter(Boolean));
+
+            // Keep older messages that are not in the latest page,
+            // but drop stale local_* placeholders when server copy already exists.
             const latestIds = new Set(loaded.map(m => m.id));
-            const older = prevList.filter(m => m && !m.pending && !latestIds.has(m.id));
+            const older = prevList.filter(m => {
+              if (!m || m.pending || latestIds.has(m.id)) return false;
+              const isLocalPlaceholder = String(m.id || '').startsWith('local_');
+              if (isLocalPlaceholder && m.clientMsgId && serverClientIds.has(m.clientMsgId)) return false;
+              return true;
+            });
 
             // Remove pending that already got server version
-            const serverClientIds = new Set(loaded.map(m => m.clientMsgId).filter(Boolean));
             const pendingFiltered = pending.filter(m => m.clientMsgId && !serverClientIds.has(m.clientMsgId));
 
             const merged = [...older, ...loaded, ...pendingFiltered];
@@ -2748,10 +2923,11 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           try {
             const lastMsg = loaded.length > 0 ? loaded[loaded.length - 1] : null;
             if (lastMsg && lastMsg.senderId !== user?.uid) {
-              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
-              const isMuted = mutedChatIds.includes(activeChatId);
+              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+              const mutedChatIds = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
+              const isMuted = mutedChatIds.includes(chatId);
               const canNotify = (('Notification' in window) && Notification.permission === 'granted');
-              const key = `onyx_last_notify_${activeChatId}`;
+              const key = `onyx_last_notify_${chatId}`;
               const lastNotifiedTs = parseInt(localStorage.getItem(key) || '0', 10) || 0;
               const isChatForeground = (currentView === 'secret_chat' && secretView === 'chat' && document.visibilityState === 'visible');
               if (!isMuted && canNotify && !isChatForeground && (lastMsg.timestamp || 0) > lastNotifiedTs) {
@@ -2766,20 +2942,20 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             const nowMs = Date.now();
             if (nowMs - (lastReadWriteRef.current || 0) > 5000) {
               lastReadWriteRef.current = nowMs;
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), { [`lastRead.${user?.uid}`]: nowMs }).catch(()=>{});
             }
           }
 
           if (unreadToUpdate.length > 0) {
             unreadToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages', msgId), { read: true, readAt: Date.now() }).catch(()=>{});
             });
           }
 
           if (deliveredToUpdate.length > 0) {
             const deliveredAt = Date.now();
             deliveredToUpdate.forEach(msgId => {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages', msgId), { delivered: true, deliveredAt }).catch(()=>{});
             });
           }
 
@@ -2794,7 +2970,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         });
 
         return () => unsubscribeMessages();
-      }, [activeChatId, activeChat, user, currentView, secretView, userProfile]);
+      }, [activeChat?.id, user?.uid, currentView, secretView]);
 
       useEffect(() => {
         let cancelled = false;
@@ -2805,17 +2981,17 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           setChatMediaLoading(false);
           return;
         }
-        const hintedCount = Number(activeChatData.messageCount || activeChat.messageCount || 0);
+        const hintedCount = Number(activeChatData?.messageCount || activeChat?.messageCount || 0);
         if (hintedCount > 0) setChatTotalCount(hintedCount);
         const loadAllChatMeta = async () => {
           setChatMediaLoading(true);
           try {
-            const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages');
+            const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages');
             const snap = await getDocs(query(messagesRef, orderBy('timestamp', 'asc')));
             if (cancelled) return;
             const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             const media = all
-              .filter(m => m && !m.deleted && !!m.image && !isViewOnceImageMessage(m))
+              .filter(m => m && !m.deleted && !!m.image)
               .map(m => ({
                 id: m.id,
                 src: m.image,
@@ -2826,10 +3002,10 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
               .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             setChatTotalCount(all.length);
             setChatMediaItems(media);
-            const currentCount = Number(activeChatData.messageCount || activeChat.messageCount || 0);
-            const currentMedia = Number(activeChatData.mediaCount || activeChat.mediaCount || 0);
+            const currentCount = Number(activeChatData?.messageCount || activeChat?.messageCount || 0);
+            const currentMedia = Number(activeChatData?.mediaCount || activeChat?.mediaCount || 0);
             if (all.length !== currentCount || media.length !== currentMedia) {
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), {
+              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), {
                 messageCount: all.length,
                 mediaCount: media.length,
                 statsUpdatedAt: Date.now(),
@@ -2843,11 +3019,37 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         };
         loadAllChatMeta();
         return () => { cancelled = true; };
-      }, [activeChatId, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
+      }, [activeChat?.id, activeChatData?.messageCount, activeChatData?.mediaCount, user?.uid]);
+
+      useEffect(() => {
+        if (!activeChat?.id || !user?.uid) return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        const failedMine = (chatMessages || []).filter((m) => m && m.failed && m.senderId === user?.uid && m.clientMsgId);
+        if (failedMine.length === 0) return;
+        failedMine.forEach((m) => {
+          const key = String(m.clientMsgId || '');
+          if (!key) return;
+          if (chatRetryTimersRef.current[key]) return;
+          const retryCount = Number(m.retryCount || 0);
+          if (retryCount >= 3) return;
+          chatRetryTimersRef.current[key] = setTimeout(async () => {
+            try {
+              await retryFailedMessage(m, { silent: true });
+            } finally {
+              try { clearTimeout(chatRetryTimersRef.current[key]); } catch (_) {}
+              delete chatRetryTimersRef.current[key];
+            }
+          }, 5000);
+        });
+        return () => {
+          Object.values(chatRetryTimersRef.current || {}).forEach((t) => { try { clearTimeout(t); } catch (_) {} });
+          chatRetryTimersRef.current = {};
+        };
+      }, [chatMessages, activeChat?.id, user?.uid]);
 
       const loadMoreChatMessages = async () => {
         try {
-          if (!activeChatId || !user) return;
+          if (!activeChat || !user) return;
           if (chatLoadingMore) return;
           if (!chatHasMore) return;
 
@@ -2860,7 +3062,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           // Mark as prepending so the "scroll-to-bottom" effect does not fire
           chatIsPrependingRef.current = true;
 
-          const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages');
+          const messagesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages');
           const nextQ = query(messagesRef, orderBy('timestamp', 'desc'), startAfter(cursor), limit(CHAT_PAGE_SIZE));
 
           const snap = await getDocs(nextQ);
@@ -2918,7 +3120,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           if (secretView !== 'chat') return;
           if (chatIsPrependingRef.current) return;
           if (!chatStickToBottomRef.current) return;
-          messagesEndRef.current.scrollIntoView({ behavior: "auto" });
+          messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
         } catch (_) {}
       }, [chatMessages, secretView]);
 
@@ -2971,10 +3173,19 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
     const swRegistration = await registerPushServiceWorker();
     if (!swRegistration) throw new Error('SERVICE_WORKER_NOT_READY');
 
-    const token = await getToken(messaging, {
-      vapidKey: FCM_WEB_VAPID_KEY,
-      serviceWorkerRegistration: swRegistration
-    });
+    let token = '';
+    const vapidCandidates = [String(FCM_WEB_VAPID_KEY || '').trim(), String(FCM_WEB_VAPID_KEY_LEGACY || '').trim()].filter(Boolean);
+    for (let i = 0; i < vapidCandidates.length; i++) {
+      const vapidKey = vapidCandidates[i];
+      try {
+        token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swRegistration });
+        if (token) break;
+      } catch (err) {
+        const isLastTry = i >= vapidCandidates.length - 1;
+        if (isLastTry) throw err;
+        console.warn('[FCM] getToken failed, trying next VAPID key', err?.code || err?.message || err);
+      }
+    }
 
     if (token) {
       const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid);
@@ -3001,10 +3212,21 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setPushDiag(prev => ({ ...prev, lastError: 'NO_TOKEN_RETURNED' }));
     }
   } catch (e) {
-    console.warn('[FCM] ensure token failed', e.message || e);
-    setPushDiag(prev => ({ ...prev, lastError: (e.message || String(e)) }));
+    console.warn('[FCM] ensure token failed', e?.message || e);
+    const friendly = (() => {
+      try {
+        const code = String(e?.code || '').toLowerCase();
+        if (code.includes('messaging/token-subscribe-failed')) return 'FCM_TOKEN_SUBSCRIBE_FAILED (VAPID/FCM-Konfiguration prüfen)';
+        if (code.includes('messaging/permission-blocked')) return 'NOTIFICATION_PERMISSION_BLOCKED';
+        if (code.includes('messaging/unsupported-browser')) return 'FCM_UNSUPPORTED_BROWSER';
+        if (code.includes('messaging/invalid-vapid-key')) return 'FCM_INVALID_VAPID_KEY';
+        return String(e?.message || e);
+      } catch (_) { return String(e?.message || e); }
+    })();
+    setPushDiag(prev => ({ ...prev, lastError: friendly }));
   }
 };
+
 const requestNotificationPermission = async (currentUser) => {
   if (!currentUser) return;
 
@@ -3018,13 +3240,13 @@ const requestNotificationPermission = async (currentUser) => {
   };
 
   if (!isStandaloneNow()) {
-    showToast(isIosUA ? 'iPhone/iPad: Teilen -> "Zum Home-Bildschirm" installieren, dann Benachrichtigungen aktivieren.' : 'Bitte als PWA installieren, dann Benachrichtigungen aktivieren.');
+    showToast(isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren, dann Benachrichtigungen aktivieren.' : 'Bitte als PWA installieren, dann Benachrichtigungen aktivieren.');
     return;
   }
 
   try {
     await ensureWebPushToken(currentUser, { forcePrompt: true });
-    showToast('Benachrichtigungen aktiviert');
+    showToast('Benachrichtigungen aktiviert ✅');
   } catch (err) {
     console.log('FCM Error', err);
     showToast('Benachrichtigungen konnten nicht aktiviert werden');
@@ -3038,20 +3260,12 @@ const requestNotificationPermission = async (currentUser) => {
           const messaging = await getMessagingSafe();
           if (!messaging) return;
 	          unsubscribeMessage = onMessage(messaging, (payload) => {
-	            const data = payload?.data || {};
-	            const kind = data.kind || '';
-	            const chatId = data.chatId || '';
-	            const incomingTitle = data.title || payload?.notification?.title || 'Neue Nachricht';
-	            const incomingBody = data.body || payload?.notification?.body || '';
-              const payloadTs = Number(data.timestamp || data.sentAt || data.createdAtMs || Date.now()) || Date.now();
-              const allowChatNotify = !(kind === 'chat' && chatId) || consumeChatNotificationSlot(chatId, payloadTs);
-              const privateCopy = {
-                title: 'Kalender Aktuell',
-                body: pickNextNotificationQuote()
-              };
-	            const tag = data.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
-	            const notifTitle = (kind === 'chat') ? privateCopy.title : incomingTitle;
-              const notifBody = (kind === 'chat') ? privateCopy.body : incomingBody;
+	            const kind = payload?.data?.kind || '';
+	            const chatId = payload?.data?.chatId || '';
+	            const incomingTitle = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
+	            const incomingBody = payload?.data?.body || payload?.notification?.body || '';
+	            const tag = payload?.data?.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
+	            const notifTitle = (kind === 'chat') ? 'Kalender Aktuell 🔏' : incomingTitle;
 
 	            // Diagnostics: mark push as received even in foreground (SW only fires in background)
 	            try {
@@ -3073,8 +3287,8 @@ const requestNotificationPermission = async (currentUser) => {
 	            let __isOpenChat = false;
 	            try {
 	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
-	              __isOpenChat = (kind === 'chat' && chatId && (currentViewRef.current === 'secret_chat') && (activeChatIdRef.current === chatId));
-	              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !__isOpenChat && allowChatNotify) {
+	              __isOpenChat = (kind === 'chat' && chatId && (currentViewRef?.current === 'secret_chat') && (activeChatIdRef?.current === chatId));
+	              if (kind === 'chat' && chatId && document.visibilityState === 'visible' && !__isOpenChat) {
 	                const enableSound = !(prof && prof.inAppChatSound === false);
 	                const enableVibe = !(prof && prof.inAppChatVibrate === false);
 	                if (enableSound || enableVibe) {
@@ -3086,32 +3300,27 @@ const requestNotificationPermission = async (currentUser) => {
 
 	            // Toast als Feedback
 	            try {
-	              if (!(kind === 'chat' && __isOpenChat)) {
-                const allowToast = !(kind === 'chat' && chatId) || allowChatNotify;
-                if (allowToast) {
-	                  const toastMsg = notifBody ? `${notifTitle}: ${notifBody}` : notifTitle;
-	                  showToast(toastMsg);
-                }
-	              }
+	              const toastMsg = (kind === 'chat') ? 'Kalender Aktuell 🔏' : (incomingBody ? `${notifTitle}: ${incomingBody}` : notifTitle);
+	              showToast(toastMsg);
 	            } catch (_) {}
 
 	            // System-Notification im Vordergrund nur bei Test/forceShow oder wenn Tab nicht sichtbar.
 	            // Optional: auch für Chat im Vordergrund, falls aktiviert.
 	            try {
 	              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
-	              const forceShow = String(data.forceShow || '') === '1' || kind === 'test';
+	              const forceShow = String(payload?.data?.forceShow || '') === '1' || kind === 'test';
 	              if (!canNotify) return;
 
-	              // Always show a real OS notification for incoming messages (unless the user is currently inside that conversation).
-	              if (kind === 'chat' && chatId && !__isOpenChat && allowChatNotify) {
-	                // Strict privacy mode: never expose sender/chat details.
-	                showSystemNotification(notifTitle || 'Kalender Aktuell', notifBody || null, tag);
+	              // Always show a real OS notification for incoming chat messages (also while app is open).
+	              if (kind === 'chat' && chatId) {
+	                // Privacy: Chat OS notification should not show preview/body
+	                showSystemNotification('Kalender Aktuell 🔏', null, tag);
 	                return;
 	              }
 
 	              // Non-chat pushes (tests, reminders, etc.)
 	              if (forceShow || document.visibilityState !== 'visible') {
-	                showSystemNotification(notifTitle, notifBody, tag);
+	                showSystemNotification(notifTitle, (kind === 'chat') ? null : incomingBody, tag);
 	              }
 	            } catch (_) {}
 	          });
@@ -3143,19 +3352,6 @@ const requestNotificationPermission = async (currentUser) => {
         } catch (_) { return ts; }
       };
 
-      function getIsoWeekNumber(input) {
-        try {
-          const d = new Date(input);
-          d.setHours(0, 0, 0, 0);
-          const day = d.getDay() || 7; // So -> 7
-          d.setDate(d.getDate() + 4 - day); // nearest Thursday
-          const yearStart = new Date(d.getFullYear(), 0, 1);
-          return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-        } catch (_) {
-          return null;
-        }
-      }
-
       function startOfMonthMs(ts = Date.now()) {
         try {
           const d = new Date(ts);
@@ -3186,9 +3382,9 @@ const requestNotificationPermission = async (currentUser) => {
 
       function getActiveWorkedMs(session, nowTs = Date.now()) {
         try {
-          if (!session.startedAt) return 0;
-          const pauseMs = Number(session.pausedAccumulatedMs || 0);
-          const segmentPause = (session.isPaused && session.pauseStartedAt) ? Math.max(0, nowTs - Number(session.pauseStartedAt || nowTs)) : 0;
+          if (!session?.startedAt) return 0;
+          const pauseMs = Number(session?.pausedAccumulatedMs || 0);
+          const segmentPause = (session?.isPaused && session?.pauseStartedAt) ? Math.max(0, nowTs - Number(session.pauseStartedAt || nowTs)) : 0;
           return Math.max(0, nowTs - Number(session.startedAt || nowTs) - pauseMs - segmentPause);
         } catch (_) { return 0; }
       }
@@ -3213,6 +3409,19 @@ const requestNotificationPermission = async (currentUser) => {
             .filter((value, index, arr) => arr.findIndex(x => x.toLowerCase() === value.toLowerCase()) === index);
           return clean.length ? clean.slice(0, 24) : getDefaultWorkClockPresets();
         } catch (_) { return getDefaultWorkClockPresets(); }
+      }
+
+      function getWorkClockTaskSuggestions(input) {
+        try {
+          const raw = Array.isArray(input)
+            ? input
+            : String(input || '').split(/[\n,;]+/g);
+          return raw
+            .map(v => String(v || '').trim())
+            .filter(Boolean)
+            .filter((value, index, arr) => arr.findIndex(x => x.toLowerCase() === value.toLowerCase()) === index)
+            .slice(0, 24);
+        } catch (_) { return []; }
       }
 
       function readWorkClockSessionsLocal(uid) {
@@ -3240,7 +3449,7 @@ const requestNotificationPermission = async (currentUser) => {
             const prev = map.get(key) || {};
             map.set(key, { ...prev, ...row, id: row.id || prev.id || key, localId: row.localId || prev.localId || key });
           });
-          return Array.from(map.values()).sort((a, b) => Number(b.startedAt || 0) - Number(a.startedAt || 0));
+          return Array.from(map.values()).sort((a, b) => Number(b?.startedAt || 0) - Number(a?.startedAt || 0));
         } catch (_) { return Array.isArray(remoteRows) ? remoteRows : []; }
       }
 
@@ -3250,7 +3459,7 @@ const requestNotificationPermission = async (currentUser) => {
           const localId = String(payload.localId || `wc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
           const nextRow = { ...payload, localId, id: payload.id || localId, savedLocally: true };
           const current = readWorkClockSessionsLocal(uid).filter(row => String(row.localId || row.id || '') !== localId);
-          const merged = [nextRow, ...current].sort((a, b) => Number(b.startedAt || 0) - Number(a.startedAt || 0));
+          const merged = [nextRow, ...current].sort((a, b) => Number(b?.startedAt || 0) - Number(a?.startedAt || 0));
           writeWorkClockSessionsLocal(uid, merged);
           return nextRow;
         } catch (_) { return payload; }
@@ -3271,8 +3480,8 @@ const requestNotificationPermission = async (currentUser) => {
         try {
           if (!uid || !sessionLike) return [];
           const matchIds = new Set([
-            String(sessionLike.localId || ''),
-            String(sessionLike.id || ''),
+            String(sessionLike?.localId || ''),
+            String(sessionLike?.id || ''),
           ].filter(Boolean));
           const next = readWorkClockSessionsLocal(uid).filter(row => !matchIds.has(String(row.localId || '')) && !matchIds.has(String(row.id || '')));
           writeWorkClockSessionsLocal(uid, next);
@@ -3364,7 +3573,6 @@ const requestNotificationPermission = async (currentUser) => {
 
       const requestStopWorkClock = () => {
         if (!workClockActive?.startedAt) return;
-        setWorkClockDraftUsePreset(false);
         setWorkClockDraftTitle('');
         setWorkClockDraftLevel('mittel');
         setWorkClockModalOpen(true);
@@ -3383,22 +3591,17 @@ const requestNotificationPermission = async (currentUser) => {
           setWorkClockSaving(true);
           const now = Date.now();
           const workedMs = getActiveWorkedMs(workClockActive, now);
-          const pauseMs = Number(workClockActive.pausedAccumulatedMs || 0) + ((workClockActive.isPaused && workClockActive.pauseStartedAt) ? Math.max(0, now - Number(workClockActive.pauseStartedAt || now)) : 0);
-          const finalTitle = String(workClockDraftTitle || '').trim();
-          if (!finalTitle) {
-            showToast('Bitte kurz eintragen, was du gemacht hast');
-            setWorkClockSaving(false);
-            return;
-          }
+          const pauseMs = Number(workClockActive?.pausedAccumulatedMs || 0) + ((workClockActive?.isPaused && workClockActive?.pauseStartedAt) ? Math.max(0, now - Number(workClockActive.pauseStartedAt || now)) : 0);
+          const finalTitle = String(workClockDraftTitle || '').trim() || 'Arbeit';
           const payload = {
-            startedAt: Number(workClockActive?.startedAt || now),
+            startedAt: Number(workClockActive.startedAt || now),
             endedAt: now,
             workMs: workedMs,
             pauseMs,
-            totalMs: Math.max(0, now - Number(workClockActive?.startedAt || now)),
+            totalMs: Math.max(0, now - Number(workClockActive.startedAt || now)),
             title: finalTitle,
             level: String(workClockDraftLevel || 'mittel'),
-            dateKey: localDateKey(workClockActive?.startedAt || now),
+            dateKey: localDateKey(workClockActive.startedAt || now),
             createdAt: Date.now(),
             updatedAt: now,
           };
@@ -3415,7 +3618,9 @@ const requestNotificationPermission = async (currentUser) => {
           }
           setWorkClockActive(null);
           persistWorkClockActiveLocal(null);
-          await saveWorkClockProfilePatch({ workClockActive: null, updatedAt: now, workClockLastTitle: finalTitle });
+          const nextTaskOptions = getWorkClockTaskSuggestions([...(Array.isArray(userProfile?.workClockTaskOptions) ? userProfile.workClockTaskOptions : []), finalTitle]);
+          await saveWorkClockProfilePatch({ workClockActive: null, updatedAt: now, workClockLastTitle: finalTitle, workClockTaskOptions: nextTaskOptions });
+          setUserProfile(prev => ({ ...(prev || {}), workClockActive: null, workClockLastTitle: finalTitle, workClockTaskOptions: nextTaskOptions, updatedAt: now }));
           setWorkClockModalOpen(false);
           showToast('Arbeitszeit gespeichert');
         } catch (err) {
@@ -3429,15 +3634,12 @@ const requestNotificationPermission = async (currentUser) => {
 
       const openEditWorkClockSession = (session) => {
         if (!session) return;
-        const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
-        const rawTitle = String(session.title || 'Arbeit');
-        const usePreset = presets.some(p => String(p).toLowerCase() === rawTitle.toLowerCase());
+        const rawTitle = String(session?.title || 'Arbeit');
         setWorkClockEditingSession(session);
-        setWorkClockEditUsePreset(usePreset);
-        setWorkClockEditTitle(rawTitle || presets[0] || 'Arbeit');
-        setWorkClockEditLevel(String(session.level || 'mittel'));
-        setWorkClockEditStartValue(formatDateTimeInputValue(session.startedAt || Date.now()));
-        setWorkClockEditEndValue(formatDateTimeInputValue(session.endedAt || session.startedAt || Date.now()));
+        setWorkClockEditTitle(rawTitle);
+        setWorkClockEditLevel(String(session?.level || 'mittel'));
+        setWorkClockEditStartValue(formatDateTimeInputValue(session?.startedAt || Date.now()));
+        setWorkClockEditEndValue(formatDateTimeInputValue(session?.endedAt || session?.startedAt || Date.now()));
         setWorkClockEditOpen(true);
       };
 
@@ -3451,7 +3653,7 @@ const requestNotificationPermission = async (currentUser) => {
             showToast('Start und Ende prüfen');
             return;
           }
-          const previousPauseMs = Math.max(0, Number(workClockEditingSession.pauseMs || 0));
+          const previousPauseMs = Math.max(0, Number(workClockEditingSession?.pauseMs || 0));
           const totalMs = Math.max(0, nextEnd - nextStart);
           const workMs = Math.max(0, totalMs - Math.min(previousPauseMs, totalMs));
           const patch = {
@@ -3469,7 +3671,7 @@ const requestNotificationPermission = async (currentUser) => {
           const localRow = replaceWorkClockSessionLocal(user?.uid, patch);
           setWorkClockSessions(prev => mergeWorkClockSessions([localRow], (prev || []).filter(row => String(row.localId || row.id || '') !== String(localRow.localId || localRow.id || ''))));
           try {
-            if (workClockEditingSession.id && !String(workClockEditingSession.id).startsWith('wc_')) {
+            if (workClockEditingSession?.id && !String(workClockEditingSession.id).startsWith('wc_')) {
               await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user?.uid, 'workSessions', workClockEditingSession.id), {
                 startedAt: nextStart,
                 endedAt: nextEnd,
@@ -3485,7 +3687,10 @@ const requestNotificationPermission = async (currentUser) => {
           } catch (remoteErr) {
             console.warn('saveEditedWorkClockSession remote update skipped', remoteErr);
           }
-          await saveWorkClockProfilePatch({ workClockLastTitle: nextTitle, updatedAt: Date.now() });
+          const nextTaskOptions = getWorkClockTaskSuggestions([...(Array.isArray(userProfile?.workClockTaskOptions) ? userProfile.workClockTaskOptions : []), nextTitle]);
+          const nextUpdatedAt = Date.now();
+          await saveWorkClockProfilePatch({ workClockLastTitle: nextTitle, workClockTaskOptions: nextTaskOptions, updatedAt: nextUpdatedAt });
+          setUserProfile(prev => ({ ...(prev || {}), workClockLastTitle: nextTitle, workClockTaskOptions: nextTaskOptions, updatedAt: nextUpdatedAt }));
           setWorkClockEditOpen(false);
           setWorkClockEditingSession(null);
           showToast('Session aktualisiert');
@@ -3497,15 +3702,15 @@ const requestNotificationPermission = async (currentUser) => {
 
       const deleteWorkClockSession = async (session) => {
         if (!user?.uid || !session) return;
-        const label = String(session.title || 'Arbeit');
-        if (!window.confirm(`Session "${label}" löschen`)) return;
-        const deleteKey = String(session.localId || session.id || '');
+        const label = String(session?.title || 'Arbeit');
+        if (!window.confirm(`Session „${label}“ löschen?`)) return;
+        const deleteKey = String(session?.localId || session?.id || '');
         try {
           setWorkClockDeletingId(deleteKey);
           const nextLocal = removeWorkClockSessionLocal(user?.uid, session);
           setWorkClockSessions(nextLocal);
           try {
-            if (session.id && !String(session.id).startsWith('wc_')) {
+            if (session?.id && !String(session.id).startsWith('wc_')) {
               await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user?.uid, 'workSessions', session.id));
             }
           } catch (remoteErr) {
@@ -3522,19 +3727,19 @@ const requestNotificationPermission = async (currentUser) => {
 
       const exportWeekWorkClockCsv = () => {
         try {
-          const rows = [...weekSessions].sort((a, b) => Number(a.startedAt || 0) - Number(b.startedAt || 0));
+          const rows = [...weekSessions].sort((a, b) => Number(a?.startedAt || 0) - Number(b?.startedAt || 0));
           if (!rows.length) {
             showToast('Keine Sessions für diese Woche');
             return;
           }
           const header = ['Datum','Start','Ende','Arbeit','Level','Arbeitszeit Minuten','Pausenzeit Minuten','Total Minuten'];
           const body = rows.map((s) => {
-            const started = s.startedAt ? new Date(Number(s.startedAt)) : null;
-            const ended = s.endedAt ? new Date(Number(s.endedAt)) : null;
+            const started = s?.startedAt ? new Date(Number(s.startedAt)) : null;
+            const ended = s?.endedAt ? new Date(Number(s.endedAt)) : null;
             const date = started ? started.toLocaleDateString('de-CH') : '';
             const start = started ? started.toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' }) : '';
             const end = ended ? ended.toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' }) : '';
-            return [date, start, end, String(s.title || 'Arbeit'), String(s.level || 'mittel'), Math.round(Number(s.workMs || 0) / 60000), Math.round(Number(s.pauseMs || 0) / 60000), Math.round(Number(s.totalMs || 0) / 60000)];
+            return [date, start, end, String(s?.title || 'Arbeit'), String(s?.level || 'mittel'), Math.round(Number(s?.workMs || 0) / 60000), Math.round(Number(s?.pauseMs || 0) / 60000), Math.round(Number(s?.totalMs || 0) / 60000)];
           });
           body.push([]);
           body.push(['Summe','','','', '', Math.round(weekWorkMs / 60000), '', '']);
@@ -3550,19 +3755,19 @@ const requestNotificationPermission = async (currentUser) => {
 
       const exportMonthWorkClockCsv = () => {
         try {
-          const rows = [...monthSessions].sort((a, b) => Number(a.startedAt || 0) - Number(b.startedAt || 0));
+          const rows = [...monthSessions].sort((a, b) => Number(a?.startedAt || 0) - Number(b?.startedAt || 0));
           if (!rows.length) {
             showToast('Keine Sessions für diesen Monat');
             return;
           }
           const header = ['Datum','Start','Ende','Arbeit','Level','Arbeitszeit Minuten','Pausenzeit Minuten','Total Minuten'];
           const body = rows.map((s) => {
-            const started = s.startedAt ? new Date(Number(s.startedAt)) : null;
-            const ended = s.endedAt ? new Date(Number(s.endedAt)) : null;
+            const started = s?.startedAt ? new Date(Number(s.startedAt)) : null;
+            const ended = s?.endedAt ? new Date(Number(s.endedAt)) : null;
             const date = started ? started.toLocaleDateString('de-CH') : '';
             const start = started ? started.toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' }) : '';
             const end = ended ? ended.toLocaleTimeString('de-CH', { hour:'2-digit', minute:'2-digit' }) : '';
-            return [date, start, end, String(s.title || 'Arbeit'), String(s.level || 'mittel'), Math.round(Number(s.workMs || 0) / 60000), Math.round(Number(s.pauseMs || 0) / 60000), Math.round(Number(s.totalMs || 0) / 60000)];
+            return [date, start, end, String(s?.title || 'Arbeit'), String(s?.level || 'mittel'), Math.round(Number(s?.workMs || 0) / 60000), Math.round(Number(s?.pauseMs || 0) / 60000), Math.round(Number(s?.totalMs || 0) / 60000)];
           });
           body.push([]);
           body.push(['Summe','','','', '', Math.round(monthWorkMs / 60000), Math.round(monthPauseMs / 60000), '']);
@@ -3588,19 +3793,15 @@ const requestNotificationPermission = async (currentUser) => {
           const raw = localStorage.getItem(`onyx_work_clock_active_${user?.uid}`);
           if (raw) {
             const parsed = JSON.parse(raw);
-            if (parsed.startedAt) setWorkClockActive(parsed);
+            if (parsed?.startedAt) setWorkClockActive(parsed);
           }
         } catch (_) {}
       }, [user?.uid]);
 
       useEffect(() => {
         const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions);
-        if (!workClockPresetEditingRef.current) {
-          setWorkClockPresetInput(presets.join('\n'));
-        }
-        setWorkClockDraftTitle(String(userProfile?.workClockLastTitle || presets[0] || 'Arbeit'));
-        setWorkClockDraftUsePreset(true);
-      }, [userProfile?.workClockTaskOptions, userProfile?.workClockLastTitle]);
+        setWorkClockPresetInput(presets.join('\n'));
+      }, [userProfile?.workClockTaskOptions]);
 
 
       useEffect(() => {
@@ -3621,6 +3822,19 @@ const requestNotificationPermission = async (currentUser) => {
         return () => { try { unsub(); } catch (_) {} };
       }, [user?.uid]);
 
+      useEffect(() => {
+        if (!user?.uid || !workClockActive?.startedAt) return;
+        const id = setInterval(async () => {
+          try {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+              workClockActive: { ...(workClockActive || {}), heartbeatAt: Date.now() },
+              updatedAt: Date.now(),
+            }, { merge: true });
+          } catch (_) {}
+        }, 15000);
+        return () => clearInterval(id);
+      }, [user?.uid, workClockActive?.startedAt, workClockActive?.isPaused, workClockActive?.pausedAccumulatedMs]);
+
       function getShoppingStorageKey(uid) { return `onyx_shopping_lists_${uid || 'guest'}`; }
       function readShoppingListsLocal(uid) {
         try {
@@ -3634,34 +3848,13 @@ const requestNotificationPermission = async (currentUser) => {
       }
       function calcShoppingListTotal(list, doneOnly = false) {
         try {
-          const items = normalizeShoppingItems(list.items);
+          const items = normalizeShoppingItems(list?.items);
           return items.reduce((sum, item) => {
             if (doneOnly && !item.done) return sum;
             const price = Number(String(item.price || '').replace(',', '.'));
             return sum + (Number.isFinite(price) ? price : 0);
           }, 0);
         } catch (_) { return 0; }
-      }
-      function calcShoppingPaidTotal(list) {
-        try {
-          const entries = normalizeShoppingPurchases(list.purchases);
-          return entries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-        } catch (_) { return 0; }
-      }
-      function calcShoppingSpendByStore(lists) {
-        try {
-          const grouped = new Map();
-          for (const list of normalizeShoppingLists(lists)) {
-            const fallbackStore = String(list.store || '').trim() || 'Ohne Laden';
-            for (const row of normalizeShoppingPurchases(list.purchases)) {
-              const key = String(row.store || fallbackStore).trim() || 'Ohne Laden';
-              const prev = Number(grouped.get(key) || 0);
-              grouped.set(key, prev + Number(row.amount || 0));
-            }
-          }
-          return Array.from(grouped.entries()).map(([store, amount]) => ({ store, amount }))
-            .sort((a, b) => b.amount - a.amount);
-        } catch (_) { return []; }
       }
       async function persistShoppingLists(nextLists) {
         if (!user?.uid) return;
@@ -3717,40 +3910,49 @@ const requestNotificationPermission = async (currentUser) => {
         await persistShoppingLists(next);
         setActiveShoppingListId((prev) => prev === listId ? (next[0]?.id || '') : prev);
       };
-      const togglePinShoppingList = async (listId) => {
-        if (!user || !listId) return;
-        try {
-          const nextPinned = (userProfile?.pinnedShoppingListId === listId) ? '' : listId;
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { pinnedShoppingListId: nextPinned, updatedAt: Date.now() }, { merge: true });
-          setUserProfile(prev => ({ ...(prev || {}), pinnedShoppingListId: nextPinned }));
-          showToast(nextPinned ? 'Einkaufsliste angepinnt' : 'Pin entfernt');
-        } catch (_) { showToast('Fehler'); }
-      };
-      const addShoppingPurchase = async (listId) => {
-        const amount = Number(String(shoppingPaidAmount || '').replace(',', '.').replace(/[^0-9.]/g, ''));
-        if (!Number.isFinite(amount) || amount <= 0) {
-          showToast('Bitte einen gültigen Betrag eingeben');
-          return;
+      const saveQuickCaptureNote = async () => {
+        const text = String(quickCaptureNoteInput || '').trim();
+        if (!text) return;
+        const now = Date.now();
+        const next = editingQuickNoteId
+          ? normalizeQuickCaptureNotes((quickCaptureNotes || []).map((note) => String(note?.id || '') === String(editingQuickNoteId) ? { ...note, text, updatedAt: now } : note))
+          : normalizeQuickCaptureNotes([
+              { id: `note_${now}_${Math.random().toString(36).slice(2, 6)}`, text, createdAt: now },
+              ...quickCaptureNotes,
+            ]);
+        setQuickCaptureNotes(next);
+        setQuickCaptureNoteInput('');
+        setEditingQuickNoteId('');
+        setQuickNoteModalOpen(false);
+        setPlusMenuOpen(false);
+        setHomeNotesOpen(true);
+        showToast(editingQuickNoteId ? 'Notiz aktualisiert' : 'Notiz gespeichert');
+        if (user?.uid) {
+          try {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { quickCaptureNotes: next, updatedAt: now }, { merge: true });
+          } catch (_) {}
         }
-        const next = normalizeShoppingLists(shoppingLists).map((list) => {
-          if (list.id !== listId) return list;
-          const nextEntry = {
-            id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-            amount,
-            store: String(list.store || '').trim(),
-            paidAt: Date.now(),
-            note: String(shoppingPaidNote || '').trim(),
-          };
-          return {
-            ...list,
-            updatedAt: Date.now(),
-            purchases: [nextEntry, ...normalizeShoppingPurchases(list.purchases)].slice(0, 80),
-          };
-        });
-        await persistShoppingLists(next);
-        setShoppingPaidAmount('');
-        setShoppingPaidNote('');
-        showToast('Einkauf gespeichert');
+      };
+      const openEditQuickCaptureNote = (note) => {
+        if (!note?.id) return;
+        setEditingQuickNoteId(String(note.id));
+        setQuickCaptureNoteInput(String(note.text || ''));
+        setQuickNoteModalOpen(true);
+      };
+      const deleteQuickCaptureNote = async (noteId) => {
+        const next = normalizeQuickCaptureNotes((quickCaptureNotes || []).filter((note) => String(note?.id || '') !== String(noteId || '')));
+        setQuickCaptureNotes(next);
+        if (editingQuickNoteId && String(editingQuickNoteId) === String(noteId || '')) {
+          setEditingQuickNoteId('');
+          setQuickCaptureNoteInput('');
+          setQuickNoteModalOpen(false);
+        }
+        showToast('Notiz gelöscht');
+        if (user?.uid) {
+          try {
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { quickCaptureNotes: next, updatedAt: Date.now() }, { merge: true });
+          } catch (_) {}
+        }
       };
 
       useEffect(() => {
@@ -3780,8 +3982,8 @@ const requestNotificationPermission = async (currentUser) => {
           if (!Array.isArray(hourlyForecast?.time)) return [];
           const key = String(dayStr || '').slice(0, 10);
           const idxs = [];
-          for (let i = 0; i < (hourlyForecast?.time?.length || 0); i++) {
-            if (String(hourlyForecast?.time[i]).slice(0, 10) === key) idxs.push(i);
+          for (let i = 0; i < hourlyForecast.time.length; i++) {
+            if (String(hourlyForecast.time[i]).slice(0, 10) === key) idxs.push(i);
           }
           return idxs;
         } catch (_) { return []; }
@@ -3803,36 +4005,10 @@ const requestNotificationPermission = async (currentUser) => {
         } catch (_) { return ''; }
       }
 
-      function getWeatherHintForTimestamp(ts) {
-        try {
-          if (!Number.isFinite(ts) || !Array.isArray(hourlyForecast?.time)) return '';
-          let bestIdx = -1;
-          let bestDiff = Infinity;
-          for (let i = 0; i < (hourlyForecast?.time?.length || 0); i += 1) {
-            const hourTs = new Date(hourlyForecast?.time[i]).getTime();
-            if (!Number.isFinite(hourTs)) continue;
-            const diff = Math.abs(hourTs - ts);
-            if (diff < bestDiff) {
-              bestDiff = diff;
-              bestIdx = i;
-            }
-          }
-          if (bestIdx < 0 || bestDiff > (3 * 60 * 60 * 1000)) return '';
-          const rainProb = Number(hourlyForecast?.precipitation_probability?.[bestIdx] ?? 0);
-          const wind = Number(hourlyForecast?.windspeed_10m?.[bestIdx] ?? weather?.windspeed ?? 0);
-          if (rainProb >= 55 && wind >= 30) return ' • Wetter: Regen + Wind - Schirm/Regenjacke';
-          if (rainProb >= 55) return ' • Wetter: Regen möglich - Schirm mitnehmen';
-          if (wind >= 35) return ' • Wetter: windig - Jacke einplanen';
-          return '';
-        } catch (_) {
-          return '';
-        }
-      }
-
       function getWeatherAdviceForDay(dayIndex = 0) {
         try {
           const dayStr = dailyForecast?.time?.[dayIndex];
-          if (!dayStr) return 'Wetterdaten werden geladen...';
+          if (!dayStr) return 'Wetterdaten werden geladen…';
 
           const maxTemp = Math.round(dailyForecast?.temperature_2m_max?.[dayIndex] ?? weather?.temperature ?? 0);
           const minTemp = Math.round(dailyForecast?.temperature_2m_min?.[dayIndex] ?? weather?.temperature ?? 0);
@@ -3897,32 +4073,32 @@ const requestNotificationPermission = async (currentUser) => {
                 const rainTimeLabel = formatHourLabel(hourlyForecast?.time?.[firstRainIdx4h]);
                 const startsLater = firstRainIdx4h !== firstIdx;
                 if (startsLater) {
-                  return `Bis ${rainTimeLabel} bleibt es meist trocken, danach ist ${rainLabel} möglich - Regenschirm mitnehmen.`;
+                  return `Bis ${rainTimeLabel} bleibt es meist trocken, danach ist ${rainLabel} möglich – Regenschirm mitnehmen.`;
                 }
-                return `Ab jetzt bis ${untilLabel} ist ${rainLabel} möglich - Regenschirm sinnvoll.`;
+                return `Ab jetzt bis ${untilLabel} ist ${rainLabel} möglich – Regenschirm sinnvoll.`;
               }
 
               if (firstWindIdx4h != null && maxWind4h >= 30) {
                 const windTimeLabel = formatHourLabel(hourlyForecast?.time?.[firstWindIdx4h]);
                 if (tempMin4h <= 11) {
-                  return `Bis ${untilLabel} wird es ${windText(maxWind4h)} - ab ${windTimeLabel} lieber mit Jacke raus.`;
+                  return `Bis ${untilLabel} wird es ${windText(maxWind4h)} – ab ${windTimeLabel} lieber mit Jacke raus.`;
                 }
-                return `Bis ${untilLabel} wird es ${windText(maxWind4h)} - draussen kann es ab ${windTimeLabel} ungemütlich werden.`;
+                return `Bis ${untilLabel} wird es ${windText(maxWind4h)} – draussen kann es ab ${windTimeLabel} ungemütlich werden.`;
               }
 
               if (tempMin4h <= 8 && tempMax4h <= 13) {
-                return `${nowPhase} bleibt es bis ${untilLabel} frisch bei etwa ${tempMin4h}-${tempMax4h}° - Jacke sinnvoll.`;
+                return `${nowPhase} bleibt es bis ${untilLabel} frisch bei etwa ${tempMin4h}–${tempMax4h}° – Jacke sinnvoll.`;
               }
 
               if (tempMin4h <= 10 && tempMax4h - tempMin4h >= 5) {
-                return `${nowPhase} noch eher kühl, bis ${untilLabel} wird es milder - Jacke jetzt sinnvoll, ${laterPhase} eher weniger.`;
+                return `${nowPhase} noch eher kühl, bis ${untilLabel} wird es milder – Jacke jetzt sinnvoll, ${laterPhase} eher weniger.`;
               }
 
               if (mostlySunny) {
-                return `Bis ${untilLabel} bleibt es trocken mit etwas Sonnenschein - aktuell keine Jacke und kein Schirm nötig.`;
+                return `Bis ${untilLabel} bleibt es trocken mit etwas Sonnenschein – aktuell keine Jacke und kein Schirm nötig.`;
               }
 
-              return `Bis ${untilLabel} bleibt es überwiegend trocken bei ${tempMin4h}-${tempMax4h}° - insgesamt ruhiges Wetter.`;
+              return `Bis ${untilLabel} bleibt es überwiegend trocken bei ${tempMin4h}–${tempMax4h}° – insgesamt ruhiges Wetter.`;
             }
           }
 
@@ -3943,13 +4119,13 @@ const requestNotificationPermission = async (currentUser) => {
 
           if (firstStrongRainIdx != null || rainProb >= 75 || rainSum >= 4) {
             const idx = firstStrongRainIdx != null ? firstStrongRainIdx : firstRainIdx;
-            const when = idx != null ? ` - ab ${formatHourLabel(hourlyForecast?.time?.[idx])} ist kräftiger Regen möglich.` : '.';
+            const when = idx != null ? ` – ab ${formatHourLabel(hourlyForecast?.time?.[idx])} ist kräftiger Regen möglich.` : '.';
             return `Nimm einen Regenschirm mit${when}`;
           }
 
           if (firstRainIdx != null || rainProb >= 55 || rainSum >= 1.2) {
             const idx = firstRainIdx != null ? firstRainIdx : firstStrongRainIdx;
-            const when = idx != null ? ` - ab ${formatHourLabel(hourlyForecast?.time?.[idx])} steigt die Regenchance.` : '.';
+            const when = idx != null ? ` – ab ${formatHourLabel(hourlyForecast?.time?.[idx])} steigt die Regenchance.` : '.';
             return `Leichte Regengefahr${when}`;
           }
 
@@ -3962,28 +4138,28 @@ const requestNotificationPermission = async (currentUser) => {
           }
 
           if (firstCoolIdx != null && maxTemp - minTemp >= 6) {
-            return `Zwiebellook lohnt sich - ab ${formatHourLabel(hourlyForecast?.time?.[firstCoolIdx])} wird es spürbar kühler.`;
+            return `Zwiebellook lohnt sich – ab ${formatHourLabel(hourlyForecast?.time?.[firstCoolIdx])} wird es spürbar kühler.`;
           }
 
           if (windMax >= 35) {
-            return `Heute wird es ${windText(windMax)} - draussen lieber etwas Wärmeres einplanen.`;
+            return `Heute wird es ${windText(windMax)} – draussen lieber etwas Wärmeres einplanen.`;
           }
 
           if (maxTemp >= 28) {
-            return `Sehr warm heute - Wasser mitnehmen und eher leichte Kleidung tragen.`;
+            return `Sehr warm heute – Wasser mitnehmen und eher leichte Kleidung tragen.`;
           }
 
           if (minTemp <= 5) {
-            return `Kühler Start in den Tag - Jacke am Morgen sinnvoll.`;
+            return `Kühler Start in den Tag – Jacke am Morgen sinnvoll.`;
           }
 
           if ([0,1].includes(dayCode) && maxTemp >= 20 && firstWarmIdx != null) {
-            return `Freundliches Wetter - ab ${formatHourLabel(hourlyForecast?.time?.[firstWarmIdx])} wird es angenehm mild.`;
+            return `Freundliches Wetter – ab ${formatHourLabel(hourlyForecast?.time?.[firstWarmIdx])} wird es angenehm mild.`;
           }
 
-          return `Heute zwischen ${minTemp}° und ${maxTemp}° - insgesamt eher ruhiges Wetter.`;
+          return `Heute zwischen ${minTemp}° und ${maxTemp}° – insgesamt eher ruhiges Wetter.`;
         } catch (_) {
-          return 'Wetterdaten werden geladen...';
+          return 'Wetterdaten werden geladen…';
         }
       }
 
@@ -3993,7 +4169,7 @@ const requestNotificationPermission = async (currentUser) => {
         try {
           const advice = String(todayWeatherAdvice || '').trim();
           const lower = advice.toLowerCase();
-          const hourMatch = advice.match(/(:ab|bis)\s(\d{1,2}:\d{2})/i);
+          const hourMatch = advice.match(/(?:ab|bis)\s(\d{1,2}:\d{2})/i);
           const timeLabel = hourMatch ? hourMatch[1] : null;
           if (lower.includes('regen') || lower.includes('schirm')) {
             return {
@@ -4018,18 +4194,18 @@ const requestNotificationPermission = async (currentUser) => {
           }
           if (lower.includes('milder') || lower.includes('angenehm')) {
             return {
-              icon: '🌤',
+              icon: '🌓',
               tone: 'border-emerald-800/50 bg-emerald-950/30 text-emerald-200',
               text: timeLabel ? `Später milder bis ${timeLabel}` : 'Später angenehmer'
             };
           }
           return {
-            icon: '☀️',
+            icon: 'â˜€ï¸',
             tone: 'border-emerald-800/50 bg-emerald-950/30 text-emerald-200',
             text: timeLabel ? `Trocken bis ${timeLabel}` : 'Ruhiges Wetter'
           };
         } catch (_) {
-          return { icon: '☀️', tone: 'border-neutral-800 bg-neutral-950 text-neutral-200', text: 'Ruhiges Wetter' };
+          return { icon: 'â˜€ï¸', tone: 'border-neutral-800 bg-neutral-950 text-neutral-200', text: 'Ruhiges Wetter' };
         }
       };
 
@@ -4055,39 +4231,9 @@ const requestNotificationPermission = async (currentUser) => {
       }, [location, isLoggedIn]);
 
       useEffect(() => {
-        try {
-          const fromProfile = userProfile?.weatherLocation;
-          if (!fromProfile) return;
-          const nextLoc = {
-            name: String(fromProfile.name || DEFAULT_WEATHER_LOCATION.name),
-            lat: Number(fromProfile.lat || DEFAULT_WEATHER_LOCATION.lat),
-            lon: Number(fromProfile.lon || DEFAULT_WEATHER_LOCATION.lon),
-          };
-          const same =
-            String(location.name || '') === nextLoc.name
-            && Number(location.lat || 0) === Number(nextLoc.lat || 0)
-            && Number(location.lon || 0) === Number(nextLoc.lon || 0);
-          if (!same) setLocation(nextLoc);
-        } catch (_) {}
-      }, [userProfile?.weatherLocation?.name, userProfile?.weatherLocation?.lat, userProfile?.weatherLocation?.lon]);
-
-      useEffect(() => {
-        const mode = (themeMode === 'light') ? 'light' : 'dark';
-        try {
-          localStorage.setItem('onyx_theme_mode', mode);
-          document.documentElement.classList.toggle('onyx-theme-light', mode === 'light');
-        } catch (_) {}
-      }, [themeMode]);
-
-      useEffect(() => {
-        const profileMode = userProfile?.themeMode;
-        if (profileMode === 'light' || profileMode === 'dark') setThemeMode(profileMode);
-      }, [userProfile?.themeMode]);
-
-      useEffect(() => {
         // reset expanded forecast when location changes
         setSelectedForecastDay(null);
-      }, [location.lat, location.lon]);
+      }, [location?.lat, location?.lon]);
 
       const showToast = (message) => {
         const id = Date.now();
@@ -4181,7 +4327,7 @@ const requestNotificationPermission = async (currentUser) => {
           if (document.visibilityState !== 'visible') return;
 
           for (const c of myChats) {
-            const updatedAt = toMillis(c?.updatedAt);
+            const updatedAt = (c && typeof c.updatedAt === 'number') ? c.updatedAt : 0;
             if (!updatedAt) continue;
             if (c.lastMessageSenderId === user?.uid) {
               // keep watermark up to date
@@ -4199,7 +4345,7 @@ const requestNotificationPermission = async (currentUser) => {
               continue;
             }
 
-            // muted
+            // muted?
             const muted = Array.isArray(prof.mutedChatIds) ? prof.mutedChatIds : [];
             if (muted.includes(c.id)) {
               lastChatPingRef.current[c.id] = updatedAt;
@@ -4229,19 +4375,20 @@ const requestNotificationPermission = async (currentUser) => {
 const promptInstallPwa = async () => {
   try {
     if (!deferredInstallPrompt) {
-      showToast(isIosUA ? 'iPhone/iPad: Teilen -> "Zum Home-Bildschirm" installieren.' : 'Installation ist gerade nicht verfügbar.');
+      showToast(isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren.' : 'Installation ist gerade nicht verfügbar.');
       return;
     }
     deferredInstallPrompt.prompt();
     const choice = await deferredInstallPrompt.userChoice;
     setDeferredInstallPrompt(null);
     setCanInstallPwa(false);
-    if (choice && choice.outcome === 'accepted') showToast('Installiert');
+    if (choice && choice.outcome === 'accepted') showToast('Installiert ✅');
     else showToast('Installation abgebrochen');
   } catch (e) {
     showToast('Installation nicht möglich');
   }
 };
+
 const registerPushServiceWorker = async () => {
   try {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
@@ -4249,7 +4396,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=41`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=42`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -4257,10 +4404,11 @@ const registerPushServiceWorker = async () => {
     setPushDiag(prev => ({ ...prev, sw: 'registered', controlling, lastError: '' }));
     return readyReg || reg;
   } catch (e) {
-    setPushDiag(prev => ({ ...prev, sw: 'error', controlling: !!navigator.serviceWorker.controller, lastError: (e.message || String(e)) }));
+    setPushDiag(prev => ({ ...prev, sw: 'error', controlling: !!navigator.serviceWorker?.controller, lastError: (e?.message || String(e)) }));
     return null;
   }
 }
+
 useEffect(() => {
   const computeStandalone = () => {
     try {
@@ -4313,11 +4461,12 @@ useEffect(() => {
     }
   };
 }, []);
+
 useEffect(() => {
   if (!user) return;
   let refreshTimer = null;
   const refreshToken = async () => {
-    try { await ensureWebPushToken(user, { forcePrompt: false }); } catch (e) { console.warn('[FCM] Token refresh failed:', e.message); }
+    try { await ensureWebPushToken(user, { forcePrompt: false }); } catch (e) { console.warn('[FCM] Token refresh failed:', e?.message); }
   };
   refreshToken();
   refreshTimer = setInterval(refreshToken, 60 * 60 * 1000);
@@ -4325,6 +4474,13 @@ useEffect(() => {
   document.addEventListener('visibilitychange', onVisibilityChange);
   return () => { if (refreshTimer) clearInterval(refreshTimer); document.removeEventListener('visibilitychange', onVisibilityChange); };
 }, [user]);
+
+useEffect(() => {
+  return () => {
+    try { if (pushTestWatchdogRef.current) clearTimeout(pushTestWatchdogRef.current); } catch (_) {}
+  };
+}, []);
+
 useEffect(() => {
   if (!('serviceWorker' in navigator)) return;
   const checkForUpdate = async () => {
@@ -4339,13 +4495,15 @@ useEffect(() => {
   checkForUpdate();
   const timer = setInterval(checkForUpdate, 30 * 60 * 1000);
   return () => clearInterval(timer);
-}, []); // Diagnostics: receive a ping from the Service Worker when a push arrives
+}, []);
+
+// Diagnostics: receive a ping from the Service Worker when a push arrives
 useEffect(() => {
   try {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
     const onMsg = (evt) => {
       try {
-        const d = evt.data || {};
+        const d = evt?.data || {};
         if (d.type !== 'PUSH_RECEIVED') return;
         setPushDiag((prev) => ({
           ...prev,
@@ -4441,7 +4599,7 @@ Kalender aktuell` : 'Kalender aktuell';
             showToast('Keine Berechtigung für Benachrichtigungen');
             return;
           }
-          await showSystemNotification('Onyx Test', 'Wenn du das siehst: OS-Notification funktioniert', 'onyx_test_local');
+          await showSystemNotification('🔔 Onyx Test', 'Wenn du das siehst: OS-Notification funktioniert ✅', 'onyx_test_local');
         } catch (e) {
           showToast('Test fehlgeschlagen');
         }
@@ -4450,34 +4608,60 @@ Kalender aktuell` : 'Kalender aktuell';
       const sendServerPushTest = async () => {
         try {
           if (!user) return;
+
+          const canNotify = ('Notification' in window) && Notification.permission === 'granted';
+          if (!canNotify) {
+            showToast('Keine Benachrichtigungs-Berechtigung');
+            setPushDiag((prev) => ({ ...prev, lastError: 'NOTIFICATION_PERMISSION_NOT_GRANTED' }));
+            return;
+          }
+
+          try { await ensureWebPushToken(user, { forcePrompt: false }); } catch (_) {}
+          const tokenPresent = !!((userProfileRef?.current && userProfileRef.current?.fcmTokenWeb) || userProfile?.fcmTokenWeb);
+          if (!tokenPresent) {
+            showToast('Kein Web-Token vorhanden');
+            setPushDiag((prev) => ({ ...prev, lastError: 'NO_WEB_PUSH_TOKEN' }));
+            return;
+          }
+
           const id = `${user?.uid}_${Date.now()}`;
-          try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {}
-          setPushTest({ id, status: 'pending', lastError: '', updatedAt: Date.now() });
+          const startedAt = Date.now();
+          setPushTest({ id, status: 'pending', lastError: '', updatedAt: startedAt });
           await setDoc(
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', id),
             {
               uid: user?.uid,
               createdAt: serverTimestamp(),
-              createdAtMs: Date.now(),
+              createdAtMs: startedAt,
               status: 'pending',
               platform: 'web',
-              fcmTokenWeb: userProfile?.fcmTokenWeb ? String(userProfile.fcmTokenWeb) : '',
+              tokenPresent: true,
               ua: String((typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '').slice(0, 220)
             },
             { merge: true }
           );
-          showToast('Server-Test ausgelöst (FCM)');
-          pushTestTimeoutRef.current = setTimeout(() => {
-            try {
-              setPushTest((prev) => {
-                if (String(prev.id || '') !== id) return prev;
-                const st = String(prev.status || '').toLowerCase();
-                if (st && st !== 'pending') return prev;
-                return { ...prev, status: 'timeout', lastError: 'Keine Server-Rückmeldung (Timeout)', updatedAt: Date.now() };
-              });
-            } catch (_) {}
+
+          try { if (pushTestWatchdogRef.current) clearTimeout(pushTestWatchdogRef.current); } catch (_) {}
+          pushTestWatchdogRef.current = setTimeout(() => {
+            setPushTest((prev) => {
+              if (!prev || prev.id !== id) return prev;
+              if (String(prev.status || '').toLowerCase() !== 'pending') return prev;
+              return {
+                ...prev,
+                status: 'timeout',
+                lastError: prev.lastError || 'SERVER_TEST_TIMEOUT',
+                updatedAt: Date.now()
+              };
+            });
+            setPushDiag((prev) => ({
+              ...prev,
+              lastError: prev.lastError || 'SERVER_TEST_TIMEOUT: Keine Server-Rückmeldung (Rules/Adblock/Function prüfen)'
+            }));
           }, 25000);
+
+          showToast('Server-Test ausgelöst (FCM)');
         } catch (e) {
+          setPushDiag((prev) => ({ ...prev, lastError: `SERVER_TEST_CREATE_FAILED: ${e?.message || String(e)}` }));
           showToast('Server-Test fehlgeschlagen');
         }
       };
@@ -4486,52 +4670,42 @@ Kalender aktuell` : 'Kalender aktuell';
       useEffect(() => {
         try {
           if (!user) return;
-          if (!pushTest.id) return;
+          if (!pushTest?.id) return;
           const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'pushTests', pushTest.id);
-          const unsub = onSnapshot(ref,
-            (snap) => {
-              try {
-                if (!snap.exists()) return;
-                const d = snap.data() || {};
-                const status = String(d.status || '').toLowerCase();
-                const lastError = d.lastError ? String(d.lastError) : '';
-                const updatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : Date.now();
-                setPushTest((prev) => ({ ...prev, status, lastError, updatedAt }));
-                if (status && status !== 'pending') { try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {} }
-                if (status === 'error' && lastError) {
-                  setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
-                }
-                if (status === 'sent') {
-                  // Let SW handle the visible notification; this toast is just feedback.
-                  showToast('Server-Test gesendet');
-                }
-              } catch (_) {}
-            },
-            (err) => {
-              try {
-                const code = String(err?.code || '').toLowerCase();
-                const blocked = code === 'permission-denied' || code === 'unauthenticated';
-                setPushTest((prev) => ({
-                  ...prev,
-                  status: blocked ? 'status_read_blocked' : 'status_read_error',
-                  lastError: blocked
-                    ? 'Status-Lesen blockiert (Rules/Shield/Adblock). Push kann trotzdem zugestellt werden.'
-                    : `Status-Lesen fehlgeschlagen (${code || 'unknown'})`,
-                  updatedAt: Date.now()
-                }));
-                setPushDiag((p) => ({
-                  ...p,
-                  lastError: blocked
-                    ? 'SERVER_TEST_STATUS_READ_BLOCKED'
-                    : `SERVER_TEST_STATUS_READ_ERROR: ${code || 'unknown'}`
-                }));
-                try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {}
-              } catch (_) {}
+          const unsub = onSnapshot(ref, (snap) => {
+            try {
+              if (!snap.exists()) return;
+              const d = snap.data() || {};
+              const status = String(d.status || '').toLowerCase();
+              const lastError = d.lastError ? String(d.lastError) : '';
+              const updatedAt = typeof d.updatedAt === 'number' ? d.updatedAt : Date.now();
+              setPushTest((prev) => ({ ...prev, status, lastError, updatedAt }));
+              if (status && status !== 'pending') { try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {} }
+              if (status === 'error' && lastError) {
+                setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
+              }
+              if (status === 'sent') {
+                // Let SW handle the visible notification; this toast is just feedback.
+                showToast('Server-Test gesendet ✅');
+              }
+              if (status && status !== 'pending') {
+                try { if (pushTestWatchdogRef.current) { clearTimeout(pushTestWatchdogRef.current); pushTestWatchdogRef.current = null; } } catch (_) {}
+              }
+            } catch (_) {}
+          }, (err) => {
+            const code = String(err?.code || err?.message || 'unknown');
+            if (code === 'permission-denied') {
+              setPushTest((prev) => ({ ...prev, status: 'submitted', lastError: 'STATUS_READ_BLOCKED (optional)', updatedAt: Date.now() }));
+              setPushDiag((prev) => ({ ...prev, lastError: '' }));
+            } else {
+              setPushTest((prev) => ({ ...prev, status: 'error', lastError: `SNAPSHOT_ERROR: ${code}`, updatedAt: Date.now() }));
+              setPushDiag((prev) => ({ ...prev, lastError: `SERVER_TEST_SNAPSHOT_ERROR: ${code}` }));
             }
-          );
+            try { if (pushTestWatchdogRef.current) { clearTimeout(pushTestWatchdogRef.current); pushTestWatchdogRef.current = null; } } catch (_) {}
+          });
           return () => { try { unsub(); } catch (_) {} };
         } catch (_) {}
-      }, [pushTest.id, user]);
+      }, [pushTest?.id, user]);
 
       const getWeatherIcon = (code, className = "w-8 h-8 text-white") => {
         if (code === undefined || code === null) return <Cloud className={className} />;
@@ -4595,8 +4769,8 @@ const handleAuth = async (e) => {
       case 'auth/user-not-found':
       case 'auth/wrong-password': setAuthError('E-Mail oder Passwort falsch.'); break;
       case 'auth/weak-password': setAuthError('Passwort min. 6 Zeichen.'); break;
-      case 'auth/operation-not-allowed': setAuthError('Email/Passwort Login ist in Firebase Auth deaktiviert. Bitte in Firebase -> Authentication -> Sign-in method aktivieren.'); break;
-      case 'auth/unauthorized-domain': setAuthError('Domain nicht autorisiert. In Firebase Auth -> Settings -> Authorized domains muss tejari49.github.io erlaubt sein.'); break;
+      case 'auth/operation-not-allowed': setAuthError('Email/Passwort Login ist in Firebase Auth deaktiviert. Bitte in Firebase → Authentication → Sign-in method aktivieren.'); break;
+      case 'auth/unauthorized-domain': setAuthError('Domain nicht autorisiert. In Firebase Auth → Settings → Authorized domains muss tejari49.github.io erlaubt sein.'); break;
       case 'auth/network-request-failed': setAuthError('Netzwerkfehler. Bitte Internet prüfen.'); break;
       default:
         setAuthError('Fehler: ' + (code || msg || 'Unbekannt'));
@@ -4624,47 +4798,9 @@ const handleAuth = async (e) => {
       };
 
       const selectLocation = (loc) => {
-        const nextLoc = { name: `${loc.name}${loc.admin1 ? `, ${loc.admin1}` : ''}`, lat: loc.latitude, lon: loc.longitude };
-        setLocation(nextLoc);
-        persistWeatherLocation(nextLoc);
+        setLocation({ name: `${loc.name}${loc.admin1 ? `, ${loc.admin1}` : ''}`, lat: loc.latitude, lon: loc.longitude });
         setSearchResults([]); setSearchQuery('');
         showToast(`Standort: ${loc.name}`);
-      };
-
-      const persistWeatherLocation = async (nextLoc) => {
-        try {
-          if (!user?.uid || !nextLoc) return;
-          const payload = {
-            name: String(nextLoc.name || DEFAULT_WEATHER_LOCATION.name),
-            lat: Number(nextLoc.lat || DEFAULT_WEATHER_LOCATION.lat),
-            lon: Number(nextLoc.lon || DEFAULT_WEATHER_LOCATION.lon),
-          };
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
-            weatherLocation: payload,
-            updatedAt: Date.now(),
-          }, { merge: true });
-          setUserProfile((prev) => ({ ...(prev || {}), weatherLocation: payload }));
-        } catch (err) {
-          console.warn('persistWeatherLocation failed', err);
-        }
-      };
-
-      const persistThemeMode = async (nextMode) => {
-        const mode = (nextMode === 'light') ? 'light' : 'dark';
-        setThemeMode(mode);
-        try {
-          localStorage.setItem('onyx_theme_mode', mode);
-        } catch (_) {}
-        try {
-          if (!user?.uid) return;
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
-            themeMode: mode,
-            updatedAt: Date.now(),
-          }, { merge: true });
-          setUserProfile((prev) => ({ ...(prev || {}), themeMode: mode }));
-        } catch (err) {
-          console.warn('persistThemeMode failed', err);
-        }
       };
 
       // --- KALENDER LOGIK ---
@@ -4681,7 +4817,9 @@ const handleAuth = async (e) => {
       const allEvents = [
         ...events, 
         ...Object.values(sharedEventsMap).flat()
-      ].filter(e => visibleCalendars.includes(e.calendarId)); // Aktuelles Event im Modal aus der neuesten allEvents Liste (für Live Poll/Kommentare)
+      ].filter(e => visibleCalendars.includes(e.calendarId));
+
+// Aktuelles Event im Modal aus der neuesten allEvents Liste (für Live Poll/Kommentare)
 const modalEvent = eventToEdit
   ? (allEvents.find(e => e.id === eventToEdit.id && (e.calendarId || 'default') === (eventToEdit.calendarId || 'default')) || eventToEdit)
   : null;
@@ -4752,9 +4890,7 @@ useEffect(() => {
 
       function getCalendarById(id) {
          if (id === 'default') return { id: 'default', name: 'Privat', type: 'normal', ownerId: user?.uid };
-         const cal = (customCalendars || []).find(c => c?.id === id);
-         if (cal) return cal;
-         return { id: id || 'unknown', name: 'Kalender', type: 'normal', ownerId: null };
+         return customCalendars.find(c => c.id === id);
       }
 
       const calendarTint = (calId) => {
@@ -4839,10 +4975,10 @@ useEffect(() => {
         let durationMinutes = null;
 
         // 1) Dauer (z.B. 45min, 1h, 1.5h, 2std)
-        const durMatch = s.match(/\b\d+(:[.,]\d+)\s*(:h|std|stunden|m|min|mins|minute|minutes)\b/i);
+        const durMatch = s.match(/\b\d+(?:[.,]\d+)?\s*(?:h|std|stunden|m|min|mins|minute|minutes)\b/i);
         if (durMatch) {
           const token = durMatch[0];
-          const num = (token.match(/\d+(:[.,]\d+)/) || [null])[0];
+          const num = (token.match(/\d+(?:[.,]\d+)?/) || [null])[0];
           const unit = token.toLowerCase();
           if (num) {
             const n = parseFloat(num.replace(',', '.'));
@@ -4903,7 +5039,7 @@ useEffect(() => {
         }
 
         // Explizites Datum: DD.MM(.YYYY)
-        const dmM = !dateStr ? s.match(/\b(\d{1,2})\?.(\d{1,2})(:\?.(\d{2,4}))\b/) : null;
+        const dmM = !dateStr ? s.match(/\b(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\b/) : null;
         if (!dateStr && dmM) {
           const dd = parseInt(dmM[1], 10);
           const mm = parseInt(dmM[2], 10);
@@ -5193,21 +5329,20 @@ useEffect(() => {
           if (localStorage.getItem(firedKey)) return;
           localStorage.setItem(firedKey, String(Date.now()));
 
-          const calName = (item.calendarId === 'default') ? 'Privat' : (getCalendarById(item.calendarId).name || 'Kalender');
-          const weatherHint = getWeatherHintForTimestamp(item.startMs);
-          const body = `${item.title}${item.time ? ' • ' + item.time : ''} • ${calName}${weatherHint}`;
+          const calName = (item.calendarId === 'default') ? 'Privat' : (getCalendarById(item.calendarId)?.name || 'Kalender');
+          const body = `${item.title}${item.time ? ' • ' + item.time : ''} • ${calName}`;
 
           // In-App Hinweis immer
-          showToast(`Erinnerung: ${body}`);
+          showToast(`⏰ ${body}`);
 
           // System Notification falls erlaubt
           try {
             // Wichtig: oft existiert zwar ein Web-Token, aber der FCM-Zustellweg kann lokal blockiert sein
-            // oder im Hintergrund noch nicht aktiv sein. Daher IMMER lokal als Fallback.
+            // ist nicht aktiv oder sendet nicht an Web. Daher IMMER lokal als Fallback.
             // Tag bleibt kompatibel zum FCM-`data.tag` (dedupe über `tag`).
             const canNotify = ('Notification' in window) && Notification.permission === 'granted';
             if (canNotify) {
-                const dedupeKey = `${user?.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;
+              const dedupeKey = `${user?.uid || 'uid'}:${item.occId || item.baseId || item.rid}:${item.mins ?? ''}:${item.dueMs}`;
               const tag = `onyx_event_${fnv1a32(dedupeKey)}`;
               await showSystemNotification('Erinnerung', body, tag);
             }
@@ -5261,6 +5396,7 @@ useEffect(() => {
         const panicOnHide = (userProfile?.secretPanicOnHide !== false);
         if (!panicOnHide) return;
         const onSecretVisibility = () => {
+          if (Date.now() < (secretPanicBypassUntilRef.current || 0)) return;
           if (document.visibilityState === 'hidden') hideSecretChatNow('Secret Chat automatisch versteckt');
         };
         document.addEventListener('visibilitychange', onSecretVisibility);
@@ -5344,7 +5480,7 @@ useEffect(() => {
          if (e.type === 'touchmove') {
              const touch = e.touches[0];
              const el = document.elementFromPoint(touch.clientX, touch.clientY);
-             const targetDate = el.getAttribute('data-date') || el.closest('[data-date]').getAttribute('data-date');
+             const targetDate = el?.getAttribute('data-date') || el?.closest('[data-date]')?.getAttribute('data-date');
              if (targetDate) applyShiftPaint(targetDate);
          } else {
              applyShiftPaint(dateStr);
@@ -5417,6 +5553,7 @@ useEffect(() => {
            recurrenceUntil: (rec && rec.until) ? rec.until : ''
          });
       };
+
 const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
          const baseEvent = (event && event._baseEvent) ? event._baseEvent : event;
          if (!baseEvent) return;
@@ -5473,7 +5610,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                  const newRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars'), {
                      name: calForm.name, type: calForm.type, color: (calForm.color || ''), shifts: calForm.shifts, ownerId: user?.uid, sharedWith: {}
                  });
-                 await writeAudit({ calId: newRef.id || 'default', action: 'calendar.create', targetType: 'calendar', targetId: newRef.id || '', summary: `Kalender erstellt: ${calForm.name}` });
+                 await writeAudit({ calId: newRef?.id || 'default', action: 'calendar.create', targetType: 'calendar', targetId: newRef?.id || '', summary: `Kalender erstellt: ${calForm.name}` });
                  showToast("Kalender erstellt");
              }
              setIsCalManageModalOpen(false);
@@ -5481,10 +5618,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       };
 
       const deleteCalendar = async (calId) => {
-         if(!confirm("Kalender wirklich löschen Alle Termine gehen verloren.")) return;
+         if(!confirm("Kalender wirklich löschen? Alle Termine gehen verloren.")) return;
          try {
              await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId));
-             await writeAudit({ calId, action: 'calendar.delete', targetType: 'calendar', targetId: calId, summary: `Kalender gelöscht: ${getCalendarById(calId).name || calId}` });
+             await writeAudit({ calId, action: 'calendar.delete', targetType: 'calendar', targetId: calId, summary: `Kalender gelöscht: ${getCalendarById(calId)?.name || calId}` });
              if (activeCalendarId === calId) setActiveCalendarId('default');
              showToast("Kalender gelöscht");
          } catch(e) { showToast("Fehler beim Löschen"); }
@@ -5522,7 +5659,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', shareCalData.id), {
                  [`sharedWith.${targetProfile.id}`]: sharePerm
              });
-             await writeAudit({ calId: shareCalData.id, action: 'calendar.share', targetType: 'calendar', targetId: shareCalData.id, summary: `Kalender geteilt (${sharePerm}): ${shareCalData.name} -> ${targetProfile.email || targetProfile.username || shortId(targetProfile.id,6)}`, details: { targetUid: targetProfile.id, perm: sharePerm } });
+             await writeAudit({ calId: shareCalData.id, action: 'calendar.share', targetType: 'calendar', targetId: shareCalData.id, summary: `Kalender geteilt (${sharePerm}): ${shareCalData.name} → ${targetProfile.email || targetProfile.username || shortId(targetProfile.id,6)}`, details: { targetUid: targetProfile.id, perm: sharePerm } });
              showToast(`Geteilt mit ${targetProfile.email || targetProfile.username || "Nutzer"} (${sharePerm})`);
              setShareCalData(prev => prev && prev.id === shareCalData.id ? { ...prev, sharedWith: { ...(prev.sharedWith || {}), [targetProfile.id]: sharePerm } } : prev);
              setShareUsername('');
@@ -5537,7 +5674,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
              const newShared = { ...(cal.sharedWith || {}) };
              delete newShared[targetUid];
              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calId), { sharedWith: newShared });
-             await writeAudit({ calId, action: 'calendar.unshare', targetType: 'calendar', targetId: calId, summary: `Freigabe entfernt: ${cal.name || calId} -> ${getProfile(targetUid).username || shortId(targetUid,6)}`, details: { targetUid } });
+             await writeAudit({ calId, action: 'calendar.unshare', targetType: 'calendar', targetId: calId, summary: `Freigabe entfernt: ${cal?.name || calId} → ${getProfile(targetUid)?.username || shortId(targetUid,6)}`, details: { targetUid } });
              setShareCalData(prev => prev && prev.id === calId ? { ...prev, sharedWith: newShared } : prev);
              showToast("Freigabe entfernt");
           } catch(err) {}
@@ -5546,7 +5683,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       // --- PUBLIC SHARE LINKS (busy-only / expiry / passcode / magic-link) ---
       const makeShareUrl = (token, key = '') => {
         const base = `${window.location.origin}${BASE_PATH}#/share/${token}`;
-        if (key) return `${base}k=${encodeURIComponent(key)}`;
+        if (key) return `${base}?k=${encodeURIComponent(key)}`;
         return base;
       };
 
@@ -5589,9 +5726,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         const occs = getOccurrencesInRangeForList(list, startStr, endStr);
         const blocks = [];
         for (const occ of occs) {
-          const dateStr = occ.date;
+          const dateStr = occ?.date;
           if (!dateStr) continue;
-          const tr = parseTimeRange(occ.time);
+          const tr = parseTimeRange(occ?.time);
           const startMs = parseDateTimeLocalMs(dateStr, tr.start || '00:00');
           if (!startMs) continue;
           let endMs = null;
@@ -5599,7 +5736,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             endMs = parseDateTimeLocalMs(dateStr, tr.end);
           }
           if (!endMs) {
-            const dur = (typeof occ.durationMinutes === 'number') ? occ.durationMinutes : parseInt(occ.durationMinutes || 0, 10);
+            const dur = (typeof occ?.durationMinutes === 'number') ? occ.durationMinutes : parseInt(occ?.durationMinutes || 0, 10);
             const dm = (Number.isFinite(dur) && dur > 0) ? dur : 60;
             endMs = startMs + dm * 60 * 1000;
           }
@@ -5618,8 +5755,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       };
 
       const openShareLinkModalForCalendar = (cal) => {
-        const calId = cal.id || 'default';
-        const calName = calId === 'default' ? 'Privat' : (cal.name || 'Kalender');
+        const calId = cal?.id || 'default';
+        const calName = calId === 'default' ? 'Privat' : (cal?.name || 'Kalender');
         setShareLinkCreated(null);
         setShareLinkDraft(prev => ({
           ...prev,
@@ -5638,21 +5775,21 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       };
 
       const openShareLinkModalForEvent = (evSnapshot, calId) => {
-        const cid = calId || evSnapshot.calendarId || 'default';
+        const cid = calId || evSnapshot?.calendarId || 'default';
         setShareLinkCreated(null);
         setShareLinkDraft(prev => ({
           ...prev,
           kind: 'event',
           calId: cid,
-          calName: getCalendarById(cid).name || (cid === 'default' ? 'Privat' : cid),
-          eventId: evSnapshot.eventId || evSnapshot.id || null,
+          calName: getCalendarById(cid)?.name || (cid === 'default' ? 'Privat' : cid),
+          eventId: evSnapshot?.eventId || evSnapshot?.id || null,
           eventSnapshot: {
-            title: String(evSnapshot.title || ''),
-            date: String(evSnapshot.date || ''),
-            time: String(evSnapshot.time || ''),
-            location: String(evSnapshot.location || ''),
-            durationMinutes: (evSnapshot.durationMinutes ?? null),
-            desc: String(evSnapshot.desc || ''),
+            title: String(evSnapshot?.title || ''),
+            date: String(evSnapshot?.date || ''),
+            time: String(evSnapshot?.time || ''),
+            location: String(evSnapshot?.location || ''),
+            durationMinutes: (evSnapshot?.durationMinutes ?? null),
+            desc: String(evSnapshot?.desc || ''),
           },
           mode: 'full',
           protection: 'magic',
@@ -5668,7 +5805,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         try {
           const ref = doc(db, 'artifacts', APP_ID, 'public', 'data', 'shares', token);
           await updateDoc(ref, { revokedAtMs: Date.now() });
-          await writeAudit({ calId: shareLinkDraft.calId || 'default', action: 'share.revoke', targetType: 'share', targetId: token, summary: `Link widerrufen: ${token}` });
+          await writeAudit({ calId: shareLinkDraft?.calId || 'default', action: 'share.revoke', targetType: 'share', targetId: token, summary: `Link widerrufen: ${token}` });
           showToast('Link widerrufen');
         } catch (e) {
           console.warn('revokeShareLink failed', e);
@@ -5741,14 +5878,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'shares', token), payload);
           const url = makeShareUrl(token, magicKey);
           setShareLinkCreated({ url, token });
-          try { await navigator.clipboard.writeText(url); } catch (_) {}
+          try { await navigator.clipboard?.writeText(url); } catch (_) {}
 
           await writeAudit({
             calId: d.calId || 'default',
             action: 'share.create',
             targetType: 'share',
             targetId: token,
-            summary: d.kind === 'calendar' ? `Public Link erstellt (Busy-only): ${d.calName}` : `Public Link erstellt (Event): ${(d.eventSnapshot.title || '')}`,
+            summary: d.kind === 'calendar' ? `Public Link erstellt (Busy-only): ${d.calName}` : `Public Link erstellt (Event): ${(d.eventSnapshot?.title || '')}`,
             details: { kind: d.kind, mode: d.mode, protection: d.protection, expiresAtMs: expiresAtMs || null },
           });
 
@@ -5776,39 +5913,21 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         } catch (e) { reject(e); }
       });
 
-      const dataUrlToBlob = async (dataUrl) => {
-        const src = String(dataUrl || '');
-        if (!src.startsWith('data:')) throw new Error('INVALID_DATA_URL');
-        const res = await fetch(src);
-        return await res.blob();
-      };
-
-      const canvasToBlob = (canvas, type = 'image/jpeg', quality = 0.82) => new Promise((resolve, reject) => {
-        try {
-          canvas.toBlob((blob) => {
-            if (blob) resolve(blob);
-            else reject(new Error('CANVAS_BLOB_ERROR'));
-          }, type, quality);
-        } catch (error) {
-          reject(error);
-        }
-      });
-
       const looksLikeHeic = (file) => {
         try {
-          const name = String(file.name || '').toLowerCase();
-          const type = String(file.type || '').toLowerCase();
+          const name = String(file?.name || '').toLowerCase();
+          const type = String(file?.type || '').toLowerCase();
           return type === 'image/heic' || type === 'image/heif' || name.endsWith('.heic') || name.endsWith('.heif');
         } catch (_) { return false; }
       };
 
       const isProbablyImageFile = (file) => {
         try {
-          const type = String(file.type || '').toLowerCase();
+          const type = String(file?.type || '').toLowerCase();
           if (type.startsWith('image/')) return true;
-          const name = String(file.name || '').toLowerCase();
+          const name = String(file?.name || '').toLowerCase();
           if (looksLikeHeic(file)) return true;
-          return /\?.(png|jpeg|webp|gif|bmp|svg)$/i.test(name);
+          return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(name);
         } catch (_) { return false; }
       };
 
@@ -5907,72 +6026,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
-      const compressImageFileToBlob = async (file, { maxDim = 1600, quality = 0.72 } = {}) => {
-        const decoded = await decodeImageFromBlob(file);
-        try {
-          const w = decoded.w || 0;
-          const h = decoded.h || 0;
-          if (!w || !h) throw new Error('BAD_DIMENSIONS');
-
-          const scale = Math.min(1, maxDim / Math.max(w, h));
-          const nw = Math.max(1, Math.round(w * scale));
-          const nh = Math.max(1, Math.round(h * scale));
-
-          const canvas = document.createElement('canvas');
-          canvas.width = nw;
-          canvas.height = nh;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(decoded.obj, 0, 0, nw, nh);
-
-          try {
-            return await canvasToBlob(canvas, 'image/webp', quality);
-          } catch (_) {
-            return await canvasToBlob(canvas, 'image/jpeg', quality);
-          }
-        } finally {
-          try { decoded.cleanup && decoded.cleanup(); } catch (_) {}
-        }
-      };
-
-      const extFromMime = (mime, fallback = 'bin') => {
-        const type = String(mime || '').toLowerCase();
-        if (type.includes('webp')) return 'webp';
-        if (type.includes('jpeg') || type.includes('jpg')) return 'jpg';
-        if (type.includes('png')) return 'png';
-        if (type.includes('gif')) return 'gif';
-        if (type.includes('ogg')) return 'ogg';
-        if (type.includes('mpeg')) return 'mp3';
-        if (type.includes('mp4')) return 'm4a';
-        if (type.includes('aac')) return 'aac';
-        if (type.includes('wav')) return 'wav';
-        if (type.includes('webm')) return 'webm';
-        return fallback;
-      };
-
-      const uploadChatMediaToStorage = async (input, kind = 'image') => {
-        if (!input || !user?.uid) return { url: null, path: null, contentType: '' };
-        let blob = null;
-        if (input instanceof Blob) {
-          blob = input;
-        } else if (typeof input === 'string') {
-          if (/^https?:\/\//i.test(input)) return { url: input, path: null, contentType: '' };
-          if (input.startsWith('data:')) blob = await dataUrlToBlob(input);
-        } else if (input && typeof input === 'object' && input.blob instanceof Blob) {
-          blob = input.blob;
-        }
-        if (!blob) throw new Error(`UNSUPPORTED_${kind.toUpperCase()}_INPUT`);
-
-        const contentType = String(blob.type || (kind === 'audio' ? 'audio/webm' : 'image/jpeg'));
-        const ext = extFromMime(contentType, kind === 'audio' ? 'webm' : 'jpg');
-        const chatKey = String(activeChatId || 'pending');
-        const fileKey = `${Date.now()}_${randomToken(8)}`;
-        const path = `chatMedia/${APP_ID}/${user.uid}/${chatKey}/${kind}_${fileKey}.${ext}`;
-        const fileRef = storageRef(storage, path);
-        await uploadBytes(fileRef, blob, { contentType });
-        const url = await getDownloadURL(fileRef);
-        return { url, path, contentType };
-      };
-
       const compressAvatarFileToDataUrl = async (file, { size = 256, quality = 0.82 } = {}) => {
         const decoded = await decodeImageFromBlob(file);
         try {
@@ -5995,7 +6048,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
       const handleAvatarUpload = async (e) => {
-        const file0 = e.target.files && e.target.files[0];
+        const file0 = e?.target?.files && e.target.files[0];
         if (!file0) return;
         try { e.target.value = ''; } catch (_) {}
 
@@ -6022,25 +6075,18 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
-      const removeAvatar = async () => {
-        if (!user) return;
-        try {
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
-            avatarBase64: deleteField(),
-            avatarThumbBase64: deleteField(),
-            avatarFullBase64: deleteField()
-          }, { merge: true });
-          try {
-            setUserProfile(prev => ({ ...(prev || {}), avatarBase64: '', avatarThumbBase64: '', avatarFullBase64: '' }));
-          } catch (_) {}
-          showToast('Profilbild entfernt');
-        } catch (err) {
-          console.warn('remove avatar failed', err);
-          showToast('Profilbild konnte nicht entfernt werden');
-        }
-      };
-
       function getProfile(uid) { return (Array.isArray(allProfiles) ? allProfiles : []).find(p => p && p.id === uid) || null; }
+      function getUserDisplayLabel(uid) {
+        const p = getProfile(uid);
+        return p?.displayName || p?.username || p?.email || shortId(uid, 6);
+      }
+      function isBlockedByUser(uid) {
+        try {
+          const p = getProfile(uid);
+          const blocked = Array.isArray(p?.blockedUsers) ? p.blockedUsers : [];
+          return blocked.includes(user?.uid);
+        } catch (_) { return false; }
+      }
 
       function normalizeChatId(raw) { return String(raw || '').replace(/\D/g, '').slice(0, 5); }
 
@@ -6056,7 +6102,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             const d = snap.docs[0].data() || {};
             return { id: snap.docs[0].id, ...d };
           }
-          // Fallback: alte Profile hatten friendCode evtl. als Number -> suche über local allProfiles
+          // Fallback: alte Profile hatten friendCode evtl. als Number → suche über local allProfiles
           const local = (allProfiles || []).find(p => String(p.friendCode || '').padStart(5, '0') === code);
           return local || null;
         } catch (e) {
@@ -6084,32 +6130,136 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           return local || null;
         }
       };
+      const sendFriendRequest = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        if (targetUid === user?.uid) return;
+        if (blockedUserIds.includes(targetUid)) return showToast('Kontakt ist blockiert');
+        if (isBlockedByUser(targetUid)) return showToast('Du kannst diesem Kontakt keine Anfrage senden');
+        const pendingIncoming = pendingIncomingFriendRequests.find((request) => String(request?.fromUid || '') === String(targetUid));
+        if (pendingIncoming) return acceptFriendRequest(targetUid);
+        const alreadyPending = pendingOutgoingFriendRequests.find((request) => String(request?.toUid || '') === String(targetUid));
+        if (alreadyPending) return showToast('Anfrage bereits gesendet');
+        try {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests'), {
+            fromUid: user?.uid,
+            toUid: targetUid,
+            status: 'pending',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            fromDisplayName: userProfile?.displayName || userProfile?.username || user?.email || 'Kontakt'
+          });
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            removedFriendIds: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          showToast('Freundesanfrage gesendet');
+        } catch (e) {
+          console.warn('sendFriendRequest failed', e);
+          showToast('Anfrage fehlgeschlagen');
+        }
+      };
 
-      const syncFriendRequestState = async (targetUserId, chatId) => {
-        if (!user?.uid || !targetUserId || targetUserId === user?.uid) return;
-        const now = Date.now();
-        const myRequestPayload = {
-          toUid: targetUserId,
-          chatId: chatId || '',
-          createdAt: now,
-          updatedAt: now,
-        };
-        const incomingRequestPayload = {
-          fromUid: user?.uid,
-          chatId: chatId || '',
-          createdAt: now,
-          updatedAt: now,
-          fromDisplayName: userProfile?.displayName || userProfile?.username || user?.email || 'Kontakt',
-        };
-        await Promise.all([
-          setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
-            [`friendRequestsSent.${targetUserId}`]: myRequestPayload,
-            friends: arrayUnion(targetUserId)
-          }, { merge: true }),
-          setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUserId), {
-            [`friendRequestsIncoming.${user?.uid}`]: incomingRequestPayload,
-          }, { merge: true })
-        ]);
+      const cancelFriendRequest = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        const requests = pendingOutgoingFriendRequests.filter((request) => String(request?.toUid || '') === String(targetUid));
+        if (requests.length === 0) return;
+        try {
+          await Promise.all(requests.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
+            status: 'cancelled',
+            updatedAt: Date.now(),
+            cancelledAt: Date.now()
+          })));
+          showToast('Anfrage zurückgezogen');
+        } catch (e) {
+          console.warn('cancelFriendRequest failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const acceptFriendRequest = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        const requests = pendingIncomingFriendRequests.filter((request) => String(request?.fromUid || '') === String(targetUid));
+        if (requests.length === 0) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            friends: arrayUnion(targetUid),
+            removedFriendIds: arrayRemove(targetUid),
+            blockedUsers: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          await Promise.all(requests.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
+            status: 'accepted',
+            updatedAt: Date.now(),
+            handledAt: Date.now(),
+            handledByUid: user?.uid
+          })));
+          await writeAudit({ calId: 'default', action: 'friend.accept', targetType: 'friend', targetId: targetUid, summary: `Freund akzeptiert: ${getUserDisplayLabel(targetUid)}` });
+          showToast('Freund hinzugefügt');
+        } catch (e) {
+          console.warn('acceptFriendRequest failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const rejectFriendRequest = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        const requests = pendingIncomingFriendRequests.filter((request) => String(request?.fromUid || '') === String(targetUid));
+        if (requests.length === 0) return;
+        try {
+          await Promise.all(requests.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
+            status: 'declined',
+            updatedAt: Date.now(),
+            handledAt: Date.now(),
+            handledByUid: user?.uid
+          })));
+          showToast('Anfrage abgelehnt');
+        } catch (e) {
+          console.warn('rejectFriendRequest failed', e);
+          showToast('Fehler');
+        }
+      };
+      const blockUser = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            blockedUsers: arrayUnion(targetUid),
+            friends: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          const outgoing = pendingOutgoingFriendRequests.filter((request) => String(request?.toUid || '') === String(targetUid));
+          const incoming = pendingIncomingFriendRequests.filter((request) => String(request?.fromUid || '') === String(targetUid));
+          await Promise.all([
+            ...outgoing.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
+              status: 'cancelled',
+              updatedAt: Date.now(),
+              cancelledAt: Date.now()
+            })),
+            ...incoming.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
+              status: 'declined',
+              updatedAt: Date.now(),
+              handledAt: Date.now(),
+              handledByUid: user?.uid
+            }))
+          ]);
+          showToast('Kontakt blockiert');
+        } catch (e) {
+          console.warn('blockUser failed', e);
+          showToast('Fehler');
+        }
+      };
+
+      const unblockUser = async (targetUid) => {
+        if (!user?.uid || !targetUid) return;
+        try {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            blockedUsers: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          showToast('Blockierung aufgehoben');
+        } catch (e) {
+          console.warn('unblockUser failed', e);
+          showToast('Fehler');
+        }
       };
 
       const startChatWithProfile = async (profileOrId) => {
@@ -6118,17 +6268,18 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         const targetProfile = (typeof profileOrId === 'object' && profileOrId) ? profileOrId : (targetUserId ? getProfile(targetUserId) : null);
         if (!targetUserId) return;
         if (targetUserId === user?.uid) return showToast('Das bist du selbst');
+        if (blockedUserIds.includes(targetUserId)) return showToast('Kontakt ist blockiert');
+        if (isBlockedByUser(targetUserId)) return showToast('Dieser Kontakt hat dich blockiert');
 
         const existingChat = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(targetUserId));
         if (existingChat) {
           // Track as friend (so user can manage/remove later)
           try {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
-              friends: arrayUnion(targetUserId),
-              hiddenChats: arrayRemove(existingChat.id)
-            }, { merge: true });
-            await syncFriendRequestState(targetUserId, existingChat.id);
-            await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${targetProfile.displayName || targetProfile.username || targetProfile.email || shortId(targetUserId,6)}` });
+            const dmId = existingChat?.id || null;
+            const patch = { friends: arrayUnion(targetUserId), removedFriendIds: arrayRemove(targetUserId) };
+            if (dmId) patch.hiddenChats = arrayRemove(dmId);
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
+            await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${targetProfile?.displayName || targetProfile?.username || targetProfile?.email || shortId(targetUserId,6)}` });
           } catch (_) {}
           setActiveChat(existingChat);
           setChatSearchQuery('');
@@ -6138,7 +6289,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
         try {
           const meName = (userProfile?.displayName || userProfile?.username || (user?.email ? user?.email.split('@')[0] : 'Ich'));
-          const otherName = (targetProfile.displayName || targetProfile.username || targetProfile.email || 'Kontakt');
+          const otherName = (targetProfile?.displayName || targetProfile?.username || targetProfile?.email || 'Kontakt');
           const displayNames = { [user?.uid]: meName, [targetUserId]: otherName };
 
           const newChat = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats'), {
@@ -6153,9 +6304,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             lastRead: { [user?.uid]: Date.now() }
           });
 
-          // Save to friends + create visible request for the other user
+          // Save to friends
           try {
-            await syncFriendRequestState(targetUserId, newChat.id);
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { friends: arrayUnion(targetUserId), removedFriendIds: arrayRemove(targetUserId) }, { merge: true });
             await writeAudit({ calId: 'default', action: 'friend.add', targetType: 'friend', targetId: targetUserId, summary: `Freund hinzugefügt: ${otherName}` });
           } catch (_) {}
 
@@ -6191,16 +6342,19 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           showToast('Fehler beim Erstellen');
         }
       };
-
       const removeFriend = async (friendUid) => {
         if (!user || !friendUid) return;
         try {
           // hide existing DM chat (optional UX)
           const dm = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(friendUid));
-          const updates = { friends: arrayRemove(friendUid) };
+          const updates = {
+            friends: arrayRemove(friendUid),
+            removedFriendIds: arrayUnion(friendUid),
+            updatedAt: Date.now()
+          };
           if (dm && dm.id) updates.hiddenChats = arrayUnion(dm.id);
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), updates, { merge: true });
-          await writeAudit({ calId: 'default', action: 'friend.remove', targetType: 'friend', targetId: friendUid, summary: `Freund entfernt: ${getProfile(friendUid).displayName || getProfile(friendUid).username || shortId(friendUid,6)}` });
+          await writeAudit({ calId: 'default', action: 'friend.remove', targetType: 'friend', targetId: friendUid, summary: `Freund entfernt: ${getProfile(friendUid)?.displayName || getProfile(friendUid)?.username || shortId(friendUid,6)}` });
           showToast('Freund entfernt');
         } catch (e) {
           console.warn('removeFriend failed', e);
@@ -6208,63 +6362,21 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
-      const restoreFriend = async (friendUid, chatId) => {
-        if (!user || !friendUid || !chatId) return;
+      const restoreRemovedFriend = async (friendUid) => {
+        if (!user || !friendUid) return;
         try {
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+          const dm = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(friendUid));
+          const patch = {
             friends: arrayUnion(friendUid),
-            hiddenChats: arrayRemove(chatId)
-          }, { merge: true });
-          await writeAudit({ calId: 'default', action: 'friend.restore', targetType: 'friend', targetId: friendUid, summary: `Freund wiederhergestellt: ${getProfile(friendUid)?.displayName || getProfile(friendUid)?.username || shortId(friendUid,6)}` });
-          showToast('Freund wieder hinzugefügt');
-        } catch (e) {
-          console.warn('restoreFriend failed', e);
-          showToast('Fehler');
-        }
-      };
-
-
-      const acceptFriendRequest = async (request) => {
-        const fromUid = String(request?.fromUid || '');
-        if (!user?.uid || !fromUid) return;
-        const chatId = String(request?.chatId || '');
-        try {
-          const myUpdates = {
-            friends: arrayUnion(fromUid),
-            [`friendRequestsIncoming.${fromUid}`]: deleteField(),
+            removedFriendIds: arrayRemove(friendUid),
+            updatedAt: Date.now()
           };
-          if (chatId) myUpdates.hiddenChats = arrayRemove(chatId);
-          await Promise.all([
-            setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), myUpdates, { merge: true }),
-            setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', fromUid), {
-              friends: arrayUnion(user?.uid),
-              [`friendRequestsSent.${user?.uid}`]: deleteField(),
-            }, { merge: true })
-          ]);
-          await writeAudit({ calId: 'default', action: 'friend.accept', targetType: 'friend', targetId: fromUid, summary: `Freundschaftsanfrage angenommen: ${getProfile(fromUid)?.displayName || getProfile(fromUid)?.username || shortId(fromUid,6)}` });
-          showToast('Freundschaftsanfrage angenommen');
+          if (dm?.id) patch.hiddenChats = arrayRemove(dm.id);
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
+          showToast('Freund wiederhergestellt');
         } catch (e) {
-          console.warn('acceptFriendRequest failed', e);
-          showToast('Fehler beim Annehmen');
-        }
-      };
-
-      const declineFriendRequest = async (request) => {
-        const fromUid = String(request?.fromUid || '');
-        if (!user?.uid || !fromUid) return;
-        try {
-          await Promise.all([
-            setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
-              [`friendRequestsIncoming.${fromUid}`]: deleteField(),
-            }, { merge: true }),
-            setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', fromUid), {
-              [`friendRequestsSent.${user?.uid}`]: deleteField(),
-            }, { merge: true })
-          ]);
-          showToast('Anfrage abgelehnt');
-        } catch (e) {
-          console.warn('declineFriendRequest failed', e);
-          showToast('Fehler beim Ablehnen');
+          console.warn('restoreRemovedFriend failed', e);
+          showToast('Fehler');
         }
       };
 
@@ -6307,7 +6419,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         } catch(e) { showToast('Fehler'); }
       };
 
-      const isChatAdmin = (chat) => Array.isArray(chat.admins) && chat.admins.includes(user?.uid);
+      const isChatAdmin = (chat) => Array.isArray(chat?.admins) && chat.admins.includes(user?.uid);
 
       const togglePinChat = async (chatId) => {
         if (!user) return;
@@ -6334,26 +6446,96 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       };
 
 
+      const startRecording = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              channelCount: 1,
+            }
+          });
+          const recorderCfg = getSupportedAudioRecorderConfig();
+          const recorderOpts = {};
+          if (recorderCfg.mimeType) recorderOpts.mimeType = recorderCfg.mimeType;
+          if (recorderCfg.audioBitsPerSecond) recorderOpts.audioBitsPerSecond = recorderCfg.audioBitsPerSecond;
+          mediaRecorderRef.current = new MediaRecorder(stream, recorderOpts);
+          mediaRecorderRef.current.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
+          };
+          mediaRecorderRef.current.onstop = () => {
+            const fallbackMime = recorderCfg.mimeType || (isIosUA ? 'audio/mp4' : 'audio/webm');
+            const finalMime = mediaRecorderRef.current?.mimeType || fallbackMime;
+            if (!audioChunksRef.current.length) {
+              showToast('Audioaufnahme leer');
+              return;
+            }
+            const audioBlob = new Blob(audioChunksRef.current, { type: finalMime });
+            audioChunksRef.current = [];
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = () => { sendMessage(null, null, reader.result); };
+          };
+          audioChunksRef.current = [];
+          mediaRecorderRef.current.start(250);
+          setIsRecording(true);
+        } catch (err) { showToast("Mikrofon-Zugriff verweigert"); }
+      };
 
+      const stopRecording = () => {
+        if (mediaRecorderRef.current && isRecording) {
+          mediaRecorderRef.current.stop();
+          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+          setIsRecording(false);
+        }
+      };
+
+      const resizeChatInput = () => {
+        try {
+          const el = chatInputRef.current;
+          if (!el) return;
+          el.style.height = 'auto';
+          const computed = window.getComputedStyle(el);
+          const lineHeight = parseFloat(computed.lineHeight || '20') || 20;
+          const padding = (parseFloat(computed.paddingTop || '0') || 0) + (parseFloat(computed.paddingBottom || '0') || 0);
+          const border = (parseFloat(computed.borderTopWidth || '0') || 0) + (parseFloat(computed.borderBottomWidth || '0') || 0);
+          const minHeight = 44;
+          const maxHeight = Math.round((lineHeight * 3) + padding + border);
+          const nextHeight = Math.max(minHeight, Math.min(el.scrollHeight, maxHeight));
+          el.style.height = `${nextHeight}px`;
+          el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+        } catch (_) {}
+      };
+
+      useEffect(() => {
+        resizeChatInput();
+      }, [newMessageText, editingMessage, replyToMessage]);
+
+      useEffect(() => {
+        const handleOutsideClick = (e) => {
+          if (!attachmentMenuRef.current) return;
+          if (!attachmentMenuRef.current.contains(e.target)) {
+            setIsAttachmentMenuOpen(false);
+          }
+        };
+        document.addEventListener('mousedown', handleOutsideClick);
+        document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+        return () => {
+          document.removeEventListener('mousedown', handleOutsideClick);
+          document.removeEventListener('touchstart', handleOutsideClick);
+        };
+      }, []);
 
       function handleTyping(e) {
          const value = e.target.value;
          setNewMessageText(value);
-         if (!activeChatId || !user) return;
-         const nextTypingState = value.length > 0;
-         const now = Date.now();
-         if (typingStateRef.current !== nextTypingState || (now - (typingLastWriteRef.current || 0) > 4000 && nextTypingState)) {
-           typingStateRef.current = nextTypingState;
-           typingLastWriteRef.current = now;
-           updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: nextTypingState, [`typingAt.${user?.uid}`]: now }).catch(()=>{});
-         }
+         resizeChatInput();
+         if (!activeChat || !user) return;
+         updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user?.uid}`]: value.length > 0, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
          typingTimeoutRef.current = setTimeout(() => {
-            if (typingStateRef.current !== false) {
-              typingStateRef.current = false;
-              typingLastWriteRef.current = Date.now();
-              updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), { [`typing.${user?.uid}`]: false, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
-            }
+            updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), { [`typing.${user?.uid}`]: false, [`typingAt.${user?.uid}`]: Date.now() }).catch(()=>{});
          }, 2200);
       }
 
@@ -6376,10 +6558,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         if (!m) return '';
         if (m.deleted) return 'Nachricht gelöscht';
         const t = String(m.text || '').trim();
-        if (t) return t.length > 140 ? `${t.slice(0, 140)}...` : t;
-      if (m.image) return 'Bild';
-      if (m.audio) return 'Sprachnachricht';
-      if (m.event) return `Termin: ${String(m.event.title || 'Termin')}`;
+        if (t) return t.length > 140 ? `${t.slice(0, 140)}…` : t;
+        if (m.image) return '📷 Bild';
+        if (m.audio) return '🎤 Sprachnachricht';
+        if (m.event) return `📅 ${String(m.event.title || 'Termin')}`;
         return '';
       }
 
@@ -6420,72 +6602,95 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const visibleChatMessages = ((isMessageSearchOpen && messageSearchFilter !== 'all' && messageSearchFilter !== 'media') ? baseByType : (chatMessages || [])).filter(Boolean);
 
-      const enqueuePendingMessage = (entry) => {
-        pendingOutgoingRef.current = [...pendingOutgoingRef.current, entry];
+
+      const scheduleEphemeralHide = (chatId, msgId, deleteAtMs) => {
+        try {
+          const id = String(msgId || '');
+          if (!chatId || !id || !Number.isFinite(Number(deleteAtMs || 0))) return;
+          const prev = ephemeralDeleteTimersRef.current[id];
+          if (prev) { try { clearTimeout(prev); } catch (_) {} }
+          const delay = Math.max(0, Number(deleteAtMs) - Date.now());
+          ephemeralDeleteTimersRef.current[id] = setTimeout(async () => {
+            try {
+              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), {
+                [`ephemeralHidden.${id}`]: true,
+                [`ephemeralDeletedAt.${id}`]: Date.now(),
+                updatedAt: Date.now(),
+              });
+            } catch (_) {}
+          }, delay);
+        } catch (_) {}
       };
 
-      const flushPendingMessages = async () => {
-        if (!user || !navigator.onLine) return;
-        if (pendingFlushInFlightRef.current) return;
-        const queue = pendingOutgoingRef.current;
-        if (!Array.isArray(queue) || queue.length === 0) return;
-
-        pendingFlushInFlightRef.current = true;
+      const handleEphemeralImageOpen = async (msg) => {
         try {
-          for (const entry of [...queue]) {
-            const chatId = entry?.chatId;
-            const payload = entry?.payload;
-            if (!chatId || !payload) continue;
-            try {
-              await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId, 'messages'), payload);
-              await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), {
-                updatedAt: Date.now(),
-                lastMessageSenderId: user?.uid,
-                messageCount: increment(1),
-                mediaCount: payload.image ? increment(1) : increment(0),
-                [`typing.${user?.uid}`]: false,
-                [`typingAt.${user?.uid}`]: Date.now()
-              });
-              pendingOutgoingRef.current = pendingOutgoingRef.current.filter(m => m?.clientMsgId !== entry?.clientMsgId);
-              const now = Date.now();
-              setLastChatVisit(now);
-              localStorage.setItem('onyx_last_chat_visit', now.toString());
-            } catch (error) {
-              console.error('flushPendingMessages failed', error);
-            }
+          if (!activeChat?.id || !user?.uid || !msg?.id) return true;
+          if (!msg?.selfDestruct) return true;
+          if (msg?.senderId === user?.uid) return true;
+          const hidden = !!(activeChatData?.ephemeralHidden?.[msg.id]);
+          if (hidden) return false;
+
+          const meta = activeChatData?.ephemeralViews?.[msg.id] || null;
+          const now = Date.now();
+          const existingDeleteAt = Number(meta?.deleteAt || 0);
+          if (existingDeleteAt > now) {
+            scheduleEphemeralHide(activeChat.id, msg.id, existingDeleteAt);
+            return true;
           }
-          if (pendingOutgoingRef.current.length === 0) showToast('Ausstehende Nachrichten wurden gesendet');
-        } finally {
-          pendingFlushInFlightRef.current = false;
+
+          const deleteAt = now + 10000;
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+            [`ephemeralViews.${msg.id}`]: {
+              openedAt: now,
+              openedBy: user?.uid,
+              deleteAt,
+            },
+            updatedAt: now,
+          });
+          scheduleEphemeralHide(activeChat.id, msg.id, deleteAt);
+          return true;
+        } catch (_) {
+          showToast('Einmal-Ansicht konnte nicht geöffnet werden');
+          return false;
         }
       };
 
       useEffect(() => {
-        if (!user?.uid) {
-          pendingOutgoingRef.current = [];
-          return;
-        }
-
-        const tryFlush = () => {
-          flushPendingMessages().catch((error) => {
-            console.error('tryFlush pending failed', error);
-          });
+        return () => {
+          try {
+            Object.values(ephemeralDeleteTimersRef.current || {}).forEach((t) => { try { clearTimeout(t); } catch (_) {} });
+            ephemeralDeleteTimersRef.current = {};
+          } catch (_) {}
         };
+      }, []);
 
-        window.addEventListener('online', tryFlush);
-        if (navigator.onLine) tryFlush();
-        return () => window.removeEventListener('online', tryFlush);
-      }, [user?.uid, activeChatId]);
+      useEffect(() => {
+        try {
+          const chatId = String(activeChat?.id || '');
+          if (!chatId || !user?.uid) return;
+          const views = (activeChatData && activeChatData?.ephemeralViews && typeof activeChatData.ephemeralViews === 'object') ? activeChatData.ephemeralViews : {};
+          const hidden = (activeChatData && activeChatData?.ephemeralHidden && typeof activeChatData.ephemeralHidden === 'object') ? activeChatData.ephemeralHidden : {};
+          const now = Date.now();
+          const dueIds = Object.entries(views).filter(([id, v]) => id && !hidden[id] && Number(v?.deleteAt || 0) > 0 && Number(v?.deleteAt || 0) <= now).map(([id]) => id);
+          if (dueIds.length === 0) return;
+          const patch = { updatedAt: now };
+          dueIds.forEach((id) => {
+            patch[`ephemeralHidden.${id}`] = true;
+            patch[`ephemeralDeletedAt.${id}`] = now;
+          });
+          updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', chatId), patch).catch(() => {});
+        } catch (_) {}
+      }, [activeChat?.id, activeChatData?.ephemeralViews, activeChatData?.ephemeralHidden, user?.uid]);
 
-      const sendMessage = async (e, imageInput = null, audioInput = null, eventDetails = null) => {
+      const sendMessage = async (e, imageBase64 = null, audioBase64 = null, eventDetails = null, opts = {}) => {
         if (e) e.preventDefault();
 
-        if (!activeChatId || !user) return;
+        if (!activeChat || !user) return;
 
         // Edit existing
         if (editingMessage) {
           try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages', editingMessage.id), {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', editingMessage.id), {
               text: (newMessageText || '').trim(),
               edited: true,
               editedAt: Date.now()
@@ -6503,18 +6708,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
 
         const textVal = (newMessageText || '').trim();
-        if (!textVal && !imageInput && !audioInput && !eventDetails) return;
-
-        let uploadedImage = { url: null, path: null, contentType: '' };
-        let uploadedAudio = { url: null, path: null, contentType: '' };
-        try {
-          if (imageInput) uploadedImage = await uploadChatMediaToStorage(imageInput, 'image');
-          if (audioInput) uploadedAudio = await uploadChatMediaToStorage(audioInput, 'audio');
-        } catch (mediaError) {
-          console.error('chat media upload failed', mediaError);
-          showToast('Upload zu Firebase Storage fehlgeschlagen');
-          return;
-        }
+        if (!textVal && !imageBase64 && !audioBase64 && !eventDetails) return;
 
         const replyTo = replyToMessage ? {
           id: replyToMessage.id,
@@ -6527,13 +6721,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           clientMsgId,
           senderId: user?.uid,
           text: textVal,
-          image: uploadedImage.url,
-          imageStoragePath: uploadedImage.path,
-          audio: uploadedAudio.url,
-          audioStoragePath: uploadedAudio.path,
+          image: imageBase64,
+          audio: audioBase64,
           event: eventDetails,
           replyTo: replyTo,
-          selfDestruct: !!selfDestruct,
+          reactions: {},
+          starredBy: [],
+          selfDestruct: (typeof opts?.forceSelfDestruct === 'boolean') ? !!opts.forceSelfDestruct : !!selfDestruct,
           timestamp: Date.now(),
           createdAt: serverTimestamp(),
           read: false
@@ -6552,17 +6746,17 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
         // Input sofort leeren
         setNewMessageText('');
-setSelfDestruct(false);
+        setSelfDestruct(false);
         setReplyToMessage(null);
         refocusChatInput();
 
         try {
-          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId, 'messages'), payload);
-          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChatId), {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
             updatedAt: Date.now(),
             lastMessageSenderId: user?.uid,
             messageCount: increment(1),
-            mediaCount: uploadedImage.url ? increment(1) : increment(0),
+            mediaCount: imageBase64 ? increment(1) : increment(0),
             [`typing.${user?.uid}`]: false,
             [`typingAt.${user?.uid}`]: Date.now()
           });
@@ -6572,13 +6766,66 @@ setSelfDestruct(false);
           localStorage.setItem('onyx_last_chat_visit', now.toString());
         } catch (error) {
           console.error('sendMessage failed', error);
-          enqueuePendingMessage({
-            clientMsgId,
-            chatId: activeChatId,
-            payload,
-          });
-          showToast('Offline gespeichert – wird automatisch gesendet');
+          // Keep failed message in chat so user can retry manually/automatically.
+          setChatMessages(prev => (prev || []).map(m => {
+            if (!m || m.clientMsgId !== clientMsgId) return m;
+            return {
+              ...m,
+              pending: false,
+              failed: true,
+              failedAt: Date.now(),
+              retryCount: Number(m.retryCount || 0)
+            };
+          }));
+          showToast('Senden fehlgeschlagen');
           refocusChatInput();
+        }
+      };
+
+      const retryFailedMessage = async (msg, opts = {}) => {
+        if (!activeChat || !user || !msg?.clientMsgId) return;
+        if (msg.deleted || String(msg.id || '').startsWith('local_') === false && !msg.failed) return;
+        const localId = String(msg.id || `local_${msg.clientMsgId}`);
+        const nextRetryCount = Number(msg.retryCount || 0) + 1;
+
+        const payload = {
+          clientMsgId: msg.clientMsgId,
+          senderId: msg.senderId || user?.uid,
+          text: String(msg.text || ''),
+          image: msg.image || null,
+          audio: msg.audio || null,
+          event: msg.event || null,
+          replyTo: msg.replyTo || null,
+          reactions: msg.reactions && typeof msg.reactions === 'object' ? msg.reactions : {},
+          starredBy: Array.isArray(msg.starredBy) ? msg.starredBy : [],
+          selfDestruct: !!msg.selfDestruct,
+          timestamp: Number(msg.timestamp || Date.now()) || Date.now(),
+          createdAt: serverTimestamp(),
+          read: false
+        };
+
+        setChatMessages(prev => (prev || []).map(m => {
+          if (!m || String(m.id || '') !== localId) return m;
+          return { ...m, pending: true, failed: false, retryCount: nextRetryCount, retrying: true };
+        }));
+
+        try {
+          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+            updatedAt: Date.now(),
+            lastMessageSenderId: user?.uid,
+            messageCount: increment(1),
+            mediaCount: msg.image ? increment(1) : increment(0),
+            [`typing.${user?.uid}`]: false,
+            [`typingAt.${user?.uid}`]: Date.now()
+          }).catch(()=>{});
+        } catch (error) {
+          console.error('retryFailedMessage failed', error);
+          setChatMessages(prev => (prev || []).map(m => {
+            if (!m || String(m.id || '') !== localId) return m;
+            return { ...m, pending: false, failed: true, failedAt: Date.now(), retrying: false, retryCount: nextRetryCount };
+          }));
+          if (!opts.silent) showToast('Erneut senden fehlgeschlagen');
         }
       };
 
@@ -6595,9 +6842,6 @@ setSelfDestruct(false);
       const deleteMessage = async (msgId) => {
         if (!activeChat || !user) return;
         try {
-          const msg = (chatMessages || []).find((entry) => entry && entry.id === msgId) || null;
-          if (msg?.imageStoragePath) deleteObject(storageRef(storage, msg.imageStoragePath)).catch(() => {});
-          if (msg?.audioStoragePath) deleteObject(storageRef(storage, msg.audioStoragePath)).catch(() => {});
           // Soft-delete: keep message visible with a "gelöscht" hint instead of removing it.
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msgId), {
             deleted: true,
@@ -6605,9 +6849,7 @@ setSelfDestruct(false);
             deletedBy: user?.uid,
             text: '',
             image: null,
-            imageStoragePath: null,
             audio: null,
-            audioStoragePath: null,
             event: null
           });
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
@@ -6619,8 +6861,57 @@ setSelfDestruct(false);
           refocusChatInput();
         } catch (error) { showToast("Fehler beim Löschen"); }
       };
-      const handleImageUpload = async (e) => {
-        const file0 = e.target.files && e.target.files[0];
+
+      const toggleMessageReaction = async (msg, emoji) => {
+        if (!activeChat || !user || !msg?.id || !emoji) return;
+        if (msg.deleted || msg.pending || String(msg.id || '').startsWith('local_')) return;
+        const encodedKey = reactionKeyForEmoji(emoji);
+        const path = `reactions.${encodedKey}`;
+        const mineLegacy = Array.isArray(msg?.reactions?.[emoji]) ? msg.reactions[emoji] : [];
+        const mineEncoded = Array.isArray(msg?.reactions?.[encodedKey]) ? msg.reactions[encodedKey] : [];
+        const mine = [...new Set([...(mineLegacy || []), ...(mineEncoded || [])])];
+        const already = mine.includes(user?.uid);
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msg.id), {
+            [path]: already ? arrayRemove(user?.uid) : arrayUnion(user?.uid)
+          });
+        } catch (error) {
+          try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+              [`messageReactions.${msg.id}.${encodedKey}`]: already ? arrayRemove(user?.uid) : arrayUnion(user?.uid),
+              updatedAt: Date.now()
+            });
+          } catch (_) {
+            showToast('Reaktion fehlgeschlagen');
+          }
+        }
+      };
+
+      const toggleMessageFavorite = async (msg) => {
+        if (!activeChat || !user || !msg?.id) return;
+        if (msg.deleted || msg.pending || String(msg.id || '').startsWith('local_')) return;
+        const mine = Array.isArray(msg?.starredBy) ? msg.starredBy : [];
+        const already = mine.includes(user?.uid);
+        try {
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msg.id), {
+            starredBy: already ? arrayRemove(user?.uid) : arrayUnion(user?.uid)
+          });
+          showToast(already ? 'Favorit entfernt' : 'Zu Favoriten hinzugefügt');
+        } catch (error) {
+          try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
+              [`messageStars.${msg.id}`]: already ? arrayRemove(user?.uid) : arrayUnion(user?.uid),
+              updatedAt: Date.now()
+            });
+            showToast(already ? 'Favorit entfernt' : 'Zu Favoriten hinzugefügt');
+          } catch (_) {
+            showToast('Favorit fehlgeschlagen');
+          }
+        }
+      };
+
+      const handleImageUpload = async (e, mode = 'normal') => {
+        const file0 = e?.target?.files && e.target.files[0];
         if (!file0) return;
         try { e.target.value = ''; } catch (_) {}
 
@@ -6631,10 +6922,27 @@ setSelfDestruct(false);
 
         try {
           const file = await ensureJpegBlobIfHeic(file0);
-          const compressed = await compressImageFileToBlob(file, { maxDim: 1600, quality: 0.72 });
-          await sendMessage(null, compressed);
+          const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
+          await sendMessage(null, compressed, null, null, { forceSelfDestruct: mode === 'viewonce' });
         } catch (err) {
           console.warn('image compress/upload failed', err);
+          showToast('Bild konnte nicht verarbeitet werden');
+        }
+      };
+
+      const handleImageDrop = async (e, mode = 'normal') => {
+        try {
+          e.preventDefault();
+          e.stopPropagation();
+          temporarilySuspendSecretAutoHide(180000);
+          const file0 = e?.dataTransfer?.files && e.dataTransfer.files[0];
+          if (!file0) return;
+          if (!isProbablyImageFile(file0)) { showToast('Nur Bilder unterstützt'); return; }
+          const file = await ensureJpegBlobIfHeic(file0);
+          const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
+          await sendMessage(null, compressed, null, null, { forceSelfDestruct: mode === 'viewonce' });
+        } catch (err) {
+          console.warn('image drop failed', err);
           showToast('Bild konnte nicht verarbeitet werden');
         }
       };
@@ -6656,23 +6964,42 @@ setSelfDestruct(false);
         const audioRef = useRef(null);
         const [duration, setDuration] = useState(0);
         const [pos, setPos] = useState(0);
+        const [audioError, setAudioError] = useState('');
         const isPlaying = playingAudioId === msgId;
 
         useEffect(() => {
           const a = audioRef.current;
           if (!a) return;
-          const onLoaded = () => { try { setDuration(a.duration || 0); } catch (_) {} };
+          const onLoaded = () => {
+            setAudioError('');
+            try { setDuration(a.duration || 0); } catch (_) {}
+          };
           const onTime = () => { try { setPos(a.currentTime || 0); } catch (_) {} };
           const onEnded = () => { setPlayingAudioId(null); setPos(0); };
+          const onError = () => {
+            setPlayingAudioId(null);
+            setAudioError('Audio kann auf diesem Geraet nicht abgespielt werden.');
+          };
           a.addEventListener('loadedmetadata', onLoaded);
           a.addEventListener('timeupdate', onTime);
           a.addEventListener('ended', onEnded);
+          a.addEventListener('error', onError);
           return () => {
             try { a.removeEventListener('loadedmetadata', onLoaded); } catch (_) {}
             try { a.removeEventListener('timeupdate', onTime); } catch (_) {}
             try { a.removeEventListener('ended', onEnded); } catch (_) {}
+            try { a.removeEventListener('error', onError); } catch (_) {}
           };
         }, []);
+
+        useEffect(() => {
+          const a = audioRef.current;
+          if (!a) return;
+          try { a.load(); } catch (_) {}
+          setPos(0);
+          setDuration(0);
+          setAudioError('');
+        }, [src]);
 
         useEffect(() => {
           const a = audioRef.current;
@@ -6720,8 +7047,11 @@ setSelfDestruct(false);
                 <span>{formatAudioClock(pos || 0)}</span>
                 <span>{formatAudioClock(duration || 0)}</span>
               </div>
+              {!!audioError && (
+                <div className={`mt-1 text-[10px] ${isMe ? 'text-black/60' : 'text-amber-400'}`}>{audioError}</div>
+              )}
             </div>
-            <audio ref={audioRef} src={src} preload="metadata" playsInline onError={() => { setPlayingAudioId(null); showToast('Audio kann auf diesem Gerät nicht abgespielt werden'); }} />
+            <audio ref={audioRef} src={src} preload="metadata" />
           </div>
         );
       };
@@ -6737,45 +7067,28 @@ setSelfDestruct(false);
       const getChatPartnerName = (chat) => {
         if (!chat) return 'Chat';
         if (isGroupChat(chat)) return chat.title || 'Gruppe';
-        const pid = (chat.participants || []).find(id => id !== user?.uid);
+        const pid = (chat?.participants || []).find(id => id !== user?.uid);
         const prof = pid ? getProfile(pid) : null;
-        return (prof.displayName || prof.username || chat.displayNames?.[pid] || prof.email || 'Unbekannt');
+        return (prof?.displayName || prof?.username || chat?.displayNames?.[pid] || prof?.email || 'Unbekannt');
       };
       const getChatPartnerAvatar = (chat) => {
         if (!chat) return null;
         if (isGroupChat(chat)) return chat.avatarBase64 || null;
-        const pid = (chat.participants || []).find(id => id !== user?.uid);
+        const pid = (chat?.participants || []).find(id => id !== user?.uid);
         const prof = pid ? getProfile(pid) : null;
-        return prof.avatarThumbBase64 || prof.avatarBase64 || null;
+        return prof?.avatarThumbBase64 || prof?.avatarBase64 || null;
       };
 
       const getChatPartnerAvatarFull = (chat) => {
         if (!chat) return null;
         if (isGroupChat(chat)) return chat.avatarBase64 || null;
-        const pid = (chat.participants || []).find(id => id !== user?.uid);
+        const pid = (chat?.participants || []).find(id => id !== user?.uid);
         const prof = pid ? getProfile(pid) : null;
-        return prof.avatarFullBase64 || prof.avatarBase64 || prof.avatarThumbBase64 || null;
+        return prof?.avatarFullBase64 || prof?.avatarBase64 || prof?.avatarThumbBase64 || null;
       };
 
-      const getChatParticipants = (chat) => Array.isArray(chat.participants) ? chat.participants : [];
-      const isChatUnread = (chat) => {
-        if (!chat || !user?.uid) return false;
-        if (chat.lastMessageSenderId === user?.uid) return false;
-        const updatedAt = toMillis(chat?.updatedAt);
-        const lastReadAt = toMillis(chat?.lastRead?.[user?.uid]);
-        return updatedAt > lastReadAt;
-      };
-      const unreadChatCount = myChats.filter(isChatUnread).length;
-      const hasUnreadMessages = unreadChatCount > 0;
-
-      useEffect(() => {
-        if (typeof navigator === 'undefined' || !window.isSecureContext) return;
-        const setBadge = navigator.setAppBadge;
-        const clearBadge = navigator.clearAppBadge;
-        if (typeof setBadge !== 'function' || typeof clearBadge !== 'function') return;
-        if (hasUnreadMessages) setBadge.call(navigator).catch(() => {});
-        else clearBadge.call(navigator).catch(() => {});
-      }, [hasUnreadMessages]);
+      const getChatParticipants = (chat) => Array.isArray(chat?.participants) ? chat.participants : [];
+      const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
       
       const exportICS = (exportAll = true) => {
         let eventsToExport = allEvents;
@@ -6821,6 +7134,7 @@ setSelfDestruct(false);
           const rawTarget = localStorage.getItem(getStorageKey('weeklyTargetHours'));
           const rawOrder = localStorage.getItem(getStorageKey('extrasSlotOrder'));
           const rawUpdatedAt = localStorage.getItem(getStorageKey('extrasUpdatedAt'));
+          const rawQuickCaptureNotes = localStorage.getItem(getStorageKey('quickCaptureNotes'));
           if (rawState) setFocusState(JSON.parse(rawState));
           if (rawHistory) setFocusHistory(JSON.parse(rawHistory));
           if (typeof rawNotes === 'string') setQuickNotes(rawNotes);
@@ -6828,6 +7142,7 @@ setSelfDestruct(false);
           if (typeof rawTarget === 'string' && rawTarget.length) setWeeklyTargetHours(rawTarget);
           if (rawOrder) setExtrasSlotOrder(normalizeExtrasOrder(JSON.parse(rawOrder)));
           if (rawUpdatedAt) setExtrasUpdatedAt(Number(rawUpdatedAt || 0));
+          if (rawQuickCaptureNotes) setQuickCaptureNotes(normalizeQuickCaptureNotes(JSON.parse(rawQuickCaptureNotes)));
         } catch (_) {}
       }, [user?.uid]);
       useEffect(() => {
@@ -6852,22 +7167,25 @@ setSelfDestruct(false);
         try { localStorage.setItem(getStorageKey('extrasUpdatedAt'), String(extrasUpdatedAt || 0)); } catch (_) {}
       }, [extrasUpdatedAt, user?.uid]);
       useEffect(() => {
+        try { localStorage.setItem(getStorageKey('quickCaptureNotes'), JSON.stringify(normalizeQuickCaptureNotes(quickCaptureNotes))); } catch (_) {}
+      }, [quickCaptureNotes, user?.uid]);
+      useEffect(() => {
         if (!user) return;
         const remoteTs = Number(userProfile?.extrasUpdatedAt || 0);
         if (!remoteTs || remoteTs <= Number(extrasUpdatedAt || 0)) return;
         try {
           if (typeof userProfile?.quickNotesCloud === 'string') setQuickNotes(String(userProfile?.quickNotesCloud || ''));
           if (Array.isArray(userProfile?.dailyGoals)) setDailyGoals(normalizeDailyGoals(userProfile?.dailyGoals));
-          if (!weeklyTargetEditingRef.current && userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) {
-            setWeeklyTargetHours(String(userProfile?.weeklyTargetHours));
-          }
+          if (!isWeeklyTargetEditing && userProfile?.weeklyTargetHours !== undefined && userProfile?.weeklyTargetHours !== null) setWeeklyTargetHours(String(userProfile?.weeklyTargetHours));
           if (Array.isArray(userProfile?.extrasSlotOrder)) setExtrasSlotOrder(normalizeExtrasOrder(userProfile?.extrasSlotOrder));
+          if (Array.isArray(userProfile?.quickCaptureNotes)) setQuickCaptureNotes(normalizeQuickCaptureNotes(userProfile?.quickCaptureNotes));
           setExtrasUpdatedAt(remoteTs);
           extrasCloudReadyRef.current = true;
         } catch (_) {}
-      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder]);
+      }, [user?.uid, userProfile?.extrasUpdatedAt, userProfile?.quickNotesCloud, userProfile?.dailyGoals, userProfile?.weeklyTargetHours, userProfile?.extrasSlotOrder, userProfile?.quickCaptureNotes, isWeeklyTargetEditing]);
       useEffect(() => {
         if (!user) return;
+        if (isWeeklyTargetEditing) return;
         if (!extrasCloudReadyRef.current) { extrasCloudReadyRef.current = true; return; }
         try { if (extrasCloudTimerRef.current) clearTimeout(extrasCloudTimerRef.current); } catch (_) {}
         extrasCloudTimerRef.current = setTimeout(async () => {
@@ -6887,11 +7205,11 @@ setSelfDestruct(false);
           }
         }, 700);
         return () => { try { if (extrasCloudTimerRef.current) clearTimeout(extrasCloudTimerRef.current); } catch (_) {} };
-      }, [quickNotes, dailyGoals, weeklyTargetHours, extrasSlotOrder, user?.uid]);
+      }, [quickNotes, dailyGoals, weeklyTargetHours, extrasSlotOrder, user?.uid, isWeeklyTargetEditing]);
       const getFocusElapsedMs = (state, now = Date.now()) => {
-        if (!state.startedAt) return 0;
+        if (!state?.startedAt) return 0;
         const base = Math.max(0, now - Number(state.startedAt || now));
-        const paused = Number(state.pausedAccumulatedMs || 0) + ((state.isPaused && state.pauseStartedAt) ? Math.max(0, now - Number(state.pauseStartedAt || now)) : 0);
+        const paused = Number(state?.pausedAccumulatedMs || 0) + ((state?.isPaused && state?.pauseStartedAt) ? Math.max(0, now - Number(state.pauseStartedAt || now)) : 0);
         return Math.max(0, base - paused);
       };
       const focusRemainingMs = focusState?.startedAt ? Math.max(0, Number(focusState.durationMin || 25) * 60000 - getFocusElapsedMs(focusState, focusTick)) : 0;
@@ -6904,7 +7222,7 @@ setSelfDestruct(false);
         if (!focusState?.startedAt) return;
         const now = Date.now();
         if (focusState?.isPaused) {
-          setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev.pauseStartedAt || now)), pauseStartedAt: null }));
+          setFocusState(prev => ({ ...(prev || {}), isPaused: false, pausedAccumulatedMs: Number(prev?.pausedAccumulatedMs || 0) + Math.max(0, now - Number(prev?.pauseStartedAt || now)), pauseStartedAt: null }));
           showToast('Fokus weitergeführt');
         } else {
           setFocusState(prev => ({ ...(prev || {}), isPaused: true, pauseStartedAt: now }));
@@ -6916,7 +7234,7 @@ setSelfDestruct(false);
           if (markDone && focusState?.startedAt) {
             const finishedAt = Date.now();
             const elapsedMs = getFocusElapsedMs(focusState, finishedAt);
-            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState?.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
+            setFocusHistory(prev => ([{ id: `focus_${finishedAt}`, startedAt: Number(focusState.startedAt || finishedAt), finishedAt, durationMin: Number(focusState.durationMin || 25), elapsedMs }, ...(prev || [])]).slice(0, 20));
           }
         } catch (_) {}
         setFocusState(null);
@@ -6991,7 +7309,7 @@ setSelfDestruct(false);
                   <div className="w-9 h-9 bg-white rounded-sm"></div>
                   <div>
                     <div className="text-xs text-neutral-500 uppercase tracking-widest">ONYX • Public Share</div>
-                    <div className="text-lg font-medium text-white">{d.kind === 'calendar' ? (d.calName || 'Kalender') : (d.eventSnapshot.title || 'Termin')}</div>
+                    <div className="text-lg font-medium text-white">{d.kind === 'calendar' ? (d.calName || 'Kalender') : (d.eventSnapshot?.title || 'Termin')}</div>
                   </div>
                 </div>
                 <button
@@ -7005,11 +7323,11 @@ setSelfDestruct(false);
 
               <div className="mt-6">
                 {publicShareLoading ? (
-                  <div className="text-sm text-neutral-500">Lade...</div>
+                  <div className="text-sm text-neutral-500">Lade…</div>
                 ) : publicShareError ? (
                   <div className="text-sm text-red-400">{publicShareError}</div>
                 ) : !publicShareDoc ? (
-                  <div className="text-sm text-neutral-500">-</div>
+                  <div className="text-sm text-neutral-500">—</div>
                 ) : !canView ? (
                   <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
                     <div className="flex items-center gap-2 text-sm text-white font-medium"><Lock className="w-4 h-4" /> Geschützt</div>
@@ -7027,18 +7345,18 @@ setSelfDestruct(false);
                   </div>
                 ) : (
                   <>
-                      {d.expiresAtMs ? (
-                        <div className="text-[11px] text-neutral-500">Läuft ab: {new Date(d.expiresAtMs).toLocaleString('de-CH')}</div>
-                      ) : (
+                    {d.expiresAtMs ? (
+                      <div className="text-[11px] text-neutral-500">Läuft ab: {new Date(d.expiresAtMs).toLocaleString('de-CH')}</div>
+                    ) : (
                       <div className="text-[11px] text-neutral-500">Ohne Ablaufdatum</div>
                     )}
 
                     {d.kind === 'calendar' ? (
                       <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
-                        <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Busy-Only</div>
-                          <div className="text-[11px] text-neutral-500 mb-4">Zeigt nur belegte Zeiten (ohne Titel/Ort). Range: {d.rangeStart} bis {d.rangeEnd}</div>
+                        <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Busy‑Only</div>
+                        <div className="text-[11px] text-neutral-500 mb-4">Zeigt nur belegte Zeiten (ohne Titel/Ort). Range: {d.rangeStart} → {d.rangeEnd}</div>
 
-                        {Array.isArray(d.busyBlocks) && d.busyBlocks.length > 0 ? (
+                        {Array.isArray(d.busyBlocks) && d.busyBlocks.length ? (
                           <div className="space-y-3 max-h-[52vh] overflow-y-auto no-scrollbar pr-1">
                             {groupBusyByDay(d.busyBlocks).map(day => (
                               <div key={day.day} className="border border-neutral-800 rounded-xl p-3 bg-black">
@@ -7046,7 +7364,7 @@ setSelfDestruct(false);
                                 <div className="mt-2 space-y-1">
                                   {day.blocks.map((b, idx) => (
                                     <div key={idx} className="text-xs text-neutral-300 tabular-nums">
-                                      {new Date(b.startMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })} - {new Date(b.endMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}
+                                      {new Date(b.startMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })} – {new Date(b.endMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}
                                     </div>
                                   ))}
                                 </div>
@@ -7060,13 +7378,13 @@ setSelfDestruct(false);
                     ) : (
                       <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
                         <div className="text-xs uppercase tracking-widest text-neutral-500 font-semibold mb-3">Event</div>
-                        <div className="text-lg text-white font-medium">{d.eventSnapshot.title || 'Termin'}</div>
-                        <div className="mt-1 text-sm text-neutral-300 tabular-nums">{d.eventSnapshot.date}{d.eventSnapshot.time ? ` • ${d.eventSnapshot.time}` : ''}</div>
-                        {d.eventSnapshot.location ? <div className="mt-2 text-sm text-neutral-400">📍 {d.eventSnapshot.location}</div> : null}
-                        {d.eventSnapshot.desc ? <div className="mt-3 text-sm text-neutral-300 whitespace-pre-wrap">{d.eventSnapshot.desc}</div> : null}
+                        <div className="text-lg text-white font-medium">{d.eventSnapshot?.title || 'Termin'}</div>
+                        <div className="mt-1 text-sm text-neutral-300 tabular-nums">{d.eventSnapshot?.date}{d.eventSnapshot?.time ? ` • ${d.eventSnapshot?.time}` : ''}</div>
+                        {d.eventSnapshot?.location ? <div className="mt-2 text-sm text-neutral-400">📍 {d.eventSnapshot.location}</div> : null}
+                        {d.eventSnapshot?.desc ? <div className="mt-3 text-sm text-neutral-300 whitespace-pre-wrap">{d.eventSnapshot.desc}</div> : null}
                         <div className="mt-4 flex gap-2">
                           <button type="button" onClick={downloadIcsForSharedEvent} className="flex-1 py-2.5 rounded-xl bg-white text-black font-semibold hover:bg-gray-200">ICS Download</button>
-                          <button type="button" onClick={() => { try { navigator.clipboard.writeText(window.location.href); showToast('Link kopiert'); } catch (_) {} }} className="px-3 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 hover:border-neutral-500" title="Link kopieren">
+                          <button type="button" onClick={() => { try { navigator.clipboard?.writeText(window.location.href); showToast('Link kopiert'); } catch (_) {} }} className="px-3 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 hover:border-neutral-500" title="Link kopieren">
                             <Copy className="w-4 h-4" />
                           </button>
                         </div>
@@ -7099,7 +7417,7 @@ setSelfDestruct(false);
                 <div className="relative"><Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-600" /><input type="password" placeholder="Passwort" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-neutral-900/50 border border-neutral-800 text-white placeholder-neutral-600 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500 transition-colors" /></div>
                 <button type="submit" className="w-full bg-white text-black py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors mt-2">{isRegistering ? 'Account erstellen' : 'Anmelden'}</button>
               </form>
-              <div className="mt-8 text-center text-sm text-neutral-500">{isRegistering ? 'Bereits einen Account ' : 'Noch keinen Account '}<button onClick={() => { setIsRegistering(!isRegistering); setAuthError(''); }} className="text-white hover:underline font-medium">{isRegistering ? 'Hier anmelden' : 'Jetzt registrieren'}</button></div>
+              <div className="mt-8 text-center text-sm text-neutral-500">{isRegistering ? 'Bereits einen Account? ' : 'Noch keinen Account? '}<button onClick={() => { setIsRegistering(!isRegistering); setAuthError(''); }} className="text-white hover:underline font-medium">{isRegistering ? 'Hier anmelden' : 'Jetzt registrieren'}</button></div>
             </div>
           </div>
         );
@@ -7110,12 +7428,12 @@ setSelfDestruct(false);
       const todaysEvents = getEventsForDate(todayDateStr);
       const nowMs = Date.now();
       const timedEventsToday = todaysEvents
-        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event.time) }))
+        .map((event) => ({ event, startMs: parseDateTimeLocalMs(todayDateStr, event?.time) }))
         .filter((entry) => Number.isFinite(entry.startMs))
         .sort((a, b) => a.startMs - b.startMs);
       const nextTimedEvent = timedEventsToday.find((entry) => entry.startMs >= nowMs);
       const remainingTodayCount = todaysEvents.filter((event) => {
-        const startMs = parseDateTimeLocalMs(todayDateStr, event.time);
+        const startMs = parseDateTimeLocalMs(todayDateStr, event?.time);
         if (Number.isFinite(startMs)) return startMs >= nowMs;
         return true;
       }).length;
@@ -7134,20 +7452,20 @@ setSelfDestruct(false);
         if (freeUntilLabel) return `Bis ${freeUntilLabel} frei`;
         return `${remainingTodayCount} Eintrag${remainingTodayCount === 1 ? '' : 'e'} noch offen`;
       })();
-      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
+      const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
       const weatherBadgeMeta = getWeatherBadgeMeta();
 
       const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
-      const todayWorkMs = workClockSessions.filter(s => s.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s.workMs || 0), 0) + activeWorkMs;
+      const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
       const weekStartMs = startOfWeekMs();
       const monthStartMs = startOfMonthMs();
-      const weekSessions = workClockSessions.filter(s => Number(s.startedAt || 0) >= weekStartMs);
-      const monthSessions = workClockSessions.filter(s => Number(s.startedAt || 0) >= monthStartMs);
-      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s.workMs || 0), 0) + activeWorkMs;
-      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s.workMs || 0), 0) + activeWorkMs;
+      const weekSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= weekStartMs);
+      const monthSessions = workClockSessions.filter(s => Number(s?.startedAt || 0) >= monthStartMs);
+      const weekWorkMs = weekSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
+      const monthWorkMs = monthSessions.reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
       const weekAvgMs = weekSessions.length ? Math.round(weekWorkMs / Math.max(1, weekSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
       const monthAvgMs = monthSessions.length ? Math.round(monthWorkMs / Math.max(1, monthSessions.length + (activeWorkMs > 0 ? 1 : 0))) : (activeWorkMs > 0 ? activeWorkMs : 0);
-      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s.level || '') === level).length }));
+      const workLevelSummary = ['leicht','mittel','schwer'].map(level => ({ level, count: monthSessions.filter(s => String(s?.level || '') === level).length }));
 
 
 
@@ -7158,7 +7476,23 @@ setSelfDestruct(false);
       const weekCalendarEvents = weekEventDates.flatMap((dateStr) => {
         try { return (getEventsForDate(dateStr) || []).map(ev => ({ ...ev, __date: dateStr })); } catch (_) { return []; }
       });
-      const monthHeaderKw = getIsoWeekNumber(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1));
+      const weekEventCount = weekCalendarEvents.length;
+      const todayEventCount = todaysEvents.length;
+      const nextFreeBlock = (() => {
+        if (!timedEventsToday.length) return 'Ganzer Tag frei';
+        const first = timedEventsToday[0];
+        if (Number.isFinite(first?.startMs) && first.startMs > nowMs + 45 * 60000) return `Aktuell frei bis ${first.event?.time || 'später'}`;
+        for (let i = 0; i < timedEventsToday.length - 1; i += 1) {
+          const a = timedEventsToday[i];
+          const b = timedEventsToday[i + 1];
+          if (Number.isFinite(a?.startMs) && Number.isFinite(b?.startMs)) {
+            const gapMin = Math.round((b.startMs - a.startMs) / 60000) - 60;
+            if (gapMin >= 45) return `${a.event?.time || ''}–${b.event?.time || ''} frei`;
+          }
+        }
+        return freeWindowText;
+      })();
+      const focusTodayMs = (focusHistory || []).filter((x) => localDateKey(x?.startedAt || Date.now()) === todayDateStr).reduce((sum, x) => sum + Number(x?.elapsedMs || 0), 0) + (focusState?.startedAt ? getFocusElapsedMs(focusState, focusTick) : 0);
       const bestWeatherWindow = (() => {
         try {
           const times = hourlyForecast?.time || [];
@@ -7187,59 +7521,26 @@ setSelfDestruct(false);
         const items = [];
         const endOfDayMs = parseDateTimeLocalMs(todayDateStr, '23:59');
         let cursor = nowMs;
-        const blocks = timedEventsToday.map((entry) => ({ startMs: entry.startMs, endMs: entry.startMs + 60 * 60000, label: entry.event.time || 'Termin' })).filter((x) => Number.isFinite(x.startMs)).sort((a,b) => a.startMs - b.startMs);
+        const blocks = timedEventsToday.map((entry) => ({ startMs: entry.startMs, endMs: entry.startMs + 60 * 60000, label: entry.event?.time || 'Termin' })).filter((x) => Number.isFinite(x.startMs)).sort((a,b) => a.startMs - b.startMs);
         if (!blocks.length) return ['Ganzer Tag frei'];
         for (const block of blocks) {
           if (block.startMs - cursor >= 30 * 60000) {
-            items.push(`${new Date(cursor).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}-${new Date(block.startMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}`);
+            items.push(`${new Date(cursor).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}–${new Date(block.startMs).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}`);
           }
           cursor = Math.max(cursor, block.endMs);
         }
-        if (endOfDayMs - cursor >= 30 * 60000) items.push(`${new Date(cursor).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}-23:59`);
+        if (endOfDayMs - cursor >= 30 * 60000) items.push(`${new Date(cursor).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}–23:59`);
         return items.length ? items.slice(0, 4) : ['Keine längeren Fenster'];
       })();
-      const goalsWithText = normalizeDailyGoals(dailyGoals).filter((g) => String(g.text || '').trim());
-      const completedGoals = goalsWithText.filter((g) => g.done).length;
-      const hasDailyGoalsForHome = goalsWithText.length > 0;
-      const showHomeWorkClockCard = compactHomeWorkClock;
-      const shouldShowHomeShoppingCard = !!pinnedShoppingList;
-      const homeCalendarDateLabel = homeCalendarScope === 'today' ? 'Heute' : (homeCalendarScope === 'week' ? 'Diese Woche' : (homeCalendarScope === 'month' ? 'Dieser Monat' : 'Datum'));
-      const homeCalendarEvents = (() => {
-        if (homeCalendarScope === 'today') {
-          return getEventsForDate(todayDateStr).map((event) => ({ ...event, __date: todayDateStr }));
-        }
-        if (homeCalendarScope === 'week') {
-          return weekEventDates.flatMap((d) => getEventsForDate(d).map((event) => ({ ...event, __date: d })));
-        }
-        if (homeCalendarScope === 'month') {
-          const base = new Date(todayDateStr + 'T00:00:00');
-          const y = base.getFullYear();
-          const m = base.getMonth();
-          const daysInMonth = new Date(y, m + 1, 0).getDate();
-          const rows = [];
-          for (let day = 1; day <= daysInMonth; day += 1) {
-            const d = new Date(y, m, day).toISOString().slice(0, 10);
-            rows.push(...getEventsForDate(d).map((event) => ({ ...event, __date: d })));
-          }
-          return rows;
-        }
-        const picked = /^\d{4}-\d{2}-\d{2}$/.test(String(homeCalendarCustomDate || '')) ? homeCalendarCustomDate : todayDateStr;
-        return getEventsForDate(picked).map((event) => ({ ...event, __date: picked }));
-      })();
-      const sortedHomeCalendarEvents = [...homeCalendarEvents].sort((a, b) => {
-        const da = String(a.__date || '');
-        const db = String(b.__date || '');
-        if (da !== db) return da.localeCompare(db);
-        return String(a.time || '').localeCompare(String(b.time || ''));
-      });
+      const completedGoals = normalizeDailyGoals(dailyGoals).filter((g) => g.done && String(g.text || '').trim()).length;
       const activeCalForView = getCalendarById(activeCalendarId);
 
       return (
         <div 
-          className="flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-16 md:pb-0 relative" style={{ height: 'var(--app-height, 100vh)' }}
-          onTouchStart={currentView === 'settings' ? undefined : handleGlobalTouchStart}
-          onTouchMove={currentView === 'settings' ? undefined : handleGlobalTouchMove}
-          onTouchEnd={currentView === 'settings' ? undefined : handleGlobalTouchEnd}
+          className={`flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)' }}
+          onTouchStart={handleGlobalTouchStart}
+          onTouchMove={handleGlobalTouchMove}
+          onTouchEnd={handleGlobalTouchEnd}
         >
           {/* PULL TO REFRESH INDICATOR */}
           <div className="absolute top-0 left-0 w-full flex justify-center z-[100] transition-transform duration-200 pointer-events-none" style={{ transform: `translateY(${pullDistance - 50}px)` }}>
@@ -7248,30 +7549,19 @@ setSelfDestruct(false);
             </div>
           </div>
 
-          <div className="fixed top-4 left-4 z-[60] pointer-events-none">
-            <div className="px-2.5 py-1 rounded-full border border-neutral-700 bg-black/85 text-[11px] font-semibold tracking-wide text-neutral-200 shadow-lg">
-              Build {BUILD_VERSION}
-            </div>
-          </div>
           <div className="fixed top-4 right-4 z-[60] space-y-2 pointer-events-none">
             {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in pointer-events-auto"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
           </div>
+
           <aside className="hidden md:flex w-64 border-r border-neutral-800 flex-col shrink-0 bg-black z-10">
             <div className="p-6 flex-1 overflow-y-auto">
               <h1 className="text-xl font-bold tracking-wider mb-8 flex items-center gap-3"><div className="w-4 h-4 bg-white rounded-sm"></div>ONYX</h1>
               <button onClick={() => setPlusMenuOpen(true)} className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 px-4 rounded-md font-medium hover:bg-gray-200 transition-colors mb-8"><Plus className="w-5 h-5" /> Neuer Termin</button>
               <nav className="space-y-2 mb-8">
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
-                <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${hasUnreadMessages ? 'text-red-500 bg-neutral-900/60' : (currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white')}`}>
-                  <div className="relative">
-                    <CalendarIcon className="w-5 h-5" />
-                    {hasUnreadMessages && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500" aria-hidden="true"></span>}
-                  </div>
-                  Kalender
-                </button>
+                <button onClick={() => setCurrentView('calendar')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'calendar' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><CalendarIcon className="w-5 h-5" /> Kalender</button>
                 <button onClick={() => setCurrentView('shopping')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'shopping' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><ShoppingCart className="w-5 h-5" /> Einkauf</button>
-                <button onClick={() => setCurrentView('extras')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'extras' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Activity className="w-5 h-5" /> Extras</button>
-                <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen</button>
+                <button onClick={() => setCurrentView('settings')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'settings' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Settings className="w-5 h-5" /> Einstellungen <span aria-hidden="true" className="text-[13px]">✨</span></button>
               </nav>
 
               {/* Kalender Liste in der Sidebar */}
@@ -7297,158 +7587,156 @@ setSelfDestruct(false);
             </div>
           </aside>
 
-          <nav className="md:hidden fixed bottom-0 left-0 w-full h-16 bg-black border-t border-neutral-800 flex items-center justify-between z-40 px-3 pb-safe">
-            <button onClick={() => setCurrentView('dashboard')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`} title="Dashboard"><Home className="w-5 h-5" /></button>
-            <button onClick={() => setCurrentView('calendar')} className={`relative p-2 rounded-xl flex flex-col items-center gap-1 ${hasUnreadMessages ? 'text-red-500' : (currentView === 'calendar' ? 'text-white' : 'text-neutral-500')}`} title="Kalender">
-              <CalendarIcon className="w-5 h-5" />
-              {hasUnreadMessages && (
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500" aria-hidden="true"></span>
-              )}
+          <nav
+            className="md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)] relative"
+            style={{ position: 'fixed', left: 0, right: 0, bottom: 0 }}
+          >
+            <div className="grid grid-cols-5 items-center w-full h-full">
+              <button onClick={() => setCurrentView('dashboard')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
+              <button onClick={() => setCurrentView('calendar')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
+              <div aria-hidden="true" />
+              <button
+                onClick={() => {
+                  setCurrentView('extras');
+                  try { mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) {}
+                }}
+                className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`}
+                title="Stempeluhr Übersicht"
+              >
+                <Timer className="w-7 h-7" />
+              </button>
+              <button onClick={() => setCurrentView('settings')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
+            </div>
+            <button
+              onClick={() => setPlusMenuOpen(true)}
+              className="absolute left-1/2 -translate-x-1/2 -top-5 p-3.5 bg-white text-black rounded-full border-4 border-black shadow-lg z-10"
+              title="Neu"
+            >
+              <Plus className="w-6 h-6" />
             </button>
-            <button onClick={() => setCurrentView('shopping')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'shopping' ? 'text-white' : 'text-neutral-500'}`} title="Einkauf"><ShoppingCart className="w-5 h-5" /></button>
-            <button onClick={() => setPlusMenuOpen(true)} className="p-2.5 bg-white text-black rounded-full -mt-6 border-4 border-black shadow-lg" title="Neuer Termin"><Plus className="w-5 h-5" /></button>
-            <button onClick={() => setCurrentView('extras')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'extras' ? 'text-white' : 'text-neutral-500'}`} title="Extras"><Activity className="w-5 h-5" /></button>
-            <button onClick={() => setCurrentView('settings')} className={`p-2 rounded-xl flex flex-col items-center gap-1 ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`} title="Einstellungen"><Settings className="w-5 h-5" /></button>
           </nav>
 
-          <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative">
-            <div className="shrink-0 flex justify-end px-3 md:px-4 pt-3 md:pt-4">
-              <button
-                type="button"
-                onClick={() => persistThemeMode(themeMode === 'dark' ? 'light' : 'dark')}
-                className="h-9 w-9 rounded-lg border border-neutral-800 bg-neutral-950 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors flex items-center justify-center"
-                title={themeMode === 'dark' ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren'}
-                aria-label={themeMode === 'dark' ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren'}
-              >
-                {themeMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </button>
-            </div>
-                        {currentView === 'dashboard' && (
-              <div className="p-5 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
-                <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-                  <div>
-                    <h2 className="text-3xl md:text-4xl font-light">Dashboard{dashboardName ? ` · ${dashboardName}` : ''}</h2>
-                    <p className="mt-2 text-sm text-neutral-500">Alles Wichtige für heute in einer klaren Reihenfolge.</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button onClick={() => openNewEventModal()} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200 transition-colors">Neuer Termin</button>
-                    <button onClick={goToToday} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-200 hover:border-neutral-500 transition-colors">Heute</button>
-                    <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-200 hover:border-neutral-500 transition-colors">Einstellungen</button>
-                  </div>
+          <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
+            {currentView === 'dashboard' && (
+              <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
+                <header className="flex justify-between items-center mb-8 md:mb-10">
+                  <h2 className="text-3xl md:text-4xl font-light">Guten Morgen{dashboardName ? `, ${dashboardName}` : ''}.</h2>
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
+                    title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+                  >
+                    {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                    <span>{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
+                  </button>
                 </header>
-
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                  <div className="border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">Heute Termine</div>
-                    <div className="mt-2 text-2xl font-semibold text-white">{getEventsForDate(todayDateStr).length}</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
+                  <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between gap-4 cursor-pointer hover:border-neutral-600 transition-colors group">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider mb-1 flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {location.name}</h3>
+                      <p className="text-3xl md:text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
+                      <p className="mt-2 text-sm text-neutral-400 leading-relaxed max-w-[32rem]">{todayWeatherAdvice}</p>
+                    </div>
+                    <div className="shrink-0">{getWeatherIcon(weather?.weathercode, "w-10 h-10 md:w-12 md:h-12 text-white")}</div>
                   </div>
-                  <div className="border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">Nächster Termin</div>
-                    <div className="mt-2 text-sm font-semibold text-white truncate">{nextEventLabel}</div>
-                    <div className="mt-1 text-xs text-neutral-500 truncate">{nextEventCountdownText}</div>
-                  </div>
-                  <div className="border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">Freie Fenster</div>
-                    <div className="mt-2 text-2xl font-semibold text-white">{freeWindowsToday.length}</div>
-                    <div className="mt-1 text-xs text-neutral-500 truncate">{freeWindowsToday[0] || 'Keine längeren Fenster'}</div>
-                  </div>
-                  <div className="border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">Wetterfenster</div>
-                    <div className="mt-2 text-sm font-semibold text-white truncate">{weatherBadgeMeta.text}</div>
-                    <div className="mt-1 text-xs text-neutral-500 truncate">{bestWeatherWindow}</div>
+                  <div className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-start gap-4">
+                    <Info className="w-5 h-5 md:w-6 md:h-6 text-neutral-400 shrink-0 mt-1" />
+                    <div className="flex-1"><div className="flex items-center justify-between gap-3 mb-2"><h3 className="text-neutral-500 text-xs md:text-sm font-medium uppercase tracking-wider">Spruch des Tages</h3><button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button></div><p className={`text-xl md:text-2xl font-semibold leading-snug ${dailyFactColor}`}>“{dailyFact}”</p></div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div onClick={() => setIsWeatherModalOpen(true)} className="border border-neutral-800 rounded-2xl bg-neutral-950/50 p-5 cursor-pointer hover:border-neutral-500 transition-colors">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2 flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {location.name}</div>
-                        <div className="text-4xl font-light text-white">{weather ? `${Math.round(weather?.temperature)}°` : '--°'}</div>
-                        <div className="mt-2 text-sm text-neutral-400 leading-relaxed">{todayWeatherAdvice}</div>
-                      </div>
-                      <div className="shrink-0">{getWeatherIcon(weather?.weathercode, "w-10 h-10 text-white")}</div>
-                    </div>
-                  </div>
-                  <div className="border border-neutral-800 rounded-2xl bg-neutral-950/50 p-5">
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">Spruch des Tages</div>
-                      <button onClick={refreshDailyFact} title="Neuer Spruch" className="p-2 rounded-lg border border-neutral-800 hover:border-neutral-500 hover:bg-neutral-900 transition-colors text-neutral-300"><RefreshCw className="w-4 h-4" /></button>
-                    </div>
-                    <p className="text-xl md:text-2xl font-semibold text-neutral-100 leading-snug">“{dailyFact}”</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  {shouldShowHomeShoppingCard && (
-                    <button onClick={() => setCurrentView('shopping')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
-                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Einkauf</div>
-                      <div className="text-lg font-semibold text-white">{pinnedShoppingList?.title || 'Angepinnte Liste'}</div>
-                      <div className="mt-1 text-xs text-neutral-500">{pinnedShoppingList ? `${normalizeShoppingItems(pinnedShoppingList.items).filter(i => !i.done).length} offen` : ''}</div>
-                    </button>
-                  )}
-                  {showHomeWorkClockCard && (
-                    <div onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 cursor-pointer hover:border-neutral-500 transition-colors">
-                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
-                      <div className="text-sm font-semibold text-white">{workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Bereit zum Start'}</div>
-                      <div className="mt-1 text-xs text-neutral-500">{workClockActive?.startedAt ? (workClockActive.isPaused ? 'Pause aktiv' : 'Arbeitszeit läuft') : 'Direkt hier stempeln'}</div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {!workClockActive?.startedAt ? (
-                          <button type="button" onClick={(e) => { e.stopPropagation(); startWorkClock(); }} className="px-3 py-1.5 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-1.5"><Play className="w-3.5 h-3.5" /> Start</button>
-                        ) : (
-                          <>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); toggleWorkClockPause(); }} className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors flex items-center gap-1.5 ${workClockActive.isPaused ? 'bg-amber-300/20 border-amber-300/60 text-amber-100 hover:bg-amber-300/25' : 'bg-neutral-900 border-neutral-800 text-white hover:border-neutral-500'}`}>{workClockActive.isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}{workClockActive.isPaused ? 'Pause Ende' : 'Kaffee'}</button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); requestStopWorkClock(); }} className="px-3 py-1.5 rounded-lg bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-1.5"><StopCircle className="w-3.5 h-3.5" /> Ende</button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {hasDailyGoalsForHome && (
-                    <button onClick={() => setCurrentView('extras')} className="text-left border border-neutral-800 rounded-2xl bg-neutral-950/50 p-4 hover:border-neutral-500 transition-colors">
-                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Tagesziele</div>
-                      <div className="text-lg font-semibold text-white">{completedGoals}/{goalsWithText.length} erledigt</div>
-                      <div className="mt-1 text-xs text-neutral-500">Direkt in Extras bearbeiten</div>
-                    </button>
-                  )}
-                </div>
-
-                <section className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
-                  <div className="flex items-center justify-between gap-3 mb-4">
-                    <h3 className="text-lg md:text-xl font-medium text-white">Heute im Kalender</h3>
-                    <span className="text-xs text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span>
-                  </div>
-                  {hasUnreadMessages && (
-                    <div className="mb-4 p-3 border border-neutral-700 bg-neutral-900 rounded-xl text-sm text-neutral-200">Kalender Aktuell: neue Nachrichten vorhanden.</div>
-                  )}
-                  <div className="mb-4 flex flex-wrap gap-2">
-                    {[['today','Heute'],['week','Diese Woche'],['month','Dieser Monat'],['custom','Datum']].map(([key,label]) => (
-                      <button key={key} type="button" onClick={() => setHomeCalendarScope(key)} className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${homeCalendarScope === key ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600'}`}>{label}</button>
-                    ))}
-                    {homeCalendarScope === 'custom' && (
-                      <input type="date" value={homeCalendarCustomDate} onChange={(e) => setHomeCalendarCustomDate(e.target.value)} className="px-3 py-1.5 rounded-lg text-xs border border-neutral-800 bg-black text-neutral-200" />
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    {sortedHomeCalendarEvents.length > 0 ? (
-                      sortedHomeCalendarEvents.map(event => (
-                        <button key={`${event.__date}_${event.id}`} onClick={() => openEditEventModal(event)} className="w-full text-left flex items-center gap-4 p-4 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-xl bg-black">
-                          {event.type === 'shift' ? (
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: event.color }}><Clock className="w-4 h-4 text-black opacity-70" /></div>
-                          ) : (
-                            <div className="text-neutral-400 font-mono text-sm w-20 text-right shrink-0">{event.time || 'Ganztägig'}</div>
-                          )}
-                          <div className="flex-1 overflow-hidden">
-                            <p className="font-medium text-white truncate">{event.title}</p>
-                            <p className="text-xs text-neutral-500 mt-1 truncate">{new Date((event.__date || todayDateStr) + 'T00:00:00').toLocaleDateString('de-DE')} · {event.type === 'shift' ? (getCalendarById(event.calendarId).name || 'Kalender') : event.type}{event.desc ? ` · ${event.desc}` : ''}</p>
+                {compactHomeWorkClock && (
+                  <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
+                              <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
+                              <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
+                            </div>
+                            <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Historie</button>
                           </div>
-                        </button>
-                      ))
-                    ) : (
-                      <p className="text-neutral-500 text-sm italic p-4 text-center border border-dashed border-neutral-800 rounded-lg">Keine Termine für {homeCalendarDateLabel.toLowerCase()}.</p>
-                    )}
+
+                          <div className="flex flex-wrap gap-2">
+                            {!workClockActive?.startedAt ? (
+                              <button onClick={startWorkClock} className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
+                            ) : (
+                              <>
+                                <button onClick={toggleWorkClockPause} className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-xs font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Pause fertig' : 'Pause'}</button>
+                                <button onClick={requestStopWorkClock} className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                   </div>
-                </section>
+                )}
+
+                <div className="mb-6 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                  <button
+                    type="button"
+                    onClick={() => setHomeNotesOpen((v) => !v)}
+                    className="w-full flex items-center justify-between gap-3"
+                  >
+                    <div className="text-left">
+                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">Notizen</div>
+                      <div className="text-sm text-neutral-300 mt-1">{quickCaptureNotes.length} Einträge</div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform ${homeNotesOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {homeNotesOpen && (
+                    <div className="mt-3 space-y-2">
+                      {quickCaptureNotes.length === 0 ? (
+                        <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-lg px-3 py-3">Noch keine Notizen vorhanden.</div>
+                      ) : quickCaptureNotes.slice(0, 8).map((note) => (
+                        <div key={note.id} className="border border-neutral-800 rounded-lg px-3 py-2 bg-black/70">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-xs text-neutral-500 mb-1">{new Date(note.createdAt).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</div>
+                            <div className="flex items-center gap-1">
+                              <button type="button" onClick={() => openEditQuickCaptureNote(note)} className="p-1.5 rounded-md border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-500" title="Notiz bearbeiten"><Edit2 className="w-3.5 h-3.5" /></button>
+                              <button type="button" onClick={() => deleteQuickCaptureNote(note.id)} className="p-1.5 rounded-md border border-red-900/40 text-red-300 hover:bg-red-950/40" title="Notiz löschen"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
+                          </div>
+                          <div className="text-sm text-neutral-200 whitespace-pre-wrap break-words">{note.text}</div>
+                        </div>
+                      ))
+                      }
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-lg md:text-xl font-medium mb-4 border-b border-neutral-800 pb-3 flex justify-between items-end">Agenda für heute<span className="text-sm font-normal text-neutral-500">{new Date().toLocaleDateString('de-DE')}</span></h3>
+                  {hasUnreadMessages && (
+                    <div className="mb-4 p-4 border border-neutral-700 bg-neutral-900 rounded-xl flex items-center justify-center transition-colors animate-fade-in">
+                      <div className="flex items-center gap-3"><div className="w-2 h-2 bg-white rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.8)]"></div><span className="font-medium text-white uppercase tracking-widest text-sm">Kalender Aktuell</span></div>
+                    </div>
+                  )}
+                  <div className="space-y-3 md:space-y-4">
+                    {getEventsForDate(new Date().toISOString().split('T')[0]).length > 0 ? (
+                      getEventsForDate(new Date().toISOString().split('T')[0]).sort((a,b) => (a.time||'').localeCompare(b.time||'')).map(event => (
+                        <div key={event.id} onClick={() => openEditEventModal(event)} className="flex items-center gap-4 md:gap-6 p-4 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-lg bg-black cursor-pointer group">
+                          {event.type === 'shift' ? (
+                            <div className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: event.color }}>
+                               <Clock className="w-5 h-5 text-black opacity-60" />
+                            </div>
+                          ) : (
+                            <div className="text-neutral-400 font-mono text-sm md:text-base w-12 text-right">{event.time}</div>
+                          )}
+                          <div className="w-px h-10 bg-neutral-800 group-hover:bg-neutral-600 transition-colors"></div>
+                          <div className="flex-1 overflow-hidden">
+                             <p className="font-medium text-white truncate flex items-center gap-2">
+                               <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
+                               <span className="truncate">{event.title}</span>
+                             </p>
+                             <p className="text-xs text-neutral-500 mt-0.5 truncate">{event.type === 'shift' ? getCalendarById(event.calendarId)?.name : event.type} {event.desc && `• ${event.desc}`}</p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (<p className="text-neutral-500 text-sm italic p-4 text-center border border-dashed border-neutral-800 rounded-lg">Keine Termine für heute.</p>)}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -7501,16 +7789,22 @@ setSelfDestruct(false);
 
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center justify-between px-4 md:px-8 shrink-0">
                   <div className="flex items-center gap-2 md:gap-6">
-                    <div className="w-32 md:w-56">
-                      <h2 className="text-lg md:text-2xl font-light">{MONATE[currentDate.getMonth()]} {currentDate.getFullYear()}</h2>
-                      <div className="text-[10px] text-neutral-500 mt-0.5">KW{String(monthHeaderKw || '')}</div>
-                    </div>
+                    <h2 className="text-lg md:text-2xl font-light w-32 md:w-48">{MONATE[currentDate.getMonth()]} {currentDate.getFullYear()}</h2>
                     <div className="flex items-center gap-1 md:gap-2">
                       <button onClick={prevMonth} className="p-1.5 md:p-2 hover:bg-neutral-900 rounded-full transition-colors border border-transparent hover:border-neutral-800"><ChevronLeft className="w-5 h-5 md:w-6 md:h-6" /></button>
                       <button onClick={goToToday} className="px-3 py-1.5 text-xs md:text-sm border border-neutral-800 hover:bg-neutral-900 rounded-md transition-colors">Heute</button>
                       <button onClick={nextMonth} className="p-1.5 md:p-2 hover:bg-neutral-900 rounded-full transition-colors border border-transparent hover:border-neutral-800"><ChevronRight className="w-5 h-5 md:w-6 md:h-6" /></button>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
+                    title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+                  >
+                    {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                    <span className="hidden sm:inline">{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
+                  </button>
                 </header>
 
                 {/* VIEW TOGGLE & SUCHE */}
@@ -7554,7 +7848,7 @@ setSelfDestruct(false);
                             onClick={() => {
                                 const nextState = !isPaintbrushActive;
                                 setIsPaintbrushActive(nextState);
-                                if (nextState && activeCalForView.shifts.length > 0) setSelectedPaintShift(activeCalForView.shifts[0]);
+                                if (nextState && activeCalForView.shifts?.length > 0) setSelectedPaintShift(activeCalForView.shifts[0]);
                             }} 
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${isPaintbrushActive ? 'bg-white text-black' : 'bg-neutral-900 text-neutral-400 border border-neutral-800 hover:text-white'}`}
                         >
@@ -7589,9 +7883,6 @@ setSelfDestruct(false);
                       const day = i + 1; const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                       const dayEvents = getEventsForDate(dateStr);
                       const isToday = new Date().toISOString().split('T')[0] === dateStr;
-                      const jsDow = new Date(dateStr + 'T00:00:00').getDay();
-                      const showWeekBadge = jsDow === 1; // Monday
-                      const weekNo = showWeekBadge ? getIsoWeekNumber(new Date(dateStr + 'T00:00:00')) : null;
                       return (
                         <div 
                            key={day} 
@@ -7616,9 +7907,6 @@ setSelfDestruct(false);
                            }}
                            className={`bg-black p-1 md:p-2 min-h-[80px] md:min-h-[120px] transition-colors cursor-pointer group relative flex flex-col ${isPaintbrushActive ? 'hover:bg-neutral-900' : 'hover:bg-neutral-950'}`}
                         >
-                          {showWeekBadge && (
-                            <div className="absolute right-1.5 top-1 text-[9px] text-neutral-500 pointer-events-none">KW{weekNo}</div>
-                          )}
                           <div
                             className={`text-xs md:text-sm font-medium w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-white text-black' : 'text-neutral-400 group-hover:text-white'}`}
                             onMouseDown={(e) => {
@@ -7655,7 +7943,7 @@ setSelfDestruct(false);
                                  >
                                    <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: calendarTint(event.calendarId || 'default') }} />
                                    <span className="text-neutral-500 mr-1">{event.time}</span>
-                                   {event.poll && event.poll.status === 'open' && <span className="mr-1">Poll</span>}
+                                   {event.poll && event.poll.status === 'open' && <span className="mr-1">🗳️</span>}
                                    <span className="truncate">{event.title}</span>
                                  </div>
                               )
@@ -7704,7 +7992,7 @@ setSelfDestruct(false);
                           <div>
                             <p className="text-[10px] uppercase tracking-widest text-neutral-500">Agenda</p>
                             <h3 className="text-lg md:text-xl font-medium text-white">
-                              {agendaRange === 'month' ? `${MONATE[currentDate.getMonth()]} ${currentDate.getFullYear()}` : `${start} - ${end}`}
+                              {agendaRange === 'month' ? `${MONATE[currentDate.getMonth()]} ${currentDate.getFullYear()}` : `${start} – ${end}`}
                             </h3>
                           </div>
                           <button onClick={() => openNewEventModal()} className="text-xs bg-white text-black px-3 py-2 rounded-md font-medium hover:bg-gray-200 transition-colors flex items-center gap-2">
@@ -7746,7 +8034,7 @@ setSelfDestruct(false);
                                       <div className="text-xs text-neutral-500 mt-1 truncate">
                                         {ev.type === 'shift' ? 'Schicht' : (ev.time ? `${ev.time} · ` : '')}{ev.type || 'Privat'}{ev.desc ? ` · ${ev.desc}` : ''}
                                         {ev.calendarId && (
-                                          <span className="text-neutral-600"> · {getCalendarById(ev.calendarId).name || 'Kalender'}</span>
+                                          <span className="text-neutral-600"> · {getCalendarById(ev.calendarId)?.name || 'Kalender'}</span>
                                         )}
                                       </div>
                                     </div>
@@ -7774,7 +8062,7 @@ setSelfDestruct(false);
                   const feedTitle = (() => {
                     try {
                       if (!Array.isArray(visibleCalendars) || visibleCalendars.length === 0) return 'Privat';
-                      if (visibleCalendars.length === 1) return getCalendarById(visibleCalendars[0]).name || 'Privat';
+                      if (visibleCalendars.length === 1) return getCalendarById(visibleCalendars[0])?.name || 'Privat';
                       return `${visibleCalendars.length} Kalender`;
                     } catch (_) { return 'Kalender'; }
                   })();
@@ -7786,13 +8074,13 @@ setSelfDestruct(false);
                           <p className="text-[10px] uppercase tracking-widest text-neutral-500">Kalender-Feed</p>
                           <h3 className="text-sm font-medium text-white">{feedTitle}</h3>
                         </div>
-                        <div className="text-[11px] text-neutral-500">Abstimmungen: {openPollEvents.length} • Kommentare: {commentEvents.length}</div>
+                        <div className="text-[11px] text-neutral-500">🗳️ {openPollEvents.length} • 💬 {commentEvents.length}</div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-semibold text-white">Abstimmungen</div>
+                            <div className="text-xs font-semibold text-white">🗳️ Abstimmungen</div>
                             {openPollEvents.some(x => !canWriteCalendar(x.calendarId || 'default')) && (
                               <div className="text-[10px] text-neutral-600">teilweise nur Lesen</div>
                             )}
@@ -7823,10 +8111,10 @@ setSelfDestruct(false);
                                     className="text-left min-w-0"
                                   >
                                     <div className="text-sm font-medium text-white truncate">{ev.title}</div>
-                                    <div className="text-[11px] text-neutral-500">{votesCount}/{totalVoters || '-'} Antworten</div>
+                                    <div className="text-[11px] text-neutral-500">{votesCount}/{totalVoters || '–'} Antworten</div>
                                     <div className="text-[10px] text-neutral-600 flex items-center gap-2 mt-1">
                                       <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(ev.calendarId || 'default') }} />
-                                      <span className="truncate">{getCalendarById(ev.calendarId || 'default').name || 'Privat'}{canWrite ? '' : ' · nur Lesen'}</span>
+                                      <span className="truncate">{getCalendarById(ev.calendarId || 'default')?.name || 'Privat'}{canWrite ? '' : ' · nur Lesen'}</span>
                                     </div>
                                   </button>
                                   <button
@@ -7855,7 +8143,7 @@ setSelfDestruct(false);
                                           className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800') + (!canWrite ? ' opacity-60' : '')}
                                         >
                                           <div className="flex items-center justify-between gap-2">
-                                            <div className="text-xs text-white">{opt.date} • {opt.time}{isWinner ? ' *' : ''}</div>
+                                            <div className="text-xs text-white">{opt.date} • {opt.time}{isWinner ? ' ⭐' : ''}</div>
                                             <div className="flex items-center gap-1">
                                               <button
                                                 type="button"
@@ -7864,7 +8152,7 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)}
                                                 title="Fix"
                                               >
-                                                Ja
+                                                ✅
                                               </button>
                                               <button
                                                 type="button"
@@ -7873,7 +8161,7 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)}
                                                 title="Kann"
                                               >
-                                                Kann
+                                                🤷
                                               </button>
                                               <button
                                                 type="button"
@@ -7882,11 +8170,11 @@ setSelfDestruct(false);
                                                 className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)}
                                                 title="Nein"
                                               >
-                                                Nein
+                                                ❌
                                               </button>
                                             </div>
                                           </div>
-                                          <div className="mt-1 text-[10px] text-neutral-500 tabular-nums">Ja {t.yes} &nbsp; Kann {t.maybe} &nbsp; Nein {t.no}</div>
+                                          <div className="mt-1 text-[10px] text-neutral-500 tabular-nums">✅{t.yes} &nbsp; 🤷{t.maybe} &nbsp; ❌{t.no}</div>
                                         </div>
                                       );
                                     }
@@ -7935,7 +8223,7 @@ setSelfDestruct(false);
 
                         <div className="bg-black border border-neutral-800 rounded-2xl p-3 max-h-72 overflow-y-auto">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-semibold text-white">Kommentare</div>
+                            <div className="text-xs font-semibold text-white">💬 Kommentare</div>
                             <div className="text-[10px] text-neutral-600">letzte</div>
                           </div>
 
@@ -7953,7 +8241,7 @@ setSelfDestruct(false);
                                   <div className="text-sm font-medium text-white truncate">{ev.title}</div>
                                   <div className="text-[10px] text-neutral-600 flex items-center gap-2 mt-1">
                                     <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: calendarTint(ev.calendarId || 'default') }} />
-                                    <span className="truncate">{getCalendarById(ev.calendarId || 'default').name || 'Privat'}</span>
+                                    <span className="truncate">{getCalendarById(ev.calendarId || 'default')?.name || 'Privat'}</span>
                                   </div>
                                   <div className="text-[11px] text-neutral-500 truncate">{(ev.lastCommentByName || 'User') + ': ' + (ev.lastCommentText || '')}</div>
                                 </div>
@@ -7965,7 +8253,9 @@ setSelfDestruct(false);
                       </div>
                     </div>
                   );
-                })()}</div>
+                })()}
+
+</div>
             )}
 
 
@@ -7988,34 +8278,18 @@ setSelfDestruct(false);
                         const bought = normalizeShoppingItems(list.items).filter((item) => item.done).length;
                         const total = normalizeShoppingItems(list.items).length;
                         return (
-                          <div key={list.id} className={`w-full rounded-2xl border p-4 transition-colors ${activeShoppingList.id === list.id ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500 bg-black/40'}`}>
+                          <button key={list.id} onClick={() => setActiveShoppingListId(list.id)} className={`w-full text-left rounded-2xl border p-4 transition-colors ${activeShoppingList?.id === list.id ? 'border-white bg-neutral-900' : 'border-neutral-800 hover:border-neutral-500 bg-black/40'}`}>
                             <div className="flex items-start justify-between gap-3">
-                              <button onClick={() => setActiveShoppingListId(list.id)} className="text-left min-w-0 flex-1">
+                              <div className="min-w-0">
                                 <div className="font-semibold text-white truncate">{list.title}</div>
                                 <div className="text-xs text-neutral-500 mt-1">{list.store || 'Ohne Ort'} · {bought}/{total} gekauft</div>
-                              </button>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <div className="text-[11px] text-neutral-400">{formatCurrencyCHF(calcShoppingPaidTotal(list))}</div>
-                                <button type="button" onClick={() => togglePinShoppingList(list.id)} className={`p-2 rounded-lg border ${userProfile?.pinnedShoppingListId === list.id ? 'border-white bg-white text-black' : 'border-neutral-700 text-neutral-300 hover:border-neutral-500'}`} title="Auf Startseite pinnen">
-                                  <Pin className="w-4 h-4" />
-                                </button>
                               </div>
+                              <div className="text-[11px] text-neutral-400">{formatCurrencyCHF(calcShoppingListTotal(list, true))}</div>
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
-                    {calcShoppingSpendByStore(shoppingLists).length > 0 && (
-                      <div className="mt-4 border-t border-neutral-800 pt-3 space-y-2">
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">Ausgaben je Laden</div>
-                        {calcShoppingSpendByStore(shoppingLists).slice(0, 6).map((row) => (
-                          <div key={row.store} className="flex items-center justify-between text-xs text-neutral-400">
-                            <span className="truncate pr-3">{row.store}</span>
-                            <span className="text-neutral-200">{formatCurrencyCHF(row.amount)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </aside>
                   <section className="flex-1 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-6">
                     {!activeShoppingList ? (
@@ -8030,7 +8304,7 @@ setSelfDestruct(false);
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <div className="px-3 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300">Offen {normalizeShoppingItems(activeShoppingList.items).filter((item) => !item.done).length}</div>
-                            <div className="px-3 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300">Bezahlt {formatCurrencyCHF(calcShoppingPaidTotal(activeShoppingList))}</div>
+                            <div className="px-3 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300">Gekauft {formatCurrencyCHF(calcShoppingListTotal(activeShoppingList, true))}</div>
                             <button onClick={() => deleteShoppingList(activeShoppingList.id)} className="px-3 py-2 rounded-xl border border-red-900/60 text-sm text-red-300 hover:bg-red-950/40 transition-colors">Liste löschen</button>
                           </div>
                         </div>
@@ -8038,32 +8312,15 @@ setSelfDestruct(false);
                           <input value={shoppingQuickItem} onChange={(e) => setShoppingQuickItem(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addShoppingItem(activeShoppingList.id); }} placeholder="Artikel hinzufügen, z. B. Milch" className="flex-1 bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                           <button onClick={() => addShoppingItem(activeShoppingList.id)} className="px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-neutral-200 transition-colors">Hinzufügen</button>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-[160px,1fr,auto] gap-3 mb-5">
-                          <input value={shoppingPaidAmount} onChange={(e) => setShoppingPaidAmount(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="Betrag CHF" className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                          <input value={shoppingPaidNote} onChange={(e) => setShoppingPaidNote(e.target.value)} placeholder="Notiz (optional), z. B. Wocheneinkauf" className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                          <button onClick={() => addShoppingPurchase(activeShoppingList.id)} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-700 text-white font-semibold hover:bg-neutral-800 transition-colors">Betrag speichern</button>
-                        </div>
-                        {normalizeShoppingPurchases(activeShoppingList.purchases).length > 0 && (
-                          <div className="mb-5 border border-neutral-800 rounded-xl p-3 bg-black/40 space-y-2">
-                            <div className="text-xs text-neutral-500">Letzte Ausgaben</div>
-                            {normalizeShoppingPurchases(activeShoppingList.purchases).slice(0, 5).map((row) => (
-                              <div key={row.id} className="flex items-center justify-between text-xs">
-                                <span className="text-neutral-400 truncate pr-3">
-                                  {(row.store || activeShoppingList.store || 'Ohne Laden')} · {new Date(row.paidAt).toLocaleDateString('de-CH')}{row.note ? ` · ${row.note}` : ''}
-                                </span>
-                                <span className="text-neutral-200">{formatCurrencyCHF(row.amount)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                         <div className="space-y-3">
                           {normalizeShoppingItems(activeShoppingList.items).length === 0 ? (
                             <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4">Noch keine Artikel in dieser Liste.</div>
                           ) : normalizeShoppingItems(activeShoppingList.items).sort((a,b) => Number(a.done) - Number(b.done)).map((item) => (
-                            <div key={item.id} className={`grid grid-cols-1 md:grid-cols-[auto,1fr,120px,auto] gap-3 items-center rounded-2xl border p-3 transition-colors ${item.done ? 'border-neutral-800 bg-neutral-950/70' : 'border-neutral-800 bg-black/60'}`}>
+                            <div key={item.id} className={`grid grid-cols-1 md:grid-cols-[auto,1fr,110px,120px,auto] gap-3 items-center rounded-2xl border p-3 transition-colors ${item.done ? 'border-neutral-800 bg-neutral-950/70' : 'border-neutral-800 bg-black/60'}`}>
                               <button onClick={() => toggleShoppingItem(activeShoppingList.id, item.id)} className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors ${item.done ? 'bg-white text-black border-white' : 'border-neutral-700 text-neutral-400 hover:border-neutral-500'}`}><CheckSquare className="w-4 h-4" /></button>
                               <input value={item.text} onChange={(e) => updateShoppingItem(activeShoppingList.id, item.id, { text: e.target.value })} className={`bg-black border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-neutral-500 ${item.done ? 'line-through text-neutral-500 border-neutral-900' : 'text-white border-neutral-800'}`} />
                               <input value={item.qty} onChange={(e) => updateShoppingItem(activeShoppingList.id, item.id, { qty: e.target.value })} placeholder="Menge" className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                              <input value={item.price} onChange={(e) => updateShoppingItem(activeShoppingList.id, item.id, { price: e.target.value.replace(/[^0-9.,]/g, '') })} placeholder="Preis CHF" className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
                               <button onClick={() => deleteShoppingItem(activeShoppingList.id, item.id)} className="h-10 w-10 rounded-xl border border-neutral-800 text-neutral-400 hover:border-red-700 hover:text-red-300 transition-colors flex items-center justify-center"><Trash2 className="w-4 h-4" /></button>
                             </div>
                           ))}
@@ -8076,167 +8333,85 @@ setSelfDestruct(false);
             )}
 
             {currentView === 'extras' && (() => {
-              const extraCards = [];
-              const slotChrome = (key, title, subtitle, body, spanClass = '') => (
-                <section
-                  key={key}
-                  draggable
-                  onDragStart={() => setDraggedExtraSlot(key)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => {
-                    if (!draggedExtraSlot || draggedExtraSlot === key) return;
-                    setExtrasSlotOrder(prev => reorderExtraKeys(prev, draggedExtraSlot, key));
-                    setDraggedExtraSlot('');
-                    showToast('Reihenfolge gespeichert');
-                  }}
-                  onDragEnd={() => setDraggedExtraSlot('')}
-                  className={`border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4 ${spanClass} ${draggedExtraSlot === key ? 'ring-1 ring-white/20' : ''}`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">{title}</div>
-                      <div className="text-sm text-neutral-400">{subtitle}</div>
-                    </div>
-                    <div className="flex items-center gap-2 text-neutral-500 shrink-0">
-                      <span className="text-[11px] hidden md:inline">ziehen zum Sortieren</span>
-                      <GripVertical className="w-4 h-4" />
-                    </div>
-                  </div>
-                  {body}
-                </section>
-              );
-              if (showExtrasWorkClock) {
-                extraCards.push({ key: 'workclock', node: slotChrome('workclock', 'Stempeluhr', 'Start, Kaffee-Pause, Stopp und kurze Rapporte.', (
-                  <>
-                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              if (!showExtrasWorkClock) {
+                return (
+                  <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
+                    <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
                       <div>
-                        <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
-                        <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive.isPaused ? 'Pause aktiv - Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
+                        <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
+                        <p className="text-sm text-neutral-500 mt-2">In Extras ist nur noch die Stempeluhr aktiv.</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {!workClockActive?.startedAt ? (
-                          <button onClick={startWorkClock} className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
-                        ) : (
-                          <>
-                            <button onClick={toggleWorkClockPause} className={`px-3 py-2 rounded-xl border text-xs font-semibold transition-colors flex items-center gap-2 ${workClockActive.isPaused ? 'bg-amber-300/20 border-amber-300/60 text-amber-100 hover:bg-amber-300/25' : 'bg-neutral-900 border-neutral-800 text-white hover:border-neutral-500'}`}>{workClockActive.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive.isPaused ? 'Pause Ende' : 'Kaffee'}</button>
-                            <button onClick={requestStopWorkClock} className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Ende</button>
-                          </>
-                        )}
-                        <button onClick={exportWeekWorkClockCsv} className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Woche</button>
-                        <button onClick={exportMonthWorkClockCsv} className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-xs font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Monat</button>
+                        <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Einstellungen</button>
                       </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ø {formatDurationVerbose(weekAvgMs)}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
-                    </div>
-                    {(workClockSessions || []).length > 0 && (
-                      <div className="space-y-2">
-                        <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">Historie</div>
-                        {(workClockSessions || []).slice(0, 10).map((s) => (
-                          <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
-                            <div className="min-w-0 flex-1">
-                              <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
-                              <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
-                              <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ), 'xl:col-span-2')});
+                    </header>
+                    <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-5 text-sm text-neutral-400">Stempeluhr ist aktuell deaktiviert.</div>
+                  </div>
+                );
               }
-              if (showExtrasGoals) {
-                extraCards.push({ key: 'goals', node: slotChrome('goals', 'Tagesziele', 'Drei wichtige Ziele für heute - mit Cloud-Sync.', (
-                  <>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-xl font-semibold text-white">{completedGoals}/3 erledigt</div>
-                      <button onClick={() => setDailyGoals(normalizeDailyGoals([]))} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Zurücksetzen</button>
-                    </div>
-                    <div className="space-y-3">
-                      {normalizeDailyGoals(dailyGoals).slice(0, 3).map((goal, idx) => (
-                        <div key={goal.id} className="flex items-center gap-3">
-                          <button type="button" onClick={() => setDailyGoals(prev => normalizeDailyGoals(prev).map((item, i) => i === idx ? { ...item, done: !item.done } : item))} className={`p-2 rounded-lg border transition-colors ${goal.done ? 'bg-white text-black border-white' : 'border-neutral-800 text-neutral-400 hover:border-neutral-600'}`}><CheckSquare className="w-4 h-4" /></button>
-                          <input value={goal.text} onChange={(e) => setDailyGoals(prev => normalizeDailyGoals(prev).map((item, i) => i === idx ? { ...item, text: e.target.value } : item))} placeholder={`Ziel ${idx + 1}`} className="flex-1 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasTimeBalance) {
-                extraCards.push({ key: 'sollist', node: slotChrome('sollist', 'Soll-/Ist-Stunden', 'Wochenziel, Fortschritt und Differenz aus der Stempeluhr.', (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Soll</div><div className="mt-1 text-sm font-medium text-neutral-100">{weeklyTargetHours || '0'} h</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Ist</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div></div>
-                      <div className={`px-3 py-3 rounded-xl border bg-black ${weekDeltaMs >= 0 ? 'border-emerald-900/40 text-emerald-300' : 'border-amber-900/40 text-amber-300'}`}><div className="text-[10px] uppercase tracking-widest text-current/70">Differenz</div><div className="mt-1 text-sm font-medium">{`${weekDeltaMs >= 0 ? '+' : '-'}${formatDurationVerbose(Math.abs(weekDeltaMs))}`}</div></div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between text-[11px] text-neutral-500 mb-2"><span>Wochenziel</span><span>{weekTargetPct}% erreicht</span></div>
-                      <div className="h-2 rounded-full bg-black border border-neutral-800 overflow-hidden"><div className="h-full bg-white" style={{ width: `${weekTargetPct}%` }} /></div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <input value={weeklyTargetHours} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} onFocus={() => { weeklyTargetEditingRef.current = true; }} onBlur={() => { weeklyTargetEditingRef.current = false; }} placeholder="42" className="w-28 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                      <span className="text-sm text-neutral-500">Stunden pro Woche</span>
-                    </div>
-                  </>
-                ))});
-              }
-
-              if (showExtrasNotes) {
-                extraCards.push({ key: 'notes', node: slotChrome('notes', 'Schnellnotizen', 'Mit Firebase-Sync - dieselben Notizen auf allen Geräten.', (
-                  <>
-                    <div className="text-sm text-neutral-400">Cloud-Sync aktiv. Änderungen werden automatisch übernommen.</div>
-                    <textarea value={quickNotes} onChange={(e) => setQuickNotes(e.target.value)} rows={10} placeholder={`Heute
-- ... ? Morgen
-- ... ? Später
-- ...`} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                  </>
-                ))});
-              }
-
-              if (showExtrasWeather) {
-                extraCards.push({ key: 'weather', node: slotChrome('weather', 'Wetter-Planer', 'Wetter, Kleidung und bestes Zeitfenster im Blick.', (
-                  <>
-                    <div className="text-xl font-semibold text-white">{weatherBadgeMeta.icon} {weatherBadgeMeta.text}</div>
-                    <div className="mt-2 text-sm text-neutral-400">{todayWeatherAdvice}</div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Beste Phase</div><div className="mt-1 text-sm font-medium text-neutral-100">{bestWeatherWindow}</div></div>
-                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Kleidung</div><div className="mt-1 text-sm font-medium text-neutral-100">{todayWeatherAdvice.includes('Jacke') ? 'Jacke sinnvoll' : (todayWeatherAdvice.includes('Schirm') ? 'Schirm sinnvoll' : 'Leicht und trocken')}</div></div>
-                    </div>
-                  </>
-                ))});
-              }
-
-              const cardMap = Object.fromEntries(extraCards.map((item) => [item.key, item.node]));
-              const orderedKeys = normalizeExtrasOrder(extrasSlotOrder).filter((key) => cardMap[key]);
-              const extraKeys = Object.keys(cardMap).filter((key) => !orderedKeys.includes(key));
-              const finalKeys = [...orderedKeys, ...extraKeys];
 
               return (
                 <div className="p-6 md:p-10 max-w-6xl w-full mx-auto animate-fade-in space-y-6">
                   <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
                     <div>
                       <h2 className="text-3xl md:text-4xl font-light">Extras</h2>
-                      <p className="text-sm text-neutral-500 mt-2">Nützliche Werkzeuge getrennt von der Startseite - jetzt zusätzlich frei sortierbar per Drag & Drop.</p>
+                      <p className="text-sm text-neutral-500 mt-2">Nur Stempeluhr: Start, Pause, Stopp und Historie.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button onClick={() => setCurrentView('dashboard')} className="px-4 py-2 rounded-xl border border-neutral-800 text-sm text-neutral-300 hover:border-neutral-500 transition-colors">Zur Startseite</button>
-                      <button onClick={() => setCurrentView('settings')} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200 transition-colors">Extras einstellen</button>
                     </div>
                   </header>
 
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                    {finalKeys.map((key) => cardMap[key])}
-                  </div>
+                  <section className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5 space-y-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
+                        <div className="text-xl md:text-2xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : 'Noch nicht gestartet'}</div>
+                        <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv – Arbeitszeit steht' : 'Arbeitszeit läuft') : 'Starte, pausiere und beende deine Arbeit von hier.'}</div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {!workClockActive?.startedAt ? (
+                          <button onClick={startWorkClock} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
+                        ) : (
+                          <>
+                            <button onClick={toggleWorkClockPause} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Pause fertig' : 'Pause'}</button>
+                            <button onClick={requestStopWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
+                          </>
+                        )}
+                        <button onClick={exportWeekWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Woche</button>
+                        <button onClick={exportMonthWorkClockCsv} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2"><Download className="w-4 h-4" /> Monat</button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Heute</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(todayWorkMs)}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Woche</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(weekWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">Ø {formatDurationVerbose(weekAvgMs)}</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Monat</div><div className="mt-1 text-sm font-medium text-neutral-100">{formatDurationVerbose(monthWorkMs)}</div><div className="text-[11px] text-neutral-500 mt-1">{monthSessions.length + (activeWorkMs > 0 ? 1 : 0)} Sessionen</div></div>
+                      <div className="px-3 py-3 rounded-xl border border-neutral-800 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Belastung</div><div className="mt-1 text-sm font-medium text-neutral-100">{workLevelSummary.map(x => `${x.level[0].toUpperCase()}${x.level.slice(1)} ${x.count}`).join(' · ')}</div></div>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500 mb-2">Historie</div>
+                      {(workClockSessions || []).length === 0 ? (
+                        <div className="text-sm text-neutral-500 border border-neutral-800 rounded-xl px-3 py-4 bg-black">Noch keine Einträge.</div>
+                      ) : (
+                        <div className="space-y-2 max-h-[52vh] overflow-y-auto pr-1">
+                          {(workClockSessions || []).slice(0, 40).map((s) => (
+                            <div key={s.id} className="flex items-center justify-between gap-3 text-sm border border-neutral-800 rounded-xl px-3 py-2 bg-black">
+                              <div className="min-w-0 flex-1">
+                                <div className="text-neutral-100 truncate">{s.title || 'Arbeit'}</div>
+                                <div className="text-[11px] text-neutral-500">{s.startedAt ? new Date(s.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · {s.level || 'mittel'}</div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="text-neutral-300 font-medium shrink-0">{formatDurationVerbose(s.workMs || 0)}</div>
+                                <button type="button" onClick={() => openEditWorkClockSession(s)} className="p-2 rounded-lg border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-600 transition-colors" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </section>
                 </div>
               );
             })()}
@@ -8245,101 +8420,141 @@ setSelfDestruct(false);
     const q = (settingsQuery || '').trim().toLowerCase();
     const match = (...keys) => {
       if (!q) return true;
-      const all = keys.flat().filter(Boolean).map(x => String(x).toLowerCase());
-      return all.some(k => k.includes(q));
+      const all = keys.flat().filter(Boolean).map((x) => String(x).toLowerCase());
+      return all.some((k) => k.includes(q));
     };
-    const SETTINGS_SECTIONS = [
-      { id: 'account', label: 'Design & Konto', icon: User, keys: ['account', 'design', 'theme', 'datenschutz', 'abmelden', 'email'] },
-      { id: 'notifications', label: 'Produktivität & Extras', icon: Activity, keys: ['extras', 'stempeluhr', 'notiz', 'tagesziel', 'soll ist', 'wochenziel', 'reihenfolge', 'wetter'] },
-      { id: 'pushdiag', label: 'Push & Diagnose', icon: Bell, keys: ['push', 'benachr', 'reminder', 'erinnerung', 'ton', 'pwa', 'token', 'test', 'diagnose', 'service worker'] },
-      { id: 'calendars', label: 'Kalender & Schichten', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'privat', 'freigabe', 'teilen', 'share', 'busy'] },
-      { id: 'links', label: 'Freigaben & Links', icon: Link2, keys: ['public', 'link', 'busy', 'passcode', 'magic', 'ablauf'] },
-      { id: 'ics', label: 'Daten (Import/Export)', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
-      { id: 'audit', label: 'Verlauf & Audit', icon: History, keys: ['audit', 'log', 'verlauf', 'änderung', 'wer'] },
+    const TABS = [
+      { id: 'account', label: 'Account & Sicherheit', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'sicherheit', 'datenschutz', 'abmelden', 'email'] },
+      { id: 'calendars', label: 'Kalender & Freigaben', subtitle: 'Farben, Schichtpläne und Teilen', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
+      { id: 'links', label: 'Public Links', subtitle: 'Busy-only Links und Ablauf', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
+      { id: 'ics', label: 'Import/Export', subtitle: 'ICS Export und Import', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
+      { id: 'audit', label: 'Audit & Verlauf', subtitle: 'Aktionsprotokoll und Kalenderhistorie', icon: History, keys: ['audit', 'verlauf', 'log', 'aenderung', 'wer'] },
     ];
-    const settingsSectionById = Object.fromEntries(SETTINGS_SECTIONS.map((s) => [s.id, s]));
-    const sectionSearchTerms = (section) => [section.label, section.id, ...(section.keys || [])];
-    const filteredTabs = q ? SETTINGS_SECTIONS.filter((t) => match(sectionSearchTerms(t))) : SETTINGS_SECTIONS;
-    const activeSectionId = q
-      ? (filteredTabs.find((t) => t.id === settingsTab)?.id || filteredTabs[0]?.id || null)
-      : settingsTab;
-    const isCompactSettings = (typeof window !== 'undefined') ? window.innerWidth < 1024 : false;
+    const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
+    const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
+    const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
+      .filter((field) => isExtraFieldEnabled(field))
+      .length;
 
-
-              const AccordionItem = ({ id, children }) => {
-                const section = settingsSectionById[id];
-                if (!section) return null;
-                const visible = !q || match(sectionSearchTerms(section));
-                if (!visible) return null;
-                const Icon = section.icon;
-                const isOpen = activeSectionId === id;
-                return (
-                  <div className="bg-neutral-950/50 border border-neutral-800 rounded-2xl overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setSettingsTab(id)}
-                      className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-neutral-900/70 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Icon className="w-4 h-4 text-neutral-300" />
-                        <span className="text-sm text-white font-medium truncate">{section.label}</span>
-                      </div>
-                      <ChevronDown className={"w-4 h-4 text-neutral-500 transition-transform " + (isOpen ? 'rotate-180' : '')} />
-                    </button>
-                    {isOpen ? <div className="p-4 border-t border-neutral-800 space-y-4">{children}</div> : null}
-                  </div>
-                );
-              };
+    const AccordionItem = ({ id, keys, children }) => {
+      const visible = !q || match(keys);
+      if (!visible) return null;
+      const open = q ? true : (settingsTab === id);
+      if (!open) return null;
+      return (
+        <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+          <div className="settings-section-body px-5 py-4">
+            {children}
+          </div>
+        </section>
+      );
+    };
 
     return (
-      <div className="p-5 md:p-8 xl:p-10 max-w-7xl mx-auto w-full animate-fade-in">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
-          <div className="min-w-0">
-            <h2 className="text-3xl md:text-4xl font-light">Einstellungen</h2>
-            <p className="mt-2 text-sm text-neutral-500">
-              Neu geordnet: zuerst Design & Konto, dann Produktivität, Kalender, Freigaben und Daten.
-            </p>
-            <p className="mt-1 text-[11px] text-neutral-600">Build {BUILD_VERSION}</p>
+      <div className="settings-pro p-5 md:p-8 xl:p-10 max-w-7xl mx-auto w-full animate-fade-in space-y-6">
+        <section className="settings-hero rounded-3xl border border-neutral-800 bg-gradient-to-br from-neutral-950 via-black to-neutral-950 p-5 md:p-7">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3">
+                <h2 className="text-3xl md:text-4xl font-light flex items-center gap-2">Einstellungen <span aria-hidden="true" className="text-2xl">✨</span></h2>
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
+                  title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+                >
+                  {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                  <span>{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-neutral-400">Alle Einstellungen zentral, klar gruppiert und direkt durchsuchbar.</p>
+            </div>
+            <div className="hidden md:grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Tab</div><div className="text-neutral-200 mt-1">{activeTab?.label || 'Kalender'}</div></div>
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Extras aktiv</div><div className="text-neutral-200 mt-1">{enabledExtraCount}</div></div>
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Push</div><div className="text-neutral-200 mt-1">{isStandalone ? 'PWA' : 'Browser'}</div></div>
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Suche</div><div className="text-neutral-200 mt-1">{q ? 'aktiv' : 'aus'}</div></div>
+            </div>
           </div>
-
-          <div className="w-full md:w-[360px]">
-            <div className="relative">
+            <div className="mt-4 relative max-w-xl">
               <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 value={settingsQuery}
                 onChange={(e) => setSettingsQuery(e.target.value)}
-                placeholder="Einstellungen durchsuchen..."
-                className="w-full bg-black border border-neutral-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
+                placeholder="Einstellungen suchen..."
+                className="settings-search-input w-full bg-black border border-neutral-800 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-600"
               />
-              {!!settingsQuery && (
+            {!!settingsQuery && (
+              <button type="button" onClick={() => setSettingsQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-neutral-500 hover:text-white" title="Zuruecksetzen">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </section>
+
+        <div className="lg:hidden -mt-2">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {(q ? visibleTabs : TABS).map((t) => {
+              const Icon = t.icon;
+              const active = settingsTab === t.id && !q;
+              return (
                 <button
+                  key={`mobile-${t.id}`}
                   type="button"
-                  onClick={() => setSettingsQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-neutral-500 hover:text-white"
-                  title="Zurücksetzen"
+                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
+                  className={
+                    "shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs transition-colors " +
+                    (active
+                      ? "bg-white text-black border-white"
+                      : "bg-neutral-950/60 text-neutral-300 border-neutral-800 hover:border-neutral-600")
+                  }
                 >
-                  <X className="w-4 h-4" />
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{t.label}</span>
                 </button>
-              )}
-            </div>
+              );
+            })}
           </div>
         </div>
 
-        <div className="space-y-3 min-w-0">
-          <div className="text-[11px] text-neutral-600 leading-relaxed px-1">
-            <div className="flex items-center gap-2">
-              <Info className="w-3.5 h-3.5" />
-              <span>"Test (Server)" braucht Firestore-Zugriff (kein Adblock/Shield).</span>
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
+          <aside className="settings-nav-wrap hidden lg:block sticky top-6 self-start space-y-3">
+            <div className="settings-nav bg-neutral-950/60 border border-neutral-800 rounded-2xl p-2">
+              {TABS.map((t) => {
+                const Icon = t.icon;
+                const active = settingsTab === t.id && !q;
+                const disabledBySearch = q && !match(t.keys);
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
+                    className={
+                      "settings-nav-item w-full text-left px-3 py-3 rounded-xl transition-colors " +
+                      (active ? "bg-white text-black" : "text-neutral-200 hover:bg-neutral-900") +
+                      (disabledBySearch ? " opacity-50" : "")
+                    }
+                    title={disabledBySearch ? "Nicht im Suchresultat" : ""}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon className="w-4 h-4" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold truncate">{t.label}</div>
+                        <div className={"text-[11px] truncate " + (active ? "text-black/70" : "text-neutral-500")}>{t.subtitle}</div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-          </div>
+          </aside>
 
-          <main className="space-y-3 min-w-0">
+          <main className="space-y-4 min-w-0">
             {/* KALENDER VERWALTUNG */}
-            <AccordionItem id="calendars">
+            <AccordionItem id="calendars" label="Kalender" icon={CalendarIcon} keys={['kalender','schicht','farbe','privat','freigabe','teilen','share','busy']} >
               <section id="settings-calendars">
                 <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-4">
                   <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-2">
-                    <CalendarIcon className="w-4 h-4" /> Meine Kalender & Schichten
+                    <CalendarIcon className="w-4 h-4" /> Meine Kalender & Schichten <span aria-hidden="true">🗓️</span>
                   </h3>
                   <button onClick={() => { setCalForm({ id: null, name: '', type: 'normal', color: PASTEL_COLORS[(Date.now() % PASTEL_COLORS.length)], shifts: [] }); setIsCalManageModalOpen(true); }} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">+ Neu</button>
                 </div>
@@ -8370,7 +8585,7 @@ setSelfDestruct(false);
                         type="button"
                         onClick={() => openShareLinkModalForCalendar({ id: 'default', name: 'Privat' })}
                         className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-                        title="Public Busy-Only Link"
+                        title="Public Busy‑Only Link"
                       >
                         <Lock className="w-4 h-4" />
                       </button>
@@ -8384,7 +8599,7 @@ setSelfDestruct(false);
                         <p className="text-xs text-neutral-500 mt-1">Freigegeben für: {Object.keys(cal.sharedWith || {}).length} Nutzer</p>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busy-Only Link"><Lock className="w-4 h-4"/></button>
+                        <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busy‑Only Link"><Lock className="w-4 h-4"/></button>
                         <button onClick={() => { setShareCalData(cal); setIsShareCalModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Share2 className="w-4 h-4"/></button>
                         <button onClick={() => { setCalForm({ ...cal, color: (cal.color || calendarTint(cal.id)) }); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
                         <button onClick={() => deleteCalendar(cal.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 className="w-4 h-4"/></button>
@@ -8403,247 +8618,17 @@ setSelfDestruct(false);
               </section>
             </AccordionItem>
 
-            {/* EXTRAS */}
-            <AccordionItem id="notifications">
-              <section id="settings-notifications">
-                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Activity className="w-4 h-4" /> Extras
-                </h3>
-
-                {/* Core settings */}
-                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {[
-                      ['dailyGoalsEnabled','Tagesziele','Drei Tagesziele mit Häkchen und Cloud-Sync.'],
-                      ['timeBalanceEnabled','Soll-/Ist-Stunden','Wochenziel gegen echte Arbeitszeit vergleichen.'],
-                      ['quickNotesEnabled','Schnellnotizen','Mit Firebase-Sync auf allen Geräten verfügbar.'],
-                      ['weatherPlannerEnabled','Wetter-Planer','Zusätzliche Wetter-/Kleidungs-Hinweise in Extras.']
-                    ].map(([field,label,desc]) => (
-                      <div key={field} className="border border-neutral-800 rounded-xl bg-black p-4 flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-medium text-white">{label}</p>
-                          <p className="text-xs text-neutral-500 mt-1">{desc}</p>
-                        </div>
-                        <button type="button" onClick={async () => {
-                          try {
-                            const defaultOn = true;
-                            const current = (userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn;
-                            const next = !(current === true);
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { [field]: next, updatedAt: Date.now() }, { merge: true });
-                            setUserProfile(prev => ({ ...(prev || {}), [field]: next }));
-                            showToast(next ? 'Aktiviert' : 'Deaktiviert');
-                          } catch (_) { showToast('Fehler'); }
-                        }} className={"px-3 py-2 rounded-xl text-xs font-semibold border transition-colors " + (((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : true) === true ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
-                          {(((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : true) === true) ? 'Aktiv' : 'Aus'}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="border border-neutral-800 rounded-xl bg-black p-4 space-y-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-medium text-white flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Wochenziel & Extras-Reihenfolge</p>
-                        <p className="text-xs text-neutral-500 mt-1">Definiert dein Soll pro Woche. Im Extras-Bereich kannst du die Karten direkt per Drag & Drop verschieben.</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Wochenziel in Stunden</label>
-                        <input value={weeklyTargetHours} onChange={(e) => setWeeklyTargetHours(e.target.value.replace(',', '.'))} onFocus={() => { weeklyTargetEditingRef.current = true; }} onBlur={() => { weeklyTargetEditingRef.current = false; }} placeholder="42" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                      </div>
-                      <div className="flex items-end">
-                        <button type="button" onClick={() => { setExtrasSlotOrder(normalizeExtrasOrder(DEFAULT_EXTRAS_ORDER)); showToast('Extras-Reihenfolge zurückgesetzt'); }} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Reihenfolge zurücksetzen</button>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-              </section>
-            </AccordionItem>
-
-            {/* PUSH & DIAGNOSE */}
-            <AccordionItem id="pushdiag">
-              <section id="settings-pushdiag">
-                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Bell className="w-4 h-4" /> Push & Diagnose
-                </h3>
-
-                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
-                  <div className="border border-neutral-800 rounded-xl bg-black p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-medium text-white">Push & Erinnerungen</p>
-                        <p className="text-xs text-neutral-500 mt-1">Push-Berechtigung, Standard-Erinnerung und Testfunktionen sind hier gebündelt.</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-medium text-white">Kalender-Erinnerungen</p>
-                      <p className="text-xs text-neutral-500 mt-1">Standard-Erinnerung gilt für neue Termine (und für Termine mit "Standard"). Pro Termin kannst du es im Termin-Modal überschreiben.</p>
-                    </div>
-                    <div className="flex gap-2">
-                      {!isStandalone && canInstallPwa && (
-                        <button
-                          type="button"
-                          onClick={() => { try { promptInstallPwa(); } catch(e) {} }}
-                          className="px-4 py-2 bg-white text-black rounded-md text-sm font-semibold hover:bg-gray-200 transition-colors"
-                        >
-                          Installieren
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        disabled={!isStandalone}
-                        onClick={() => { try { requestNotificationPermission(user); } catch(e) {} }}
-                        className={"px-4 py-2 rounded-md text-sm transition-colors " + (isStandalone ? "bg-neutral-900 border border-neutral-800 hover:text-white" : "bg-neutral-950 border border-neutral-900 text-neutral-600 cursor-not-allowed")}
-                        title={isStandalone ? "Benachrichtigungen aktivieren" : (isIosUA ? "iPhone/iPad: Teilen -> Zum Home-Bildschirm" : "Bitte zuerst installieren")}
-                      >
-                        Erlauben
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Standard-Erinnerung</label>
-                      <select
-                        value={(() => {
-                          const v = (userProfile && typeof userProfile?.defaultReminderMinutes === 'number') ? String(userProfile?.defaultReminderMinutes) : 'none';
-                          return v;
-                        })()}
-                        onChange={async (e) => {
-                          try {
-                            const v = e.target.value;
-                            const next = (v === 'none') ? null : (parseInt(v, 10) || 0);
-                            setUserProfile(prev => ({ ...(prev || {}), defaultReminderMinutes: next }));
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { defaultReminderMinutes: next }, { merge: true });
-                            showToast('Gespeichert');
-                          } catch (err) {
-                            showToast('Fehler');
-                          }
-                        }}
-                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                      >
-                        <option value="none">Keine</option>
-                        <option value="0">Bei Beginn</option>
-                        <option value="5">5 Minuten vorher</option>
-                        <option value="10">10 Minuten vorher</option>
-                        <option value="15">15 Minuten vorher</option>
-                        <option value="30">30 Minuten vorher</option>
-                        <option value="60">1 Stunde vorher</option>
-                        <option value="120">2 Stunden vorher</option>
-                        <option value="1440">1 Tag vorher</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benachrichtigungston</label>
-                      <select
-                        value={(() => {
-                          const v = (userProfile && userProfile?.notificationSoundMode) ? String(userProfile?.notificationSoundMode) : 'system';
-                          return (v === 'silent') ? 'silent' : 'system';
-                        })()}
-                        onChange={async (e) => {
-                          try {
-                            const v = e.target.value;
-                            setUserProfile(prev => ({ ...(prev || {}), notificationSoundMode: v }));
-                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), { notificationSoundMode: v }, { merge: true });
-                            showToast('Gespeichert');
-                          } catch (err) {
-                            showToast('Fehler');
-                          }
-                        }}
-                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                      >
-                        <option value="system">System (Standard)</option>
-                        <option value="silent">Stumm</option>
-                      </select>
-                      <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich - du kannst nur Systemton nutzen oder stumm schalten.</p>
-                    </div>
-                  </div>
-
-                  <div className="border border-neutral-800 rounded-xl bg-black p-4">
-                    <div className="text-xs text-neutral-300 font-semibold select-none flex items-center gap-2">
-                      <Activity className="w-4 h-4" /> Diagnostik & Tests
-                    </div>
-
-                    <div className="mt-3 space-y-3">
-                      <div className="text-[11px] text-neutral-600">
-                        Status: <span className="text-neutral-300">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</span>
-                      </div>
-
-                      <div className="text-[11px] text-neutral-600">
-                        Service Worker: <span className="text-neutral-300">{pushDiag.sw}</span>{pushDiag.controlling ? <span className="text-neutral-500"> · controlling (OK)</span> : <span className="text-neutral-500"> · not controlling</span>}
-                      </div>
-
-                      <div className="text-[11px] text-neutral-600">
-                        Web Token: <span className="text-neutral-300">{(userProfile && userProfile?.fcmTokenWeb) ? 'vorhanden (OK)' : 'nicht gesetzt'}</span>
-                      </div>
-
-                      <div className="text-[11px] text-neutral-600">
-                        Letzter Push-Empfang: <span className="text-neutral-300">{pushDiag.lastReceivedAt ? `${new Date(pushDiag.lastReceivedAt).toLocaleString()}${pushDiag.lastReceivedTitle ? ` · ${pushDiag.lastReceivedTitle}` : ''}` : '-'}</span>
-                      </div>
-
-                      {!!pushTest.id && (
-                        <div className="text-[11px] text-neutral-600 break-words">
-                          Server-Test Status: <span className="text-neutral-300">{pushTest.status || 'pending'}</span>
-                          {pushTest.lastError ? <span className="text-amber-400"> · {pushTest.lastError}</span> : null}
-                        </div>
-                      )}
-
-                      {!isStandalone && (
-                        <div className="text-[11px] text-amber-400">
-                          {isIosUA ? 'iPhone/iPad: Teilen -> "Zum Home-Bildschirm" installieren.' : 'Bitte installieren, dann "Erlauben". '}
-                        </div>
-                      )}
-
-                      {!!(pushDiag && pushDiag.lastError) && (
-                        <div className="text-[11px] text-amber-400 break-words">
-                          Push-Fehler: {String(pushDiag.lastError)}
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => { try { sendLocalPushTest(); } catch(_) {} }}
-                          className="px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-xs hover:border-neutral-500"
-                        >
-                          Test (lokal)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { try { sendServerPushTest(); } catch(_) {} }}
-                          className="px-3 py-2 bg-white text-black rounded-md text-xs font-semibold hover:bg-gray-200"
-                        >
-                          Test (Server)
-                        </button>
-                      </div>
-
-                      <div className="text-[11px] text-neutral-600 leading-relaxed">
-                        Hinweis: Wenn "Test (Server)" sofort fehlschlägt, ist meist Firestore geblockt (Opera Shield / Adblock) oder Rules erlauben <span className="text-neutral-300">public/data/pushTests:create</span>.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </AccordionItem>
-
-            {/* PUBLIC LINKS */}
-            <AccordionItem id="links">
+            <AccordionItem id="links" label="Public Links" icon={Link2} keys={['public','link','busy','passcode','magic','ablauf']} >
               <section id="settings-links">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Link2 className="w-4 h-4" /> Public Links
+                  <Link2 className="w-4 h-4" /> Public Links <span aria-hidden="true">🔗</span>
                 </h3>
 
                 <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
                   
 <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
   <div className="flex-1 min-w-0">
-    <div className="text-sm text-white font-medium">Busy-Only Links</div>
+    <div className="text-sm text-white font-medium">Busy‑Only Links</div>
     <div className="text-[11px] text-neutral-500 mt-1">Externe sehen nur belegte Zeitblöcke (keine Titel/Orte). Optional mit Ablauf & Passcode.</div>
   </div>
   <div className="flex flex-col sm:flex-row gap-2">
@@ -8661,9 +8646,9 @@ setSelfDestruct(false);
     <button
       type="button"
       onClick={() => {
-          const cal = (settingsShareCalId === 'default')
-            ? { id: 'default', name: 'Privat' }
-            : (customCalendars || []).find(c => c.id === settingsShareCalId) || { id: 'default', name: 'Privat' };
+        const cal = (settingsShareCalId === 'default')
+          ? { id: 'default', name: 'Privat' }
+          : (customCalendars || []).find(c => c.id === settingsShareCalId) || { id: 'default', name: 'Privat' };
         openShareLinkModalForCalendar(cal);
       }}
       className="px-3 py-2 bg-white text-black rounded-lg text-xs font-semibold hover:bg-gray-200"
@@ -8671,7 +8656,9 @@ setSelfDestruct(false);
       Link erstellen
     </button>
   </div>
-</div> ? {(() => {
+</div>
+
+{(() => {
   const now = Date.now();
   const all = Array.isArray(shareLinks) ? shareLinks.slice() : [];
   const notRevoked = all.filter(l => l && !l.revokedAtMs);
@@ -8682,10 +8669,10 @@ setSelfDestruct(false);
 
   const renderItem = (l) => {
     const url = makeShareUrl(l.id);
-    const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '-';
-    const calName = (l.calName || (l.calId === 'default' ? 'Privat' : ((customCalendars || []).find(c => c.id === l.calId)?.name)) || 'Kalender');
+    const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '—';
+    const calName = (l.calName || (l.calId === 'default' ? 'Privat' : (customCalendars || []).find(c => c.id === l.calId)?.name) || 'Kalender');
     const prot = (l.protection || 'magic');
-    const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magic-Link');
+    const protLabel = prot === 'passcode' ? 'Passcode' : (prot === 'none' ? 'Ohne' : 'Magic‑Link');
     return (
       <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
         <div className="min-w-0">
@@ -8699,7 +8686,7 @@ setSelfDestruct(false);
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => { try { navigator.clipboard.writeText(url); showToast('Kopiert'); } catch (_) {} }}
+            onClick={() => { try { navigator.clipboard?.writeText(url); showToast('Kopiert'); } catch (_) {} }}
             className="p-2 border border-neutral-800 rounded-lg text-neutral-300 hover:bg-neutral-900"
             title="Kopieren"
           >
@@ -8721,7 +8708,7 @@ setSelfDestruct(false);
   if (active.length === 0 && expired.length === 0) {
     return (
       <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-4 text-center">
-        Noch keine Links. Erstelle einen Link über <span className="text-neutral-300">Link erstellen</span> oder das <span className="text-neutral-300">Schloss</span>-Icon am Kalender.
+        Noch keine Links. Erstelle einen Link über <span className="text-neutral-300">Link erstellen</span> oder das <span className="text-neutral-300">🔒</span> Icon am Kalender.
       </div>
     );
   }
@@ -8748,7 +8735,7 @@ setSelfDestruct(false);
             </AccordionItem>
 
             {/* AUDIT LOG */}
-            <AccordionItem id="audit">
+            <AccordionItem id="audit" label="Audit" icon={History} keys={['audit','log','verlauf','änderung','wer']} >
               <section id="settings-audit">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <History className="w-4 h-4" /> Audit Log
@@ -8776,13 +8763,13 @@ setSelfDestruct(false);
 
                       <div className="border-t border-neutral-800 pt-4">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-xs text-neutral-400 font-semibold">Kalender-Audit</div>
+                          <div className="text-xs text-neutral-400 font-semibold">Kalender‑Audit</div>
                           <select
                             value={auditCalId || 'default'}
                             onChange={(e) => setAuditCalId(e.target.value)}
                             className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
                           >
-                            <option value="default">Privat (nur "Meine Aktionen")</option>
+                            <option value="default">Privat (nur „Meine Aktionen“)</option>
                             {(customCalendars || []).filter(Boolean).map(c => (
                               <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
@@ -8791,7 +8778,7 @@ setSelfDestruct(false);
 
                         <div className="mt-3">
                           {auditCalId === 'default' ? (
-                            <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalender-Audit (siehe "Meine Aktionen").</div>
+                            <div className="text-sm text-neutral-500">Privat hat kein zentrales Kalender‑Audit (siehe „Meine Aktionen“).</div>
                           ) : (auditCalEntries || []).length === 0 ? (
                             <div className="text-sm text-neutral-500">Noch keine Einträge.</div>
                           ) : (
@@ -8799,7 +8786,7 @@ setSelfDestruct(false);
                               {(auditCalEntries || []).slice(0, 50).map(a => (
                                 <div key={a.id} className="border border-neutral-800 rounded-xl p-3 bg-black">
                                   <div className="text-xs text-neutral-300">{a.summary || a.action}</div>
-                                  <div className="mt-1 text-[10px] text-neutral-600 tabular-nums">{a.tsMs ? new Date(a.tsMs).toLocaleString('de-CH') : ''} · {a.uid ? (getProfile(a.uid).username || shortId(a.uid, 6)) : ''}</div>
+                                  <div className="mt-1 text-[10px] text-neutral-600 tabular-nums">{a.tsMs ? new Date(a.tsMs).toLocaleString('de-CH') : ''} · {a.uid ? (getProfile(a.uid)?.username || shortId(a.uid, 6)) : ''}</div>
                                 </div>
                               ))}
                             </div>
@@ -8813,7 +8800,7 @@ setSelfDestruct(false);
             </AccordionItem>
 
             {/* ACCOUNT */}
-            <AccordionItem id="account">
+            <AccordionItem id="account" label="Account" icon={User} keys={['account','datenschutz','abmelden','email']} >
               <section id="settings-account">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <User className="w-4 h-4" /> Datenschutz & Account
@@ -8840,7 +8827,7 @@ setSelfDestruct(false);
 
                         {aliasEditOpen && (
                           <div className="mt-3 border border-neutral-800 rounded-xl p-3 bg-black space-y-2">
-                            <div className="text-xs text-neutral-500">Alias ändern (2-20 Zeichen). Erlaubt: a-z, 0-9, <span className="font-mono">._-</span>. Leerzeichen werden zu <span className="font-mono">_</span>.</div>
+                            <div className="text-xs text-neutral-500">Alias ändern (2–20 Zeichen). Erlaubt: a–z, 0–9, <span className="font-mono">._-</span>. Leerzeichen → <span className="font-mono">_</span>.</div>
                             <input
                               value={aliasDraft}
                               onChange={(e) => { setAliasDraft(e.target.value); setAliasEditError(''); }}
@@ -8857,7 +8844,7 @@ setSelfDestruct(false);
                                 disabled={aliasSaving}
                                 className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
                               >
-                                {aliasSaving ? 'Speichern...' : 'Speichern'}
+                                {aliasSaving ? 'Speichern…' : 'Speichern'}
                               </button>
                               <button
                                 type="button"
@@ -8874,33 +8861,6 @@ setSelfDestruct(false);
                   </div>
                   <button onClick={handleLogout} className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors">Abmelden</button>
                 </div>
-
-                <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-medium text-white">Design</p>
-                      <p className="text-xs text-neutral-500 mt-1">Wähle zwischen Dunkel und einem weichen hellen Modus.</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => persistThemeMode('dark')}
-                        className={"px-3 py-2 rounded-lg text-xs font-semibold border transition-colors inline-flex items-center gap-2 " + (themeMode === 'dark' ? "bg-white text-black border-white" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
-                      >
-                        <Moon className="w-4 h-4" />
-                        Dunkel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => persistThemeMode('light')}
-                        className={"px-3 py-2 rounded-lg text-xs font-semibold border transition-colors inline-flex items-center gap-2 " + (themeMode === 'light' ? "bg-white text-black border-white" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
-                      >
-                        <Sun className="w-4 h-4" />
-                        Hell
-                      </button>
-                    </div>
-                  </div>
-                </div>
               
                 <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
                   <div className="flex items-start justify-between gap-4">
@@ -8909,7 +8869,7 @@ setSelfDestruct(false);
                       <p className="text-xs text-neutral-500 mt-1">
                         {hasPasswordProvider()
                           ? 'Passwort ändern (mit aktuellem Passwort bestätigen).'
-                          : 'Dieses Konto nutzt keinen Passwort-Login. Du kannst dir eine Reset-Mail senden, um ein Passwort zu setzen/ändern.'}
+                          : 'Dieses Konto nutzt keinen Passwort‑Login. Du kannst dir eine Reset‑Mail senden, um ein Passwort zu setzen/ändern.'}
                       </p>
                     </div>
 
@@ -8928,15 +8888,15 @@ setSelfDestruct(false);
                         type="button"
                         onClick={() => doSendPasswordReset()}
                         className="px-3 py-2 rounded-md text-xs font-semibold bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-800"
-                        title="Reset-Mail senden"
+                        title="Reset‑Mail senden"
                       >
-                        Reset-Mail
+                        Reset‑Mail
                       </button>
                     </div>
                   </div>
 
                   {pwResetSent && (
-                    <div className="mt-3 text-xs text-neutral-300">Reset-Mail gesendet ✅</div>
+                    <div className="mt-3 text-xs text-neutral-300">Reset‑Mail gesendet ✅</div>
                   )}
 
                   {hasPasswordProvider() && pwEditOpen && (
@@ -8978,7 +8938,7 @@ setSelfDestruct(false);
                           disabled={pwSaving}
                           className="px-4 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
                         >
-                          {pwSaving ? 'Speichern...' : 'Speichern'}
+                          {pwSaving ? 'Speichern…' : 'Speichern'}
                         </button>
                         <button
                           type="button"
@@ -8990,18 +8950,20 @@ setSelfDestruct(false);
                       </div>
 
                       <div className="text-[11px] text-neutral-600">
-                        Tipp: Wenn du dein aktuelles Passwort nicht mehr weißt, nutze "Reset-Mail".
+                        Tipp: Wenn du dein aktuelles Passwort nicht mehr weißt, nutze „Reset‑Mail“.
                       </div>
                     </div>
                   )}
-                </div></section>
+                </div>
+
+</section>
             </AccordionItem>
 
             {/* ICS */}
-            <AccordionItem id="ics">
+            <AccordionItem id="ics" label="Import/Export" icon={Download} keys={['ics','import','export','download','upload']} >
               <section id="settings-ics">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
-                  <Download className="w-4 h-4" /> Import / Export (.ics)
+                  <Download className="w-4 h-4" /> Import / Export (.ics) <span aria-hidden="true">📥</span>
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
@@ -9027,9 +8989,9 @@ setSelfDestruct(false);
             </AccordionItem>
 
             {/* If search yields nothing */}
-            {q && filteredTabs.length === 0 && (
+            {q && visibleTabs.length === 0 && (
               <div className="border border-neutral-800 rounded-2xl p-6 bg-neutral-950/50 text-sm text-neutral-500">
-                Keine Treffer für "{settingsQuery}".
+                Keine Treffer für „{settingsQuery}“.
               </div>
             )}
           </main>
@@ -9060,7 +9022,7 @@ setSelfDestruct(false);
                           <span className="font-medium text-white leading-tight">{getChatPartnerName(activeChat)}</span>
                           {(activeChatData && getTypingUsers(activeChatData).length > 0) ? (
                              <span className="text-[11px] text-green-400 animate-pulse font-medium">
-                               {isGroupChat(activeChatData) ? (getTypingUsers(activeChatData).length === 1 ? `${getProfile(getTypingUsers(activeChatData)[0]).username || 'Jemand'} tippt...` : `${getTypingUsers(activeChatData).length} tippen...`) : 'tippt...'}
+                               {isGroupChat(activeChatData) ? (getTypingUsers(activeChatData).length === 1 ? `${getProfile(getTypingUsers(activeChatData)[0])?.username || 'Jemand'} tippt...` : `${getTypingUsers(activeChatData).length} tippen...`) : 'tippt...'}
                              </span>
                           ) : (
                              <span className="text-[11px] text-neutral-500">
@@ -9084,17 +9046,6 @@ setSelfDestruct(false);
                         <Settings className="w-5 h-5" />
                       </button>
                     )}
-                    {userProfile && secretView === 'settings' && (
-                      <button
-                        type="button"
-                        onClick={removeAvatar}
-                        disabled={!hasUserAvatar}
-                        title="Profilbild entfernen"
-                        className={`px-3 py-2 rounded-lg border text-xs font-semibold transition-colors ${hasUserAvatar ? 'border-red-500 text-red-200 bg-red-950/40 hover:bg-red-900/50' : 'border-neutral-800 text-neutral-500 bg-neutral-950 cursor-not-allowed'}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
                     {secretView === 'chat' && activeChat && (
                       <div className="hidden md:flex items-center px-3 py-1.5 rounded-xl border border-neutral-800 bg-neutral-950 text-[11px] text-neutral-400">
                         <span className="text-neutral-200 font-semibold mr-1">{Number(chatTotalCount || 0)}</span> Nachrichten
@@ -9106,7 +9057,7 @@ setSelfDestruct(false);
                       </button>
                     )}
                     {secretView === 'chat' && activeChat && (
-                      <button onClick={() => { setIsMessageSearchOpen(v => !v); setTimeout(() => document.getElementById('msgSearchInput').focus(), 0); }} className={`text-neutral-500 hover:text-white transition-colors p-2 ${isMessageSearchOpen ? 'bg-neutral-900 rounded-lg' : ''}`} title="Chat durchsuchen">
+                      <button onClick={() => { setIsMessageSearchOpen(v => !v); setTimeout(() => document.getElementById('msgSearchInput')?.focus(), 0); }} className={`text-neutral-500 hover:text-white transition-colors p-2 ${isMessageSearchOpen ? 'bg-neutral-900 rounded-lg' : ''}`} title="Chat durchsuchen">
                         <Search className="w-5 h-5" />
                       </button>
                     )}
@@ -9154,12 +9105,12 @@ setSelfDestruct(false);
                   {!userProfile ? (
                     <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">Identität festlegen</h3><p className="text-sm text-neutral-500 mb-6">Wähle einen einzigartigen Benutzernamen.</p>
                     <form onSubmit={saveUsername}>
-                      <input type="text" name="username" defaultValue={userProfile?.displayName || userProfile?.username || (user?.email ? user.email.split('@')[0] : '')} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
+                      <input type="text" name="username" defaultValue={userProfile?.displayName || userProfile?.username || user?.email?.split('@')[0] || ''} placeholder="Dein Benutzername" required maxLength={20} className="w-full bg-black border border-neutral-700 text-white placeholder-neutral-600 rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors mb-4" />
                       <div className="flex items-center justify-between text-xs text-neutral-500 mb-4">
                         <div>Deine Chat-ID:</div>
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-neutral-200">{userProfile?.friendCode || '-----'}</span>
-                          <button type="button" onClick={() => { const v = String(userProfile?.friendCode||''); if (v) { navigator.clipboard.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-2 py-1 rounded bg-neutral-900 border border-neutral-700 text-neutral-200 hover:bg-neutral-800">Kopieren</button>
+                          <button type="button" onClick={() => { const v = String(userProfile?.friendCode||''); if (v) { navigator.clipboard?.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-2 py-1 rounded bg-neutral-900 border border-neutral-700 text-neutral-200 hover:bg-neutral-800">Kopieren</button>
                         </div>
                       </div>
 
@@ -9171,7 +9122,7 @@ setSelfDestruct(false);
                     <div className="flex-1 overflow-y-auto p-6 max-w-2xl w-full mx-auto space-y-8">
                       <div className="flex flex-col items-center border border-neutral-800 rounded-xl p-8 bg-neutral-950/50">
                         <div className="relative mb-6">
-                          {hasUserAvatar ? (
+                          {userProfile?.avatarBase64 ? (
                             <img
                               src={userProfile?.avatarThumbBase64 || userProfile?.avatarBase64}
                               className="w-32 h-32 rounded-full border-2 border-neutral-700 object-cover cursor-zoom-in"
@@ -9181,44 +9132,180 @@ setSelfDestruct(false);
                           ) : (
                             <div className="w-32 h-32 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-4xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile?.email || '')}</div>
                           )}
-                          <button
-                            type="button"
-                            onClick={removeAvatar}
-                            disabled={!hasUserAvatar}
-                            title="Profilbild entfernen"
-                            aria-label="Profilbild entfernen"
-                            className={`absolute -left-2 bottom-0 p-2.5 rounded-full shadow-lg transition-colors border-2 ${hasUserAvatar ? 'bg-red-600 text-white hover:bg-red-500 border-red-300' : 'bg-red-600/45 text-white/80 border-red-300/70 cursor-not-allowed'}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                          <label className="absolute -right-2 bottom-0 p-2.5 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg border-2 border-neutral-300">
+                          <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
                             <Camera className="w-4 h-4" />
                             <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleAvatarUpload} />
                           </label>
                         </div>
-                        <button
-                          type="button"
-                          onClick={removeAvatar}
-                          disabled={!hasUserAvatar}
-                          className={`w-full max-w-xs mb-4 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${hasUserAvatar ? 'border-red-500 text-red-200 bg-red-950/40 hover:bg-red-900/50' : 'border-neutral-700 text-neutral-500 bg-neutral-900 cursor-not-allowed'}`}
-                        >
-                          Profilbild entfernen
-                        </button>
                         <form onSubmit={updateProfileSettings} className="w-full max-w-xs space-y-4">
                           <input type="text" name="displayName" defaultValue={userProfile?.displayName || userProfile?.username || ''} required className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-center focus:outline-none focus:border-white transition-colors" />
                           <div className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                             <div className="flex flex-col">
-                              <span className="text-[10px] uppercase tracking-widest text-neutral-500">Chat-ID (5-stellig)</span>
+                              <span className="text-[10px] uppercase tracking-widest text-neutral-500">Chat‑ID (5‑stellig)</span>
                               <span className="font-mono text-white text-sm">{userProfile?.friendCode || '-----'}</span>
                             </div>
-                            <button type="button" onClick={() => { const v = String(userProfile?.friendCode||''); if (v && v !== '-----') { navigator.clipboard.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors">
+                            <button type="button" onClick={() => { const v = String(userProfile?.friendCode||''); if (v && v !== '-----') { navigator.clipboard?.writeText(v).then(()=>showToast('Chat-ID kopiert')); } }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors">
                               Kopieren
                             </button>
                           </div>
-                          <p className="text-[11px] text-neutral-500 text-center">Freunde im Chat fügst du über diese Chat-ID hinzu. Kalender-Freunde werden per E-Mail geteilt.</p>
+                          <p className="text-[11px] text-neutral-500 text-center">Freunde im Chat fügst du über diese Chat‑ID hinzu. Kalender‑Freunde werden per E‑Mail geteilt.</p>
 
                           <button type="submit" className="w-full bg-neutral-800 text-white font-medium py-3 rounded-lg hover:bg-neutral-700 transition-colors">Profil speichern</button>
                         </form>
+                      </div>
+
+                      <div className="border border-neutral-800 rounded-xl p-6 bg-neutral-950/50 space-y-5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <h4 className="text-sm font-semibold text-white flex items-center gap-2"><Users className="w-4 h-4" /> Freunde</h4>
+                            <p className="text-xs text-neutral-500 mt-1">Freunde hinzufügen, entfernen und entfernte Kontakte im Überblick behalten.</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                          <div className="border border-neutral-800 rounded-xl p-3 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Freunde</div><div className="text-lg text-white mt-1">{friendIds.length}</div></div>
+                          <div className="border border-neutral-800 rounded-xl p-3 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Eingehend</div><div className="text-lg text-white mt-1">{friendRequestIncomingIds.length}</div></div>
+                          <div className="border border-neutral-800 rounded-xl p-3 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Gesendet</div><div className="text-lg text-white mt-1">{friendRequestSentIds.length}</div></div>
+                          <div className="border border-neutral-800 rounded-xl p-3 bg-black"><div className="text-[10px] uppercase tracking-widest text-neutral-500">Blockiert</div><div className="text-lg text-white mt-1">{blockedUserIds.length}</div></div>
+                        </div>
+
+                        <div className="relative">
+                          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
+                          <input
+                            type="text"
+                            placeholder="Freund hinzufügen (5-stellige Chat-ID)..."
+                            value={chatSearchQuery}
+                            onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))}
+                            className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors"
+                          />
+                          <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein.</div>
+
+                          {chatFriendLoading && (
+                            <div className="mt-3 px-4 text-xs text-neutral-500">Suche...</div>
+                          )}
+                          {!chatFriendLoading && chatFriendError && (
+                            <div className="mt-3 px-4 text-xs text-red-400">{chatFriendError}</div>
+                          )}
+                          {!chatFriendLoading && chatFriendResult && (
+                            <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">
+                              <div className="p-4 hover:bg-neutral-800 flex items-center gap-3">
+                                <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
+                                  {chatFriendResult.avatarBase64 ? (
+                                    <img
+                                      src={chatFriendResult.avatarThumbBase64 || chatFriendResult.avatarBase64}
+                                      className="w-full h-full object-cover cursor-zoom-in"
+                                      alt="Profilbild"
+                                      onClick={(e) => { e.stopPropagation(); openImageViewer(chatFriendResult.avatarFullBase64 || chatFriendResult.avatarBase64 || chatFriendResult.avatarThumbBase64); }}
+                                    />
+                                  ) : initialsFrom(chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email || '')}
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-white">{chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email}</span>
+                                  <span className="text-[11px] text-neutral-500 font-mono">Chat-ID: {String(chatFriendResult.friendCode || '').padStart(5,'0')}</span>
+                                </div>
+                                <div className="ml-auto flex items-center gap-2">
+                                  {(() => {
+                                    const uid = chatFriendResult.id;
+                                    const isBlocked = blockedUserIds.includes(uid);
+                                    const isFriend = friendIds.includes(uid);
+                                    const incoming = friendRequestIncomingIds.includes(uid);
+                                    const outgoing = friendRequestSentIds.includes(uid);
+                                    const blockedBy = isBlockedByUser(uid);
+                                    if (isBlocked) return <button type="button" onClick={(e) => { e.stopPropagation(); unblockUser(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Entblocken</button>;
+                                    if (blockedBy) return <span className="text-[11px] text-red-300">Kontakt blockiert dich</span>;
+                                    if (isFriend) return <button type="button" onClick={(e) => { e.stopPropagation(); startChatWithProfile(chatFriendResult); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Chat</button>;
+                                    if (incoming) return <><button type="button" onClick={(e) => { e.stopPropagation(); acceptFriendRequest(uid); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Annehmen</button><button type="button" onClick={(e) => { e.stopPropagation(); rejectFriendRequest(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Ablehnen</button></>;
+                                    if (outgoing) return <button type="button" onClick={(e) => { e.stopPropagation(); cancelFriendRequest(uid); }} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Zurückziehen</button>;
+                                    return <button type="button" onClick={(e) => { e.stopPropagation(); sendFriendRequest(uid); }} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Anfragen</button>;
+                                  })()}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-end">
+                          <button onClick={() => { setShowCreateGroup(true); setGroupDraftName(''); setGroupDraftMembers([]); setGroupMemberSearch(''); }} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">
+                            <Users className="w-4 h-4" /> Gruppe erstellen
+                          </button>
+                        </div>
+
+                        {friendRequestIncomingIds.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Anfragen an dich</div>
+                            {friendRequestIncomingIds.slice(0, 30).map((uid) => (
+                              <div key={`fri_in_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                <div className="flex items-center gap-2">
+                                  <button type="button" onClick={() => acceptFriendRequest(uid)} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200">Annehmen</button>
+                                  <button type="button" onClick={() => rejectFriendRequest(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Ablehnen</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {friendRequestSentIds.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Gesendete Anfragen</div>
+                            {friendRequestSentIds.slice(0, 30).map((uid) => (
+                              <div key={`fri_out_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                <button type="button" onClick={() => cancelFriendRequest(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Zurückziehen</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {friendIds.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Freunde</div>
+                            {friendIds.slice(0, 60).map((uid) => (
+                              <div key={`fri_ok_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="min-w-0">
+                                  <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                  <div className="text-[11px] text-neutral-500">{getPresence(uid).online ? 'online' : (getPresence(uid).lastSeen ? `zuletzt ${formatTime(getPresence(uid).lastSeen)}` : 'offline')}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button type="button" onClick={() => startChatWithProfile(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Chat</button>
+                                  <button type="button" onClick={() => blockUser(uid)} className="px-3 py-2 rounded-lg border border-red-900/50 text-red-300 text-xs hover:bg-red-950/40">Blockieren</button>
+                                  <button type="button" onClick={() => removeFriend(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Entfernen</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {removedFriendIds.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Entfernte Freunde</div>
+                            {removedFriendIds.slice(0, 60).map((uid) => (
+                              <div key={`fri_removed_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="min-w-0">
+                                  <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                  <div className="text-[11px] text-neutral-500">{getPresence(uid).online ? 'online' : (getPresence(uid).lastSeen ? `zuletzt ${formatTime(getPresence(uid).lastSeen)}` : 'offline')}</div>
+                                </div>
+                                <button type="button" onClick={() => restoreRemovedFriend(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Wiederherstellen</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {blockedUserIds.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Blockiert</div>
+                            {blockedUserIds.slice(0, 60).map((uid) => (
+                              <div key={`fri_blk_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
+                                <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
+                                <button type="button" onClick={() => unblockUser(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Entblocken</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {(friendIds.length + friendRequestIncomingIds.length + friendRequestSentIds.length + blockedUserIds.length + removedFriendIds.length === 0) && (
+                          <div className="text-xs text-neutral-500 border border-dashed border-neutral-800 rounded-xl p-3">Noch keine Kontakte verwaltet.</div>
+                        )}
                       </div>
 
                       <div className="border border-neutral-800 rounded-xl p-6 bg-neutral-950/50 space-y-5">
@@ -9267,7 +9354,7 @@ setSelfDestruct(false);
                         </div>
                         <div className="flex flex-wrap gap-3">
                           <button type="button" onClick={saveSecretPinSettings} disabled={secretPinActionBusy} className="px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">
-                            {secretPinActionBusy ? 'Speichern...' : ((userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'PIN ändern' : 'PIN aktivieren')}
+                            {secretPinActionBusy ? 'Speichern…' : ((userProfile?.secretPinEnabled && userProfile?.secretPinHash) ? 'PIN ändern' : 'PIN aktivieren')}
                           </button>
                           {(userProfile?.secretPinEnabled && userProfile?.secretPinHash) && (
                             <button type="button" onClick={disableSecretPin} disabled={secretPinActionBusy} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-300 text-sm font-semibold hover:bg-red-950/60 transition-colors disabled:opacity-60">
@@ -9307,102 +9394,7 @@ setSelfDestruct(false);
 
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-2xl w-full mx-auto">
-                      <div className="mb-4 px-2">
-                        <h3 className="text-sm md:text-base font-semibold text-white">Freunde hinzufügen & verwalten</h3>
-                        <p className="text-xs text-neutral-500 mt-1">Alles für Kontakte liegt jetzt direkt im Secret-Chat-Dashboard.</p>
-                        <div className="mt-3 p-3 rounded-xl border border-neutral-800 bg-neutral-950/40 text-xs text-neutral-300">
-                          <p className="font-medium text-white">Freundesliste bearbeiten</p>
-                          <p className="mt-1 text-neutral-400">Lang auf einen Chat drücken für Optionen wie Entfernen/Stummschalten/Pinnen. Entfernte Freunde erscheinen unten bei „Kürzlich entfernte Freunde" zum Wiederherstellen.</p>
-                        </div>
-                      </div>
-                      <div className="relative mb-8"><Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" /><input type="text" placeholder="Neuen Chat starten (5-stellige Chat-ID eingeben)..." value={chatSearchQuery} onChange={(e) => setChatSearchQuery(normalizeChatId(e.target.value))} className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-12 pr-4 py-3 focus:outline-none focus:border-neutral-500 transition-colors" />
-                        <div className="mt-2 px-4 text-xs text-neutral-500">Tipp: Gib die <span className="text-neutral-300">5-stellige Chat-ID</span> exakt ein. Es werden keine Vorschläge angezeigt.</div>
-                        
-                        {chatFriendLoading && (
-                          <div className="mt-3 px-4 text-xs text-neutral-500">Suche...</div>
-                        )}
-                        {!chatFriendLoading && chatFriendError && (
-                          <div className="mt-3 px-4 text-xs text-red-400">{chatFriendError}</div>
-                        )}
-                        {!chatFriendLoading && chatFriendResult && (
-                          <div className="absolute top-full left-0 w-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden shadow-2xl z-10">
-                            <div onClick={() => startChatWithProfile(chatFriendResult)} className="p-4 hover:bg-neutral-800 cursor-pointer flex items-center gap-3">
-                              <div className="w-10 h-10 bg-black border border-neutral-700 rounded-full flex items-center justify-center text-neutral-400 font-medium uppercase overflow-hidden">
-                                {chatFriendResult.avatarBase64 ? (
-                                  <img
-                                    src={chatFriendResult.avatarThumbBase64 || chatFriendResult.avatarBase64}
-                                    className="w-full h-full object-cover cursor-zoom-in"
-                                    alt="Profilbild"
-                                    onClick={(e) => { e.stopPropagation(); openImageViewer(chatFriendResult.avatarFullBase64 || chatFriendResult.avatarBase64 || chatFriendResult.avatarThumbBase64); }}
-                                  />
-                                ) : initialsFrom(chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email || '')}
-                              </div>
-                              <div className="flex flex-col">
-                                <span className="font-medium text-white">{chatFriendResult.displayName || chatFriendResult.username || chatFriendResult.email}</span>
-                                <span className="text-[11px] text-neutral-500 font-mono">Chat-ID: {String(chatFriendResult.friendCode || '').padStart(5,'0')}</span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-end mb-6 px-2">
-                        <button onClick={() => { setShowCreateGroup(true); setGroupDraftName(''); setGroupDraftMembers([]); setGroupMemberSearch(''); }} className="flex items-center gap-2 px-4 py-2 rounded-full bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors">
-                          <Users className="w-4 h-4" /> Gruppe erstellen
-                        </button>
-                      </div>
-                      {incomingFriendRequests.length > 0 && (
-                        <div className="mb-4 p-3 border border-sky-900/40 bg-sky-950/20 rounded-xl">
-                          <h4 className="text-[11px] uppercase tracking-widest text-sky-300 mb-2">Offene Anfragen</h4>
-                          <div className="space-y-2">
-                            {incomingFriendRequests.map((request) => {
-                              const fromProfile = getProfile(request.fromUid);
-                              const fromName = fromProfile?.displayName || fromProfile?.username || fromProfile?.email || request.fromDisplayName || shortId(request.fromUid, 6);
-                              return (
-                                <div key={`request_${request.fromUid}`} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-neutral-800 bg-black/40">
-                                  <div className="min-w-0">
-                                    <p className="text-sm text-white truncate">{fromName}</p>
-                                    <p className="text-[11px] text-neutral-500">Möchte dich im Secret Chat hinzufügen.</p>
-                                  </div>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <button type="button" onClick={() => declineFriendRequest(request)} className="px-3 py-2 rounded-lg border border-red-900/40 bg-red-900/20 text-red-300 hover:bg-red-900/30 text-xs font-semibold">Ablehnen</button>
-                                    <button type="button" onClick={() => acceptFriendRequest(request)} className="px-3 py-2 rounded-lg border border-emerald-900/40 bg-emerald-900/20 text-emerald-300 hover:bg-emerald-900/30 text-xs font-semibold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Annehmen</button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {removedFriendChats.length > 0 && (
-                        <div className="mb-4 p-3 border border-amber-900/40 bg-amber-950/20 rounded-xl">
-                          <h4 className="text-[11px] uppercase tracking-widest text-amber-300 mb-2">Kürzlich entfernte Freunde</h4>
-                          <div className="space-y-2">
-                            {removedFriendChats.map((chat) => {
-                              const otherUid = Array.isArray(chat.participants) ? chat.participants.find(id => id !== user?.uid) : null;
-                              if (!otherUid) return null;
-                              const otherName = getProfile(otherUid)?.displayName || getProfile(otherUid)?.username || getProfile(otherUid)?.email || getChatPartnerName(chat);
-                              return (
-                                <div key={`restore_${chat.id}`} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-neutral-800 bg-black/40">
-                                  <div className="min-w-0">
-                                    <p className="text-sm text-white truncate">{otherName}</p>
-                                    <p className="text-[11px] text-neutral-500">Aus Versehen entfernt? Mit einem Tap wiederherstellen.</p>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => restoreFriend(otherUid, chat.id)}
-                                    className="px-3 py-2 rounded-lg border border-emerald-900/40 bg-emerald-900/20 text-emerald-300 hover:bg-emerald-900/30 text-xs font-semibold flex items-center gap-1 shrink-0"
-                                    title="Freund wieder hinzufügen"
-                                  >
-                                    <UserPlus className="w-3.5 h-3.5" /> Wieder hinzufügen
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
+                      <div className="mb-6 px-2 text-xs text-neutral-500">Freunde hinzufügen/entfernen findest du unter <span className="text-neutral-300">Secret Chat → Einstellungen → Freunde</span>.</div>
                       <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-4 font-semibold px-2">Verlauf</h4>
                       <div className="space-y-2">
                         {sortedMyChats.length === 0 ? (
@@ -9414,10 +9406,12 @@ setSelfDestruct(false);
                             )}
                             {sortedMyChats.map(chat => {
                               const isPinned = pinnedChatIds.includes(chat.id);
-                              const mutedChatIds = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
+                              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+              const mutedChatIds = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
                               const isMuted = mutedChatIds.includes(chat.id);
                               const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
                               const otherUid = isDm ? chat.participants.find(id => id !== user?.uid) : null;
+                              const otherPresence = otherUid ? getPresence(otherUid) : null;
                               return (
                                 <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
                                   <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
@@ -9432,20 +9426,19 @@ setSelfDestruct(false);
                                   </div>
                                   <div className="flex-1 overflow-hidden">
                                     <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
-                                    {isChatUnread(chat) ? (
+                                    {chat.lastMessageSenderId !== user?.uid && chat.updatedAt > lastChatVisit ? (
                                       <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
                                     ) : (
-                                      <p className="text-xs text-neutral-500 truncate mt-0.5">Tippen zum Öffnen...</p>
+                                      <p className="text-xs text-neutral-500 truncate mt-0.5">
+                                        {isDm
+                                          ? (otherPresence?.online ? 'online' : (otherPresence?.lastSeen ? `zuletzt ${formatTime(otherPresence.lastSeen)}` : 'offline'))
+                                          : 'Tippen zum Öffnen...'}
+                                      </p>
                                     )}
                                   </div>
                                   <button onClick={(e) => { e.stopPropagation(); toggleMuteChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isMuted ? 'bg-neutral-950 text-white border-neutral-500' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isMuted ? 'Stumm aus' : 'Stumm schalten'}>
                                     {isMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
                                   </button>
-                                  {isDm && otherUid && (
-                                    <button onClick={(e) => { e.stopPropagation(); if (confirm('Freund entfernen und Chat ausblenden')) removeFriend(otherUid); }} className="p-2 rounded-lg border border-red-900/30 bg-red-900/10 text-red-400 hover:bg-red-900/30" title="Freund entfernen">
-                                      <UserMinus className="w-4 h-4" />
-                                    </button>
-                                  )}
                                   <button onClick={(e) => { e.stopPropagation(); togglePinChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isPinned ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isPinned ? 'Unpin' : 'Pin'}>
                                     <Pin className="w-4 h-4" />
                                   </button>
@@ -9457,7 +9450,7 @@ setSelfDestruct(false);
                       </div>
                     </div>
                   ) : (
-                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => setSelectedMessageId(null)}>
+                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => { setSelectedMessageId(null); setMessageReactionPickerFor(null); }}>
                       {isMessageSearchOpen && (
 
                         <div className="px-4 py-2 bg-neutral-950 border-b border-neutral-900 flex flex-col gap-2 shrink-0">
@@ -9510,6 +9503,8 @@ setSelfDestruct(false);
 
                             <button onClick={() => { setMessageSearchFilter('links'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'links' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Links</button>
 
+                            <button onClick={() => { setMessageSearchFilter('favorites'); setMessageMatchIndex(0); }} className={"px-3 py-1 rounded-full text-xs border transition-colors " + (messageSearchFilter === 'favorites' ? "bg-white text-black border-white" : "bg-neutral-900 text-neutral-200 border-neutral-700 hover:bg-neutral-800")}>Favoriten</button>
+
                           </div>
 
                         </div>
@@ -9541,7 +9536,7 @@ setSelfDestruct(false);
                         {chatHasMore && (
                           <div className="-mt-2 mb-2 flex items-center justify-center">
                             <div className="px-3 py-1.5 rounded-full border border-neutral-800 bg-neutral-950 text-[11px] text-neutral-400">
-                              {chatLoadingMore ? "Lade ältere Nachrichten..." : "Scroll nach oben für mehr"}
+                              {chatLoadingMore ? "Lade ältere Nachrichten…" : "Scroll nach oben für mehr"}
                             </div>
                           </div>
                         )}
@@ -9549,7 +9544,7 @@ setSelfDestruct(false);
                         {(isMessageSearchOpen && messageSearchFilter === 'media') && (
                           <div className="mb-4">
                             <div className="flex items-center justify-between mb-3 text-xs text-neutral-500">
-                              <span>{chatMediaLoading ? 'Lade Medien...' : `${mediaSearchResults.length} Medien`}</span>
+                              <span>{chatMediaLoading ? 'Lade Medien…' : `${mediaSearchResults.length} Medien`}</span>
                               <span>Tippe auf ein Bild für Vollbild</span>
                             </div>
                             {mediaSearchResults.length === 0 ? (
@@ -9577,20 +9572,46 @@ setSelfDestruct(false);
                           if (!msg) return null;
                           const isMe = msg?.senderId === user?.uid;
                           const showActions = selectedMessageId === msg?.id;
+                          const mergedStars = [...new Set([...(Array.isArray(msg?.starredBy) ? msg.starredBy : []), ...(Array.isArray(activeChatData?.messageStars?.[msg?.id]) ? activeChatData.messageStars[msg.id] : [])])];
+                          const isFavorite = mergedStars.includes(user?.uid);
+                          const showReactionPicker = messageReactionPickerFor === msg?.id;
+                          const ephemeralMeta = (activeChatData && activeChatData?.ephemeralViews) ? activeChatData.ephemeralViews?.[msg?.id] : null;
+                          const ephemeralDeleteAt = Number(ephemeralMeta?.deleteAt || 0);
+                          const isEphemeralHidden = !!(activeChatData?.ephemeralHidden?.[msg?.id]);
+                          const isMessageHidden = !!msg?.deleted || isEphemeralHidden || (!!msg?.selfDestruct && ephemeralDeleteAt > 0 && Date.now() >= ephemeralDeleteAt);
+                          const selfDestructRemainingSec = (msg?.selfDestruct && ephemeralDeleteAt > 0) ? Math.ceil(Math.max(0, ephemeralDeleteAt - Date.now()) / 1000) : 0;
+                          const mergedReactions = { ...(msg?.reactions || {}), ...((activeChatData?.messageReactions && activeChatData?.messageReactions?.[msg?.id]) ? activeChatData.messageReactions[msg.id] : {}) };
+                          const reactionRows = Object.entries(mergedReactions || {}).reduce((acc, [rawKey, uids]) => {
+                            const emoji = reactionEmojiFromKey(rawKey);
+                            const list = Array.isArray(uids) ? uids.filter(Boolean) : [];
+                            if (!emoji || list.length === 0) return acc;
+                            const found = acc.find((row) => row.emoji === emoji);
+                            if (!found) {
+                              acc.push({ emoji, uids: [...new Set(list)] });
+                            } else {
+                              found.uids = [...new Set([...(found.uids || []), ...list])];
+                            }
+                            return acc;
+                          }, []).filter((row) => row.emoji && row.uids.length > 0);
                           
                           return (
                             <div key={msg.id} id={`msg-${msg.id}`} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                               <div 
-                                onClick={(e) => { e.stopPropagation(); setSelectedMessageId(showActions ? null : msg.id); }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const nextId = showActions ? null : msg.id;
+                                  setSelectedMessageId(nextId);
+                                  if (!nextId) setMessageReactionPickerFor(null);
+                                }}
                                 className={`max-w-[85%] rounded-2xl p-3 cursor-pointer transition-colors relative ${isMe ? 'bg-white text-black rounded-tr-sm hover:bg-gray-200' : 'bg-neutral-900 border border-neutral-800 text-white rounded-tl-sm hover:bg-neutral-800'}${isMessageSearchOpen && currentMatchId && String(currentMatchId) === String(msg.id) ? ' ring-2 ring-white/70' : ''}`}
                               >
                                 {/* Selbstzerstörungs-Indikator */}
                                 {msg.selfDestruct && (
                                   <div className="text-[10px] text-red-500 font-bold mb-2 flex items-center gap-1">
-                                    <Bomb className="w-3 h-3" /> Zerstört sich nach Lesen
+                                    <Bomb className="w-3 h-3" /> {selfDestructRemainingSec > 0 ? `Wird in ${selfDestructRemainingSec}s gelöscht` : 'Einmal-Ansicht (10s nach Öffnen)'}
                                   </div>
                                 )}
-                                {!msg.deleted && msg.replyTo && (
+                                {!isMessageHidden && msg.replyTo && (
                                   (() => {
                                     const refId = msg.replyTo?.id;
                                     const refMsg = refId ? (chatMessages || []).find(m => m && m.id === refId) : null;
@@ -9616,38 +9637,18 @@ setSelfDestruct(false);
                                     );
                                   })()
                                 )}
-                                {!msg.deleted && msg.image && (
-                                  <button
-                                    type="button"
-                                    className="relative block mb-2 rounded-lg overflow-hidden"
-                                    onClick={(e) => { e.stopPropagation(); openChatImageMessage(msg); }}
-                                  >
-                                    <img
-                                      src={msg.image}
-                                      alt="Upload"
-                                      className={`rounded-lg max-h-64 object-contain transition-all ${canOpenViewOnceImage(msg) ? 'blur-xl scale-[1.03] brightness-75' : 'cursor-zoom-in'}`}
-                                    />
-                                    {isViewOnceImageMessage(msg) && (
-                                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/25 text-white px-4 text-center">
-                                        <div className="px-3 py-1 rounded-full border border-white/30 bg-black/45 text-[11px] font-semibold uppercase tracking-[0.2em]">
-                                          1x Ansicht
-                                        </div>
-                                        <div className="text-xs text-white/90">
-                                          {canOpenViewOnceImage(msg) ? 'Tippen zum einmaligen Öffnen' : 'Dieses Bild ist nur einmal sichtbar'}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </button>
+{!isMessageHidden && msg.image && (
+                                  <img
+                                    src={msg.image}
+                                    alt="Upload"
+                                    className="rounded-lg mb-2 max-h-64 object-contain cursor-zoom-in"
+                                    onClick={async (e) => { e.stopPropagation(); const ok = await handleEphemeralImageOpen(msg); if (!ok) return; openImageViewer(msg.image); }}
+                                  />
                                 )}
-                                {!msg.deleted && !msg.image && msg.selfDestruct && msg.viewOnceConsumedAt && (
-                                  <div className={`mb-2 rounded-xl border px-3 py-3 text-xs ${isMe ? 'bg-black/10 border-black/20 text-black/70' : 'bg-black/40 border-neutral-700 text-neutral-300'}`}>
-                                    1x-Bild bereits geöffnet{msg.viewOnceConsumedBy === user?.uid ? ' von dir' : ''}.
-                                  </div>
-                                )}
-                                {!msg.deleted && msg.audio && <AudioMessageBubble src={msg.audio} msgId={msg.id} isMe={isMe} />}
+                                {!isMessageHidden && msg.audio && <AudioMessageBubble src={msg.audio} msgId={msg.id} isMe={isMe} />}
                                 
                                 {/* Termin-Kachel Rendering */}
-                                {!msg.deleted && msg.event && (
+                                {!isMessageHidden && msg.event && (
                                   <div className={`mt-2 p-3 rounded-xl border ${isMe ? 'bg-black/10 border-black/20' : 'bg-black/40 border-neutral-700'}`}>
                                     <div className="flex items-center gap-2 mb-1">
                                       <CalendarIcon className="w-4 h-4" />
@@ -9664,17 +9665,37 @@ setSelfDestruct(false);
                                   </div>
                                 )}
 
-                                {msg.deleted ? (
+                                {isMessageHidden ? (
                                   <p className={`text-sm italic whitespace-pre-wrap ${isMe ? 'text-neutral-600' : 'text-neutral-500'}`}>
                                     Nachricht gelöscht
                                   </p>
                                 ) : (
                                   msg.text && <p className="text-sm whitespace-pre-wrap">{(isMessageSearchOpen && String(messageSearchQuery || '').trim()) ? renderHighlightedText(msg.text, messageSearchQuery, { isMe, active: String(currentMatchId) === String(msg.id) }) : msg.text}</p>
                                 )}
+
+                                {!isMessageHidden && reactionRows.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {reactionRows.map((row) => {
+                                      const mine = row.uids.includes(user?.uid);
+                                      return (
+                                        <button
+                                          key={`${msg.id}_${row.emoji}`}
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); toggleMessageReaction(msg, row.emoji); }}
+                                          className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${mine ? 'bg-white text-black border-white' : (isMe ? 'bg-black/15 border-black/20 text-black/80' : 'bg-black/40 border-neutral-700 text-neutral-200')}`}
+                                          title={mine ? 'Reaktion entfernen' : 'Reagieren'}
+                                        >
+                                          {row.emoji} {row.uids.length}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                                 
                                 <div className={`flex items-center gap-1 mt-1 justify-end opacity-60 ${isMe ? 'text-black' : 'text-neutral-400'}`}>
-                                  {msg.deleted && <span className="text-[9px] mr-1">(gelöscht)</span>}
-                                  {!msg.deleted && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
+                                  {isMessageHidden && <span className="text-[9px] mr-1">(gelöscht)</span>}
+                                  {!isMessageHidden && msg.edited && <span className="text-[9px] mr-1">(bearbeitet)</span>}
+                                  {!isMessageHidden && isFavorite && <Star className={`w-3 h-3 mr-1 ${isMe ? 'text-black/70' : 'text-yellow-300/90'}`} />}
                                   {chatMetaPrefs.showTime && (
                                     <span className="text-[10px] block text-right">
                                       {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -9683,6 +9704,8 @@ setSelfDestruct(false);
                                   {isMe && chatMetaPrefs.receipts !== 'off' && (
                                     <span className="text-[10px] ml-1">
                                       {(() => {
+                                        if (msg.failed) return 'Fehler';
+                                        if (msg.pending || msg.retrying) return 'wird versendet…';
                                         const mode = chatMetaPrefs.receipts;
                                         const chat = activeChatData || activeChat;
                                         const group = isGroupChat(chat);
@@ -9692,22 +9715,44 @@ setSelfDestruct(false);
                                           const denom = Math.max(0, ids.length - 1);
                                           const seenCount = ids.filter(id => id !== user?.uid && (lastRead?.[id] || 0) >= (msg.timestamp || 0)).length;
                                           if (seenCount > 0) return (mode === 'compact') ? `gesehen ${seenCount}/${denom}` : `gesehen von ${seenCount}/${denom}`;
-                                          if (msg.deliveredAt || msg.delivered) return 'zugestellt';
-                                          return 'gesendet';
+                                          if (msg.deliveredAt || msg.delivered) return 'angekommen';
+                                          return 'versendet';
                                         }
-                                        if (msg.readAt) return mode === 'full' ? `gesehen ${formatTime(msg.readAt)}`.trim() : 'gesehen';
-                                        if (msg.read) return 'gesehen';
-                                        if (msg.deliveredAt) return mode === 'full' ? `zugestellt ${formatTime(msg.deliveredAt)}`.trim() : 'zugestellt';
-                                        if (msg.delivered) return 'zugestellt';
-                                        return 'gesendet';
+                                        if (msg.readAt) return mode === 'full' ? `gelesen ${formatTime(msg.readAt)}`.trim() : 'gelesen';
+                                        if (msg.read) return 'gelesen';
+                                        if (msg.deliveredAt) return mode === 'full' ? `angekommen ${formatTime(msg.deliveredAt)}`.trim() : 'angekommen';
+                                        if (msg.delivered) return 'angekommen';
+                                        return 'versendet';
                                       })()}
                                     </span>
                                   )}
                                 </div>
 
+                                {isMe && msg.failed && (
+                                  <div className="mt-2 flex items-center justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); retryFailedMessage(msg); }}
+                                      className="px-2.5 py-1 rounded-full text-[11px] border border-red-500/60 text-red-300 hover:bg-red-500/10"
+                                    >
+                                      Erneut senden
+                                    </button>
+                                  </div>
+                                )}
+
                                 {showActions && (
                                   <div className={`absolute top-full mt-1 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
-                                    {!msg.deleted && (
+                                    {!isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setMessageReactionPickerFor(showReactionPicker ? null : msg.id); }}
+                                        className={`p-2 rounded-md ${showReactionPicker ? 'bg-white text-black' : 'text-white hover:bg-neutral-700'}`}
+                                        title="Emoji auswählen"
+                                      >
+                                        <SmilePlus className="w-4 h-4" />
+                                      </button>
+                                    )}
+
+                                    {!isMessageHidden && (
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
@@ -9718,11 +9763,11 @@ setSelfDestruct(false);
                                             image: !!msg.image,
                                             audio: !!msg.audio,
                                             event: msg.event ? { title: msg.event.title || 'Termin' } : null,
-                                            deleted: !!msg.deleted
+                                            deleted: !!isMessageHidden
                                           });
                                           setEditingMessage(null);
                                           setSelectedMessageId(null);
-                                          try { document.getElementById('chatInput').focus(); } catch (_) {}
+                                          try { document.getElementById('chatInput')?.focus(); } catch (_) {}
                                         }}
                                         className="p-2 text-white hover:bg-neutral-700 rounded-md"
                                         title="Zitieren"
@@ -9730,13 +9775,46 @@ setSelfDestruct(false);
                                         <CornerUpLeft className="w-4 h-4" />
                                       </button>
                                     )}
+
+                                    {!isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleMessageFavorite(msg); }}
+                                        className={`p-2 rounded-md ${isFavorite ? 'text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20' : 'text-white hover:bg-neutral-700'}`}
+                                        title={isFavorite ? 'Favorit entfernen' : 'Als Favorit markieren'}
+                                      >
+                                        <Star className="w-4 h-4" />
+                                      </button>
+                                    )}
                                     
-                                    {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
+                                    {isMe && !isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && !msg.image && !msg.audio && !msg.event && (
                                       <button onClick={(e) => { e.stopPropagation(); setReplyToMessage(null); setEditingMessage(msg); setNewMessageText(msg.text); setSelectedMessageId(null); document.getElementById('chatInput').focus(); }} className="p-2 text-white hover:bg-neutral-700 rounded-md" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
                                     )}
-                                    {isMe && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                    {isMe && !isMessageHidden && !msg.pending && !String(msg.id || '').startsWith('local_') && (
                                       <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); }} className="p-2 text-red-400 hover:bg-neutral-700 rounded-md" title="Löschen"><Trash2 className="w-4 h-4" /></button>
                                     )}
+                                  </div>
+                                )}
+
+                                {showActions && showReactionPicker && !msg.deleted && !msg.pending && !String(msg.id || '').startsWith('local_') && (
+                                  <div className={`absolute top-full mt-12 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-lg p-1 z-10 shadow-xl ${isMe ? 'right-0' : 'left-0'}`}>
+                                    {quickReactionEmojis.map((emoji) => {
+                                      const key = reactionKeyForEmoji(emoji);
+                                      const mine = (Array.isArray(msg?.reactions?.[emoji]) && msg.reactions[emoji].includes(user?.uid)) || (Array.isArray(msg?.reactions?.[key]) && msg.reactions[key].includes(user?.uid));
+                                      return (
+                                        <button
+                                          key={`${msg.id}_react_${emoji}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleMessageReaction(msg, emoji);
+                                            setMessageReactionPickerFor(null);
+                                          }}
+                                          className={`px-2 py-1 rounded-md text-sm ${mine ? 'bg-white text-black' : 'text-white hover:bg-neutral-700'}`}
+                                          title={`Mit ${emoji} reagieren`}
+                                        >
+                                          {emoji}
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>
@@ -9768,39 +9846,105 @@ setSelfDestruct(false);
                           </div>
                         )}
 
-                        <form onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
-                          <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-x-auto no-scrollbar`}>
-                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Bild senden">
-                              <ImageIcon className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={handleImageUpload} />
-                            </label>
+                        <form ref={attachmentMenuRef} onSubmit={(e) => sendMessage(e)} className="flex items-end gap-2 relative">
+                          <div className={`relative shrink-0 flex gap-1 ${editingMessage ? 'hidden' : ''} overflow-visible`}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAttachmentMenuOpen(prev => !prev);
+                                temporarilySuspendSecretAutoHide(180000);
+                              }}
+                              className="p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400"
+                              title="Anhang"
+                            >
+                              <Paperclip className="w-5 h-5" />
+                            </button>
 
-                            <label className="cursor-pointer p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center shrink-0" title="Foto machen">
-                              <Camera className="w-5 h-5 text-neutral-400" /><input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={handleImageUpload} />
-                            </label>
-                            
-                            <button type="button" onClick={() => setIsShareEventModalOpen(true)} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
+                            <button type="button" onClick={() => { setIsShareEventModalOpen(true); setIsAttachmentMenuOpen(false); }} className="p-3 bg-neutral-900 border border-neutral-800 hover:border-neutral-500 transition-colors rounded-full flex items-center justify-center text-neutral-400 hover:text-white shrink-0" title="Termin teilen">
                               <CalendarPlus className="w-5 h-5" />
                             </button>
-
-                            <button type="button" onClick={() => setSelfDestruct(!selfDestruct)} className={`p-3 border transition-colors rounded-full flex items-center justify-center shrink-0 hidden sm:flex ${selfDestruct ? 'bg-red-900/30 border-red-500 text-red-500' : 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-neutral-400'}`} title="Snapchat-Modus (10s)">
-                              <Bomb className="w-5 h-5" />
-                            </button>
                           </div>
-                          
+
+                          {isAttachmentMenuOpen && !editingMessage && (
+                            <div className="absolute left-0 right-0 bottom-full mb-2 z-50 rounded-2xl border border-neutral-800 bg-neutral-950 p-2 shadow-2xl flex flex-col gap-1">
+                              <label
+                                className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                              >
+                                <ImageIcon className="w-4 h-4 text-neutral-400" /> Bild senden
+                                <input
+                                  type="file"
+                                  accept="image/*,.heic,.heif"
+                                  className="hidden"
+                                  onClick={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
+                                />
+                              </label>
+
+                              <label
+                                className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                onPointerDown={() => temporarilySuspendSecretAutoHide(180000)}
+                                onTouchStart={() => temporarilySuspendSecretAutoHide(180000)}
+                                onMouseDown={() => temporarilySuspendSecretAutoHide(180000)}
+                              >
+                                <Camera className="w-4 h-4 text-neutral-400" /> Kamera
+                                <input
+                                  type="file"
+                                  accept="image/*,.heic,.heif"
+                                  capture="environment"
+                                  className="hidden"
+                                  onClick={() => temporarilySuspendSecretAutoHide(180000)}
+                                  onChange={(e) => { setIsAttachmentMenuOpen(false); handleImageUpload(e, 'normal'); }}
+                                />
+                              </label>
+
+                              <div className="h-px bg-neutral-800 my-1" />
+                              <div className="px-3 pt-1 text-[11px] uppercase tracking-wider text-red-300">1x Ansicht</div>
+                              <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
+                                <Bomb className="w-4 h-4" /> Bild hochladen
+                                <input type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
+                              </label>
+                              <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
+                                <Bomb className="w-4 h-4" /> Kamera öffnen
+                                <input type="file" accept="image/*,.heic,.heif" capture="environment" className="hidden" onChange={(e) => { setIsAttachmentMenuOpen(false); setSelfDestruct(false); handleImageUpload(e, 'viewonce'); }} />
+                              </label>
+                            </div>
+                          )}
+
                           <div className="flex-1 relative">
+                            {isRecording ? (
+                              <div className="w-full bg-red-950 border border-red-900 text-red-500 rounded-2xl pl-4 pr-12 py-3 flex items-center justify-between animate-pulse">
+                                <span className="text-sm font-medium">Aufnahme läuft...</span>
+                              </div>
+                            ) : (
                               <textarea 
                                 id="chatInput"
+                                ref={chatInputRef}
                                 value={newMessageText} 
                                 onChange={handleTyping} 
+                                onInput={resizeChatInput}
                                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); } }} 
                                 placeholder="Nachricht..." 
                                 rows="1" 
-                                className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-auto block text-sm ${(editingMessage || replyToMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
-                                style={{ minHeight: '44px', maxHeight: '120px' }} 
+                                className={`w-full bg-black border border-neutral-800 text-white pl-4 pr-24 py-3 focus:outline-none focus:border-neutral-500 transition-colors resize-none overflow-y-hidden block text-sm ${(editingMessage || replyToMessage) ? 'rounded-b-2xl rounded-t-none border-t-0' : 'rounded-2xl'} ${selfDestruct ? 'border-red-900/50 focus:border-red-500' : ''}`} 
+                                style={{ minHeight: '44px' }} 
                               />
+                            )}
                             
                             <div className="absolute right-1 bottom-1 flex items-center">
-                              {(newMessageText.trim() || editingMessage) && (
+                              {!newMessageText.trim() && !editingMessage && (
+                                <button 
+                                  type="button" 
+                                  onClick={isRecording ? stopRecording : startRecording} 
+                                  className={`p-2 rounded-full transition-colors ${isRecording ? 'text-red-500 hover:bg-red-900/30' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}
+                                >
+                                  {isRecording ? <Square className="w-5 h-5" fill="currentColor" /> : <Mic className="w-5 h-5" />}
+                                </button>
+                              )}
+                              
+                              {(!isRecording && (newMessageText.trim() || editingMessage)) && (
                                 <button
                                   type="submit"
                                   onMouseDown={(e) => e.preventDefault()}
@@ -9837,34 +9981,14 @@ setSelfDestruct(false);
                 <div className="space-y-3">
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
-                    {workClockEditUsePreset ? (
-                      <div className="mt-1 space-y-2">
-                        <select
-                          value={workClockEditTitle}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            if (value === '__other__') {
-                              setWorkClockEditUsePreset(false);
-                              setWorkClockEditTitle('');
-                            } else {
-                              setWorkClockEditTitle(value);
-                            }
-                          }}
-                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                        >
-                          {normalizeWorkClockPresets(userProfile?.workClockTaskOptions).map((preset) => (
-                            <option key={preset} value={preset}>{preset}</option>
-                          ))}
-                          <option value="__other__">Andere Tätigkeit...</option>
-                        </select>
-                        <button type="button" onClick={() => { setWorkClockEditUsePreset(false); setWorkClockEditTitle(workClockEditingSession.title || ''); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Eigene Tätigkeit eingeben</button>
-                      </div>
-                    ) : (
-                      <div className="mt-1 space-y-2">
-                        <input value={workClockEditTitle} onChange={(e) => setWorkClockEditTitle(e.target.value)} placeholder="z. B. Büro, Baustelle, Support" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
-                        <button type="button" onClick={() => { const presets = normalizeWorkClockPresets(userProfile?.workClockTaskOptions); setWorkClockEditUsePreset(true); setWorkClockEditTitle(presets[0] || 'Arbeit'); }} className="text-xs text-neutral-400 hover:text-white transition-colors">Dropdown verwenden</button>
-                      </div>
-                    )}
+                    <div className="mt-1 space-y-2">
+                      <input list="workClockTaskSuggestionsEdit" value={workClockEditTitle} onChange={(e) => setWorkClockEditTitle(e.target.value)} placeholder="Tätigkeit eingeben" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                      <datalist id="workClockTaskSuggestionsEdit">
+                        {getWorkClockTaskSuggestions(userProfile?.workClockTaskOptions).map((preset) => (
+                          <option key={preset} value={preset} />
+                        ))}
+                      </datalist>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Level</label>
@@ -9887,7 +10011,7 @@ setSelfDestruct(false);
                     </div>
                   </div>
                   <div className="rounded-xl border border-neutral-800 bg-black px-4 py-3 text-sm text-neutral-300">
-                    {workClockEditingSession.startedAt ? new Date(workClockEditingSession.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · <span className="text-white font-medium">Pausen: {formatDurationVerbose(workClockEditingSession.pauseMs || 0)}</span>
+                    {workClockEditingSession?.startedAt ? new Date(workClockEditingSession.startedAt).toLocaleString('de-CH', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''} · <span className="text-white font-medium">Pausen: {formatDurationVerbose(workClockEditingSession?.pauseMs || 0)}</span>
                   </div>
                 </div>
                 <div className="mt-5 flex flex-wrap gap-2">
@@ -9900,24 +10024,31 @@ setSelfDestruct(false);
 
           {workClockModalOpen && (
             <div className="fixed inset-0 z-[95] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-950 p-4 shadow-2xl">
+              <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-9 h-9 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white"><Briefcase className="w-4 h-4" /></div>
+                  <div className="w-10 h-10 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-white"><Briefcase className="w-5 h-5" /></div>
                   <div>
-                    <h3 className="text-base font-semibold text-white">Stempelung beenden</h3>
-                    <p className="text-xs text-neutral-500">Kurz notieren und speichern.</p>
+                    <h3 className="text-lg font-semibold text-white">Arbeitszeit abschliessen</h3>
+                    <p className="text-xs text-neutral-500">Erfasse kurz die Tätigkeit und die Belastung.</p>
                   </div>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Was hast du gemacht?</label>
-                    <textarea value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} rows={3} placeholder="z. B. Kundenanruf, Büro, Montage..." className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500 resize-none" />
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Arbeit</label>
+                    <div className="mt-1 space-y-2">
+                      <input list="workClockTaskSuggestionsDraft" value={workClockDraftTitle} onChange={(e) => setWorkClockDraftTitle(e.target.value)} placeholder="Tätigkeit eingeben" className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                      <datalist id="workClockTaskSuggestionsDraft">
+                        {getWorkClockTaskSuggestions(userProfile?.workClockTaskOptions).map((preset) => (
+                          <option key={preset} value={preset} />
+                        ))}
+                      </datalist>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Level</label>
                     <div className="mt-2 grid grid-cols-3 gap-2">
                       {['leicht','mittel','schwer'].map(level => (
-                        <button key={level} type="button" onClick={() => setWorkClockDraftLevel(level)} className={"px-3 py-2 rounded-xl border text-xs font-semibold transition-colors " + (workClockDraftLevel === level ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
+                        <button key={level} type="button" onClick={() => setWorkClockDraftLevel(level)} className={"px-3 py-3 rounded-xl border text-sm font-semibold transition-colors " + (workClockDraftLevel === level ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800 hover:border-neutral-600')}>
                           {level.charAt(0).toUpperCase() + level.slice(1)}
                         </button>
                       ))}
@@ -9930,7 +10061,7 @@ setSelfDestruct(false);
                 <div className="mt-5 flex flex-wrap gap-2">
                   <button type="button" onClick={() => setWorkClockModalOpen(false)} className="px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 text-sm font-semibold hover:border-neutral-500 transition-colors">Zurück</button>
                   <button type="button" onClick={cancelWorkClock} className="px-4 py-3 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-sm font-semibold hover:bg-red-950/60 transition-colors">Verwerfen</button>
-                  <button type="button" onClick={finishWorkClock} disabled={workClockSaving} className="ml-auto px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">{workClockSaving ? 'Speichern...' : 'Speichern'}</button>
+                  <button type="button" onClick={finishWorkClock} disabled={workClockSaving} className="ml-auto px-4 py-3 rounded-xl bg-white text-black text-sm font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">{workClockSaving ? 'Speichern…' : 'Speichern'}</button>
                 </div>
               </div>
             </div>
@@ -9961,7 +10092,7 @@ setSelfDestruct(false);
                 {secretPinError ? <div className="mt-3 text-sm text-red-400">{secretPinError}</div> : <div className="mt-3 text-xs text-neutral-500">4 bis 8 Ziffern.</div>}
                 <div className="mt-5 flex gap-3">
                   <button type="button" onClick={() => { setSecretPinModalOpen(false); setSecretPinInput(''); setSecretPinError(''); }} className="flex-1 px-4 py-3 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-800 transition-colors">Abbrechen</button>
-                  <button type="button" onClick={verifySecretPinAndEnter} disabled={secretPinBusy} className="flex-1 px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">{secretPinBusy ? 'Prüfe...' : 'Öffnen'}</button>
+                  <button type="button" onClick={verifySecretPinAndEnter} disabled={secretPinBusy} className="flex-1 px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60">{secretPinBusy ? 'Prüfe…' : 'Öffnen'}</button>
                 </div>
               </div>
             </div>
@@ -9981,6 +10112,33 @@ setSelfDestruct(false);
                 <div className="text-sm font-semibold text-white flex items-center gap-2"><ShoppingCart className="w-4 h-4" /> Einkaufsliste</div>
                 <div className="text-xs text-neutral-500 mt-1">Liste mit Artikeln, Preisen und Durchstreichen anlegen.</div>
               </button>
+              <button onClick={() => { setEditingQuickNoteId(''); setQuickCaptureNoteInput(''); setQuickNoteModalOpen(true); setPlusMenuOpen(false); }} className="p-4 rounded-2xl border border-neutral-800 hover:border-neutral-500 transition-colors text-left">
+                <div className="text-sm font-semibold text-white flex items-center gap-2"><NotebookText className="w-4 h-4" /> Notiz</div>
+                <div className="text-xs text-neutral-500 mt-1">Kurze Notiz sofort erfassen und speichern.</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {quickNoteModalOpen && (
+        <div className="fixed inset-0 z-[141] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setQuickNoteModalOpen(false)}>
+          <div className="w-full max-w-lg rounded-3xl border border-neutral-800 bg-neutral-950 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-semibold text-white">{editingQuickNoteId ? 'Notiz bearbeiten' : 'Neue Notiz'}</h3><button onClick={() => { setQuickNoteModalOpen(false); setEditingQuickNoteId(''); setQuickCaptureNoteInput(''); }} className="p-2 rounded-xl border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-500"><X className="w-4 h-4" /></button></div>
+            <div className="space-y-4">
+              <textarea
+                value={quickCaptureNoteInput}
+                onChange={(e) => setQuickCaptureNoteInput(e.target.value)}
+                rows={5}
+                placeholder="Notiz eingeben..."
+                className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+              />
+              <div className="flex justify-end gap-3">
+                <button onClick={() => { setQuickNoteModalOpen(false); setEditingQuickNoteId(''); setQuickCaptureNoteInput(''); }} className="px-4 py-3 rounded-xl border border-neutral-800 text-neutral-300 hover:border-neutral-500 transition-colors">Abbrechen</button>
+                {editingQuickNoteId && (<button onClick={() => deleteQuickCaptureNote(editingQuickNoteId)} className="px-4 py-3 rounded-xl border border-red-900/40 text-red-300 hover:bg-red-950/40 transition-colors">Löschen</button>)}
+                <button onClick={saveQuickCaptureNote} className="px-4 py-3 rounded-xl bg-white text-black font-semibold hover:bg-neutral-200 transition-colors">Speichern</button>
+              </div>
             </div>
           </div>
         </div>
@@ -10023,9 +10181,9 @@ setSelfDestruct(false);
 
                 <div className="bg-black border border-neutral-800 rounded-xl p-4 flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-4xl font-light">{weather ? `${Math.round(weather?.temperature)}°` : '--°'}</p>
+                    <p className="text-4xl font-light">{weather ? `${Math.round(weather.temperature)}°` : '--°'}</p>
                     <p className="text-xs text-neutral-500 mt-1">
-                      {weather ? `Wind ${Math.round(weather?.windspeed || 0)} km/h` : 'Lade Daten...'}
+                      {weather ? `Wind ${Math.round(weather.windspeed || 0)} km/h` : 'Lade Daten…'}
                     </p>
                     <p className="mt-3 text-sm text-neutral-300 leading-relaxed">{todayWeatherAdvice}</p>
                   </div>
@@ -10053,8 +10211,8 @@ setSelfDestruct(false);
                           </div>
                           <div className="flex items-center gap-3">
                             <div className="hidden sm:flex items-center gap-2 text-[11px] text-neutral-400">
-                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">Regen {Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}%</span>
-                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">Wind {Math.round(dailyForecast?.windspeed_10m_max?.[i] ?? 0)} km/h</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">💧 {Math.round(dailyForecast?.precipitation_probability_max?.[i] ?? 0)}%</span>
+                              <span className="px-2 py-1 rounded-full border border-neutral-800 bg-neutral-950">🌬️ {Math.round(dailyForecast?.windspeed_10m_max?.[i] ?? 0)} km/h</span>
                             </div>
                             <div className="text-sm tabular-nums">
                               <span className="text-white">{Math.round(dailyForecast?.temperature_2m_max?.[i] ?? 0)}°</span>
@@ -10078,11 +10236,11 @@ setSelfDestruct(false);
                               </div>
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Sonnenaufgang</div>
-                                <div className="mt-1 text-sm">{dailyForecast?.sunrise?.[i] ? new Date(dailyForecast?.sunrise[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
+                                <div className="mt-1 text-sm">{dailyForecast?.sunrise?.[i] ? new Date(dailyForecast.sunrise[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '—'}</div>
                               </div>
                               <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2">
                                 <div className="text-[10px] uppercase tracking-widest text-neutral-500">Sonnenuntergang</div>
-                                <div className="mt-1 text-sm">{dailyForecast?.sunset?.[i] ? new Date(dailyForecast?.sunset[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
+                                <div className="mt-1 text-sm">{dailyForecast?.sunset?.[i] ? new Date(dailyForecast.sunset[i]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) : '—'}</div>
                               </div>
                             </div>
 
@@ -10095,14 +10253,14 @@ setSelfDestruct(false);
                                     try {
                                       const dayStr = String(d).slice(0, 10);
                                       const idxs = [];
-                                      for (let k = 0; k < (hourlyForecast?.time?.length || 0); k++) {
-                                        if (String(hourlyForecast?.time[k]).slice(0, 10) === dayStr) idxs.push(k);
+                                      for (let k = 0; k < hourlyForecast.time.length; k++) {
+                                        if (String(hourlyForecast.time[k]).slice(0, 10) === dayStr) idxs.push(k);
                                       }
                                       return idxs.slice(0, 8).map((k) => (
-                                        <div key={hourlyForecast?.time[k]} className="min-w-[64px] rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-2 text-center">
-                                          <div className="text-[11px] text-neutral-400">{new Date(hourlyForecast?.time[k]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}</div>
+                                        <div key={hourlyForecast.time[k]} className="min-w-[64px] rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-2 text-center">
+                                          <div className="text-[11px] text-neutral-400">{new Date(hourlyForecast.time[k]).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}</div>
                                           <div className="mt-1 text-sm font-medium text-white tabular-nums">{Math.round(hourlyForecast?.temperature_2m?.[k] ?? 0)}°</div>
-                          <div className="mt-1 text-[11px] text-neutral-400">Regen {Math.round(hourlyForecast?.precipitation_probability?.[k] ?? 0)}%</div>
+                                          <div className="mt-1 text-[11px] text-neutral-400">💧 {Math.round(hourlyForecast?.precipitation_probability?.[k] ?? 0)}%</div>
                                         </div>
                                       ));
                                     } catch (_) { return null; }
@@ -10123,7 +10281,7 @@ setSelfDestruct(false);
                     <input
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Ort (z.B. Zürich)..."
+                      placeholder="Ort (z.B. Zürich)…"
                       className="flex-1 bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
                     />
                     <button type="submit" className="px-4 py-3 bg-white text-black rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
@@ -10195,14 +10353,14 @@ setSelfDestruct(false);
                         type="button"
                         onClick={() => {
                           const snap = {
-                            eventId: (eventToEdit._baseId || eventToEdit.id || null),
+                            eventId: (eventToEdit?._baseId || eventToEdit?.id || null),
                             title: eventForm.title,
                             date: eventForm.date,
                             time: eventForm.time,
                             location: eventForm.location,
                             durationMinutes: eventForm.durationMinutes,
                             desc: eventForm.desc,
-                            calendarId: (eventForm.calendarId || eventToEdit.calendarId || 'default'),
+                            calendarId: (eventForm.calendarId || eventToEdit?.calendarId || 'default'),
                           };
                           openShareLinkModalForEvent(snap, snap.calendarId);
                         }}
@@ -10253,19 +10411,19 @@ setSelfDestruct(false);
                       <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                         <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kategorie</div>
-                          <div className="mt-1 text-neutral-200">{eventForm.type || '-'}</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.type || '—'}</div>
                         </div>
                         <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kalender</div>
-                          <div className="mt-1 text-neutral-200">{getCalendarById(eventForm.calendarId || 'default').name || 'Privat'}</div>
+                          <div className="mt-1 text-neutral-200">{getCalendarById(eventForm.calendarId || 'default')?.name || 'Privat'}</div>
                         </div>
                                               <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Ort</div>
-                          <div className="mt-1 text-neutral-200">{eventForm.location ? eventForm.location : '-'}</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.location ? eventForm.location : '—'}</div>
                         </div>
                         <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Dauer</div>
-                          <div className="mt-1 text-neutral-200">{(eventForm.durationMinutes !== null && typeof eventForm.durationMinutes !== 'undefined' && String(eventForm.durationMinutes).trim() !== '') ? `${eventForm.durationMinutes} min` : '-'}</div>
+                          <div className="mt-1 text-neutral-200">{(eventForm.durationMinutes !== null && typeof eventForm.durationMinutes !== 'undefined' && String(eventForm.durationMinutes).trim() !== '') ? `${eventForm.durationMinutes} min` : '—'}</div>
                         </div>
 </div>
 
@@ -10313,7 +10471,7 @@ setSelfDestruct(false);
                 {!(eventToEdit && eventModalMode === 'view') && (
                   <form onSubmit={saveEvent} className="space-y-3">
                   <div className="bg-black border border-neutral-800 rounded-2xl p-4">
-                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">? Schnelleingabe</label>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">⚡ Schnelleingabe</label>
                     <textarea
                       value={quickEventText}
                       onChange={(e) => updateQuickEventText(e.target.value)}
@@ -10324,7 +10482,7 @@ setSelfDestruct(false);
                     {quickEventPreview && (
                       <div className="mt-2 text-[11px] text-neutral-500">
                         Erkannt: <span className="text-neutral-300">{quickEventPreview.date || (selectedDateForEvent || eventForm.date)}{quickEventPreview.time ? ` • ${quickEventPreview.time}` : ''}{(quickEventPreview.durationMinutes !== null && typeof quickEventPreview.durationMinutes !== 'undefined') ? ` • ${quickEventPreview.durationMinutes}min` : ''}{quickEventPreview.location ? ` • Ort: ${quickEventPreview.location}` : ''}</span>
-                        <span className="text-neutral-600"> - </span><span className="text-white">{quickEventPreview.title}</span>
+                        <span className="text-neutral-600"> — </span><span className="text-white">{quickEventPreview.title}</span>
                       </div>
                     )}
                     <div className="flex gap-2 mt-3">
@@ -10406,7 +10564,7 @@ setSelfDestruct(false);
                     <div className="bg-black border border-neutral-800 rounded-2xl p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Abstimmung</label>
+                          <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">🗳️ Abstimmung</label>
                           <p className="mt-1 text-[11px] text-neutral-500">Beim Speichern werden Zeitvorschläge an Mitglieder mit Schreibrecht gesendet.</p>
                         </div>
                         <button
@@ -10431,13 +10589,13 @@ setSelfDestruct(false);
                             <div key={i} className="flex gap-2">
                               <input
                                 type="date"
-                                value={pollDraft[i].date || ''}
+                                value={pollDraft[i]?.date || ''}
                                 onChange={(e) => setPollDraft(prev => prev.map((x, idx) => idx === i ? { ...x, date: e.target.value } : x))}
                                 className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
                               />
                               <input
                                 type="time"
-                                value={pollDraft[i].time || ''}
+                                value={pollDraft[i]?.time || ''}
                                 onChange={(e) => setPollDraft(prev => prev.map((x, idx) => idx === i ? { ...x, time: e.target.value } : x))}
                                 className="w-28 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
                               />
@@ -10472,7 +10630,7 @@ setSelfDestruct(false);
                                 {pollAutoFinalize ? 'An' : 'Aus'}
                               </button>
                             </div>
-                            <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: Fix · Kann · Nein (pro Vorschlag)</div>
+                            <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: ✅ Fix · 🤷 Kann · ❌ Nein (pro Vorschlag)</div>
                           </div>
 <div className="flex gap-2">
                             <button
@@ -10487,8 +10645,8 @@ setSelfDestruct(false);
                               onClick={() => {
                                 // Convenience: setze Hauptdatum/Zeit auf ersten Vorschlag
                                 const first = (pollDraft && pollDraft[0]) ? pollDraft[0] : null;
-                                if (first.date) setEventForm(prev => ({ ...prev, date: first.date }));
-                                if (first.time) setEventForm(prev => ({ ...prev, time: first.time }));
+                                if (first?.date) setEventForm(prev => ({ ...prev, date: first.date }));
+                                if (first?.time) setEventForm(prev => ({ ...prev, time: first.time }));
                               }}
                               className="flex-1 px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 text-sm hover:border-neutral-500"
                             >
@@ -10506,7 +10664,7 @@ setSelfDestruct(false);
                       {!eventForm.time && <span className="text-[10px] text-neutral-500">benötigt Uhrzeit</span>}
                     </div>
                     <select
-                      value={(eventForm.reminderMode === 'custom') ? String(eventForm.reminderMinutes || 15) : (eventForm.reminderMode === 'none' ? 'none' : 'default')}
+                      value={(eventForm.reminderMode === 'custom') ? String(eventForm.reminderMinutes ?? 15) : (eventForm.reminderMode === 'none' ? 'none' : 'default')}
                       onChange={(e) => {
                         const v = e.target.value;
                         if (v === 'default') {
@@ -10647,7 +10805,7 @@ setSelfDestruct(false);
                     <textarea
                       value={eventForm.desc}
                       onChange={(e) => setEventForm(prev => ({ ...prev, desc: e.target.value }))}
-                      placeholder="Optional..."
+                      placeholder="Optional…"
                       rows={3}
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none"
                     />
@@ -10717,14 +10875,14 @@ setSelfDestruct(false);
         onClick={() => { setShowEventComments(v => !v); setShowEventPoll(false); }}
         className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${showEventComments ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
       >
-        Kommentare
+        💬 Kommentare
       </button>
       <button
         type="button"
         onClick={() => { setShowEventPoll(v => !v); setShowEventComments(false); initPollDraftFromEvent(modalEvent || eventToEdit); }}
         className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${showEventPoll ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}
       >
-        Abstimmung
+        🗳️ Abstimmung
       </button>
     </div>
 
@@ -10766,27 +10924,27 @@ setSelfDestruct(false);
       <div className="bg-black border border-neutral-800 rounded-2xl p-3 space-y-3">
         {modalEvent && modalEvent.poll && modalEvent.poll.status === 'closed' && (
           <div className="text-xs text-neutral-400">
-            Letzte Abstimmung geschlossen.
+            Letzte Abstimmung geschlossen ✅
           </div>
         )}
 
         {(!modalEvent || !modalEvent.poll || modalEvent.poll.status !== 'open') ? (
           <div className="space-y-3">
             <p className="text-xs text-neutral-400">
-                3 Vorschläge senden, Mitglieder mit <span className="text-white">Schreibrecht</span> im Kalender stimmen ab. Gewinner wird automatisch gesetzt.
+              3 Vorschläge senden → Mitglieder mit <span className="text-white">Schreibrecht</span> im Kalender stimmen ab. Gewinner wird automatisch gesetzt.
             </p>
 
             {[0,1,2].map((i) => (
               <div key={i} className="flex gap-2">
                 <input
                   type="date"
-                  value={pollDraft[i].date || ''}
+                  value={pollDraft[i]?.date || ''}
                   onChange={(e) => setPollDraft(prev => prev.map((x, idx) => idx === i ? { ...x, date: e.target.value } : x))}
                   className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
                 />
                 <input
                   type="time"
-                  value={pollDraft[i].time || ''}
+                  value={pollDraft[i]?.time || ''}
                   onChange={(e) => setPollDraft(prev => prev.map((x, idx) => idx === i ? { ...x, time: e.target.value } : x))}
                   className="w-28 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500"
                 />
@@ -10819,7 +10977,7 @@ setSelfDestruct(false);
                   {pollAutoFinalize ? 'An' : 'Aus'}
                 </button>
               </div>
-              <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: Fix · Kann · Nein (pro Vorschlag)</div>
+              <div className="mt-2 text-[11px] text-neutral-500">Voting 2.0: ✅ Fix · 🤷 Kann · ❌ Nein (pro Vorschlag)</div>
             </div>
 
 
@@ -10873,7 +11031,7 @@ setSelfDestruct(false);
 
                   {tally.version < 2 && (
                     <div className="text-[11px] text-yellow-300 border border-yellow-900/30 bg-yellow-900/10 rounded-xl p-3">
-                      Diese Abstimmung ist 1.0 (eine Stimme pro Person). Neue Abstimmungen nutzen 2.0 (Fix/Kann/Nein pro Vorschlag).
+                      Diese Abstimmung ist 1.0 (eine Stimme pro Person). Neue Abstimmungen nutzen 2.0 (✅/🤷/❌ pro Vorschlag).
                       {(poll.createdBy === user?.uid) && (
                         <div className="mt-2">
                           <button
@@ -10906,14 +11064,14 @@ setSelfDestruct(false);
                             className={"w-full border rounded-xl px-3 py-2 transition-colors " + (isWinner ? 'border-white bg-neutral-900' : 'border-neutral-800')}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <div className="text-sm text-white">{opt.date} • {opt.time}{isWinner ? ' *' : ''}</div>
+                              <div className="text-sm text-white">{opt.date} • {opt.time}{isWinner ? ' ⭐' : ''}</div>
                               <div className="flex items-center gap-1">
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.YES)} className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)} title="Fix">Ja</button>
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.MAYBE)} className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)} title="Kann">Kann</button>
-                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.NO)} className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)} title="Nein">Nein</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.YES)} className={baseBtn + ' ' + (myState === POLL_STATE.YES ? onCls : offCls)} title="Fix">✅</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.MAYBE)} className={baseBtn + ' ' + (myState === POLL_STATE.MAYBE ? onCls : offCls)} title="Kann">🤷</button>
+                                <button type="button" disabled={pollBusy} onClick={() => voteInPoll(opt.id, POLL_STATE.NO)} className={baseBtn + ' ' + (myState === POLL_STATE.NO ? onCls : offCls)} title="Nein">❌</button>
                               </div>
                             </div>
-                            <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">Ja {t.yes} &nbsp; Kann {t.maybe} &nbsp; Nein {t.no}</div>
+                            <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">✅{t.yes} &nbsp; 🤷{t.maybe} &nbsp; ❌{t.no}</div>
                           </div>
                         );
                       }
@@ -10960,8 +11118,8 @@ setSelfDestruct(false);
               <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">{calForm.id ? 'Bearbeiten' : 'Neu'}</p>
-                    <h3 className="text-lg font-medium text-white">{calForm.id ? 'Kalender bearbeiten' : 'Neuer Kalender'}</h3>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">{calForm?.id ? 'Bearbeiten' : 'Neu'}</p>
+                    <h3 className="text-lg font-medium text-white">{calForm?.id ? 'Kalender bearbeiten' : 'Neuer Kalender'}</h3>
                   </div>
                   <button onClick={() => setIsCalManageModalOpen(false)} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
                     <X className="w-5 h-5" />
@@ -10972,7 +11130,7 @@ setSelfDestruct(false);
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Name</label>
                     <input
-                      value={calForm.name || ''}
+                      value={calForm?.name || ''}
                       onChange={(e) => setCalForm(prev => ({ ...prev, name: e.target.value }))}
                       placeholder="z.B. Arbeit / Schule / Team"
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
@@ -10987,7 +11145,7 @@ setSelfDestruct(false);
                     </div>
                     <input
                       type="color"
-                      value={calForm.color || '#ffffff'}
+                      value={calForm?.color || '#ffffff'}
                       onChange={(e) => setCalForm(prev => ({ ...prev, color: e.target.value }))}
                       className="w-10 h-10 rounded-lg bg-transparent border border-neutral-800"
                       title="Kalenderfarbe"
@@ -10997,17 +11155,17 @@ setSelfDestruct(false);
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Typ</label>
                     <select
-                      value={calForm.type || 'normal'}
+                      value={calForm?.type || 'normal'}
                       onChange={(e) => setCalForm(prev => ({ ...prev, type: e.target.value, shifts: prev.shifts || [] }))}
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
                     >
                       <option value="normal">Normal (Termine)</option>
                       <option value="shift">Schichtplan (Farben)</option>
                     </select>
-                    <p className="mt-1 text-[11px] text-neutral-500">Schichtplan: Tippen wechselt Schichten, lang drücken öffnet Auswahl, "Pinsel" malt mehrere Tage.</p>
+                    <p className="mt-1 text-[11px] text-neutral-500">Schichtplan: Tippen wechselt Schichten, lang drücken öffnet Auswahl, „Pinsel“ malt mehrere Tage.</p>
                   </div>
 
-                  {calForm.type === 'shift' && (
+                  {calForm?.type === 'shift' && (
                     <div className="bg-black border border-neutral-800 rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="text-xs uppercase tracking-widest text-neutral-500 font-semibold">Schichten</h4>
@@ -11126,7 +11284,7 @@ setSelfDestruct(false);
                       {Object.entries(shareCalData.sharedWith || {}).map(([uid, perm]) => (
                         <div key={uid} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
                           <div className="flex flex-col">
-                            <span className="text-sm text-white font-medium">{getProfile(uid).username || shortId(uid,6)}</span>
+                            <span className="text-sm text-white font-medium">{getProfile(uid)?.username || shortId(uid,6)}</span>
                             <span className="text-[11px] text-neutral-500">{perm === 'write' ? 'Lesen & Schreiben' : 'Nur Lesen'}</span>
                           </div>
                           <button onClick={() => unshareCalendar(shareCalData.id, uid)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors" title="Entfernen">
@@ -11160,7 +11318,7 @@ setSelfDestruct(false);
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500">Privacy-first Sharing</p>
                     <h3 className="text-lg font-medium text-white">Public Link</h3>
                     <p className="text-[11px] text-neutral-500 mt-1">
-                      {shareLinkDraft.kind === 'calendar' ? `Busy-Only: ${shareLinkDraft.calName || 'Kalender'}` : `Event: ${(shareLinkDraft.eventSnapshot.title || 'Termin')}`}
+                      {shareLinkDraft.kind === 'calendar' ? `Busy‑Only: ${shareLinkDraft.calName || 'Kalender'}` : `Event: ${(shareLinkDraft.eventSnapshot?.title || 'Termin')}`}
                     </p>
                   </div>
                   <button onClick={() => { setIsShareLinkModalOpen(false); setShareLinkCreated(null); }} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
@@ -11170,7 +11328,7 @@ setSelfDestruct(false);
 
                 {shareLinkDraft.kind === 'calendar' && (
                   <div className="bg-black border border-neutral-800 rounded-xl p-4 mb-4">
-                    <div className="text-xs font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Busy-Only</div>
+                    <div className="text-xs font-semibold text-white flex items-center gap-2"><Lock className="w-4 h-4" /> Busy‑Only</div>
                     <div className="mt-1 text-[11px] text-neutral-500">Extern sieht nur Zeitblöcke (keine Titel/Orte).</div>
                   </div>
                 )}
@@ -11183,7 +11341,7 @@ setSelfDestruct(false);
                       onChange={(e) => setShareLinkDraft(prev => ({ ...prev, protection: e.target.value, passcode: '' }))}
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
                     >
-                      <option value="magic">Magic-Link (ohne Eingabe)</option>
+                      <option value="magic">Magic‑Link (ohne Eingabe)</option>
                       <option value="passcode">Passcode</option>
                       <option value="none">Offen (nicht empfohlen)</option>
                     </select>
@@ -11234,11 +11392,11 @@ setSelfDestruct(false);
                     <div className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Link</div>
                     <div className="mt-2 flex items-center gap-2">
                       <input readOnly value={shareLinkCreated.url} className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white" />
-                      <button type="button" onClick={() => { try { navigator.clipboard.writeText(shareLinkCreated.url); showToast('Kopiert'); } catch (_) {} }} className="p-2 rounded-lg bg-white text-black hover:bg-gray-200" title="Kopieren">
+                      <button type="button" onClick={() => { try { navigator.clipboard?.writeText(shareLinkCreated.url); showToast('Kopiert'); } catch (_) {} }} className="p-2 rounded-lg bg-white text-black hover:bg-gray-200" title="Kopieren">
                         <Copy className="w-4 h-4" />
                       </button>
                     </div>
-                    <div className="mt-2 text-[11px] text-neutral-500">Hinweis: Externe Links benötigen passende Firestore-Rules für <span className="font-mono text-neutral-300">shares</span>.</div>
+                    <div className="mt-2 text-[11px] text-neutral-500">Hinweis: Externe Links benötigen passende Firestore‑Rules für <span className="font-mono text-neutral-300">shares</span>.</div>
                   </div>
                 )}
 
@@ -11263,15 +11421,15 @@ setSelfDestruct(false);
                       <div className="space-y-2 max-h-[32vh] overflow-y-auto no-scrollbar pr-1">
                         {relevant.slice(0, 20).map(l => {
                           const url = makeShareUrl(l.id || l.token || l.shareId || l._id || l.docId || l.id, '');
-                          const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '-';
+                          const exp = l.expiresAtMs ? new Date(l.expiresAtMs).toLocaleDateString('de-CH') : '—';
                           return (
                             <div key={l.id} className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl px-4 py-3">
                               <div className="min-w-0">
-                                <div className="text-sm text-white font-medium truncate">{l.kind === 'calendar' ? 'Busy-Only' : 'Event'} • {shareLinkDraft.calName}</div>
+                                <div className="text-sm text-white font-medium truncate">{l.kind === 'calendar' ? 'Busy‑Only' : 'Event'} • {shareLinkDraft.calName}</div>
                                 <div className="text-[11px] text-neutral-500">Ablauf: {exp}</div>
                               </div>
                               <div className="flex items-center gap-2">
-                                <button type="button" onClick={() => { try { navigator.clipboard.writeText(makeShareUrl(l.id)); showToast('Kopiert'); } catch (_) {} }} className="p-2 border border-neutral-800 rounded-lg text-neutral-300 hover:bg-neutral-900" title="Kopieren"><Copy className="w-4 h-4"/></button>
+                                <button type="button" onClick={() => { try { navigator.clipboard?.writeText(makeShareUrl(l.id)); showToast('Kopiert'); } catch (_) {} }} className="p-2 border border-neutral-800 rounded-lg text-neutral-300 hover:bg-neutral-900" title="Kopieren"><Copy className="w-4 h-4"/></button>
                                 <button type="button" onClick={() => revokeShareLink(l.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors" title="Widerrufen"><Trash2 className="w-4 h-4"/></button>
                               </div>
                             </div>
@@ -11315,13 +11473,13 @@ setSelfDestruct(false);
                 <p className="text-xs text-neutral-500 mb-6">Mindestens 3 Teilnehmer (du + 2)</p>
 
                 <label className="text-xs text-neutral-400">Gruppenname</label>
-                <input value={groupDraftName} onChange={(e) => setGroupDraftName(e.target.value)} placeholder="z.B. Team, Familie..." className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500 mt-2" />
+                <input value={groupDraftName} onChange={(e) => setGroupDraftName(e.target.value)} placeholder="z.B. Team, Familie…" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500 mt-2" />
 
                 <div className="mt-5">
                   <label className="text-xs text-neutral-400">Mitglieder hinzufügen</label>
                   <div className="relative mt-2">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
-                    <input value={groupMemberSearch} onChange={(e) => setGroupMemberSearch(e.target.value)} placeholder="Name suchen..." className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
+                    <input value={groupMemberSearch} onChange={(e) => setGroupMemberSearch(e.target.value)} placeholder="Name suchen…" className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
                   </div>
 
                   {(groupMemberSearch || '').trim() !== '' && (
@@ -11341,7 +11499,7 @@ setSelfDestruct(false);
                                    alt="Profilbild"
                                    onClick={(e) => { e.stopPropagation(); openImageViewer(p.avatarFullBase64 || p.avatarBase64 || p.avatarThumbBase64); }}
                                  />
-                               ) : (p.username || '').substring(0,2)}
+                               ) : (p.username || '?').substring(0,2)}
                             </div>
                             <div className="flex-1">
                               <div className="text-white text-sm font-medium">{p.username}</div>
@@ -11362,8 +11520,8 @@ setSelfDestruct(false);
                         const p = getProfile(id);
                         return (
                           <span key={id} className="inline-flex items-center gap-2 bg-neutral-900 border border-neutral-800 text-white text-xs px-3 py-1.5 rounded-full">
-                            {(p.username || 'User').substring(0, 18)}
-                            <button onClick={(e) => { e.stopPropagation(); setGroupDraftMembers(prev => (prev || []).filter(x => x !== id)); }} className="text-neutral-400 hover:text-white">x</button>
+                            {(p?.username || 'User').substring(0, 18)}
+                            <button onClick={(e) => { e.stopPropagation(); setGroupDraftMembers(prev => (prev || []).filter(x => x !== id)); }} className="text-neutral-400 hover:text-white">×</button>
                           </span>
                         );
                       })}
@@ -11438,15 +11596,15 @@ setSelfDestruct(false);
                            return (
                              <div key={uid} className="flex items-center gap-3 p-2 rounded-lg bg-black/40 border border-neutral-800">
                                <div className="w-9 h-9 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase overflow-hidden shrink-0">
-                                 {p.avatarBase64 ? <img src={p.avatarThumbBase64 || p.avatarBase64} className="w-full h-full object-cover"/> : (p.username || '').substring(0,2)}
+                                 {p?.avatarBase64 ? <img src={p.avatarThumbBase64 || p.avatarBase64} className="w-full h-full object-cover"/> : (p?.username || '?').substring(0,2)}
                                </div>
                                <div className="flex-1">
-                                 <div className="text-sm text-white font-medium truncate">{me ? 'Du' : (p.username || 'Unbekannt')}</div>
+                                 <div className="text-sm text-white font-medium truncate">{me ? 'Du' : (p?.username || 'Unbekannt')}</div>
                                  <div className="text-[11px] text-neutral-500">{pr.online ? 'online' : (pr.lastSeen ? `zuletzt ${formatTime(pr.lastSeen)}` : 'offline')}</div>
                                </div>
                                {isChatAdmin(activeChatData || activeChat) && !me && (
                                  <div className="flex items-center gap-1">
-                                   <button onClick={() => toggleAdmin(activeChatData || activeChat, uid)} className="text-[11px] px-2 py-1 rounded-md bg-neutral-900 border border-neutral-700 text-neutral-200 hover:border-neutral-500">{(activeChatData || activeChat).admins.includes(uid) ? 'Admin' : 'Admin'}</button>
+                                   <button onClick={() => toggleAdmin(activeChatData || activeChat, uid)} className="text-[11px] px-2 py-1 rounded-md bg-neutral-900 border border-neutral-700 text-neutral-200 hover:border-neutral-500">{(activeChatData || activeChat)?.admins?.includes(uid) ? 'Admin' : 'Admin?'}</button>
                                    <button onClick={() => removeMemberFromGroup(activeChatData || activeChat, uid)} className="text-[11px] px-2 py-1 rounded-md bg-red-500/10 border border-red-900/50 text-red-400 hover:bg-red-500/20">Entfernen</button>
                                  </div>
                                )}
@@ -11458,13 +11616,13 @@ setSelfDestruct(false);
                          <div className="mt-4">
                            <label className="text-xs text-neutral-400">Gruppenname</label>
                            <div className="flex gap-2 mt-2">
-                             <input defaultValue={(activeChatData || activeChat).title || ''} id="groupTitleInput" className="flex-1 bg-black border border-neutral-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-neutral-500" />
-                             <button onClick={() => updateGroupTitle(activeChatData || activeChat, document.getElementById('groupTitleInput').value)} className="px-4 py-2 rounded-lg bg-white text-black text-sm font-semibold hover:bg-gray-200">Speichern</button>
+                             <input defaultValue={(activeChatData || activeChat)?.title || ''} id="groupTitleInput" className="flex-1 bg-black border border-neutral-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-neutral-500" />
+                             <button onClick={() => updateGroupTitle(activeChatData || activeChat, document.getElementById('groupTitleInput')?.value)} className="px-4 py-2 rounded-lg bg-white text-black text-sm font-semibold hover:bg-gray-200">Speichern</button>
                            </div>
                            <div className="mt-3">
                              <div className="relative">
                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
-                               <input value={groupEditSearch} onChange={(e) => setGroupEditSearch(e.target.value)} placeholder="Mitglied hinzufügen..." className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
+                               <input value={groupEditSearch} onChange={(e) => setGroupEditSearch(e.target.value)} placeholder="Mitglied hinzufügen…" className="w-full bg-neutral-900 border border-neutral-800 text-white rounded-full pl-10 pr-4 py-2.5 focus:outline-none focus:border-neutral-500" />
                              </div>
                              {(groupEditSearch || '').trim() !== '' && (
                                <div className="mt-2 max-h-40 overflow-y-auto bg-neutral-900 border border-neutral-800 rounded-xl">
@@ -11483,7 +11641,7 @@ setSelfDestruct(false);
                                    alt="Profilbild"
                                    onClick={(e) => { e.stopPropagation(); openImageViewer(p.avatarFullBase64 || p.avatarBase64 || p.avatarThumbBase64); }}
                                  />
-                               ) : (p.username || '').substring(0,2)}
+                               ) : (p.username || '?').substring(0,2)}
                                        </div>
                                        <span className="font-medium text-white text-sm">{p.username}</span>
                                        <Plus className="w-4 h-4 text-neutral-400 ml-auto" />
@@ -11511,7 +11669,7 @@ setSelfDestruct(false);
                      <div className="flex items-center justify-between gap-3 mb-3">
                        <div>
                          <div className="text-xs uppercase tracking-widest text-neutral-500">Medien</div>
-                         <div className="text-sm text-neutral-300">{chatMediaLoading ? 'Lade...' : `${chatMediaItems.length} Bilder im Chat`}</div>
+                         <div className="text-sm text-neutral-300">{chatMediaLoading ? 'Lade…' : `${chatMediaItems.length} Bilder im Chat`}</div>
                        </div>
                        <button type="button" onClick={() => openChatMediaViewer(0)} className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-50" disabled={!chatMediaItems.length}>Galerie öffnen</button>
                      </div>
@@ -11555,8 +11713,8 @@ setSelfDestruct(false);
                 <div className="border-l border-neutral-900 min-h-0 flex flex-col bg-black/40">
                   <div className="p-4 border-b border-neutral-900 text-sm text-neutral-300">
                     <div>{senderLabelFromId(chatMediaItems[chatMediaViewerIndex]?.senderId || '')}</div>
-                    <div className="text-xs text-neutral-500 mt-1">{chatMediaItems[chatMediaViewerIndex]?.timestamp ? new Date(chatMediaItems[chatMediaViewerIndex]?.timestamp).toLocaleString() : ''}</div>
-                    {chatMediaItems[chatMediaViewerIndex]?.text && <div className="mt-2 text-xs text-neutral-400 whitespace-pre-wrap">{chatMediaItems[chatMediaViewerIndex]?.text}</div>}
+                    <div className="text-xs text-neutral-500 mt-1">{chatMediaItems[chatMediaViewerIndex]?.timestamp ? new Date(chatMediaItems[chatMediaViewerIndex].timestamp).toLocaleString() : ''}</div>
+                    {chatMediaItems[chatMediaViewerIndex]?.text && <div className="mt-2 text-xs text-neutral-400 whitespace-pre-wrap">{chatMediaItems[chatMediaViewerIndex].text}</div>}
                   </div>
                   <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-2 content-start">
                     {(chatMediaItems || []).filter(Boolean).map((item, idx) => (
@@ -11581,7 +11739,7 @@ setSelfDestruct(false);
                     sendMessage(null, null, null, ev);
                     setIsShareEventModalOpen(false);
                   }} className="space-y-4">
-                    <input type="text" name="title" required placeholder="Titel (z.B. Kino heute)" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
+                    <input type="text" name="title" required placeholder="Titel (z.B. Kino heute?)" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
                     <div className="flex gap-2">
                       <input type="date" name="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
                       <input type="time" name="time" required defaultValue="18:00" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />

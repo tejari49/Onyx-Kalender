@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Onyx</title>
+  <meta name="description" content="Dein AMOLED optimierter Kalender." />
+  <meta name="theme-color" content="#000000" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="/Onyx-Kalender/manifest.json" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/Onyx-Kalender/apple-touch-icon.png" />
+
+  <!-- Favicons -->
+  <link rel="icon" href="/Onyx-Kalender/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/Onyx-Kalender/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/Onyx-Kalender/favicon-16.png" />
+  <script type="module" crossorigin src="/Onyx-Kalender/assets/index-7voJRxx5.js"></script>
+  <link rel="stylesheet" crossorigin href="/Onyx-Kalender/assets/index-aUIdmoBJ.css">
+</head>
+<body class="min-h-screen bg-black text-white selection:bg-neutral-800">
+  <div id="root"></div>
+
+  <!-- Firebase Messaging Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/Onyx-Kalender/firebase-messaging-sw.js?v=37')
+          .then(reg => console.log('ServiceWorker registriert:', reg.scope))
+          .catch(err => console.log('ServiceWorker Registrierung fehlgeschlagen:', err));
+      });
+    }
+  </script>
+
+</body>
+</html>

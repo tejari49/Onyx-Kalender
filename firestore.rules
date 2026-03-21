@@ -118,6 +118,40 @@ service cloud.firestore {
           allow create, update, delete: if isSelf(userId);
         }
 
+        // ---- Friend requests ----
+        match /friendRequests/{requestId} {
+          allow read: if signedIn()
+            && (resource.data.fromUid == uid() || resource.data.toUid == uid());
+
+          allow create: if signedIn()
+            && request.resource.data.fromUid == uid()
+            && request.resource.data.toUid is string
+            && request.resource.data.toUid != uid()
+            && request.resource.data.status == 'pending';
+
+          allow update: if signedIn() && (
+            (
+              resource.data.fromUid == uid()
+              && resource.data.status == 'pending'
+              && request.resource.data.fromUid == resource.data.fromUid
+              && request.resource.data.toUid == resource.data.toUid
+              && request.resource.data.createdAt == resource.data.createdAt
+              && request.resource.data.status == 'cancelled'
+            )
+            ||
+            (
+              resource.data.toUid == uid()
+              && resource.data.status == 'pending'
+              && request.resource.data.fromUid == resource.data.fromUid
+              && request.resource.data.toUid == resource.data.toUid
+              && request.resource.data.createdAt == resource.data.createdAt
+              && request.resource.data.status in ['accepted', 'declined']
+            )
+          );
+
+          allow delete: if false;
+        }
+
         // ---- Friend code registry ----
         match /friendCodes/{code} {
           allow read: if signedIn();

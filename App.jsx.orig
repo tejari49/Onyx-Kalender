@@ -687,8 +687,6 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [chatFriendLoading, setChatFriendLoading] = useState(false);
       const [chatFriendError, setChatFriendError] = useState('');
       const chatFriendLookupTimer = useRef(null);
-      const [incomingFriendRequestDocs, setIncomingFriendRequestDocs] = useState([]);
-      const [outgoingFriendRequestDocs, setOutgoingFriendRequestDocs] = useState([]);
       const secretPanicBypassUntilRef = useRef(0);
 
       const [myChats, setMyChats] = useState([]);
@@ -2166,24 +2164,8 @@ const handleTouchEnd = () => {
       const friendIds = (userProfile && Array.isArray(userProfile?.friends)) ? userProfile?.friends : [];
       const removedFriendIds = (userProfile && Array.isArray(userProfile?.removedFriendIds)) ? userProfile?.removedFriendIds : [];
       const blockedUserIds = (userProfile && Array.isArray(userProfile?.blockedUsers)) ? userProfile?.blockedUsers : [];
-      const pendingIncomingFriendRequests = Object.values((Array.isArray(incomingFriendRequestDocs) ? incomingFriendRequestDocs : []).reduce((acc, request) => {
-        const fromUid = String(request?.fromUid || '');
-        const status = String(request?.status || 'pending');
-        if (!fromUid || fromUid === user?.uid || status !== 'pending' || friendIds.includes(fromUid) || blockedUserIds.includes(fromUid)) return acc;
-        const current = acc[fromUid];
-        if (!current || Number(request?.createdAt || 0) > Number(current?.createdAt || 0)) acc[fromUid] = request;
-        return acc;
-      }, {})).sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
-      const pendingOutgoingFriendRequests = Object.values((Array.isArray(outgoingFriendRequestDocs) ? outgoingFriendRequestDocs : []).reduce((acc, request) => {
-        const toUid = String(request?.toUid || '');
-        const status = String(request?.status || 'pending');
-        if (!toUid || toUid === user?.uid || status !== 'pending' || friendIds.includes(toUid) || blockedUserIds.includes(toUid)) return acc;
-        const current = acc[toUid];
-        if (!current || Number(request?.createdAt || 0) > Number(current?.createdAt || 0)) acc[toUid] = request;
-        return acc;
-      }, {})).sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
-      const friendRequestIncomingIds = pendingIncomingFriendRequests.map((request) => String(request?.fromUid || '')).filter(Boolean);
-      const friendRequestSentIds = pendingOutgoingFriendRequests.map((request) => String(request?.toUid || '')).filter(Boolean);
+      const friendRequestIncomingIds = (userProfile && Array.isArray(userProfile?.friendRequestsIncoming)) ? userProfile?.friendRequestsIncoming : [];
+      const friendRequestSentIds = (userProfile && Array.isArray(userProfile?.friendRequestsSent)) ? userProfile?.friendRequestsSent : [];
       const sortedMyChats = [...myChats]
         .filter(c => c && c.id && !hiddenChatIds.includes(c.id))
         .filter((c) => {
@@ -2287,7 +2269,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       try { ensureWebPushToken(currentUser, { forcePrompt: false }); } catch(_) {}
     })();
   } else {
-    setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]); setIncomingFriendRequestDocs([]); setOutgoingFriendRequestDocs([]);
+    setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]);
     setCurrentView('dashboard');
   }
 });
@@ -2629,26 +2611,6 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           setMyChats(safeChats);
         });
 
-        const friendRequestsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests');
-        const incomingFriendRequestsQ = query(friendRequestsRef, where('toUid', '==', user?.uid), limit(200));
-        const outgoingFriendRequestsQ = query(friendRequestsRef, where('fromUid', '==', user?.uid), limit(200));
-        const unsubscribeIncomingFriendRequests = onSnapshot(incomingFriendRequestsQ, (snapshot) => {
-          const loaded = [];
-          snapshot.forEach((docSnap) => loaded.push({ id: docSnap.id, ...docSnap.data() }));
-          setIncomingFriendRequestDocs(loaded);
-        }, (err) => {
-          console.warn('[FriendRequests] incoming subscribe failed', err?.code || err);
-          setIncomingFriendRequestDocs([]);
-        });
-        const unsubscribeOutgoingFriendRequests = onSnapshot(outgoingFriendRequestsQ, (snapshot) => {
-          const loaded = [];
-          snapshot.forEach((docSnap) => loaded.push({ id: docSnap.id, ...docSnap.data() }));
-          setOutgoingFriendRequestDocs(loaded);
-        }, (err) => {
-          console.warn('[FriendRequests] outgoing subscribe failed', err?.code || err);
-          setOutgoingFriendRequestDocs([]);
-        });
-
         // Public share links created by this user
         const sharesRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'shares');
         const sharesQ = query(sharesRef, where('createdByUid', '==', user?.uid), limit(100));
@@ -2733,27 +2695,8 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           recomputeCals();
         });
 
-        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeIncomingFriendRequests(); unsubscribeOutgoingFriendRequests(); unsubscribeShares(); unsubscribeAudit(); unsubscribeOwnerCals(); unsubscribeSharedCals(); };
+        return () => { unsubscribeEvents(); unsubscribeProfile(); unsubscribeAllProfiles(); unsubscribeChats(); unsubscribeShares(); unsubscribeAudit(); unsubscribeOwnerCals(); unsubscribeSharedCals(); };
       }, [user]);
-
-      useEffect(() => {
-        if (!user?.uid) return;
-        const acceptedTargets = Array.from(new Set((Array.isArray(outgoingFriendRequestDocs) ? outgoingFriendRequestDocs : [])
-          .filter((request) => String(request?.status || '') === 'accepted')
-          .map((request) => String(request?.toUid || ''))
-          .filter((targetUid) => targetUid && !friendIds.includes(targetUid))));
-        if (acceptedTargets.length === 0) return;
-        acceptedTargets.forEach((targetUid) => {
-          setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
-            friends: arrayUnion(targetUid),
-            removedFriendIds: arrayRemove(targetUid),
-            blockedUsers: arrayRemove(targetUid),
-            updatedAt: Date.now()
-          }, { merge: true }).catch((err) => {
-            console.warn('syncAcceptedFriendRequest failed', err);
-          });
-        });
-      }, [user?.uid, outgoingFriendRequestDocs, friendIds]);
 
       // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---
       useEffect(() => {
@@ -6130,28 +6073,23 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           return local || null;
         }
       };
+
       const sendFriendRequest = async (targetUid) => {
         if (!user?.uid || !targetUid) return;
         if (targetUid === user?.uid) return;
         if (blockedUserIds.includes(targetUid)) return showToast('Kontakt ist blockiert');
         if (isBlockedByUser(targetUid)) return showToast('Du kannst diesem Kontakt keine Anfrage senden');
-        const pendingIncoming = pendingIncomingFriendRequests.find((request) => String(request?.fromUid || '') === String(targetUid));
-        if (pendingIncoming) return acceptFriendRequest(targetUid);
-        const alreadyPending = pendingOutgoingFriendRequests.find((request) => String(request?.toUid || '') === String(targetUid));
-        if (alreadyPending) return showToast('Anfrage bereits gesendet');
         try {
-          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests'), {
-            fromUid: user?.uid,
-            toUid: targetUid,
-            status: 'pending',
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            fromDisplayName: userProfile?.displayName || userProfile?.username || user?.email || 'Kontakt'
-          });
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
-            removedFriendIds: arrayRemove(targetUid),
+            friendRequestsSent: arrayUnion(targetUid),
+            friendRequestsIncoming: arrayRemove(targetUid),
             updatedAt: Date.now()
           }, { merge: true });
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUid), {
+            friendRequestsIncoming: arrayUnion(user?.uid),
+            friendRequestsSent: arrayRemove(user?.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
           showToast('Freundesanfrage gesendet');
         } catch (e) {
           console.warn('sendFriendRequest failed', e);
@@ -6161,14 +6099,15 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const cancelFriendRequest = async (targetUid) => {
         if (!user?.uid || !targetUid) return;
-        const requests = pendingOutgoingFriendRequests.filter((request) => String(request?.toUid || '') === String(targetUid));
-        if (requests.length === 0) return;
         try {
-          await Promise.all(requests.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
-            status: 'cancelled',
-            updatedAt: Date.now(),
-            cancelledAt: Date.now()
-          })));
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            friendRequestsSent: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUid), {
+            friendRequestsIncoming: arrayRemove(user?.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
           showToast('Anfrage zurückgezogen');
         } catch (e) {
           console.warn('cancelFriendRequest failed', e);
@@ -6178,21 +6117,22 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const acceptFriendRequest = async (targetUid) => {
         if (!user?.uid || !targetUid) return;
-        const requests = pendingIncomingFriendRequests.filter((request) => String(request?.fromUid || '') === String(targetUid));
-        if (requests.length === 0) return;
         try {
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
             friends: arrayUnion(targetUid),
             removedFriendIds: arrayRemove(targetUid),
+            friendRequestsIncoming: arrayRemove(targetUid),
+            friendRequestsSent: arrayRemove(targetUid),
             blockedUsers: arrayRemove(targetUid),
             updatedAt: Date.now()
           }, { merge: true });
-          await Promise.all(requests.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
-            status: 'accepted',
-            updatedAt: Date.now(),
-            handledAt: Date.now(),
-            handledByUid: user?.uid
-          })));
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUid), {
+            friends: arrayUnion(user?.uid),
+            friendRequestsIncoming: arrayRemove(user?.uid),
+            friendRequestsSent: arrayRemove(user?.uid),
+            blockedUsers: arrayRemove(user?.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
           await writeAudit({ calId: 'default', action: 'friend.accept', targetType: 'friend', targetId: targetUid, summary: `Freund akzeptiert: ${getUserDisplayLabel(targetUid)}` });
           showToast('Freund hinzugefügt');
         } catch (e) {
@@ -6203,44 +6143,38 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const rejectFriendRequest = async (targetUid) => {
         if (!user?.uid || !targetUid) return;
-        const requests = pendingIncomingFriendRequests.filter((request) => String(request?.fromUid || '') === String(targetUid));
-        if (requests.length === 0) return;
         try {
-          await Promise.all(requests.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
-            status: 'declined',
-            updatedAt: Date.now(),
-            handledAt: Date.now(),
-            handledByUid: user?.uid
-          })));
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            friendRequestsIncoming: arrayRemove(targetUid),
+            updatedAt: Date.now()
+          }, { merge: true });
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUid), {
+            friendRequestsSent: arrayRemove(user?.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
           showToast('Anfrage abgelehnt');
         } catch (e) {
           console.warn('rejectFriendRequest failed', e);
           showToast('Fehler');
         }
       };
+
       const blockUser = async (targetUid) => {
         if (!user?.uid || !targetUid) return;
         try {
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
             blockedUsers: arrayUnion(targetUid),
             friends: arrayRemove(targetUid),
+            friendRequestsIncoming: arrayRemove(targetUid),
+            friendRequestsSent: arrayRemove(targetUid),
             updatedAt: Date.now()
           }, { merge: true });
-          const outgoing = pendingOutgoingFriendRequests.filter((request) => String(request?.toUid || '') === String(targetUid));
-          const incoming = pendingIncomingFriendRequests.filter((request) => String(request?.fromUid || '') === String(targetUid));
-          await Promise.all([
-            ...outgoing.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
-              status: 'cancelled',
-              updatedAt: Date.now(),
-              cancelledAt: Date.now()
-            })),
-            ...incoming.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
-              status: 'declined',
-              updatedAt: Date.now(),
-              handledAt: Date.now(),
-              handledByUid: user?.uid
-            }))
-          ]);
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', targetUid), {
+            friends: arrayRemove(user?.uid),
+            friendRequestsIncoming: arrayRemove(user?.uid),
+            friendRequestsSent: arrayRemove(user?.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
           showToast('Kontakt blockiert');
         } catch (e) {
           console.warn('blockUser failed', e);
@@ -6342,6 +6276,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           showToast('Fehler beim Erstellen');
         }
       };
+
       const removeFriend = async (friendUid) => {
         if (!user || !friendUid) return;
         try {
@@ -6350,10 +6285,18 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           const updates = {
             friends: arrayRemove(friendUid),
             removedFriendIds: arrayUnion(friendUid),
+            friendRequestsIncoming: arrayRemove(friendUid),
+            friendRequestsSent: arrayRemove(friendUid),
             updatedAt: Date.now()
           };
           if (dm && dm.id) updates.hiddenChats = arrayUnion(dm.id);
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), updates, { merge: true });
+          try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', friendUid), {
+            friends: arrayRemove(user?.uid),
+            friendRequestsIncoming: arrayRemove(user?.uid),
+            friendRequestsSent: arrayRemove(user?.uid),
+            updatedAt: Date.now()
+          }, { merge: true }); } catch (_) {}
           await writeAudit({ calId: 'default', action: 'friend.remove', targetType: 'friend', targetId: friendUid, summary: `Freund entfernt: ${getProfile(friendUid)?.displayName || getProfile(friendUid)?.username || shortId(friendUid,6)}` });
           showToast('Freund entfernt');
         } catch (e) {

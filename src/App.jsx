@@ -4430,7 +4430,8 @@ Kalender aktuell` : 'Kalender aktuell';
           }
 
           try { await ensureWebPushToken(user, { forcePrompt: false }); } catch (_) {}
-          const tokenPresent = !!((userProfileRef?.current && userProfileRef.current?.fcmTokenWeb) || userProfile?.fcmTokenWeb);
+          const currentWebToken = String((userProfileRef?.current && userProfileRef.current?.fcmTokenWeb) || userProfile?.fcmTokenWeb || '').trim();
+          const tokenPresent = !!currentWebToken;
           if (!tokenPresent) {
             showToast('Kein Web-Token vorhanden');
             setPushDiag((prev) => ({ ...prev, lastError: 'NO_WEB_PUSH_TOKEN' }));
@@ -4449,6 +4450,7 @@ Kalender aktuell` : 'Kalender aktuell';
               status: 'pending',
               platform: 'web',
               tokenPresent: true,
+              fcmTokenWeb: currentWebToken,
               ua: String((typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '').slice(0, 220)
             },
             { merge: true }
@@ -8322,6 +8324,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const TABS = [
       { id: 'account', label: 'Account & Sicherheit', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'sicherheit', 'datenschutz', 'abmelden', 'email'] },
       { id: 'calendars', label: 'Kalender & Freigaben', subtitle: 'Farben, Schichtpläne und Teilen', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
+      { id: 'notifications', label: 'Benachrichtigungen & Tester', subtitle: 'Push, Erinnerungen und Diagnose', icon: Bell, keys: ['benachrichtigung', 'notifications', 'push', 'tester', 'test', 'reminder', 'erinnerung', 'fcm'] },
       { id: 'design', label: 'Design & Themes', subtitle: 'App-Theme, Hintergrund und Look', icon: Palette, keys: ['design', 'theme', 'themes', 'blur', 'widget', 'look', 'appearance', 'pro'] },
       { id: 'booking', label: 'Booking-Link', subtitle: 'Gäste-Terminkalender', icon: CalendarPlus, keys: ['booking', 'buchung', 'link', 'meet', 'calendly'] },
       { id: 'links', label: 'Public Links', subtitle: 'Busy-only Links und Ablauf', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
@@ -8641,6 +8644,203 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                  <BookingHostManager user={user} userProfile={userProfile} db={db} APP_ID={APP_ID} events={events} />
                </section>
             </AccordionItem>
+
+            <AccordionItem id="notifications" label="Benachrichtigungen & Tester" icon={Bell} keys={['benachrichtigung', 'notifications', 'push', 'tester', 'test', 'reminder', 'erinnerung', 'fcm']}>
+              <section id="settings-notifications" className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                    <Bell className="w-4 h-4" /> Push & Erinnerungen
+                  </h3>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-white">Push aktivieren</p>
+                          <p className="text-xs text-neutral-500 mt-1">Fordert die Berechtigung an, registriert den Service Worker und erneuert bei Bedarf das Web-Token.</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { try { requestNotificationPermission(user); } catch (_) {} }}
+                            className="px-4 py-2 rounded-md text-sm font-semibold bg-white text-black hover:bg-gray-200 transition-colors"
+                          >
+                            Aktivieren
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await registerPushServiceWorker();
+                                await ensureWebPushToken(user, { forcePrompt: false });
+                                showToast('Push-Setup aktualisiert ✅');
+                              } catch (e) {
+                                setPushDiag((prev) => ({ ...prev, lastError: `PUSH_REFRESH_FAILED: ${e?.message || String(e)}` }));
+                                showToast('Push-Setup konnte nicht aktualisiert werden');
+                              }
+                            }}
+                            className="px-4 py-2 rounded-md text-sm font-semibold bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-800 transition-colors inline-flex items-center gap-2"
+                          >
+                            <RefreshCw className="w-4 h-4" /> Neu verbinden
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Berechtigung</div>
+                          <div className="mt-1 text-sm text-white">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</div>
+                        </div>
+                        <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Service Worker</div>
+                          <div className="mt-1 text-sm text-white">{pushDiag?.sw || 'unknown'}</div>
+                        </div>
+                        <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Controller</div>
+                          <div className="mt-1 text-sm text-white">{pushDiag?.controlling ? 'aktiv' : 'nein'}</div>
+                        </div>
+                        <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Web-Token</div>
+                          <div className="mt-1 text-sm text-white">{(userProfile?.fcmTokenWeb || userProfileRef?.current?.fcmTokenWeb) ? 'vorhanden' : 'fehlt'}</div>
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] text-neutral-500 space-y-1">
+                        <div>Letzte Token-Erneuerung: <span className="text-neutral-300">{pushDiag?.lastTokenAt ? new Date(pushDiag.lastTokenAt).toLocaleString('de-CH') : '–'}</span></div>
+                        <div>Letzter Push-Empfang: <span className="text-neutral-300">{pushDiag?.lastReceivedAt ? `${new Date(pushDiag.lastReceivedAt).toLocaleString('de-CH')} · ${pushDiag?.lastReceivedTitle || 'ohne Titel'}` : '–'}</span></div>
+                        {pushDiag?.lastError ? <div className="text-red-400">Diagnose: {pushDiag.lastError}</div> : null}
+                      </div>
+                    </div>
+
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
+                      <div>
+                        <p className="font-medium text-white">Tester</p>
+                        <p className="text-xs text-neutral-500 mt-1">Lokal testet nur die Betriebssystem-Benachrichtigung. Server testet die komplette Kette aus Firestore → Cloud Function → FCM → Service Worker.</p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { try { sendLocalPushTest(); } catch (_) {} }}
+                          className="px-4 py-2 rounded-md text-sm font-semibold bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-800 transition-colors"
+                        >
+                          Lokaler Tester
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { try { sendServerPushTest(); } catch (_) {} }}
+                          className="px-4 py-2 rounded-md text-sm font-semibold bg-white text-black hover:bg-gray-200 transition-colors"
+                        >
+                          Server-Tester
+                        </button>
+                      </div>
+
+                      <div className="rounded-xl border border-neutral-800 bg-black p-4 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Letzter Server-Test</div>
+                          <div className="text-xs text-neutral-300">{pushTest?.updatedAt ? new Date(pushTest.updatedAt).toLocaleString('de-CH') : '–'}</div>
+                        </div>
+                        <div className="text-sm text-white">Status: <span className="font-semibold">{pushTest?.status || 'noch nicht gestartet'}</span></div>
+                        {pushTest?.id ? <div className="text-[11px] text-neutral-500 break-all">ID: {pushTest.id}</div> : null}
+                        {pushTest?.lastError ? <div className="text-[11px] text-red-400 break-words">Fehler: {pushTest.lastError}</div> : <div className="text-[11px] text-neutral-500">Kein Fehler gemeldet.</div>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                    <Clock className="w-4 h-4" /> Erinnerungs-Standard
+                  </h3>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Standard-Erinnerung</label>
+                      <select
+                        value={(() => {
+                          const v = (userProfile && typeof userProfile.defaultReminderMinutes === 'number') ? String(userProfile.defaultReminderMinutes) : 'none';
+                          return v;
+                        })()}
+                        onChange={async (e) => {
+                          try {
+                            const v = e.target.value;
+                            const next = (v === 'none') ? null : (parseInt(v, 10) || 0);
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultReminderMinutes: next, updatedAt: Date.now() }, { merge: true });
+                            setUserProfile(prev => ({ ...(prev || {}), defaultReminderMinutes: next, updatedAt: Date.now() }));
+                            showToast('Erinnerung gespeichert ✅');
+                          } catch (_) {
+                            showToast('Speichern fehlgeschlagen');
+                          }
+                        }}
+                        className="mt-2 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="none">Keine</option>
+                        <option value="0">Bei Beginn</option>
+                        <option value="5">5 Minuten vorher</option>
+                        <option value="10">10 Minuten vorher</option>
+                        <option value="15">15 Minuten vorher</option>
+                        <option value="30">30 Minuten vorher</option>
+                        <option value="60">1 Stunde vorher</option>
+                        <option value="120">2 Stunden vorher</option>
+                        <option value="1440">1 Tag vorher</option>
+                      </select>
+                      <p className="mt-2 text-[11px] text-neutral-500">Gilt für neue Termine und für Termine mit Option „Standard“.</p>
+                    </div>
+
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benachrichtigungston</label>
+                      <select
+                        value={(() => {
+                          const v = (userProfile && userProfile.notificationSoundMode) ? String(userProfile.notificationSoundMode) : 'system';
+                          return (v === 'silent') ? 'silent' : 'system';
+                        })()}
+                        onChange={async (e) => {
+                          try {
+                            const v = e.target.value;
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { notificationSoundMode: v, updatedAt: Date.now() }, { merge: true });
+                            setUserProfile(prev => ({ ...(prev || {}), notificationSoundMode: v, updatedAt: Date.now() }));
+                            showToast('Tonmodus gespeichert ✅');
+                          } catch (_) {
+                            showToast('Speichern fehlgeschlagen');
+                          }
+                        }}
+                        className="mt-2 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="system">System (Standard)</option>
+                        <option value="silent">Stumm</option>
+                      </select>
+                      <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – nur Systemton oder stumm.</p>
+                    </div>
+
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Push-Ziel</label>
+                      <select
+                        value={(() => {
+                          const v = (userProfile && userProfile.pushTarget) ? String(userProfile.pushTarget) : 'web';
+                          return (v === 'android' || v === 'web' || v === 'both') ? v : 'web';
+                        })()}
+                        onChange={async (e) => {
+                          try {
+                            const v = e.target.value;
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { pushTarget: v, updatedAt: Date.now() }, { merge: true });
+                            setUserProfile(prev => ({ ...(prev || {}), pushTarget: v, updatedAt: Date.now() }));
+                            showToast('Push-Ziel gespeichert ✅');
+                          } catch (_) {
+                            showToast('Speichern fehlgeschlagen');
+                          }
+                        }}
+                        className="mt-2 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="web">Nur Web / PWA</option>
+                        <option value="android">Nur Android (APK)</option>
+                        <option value="both">Beide</option>
+                      </select>
+                      <p className="mt-2 text-[11px] text-neutral-500">Für dieses Projekt ist Web/PWA der sinnvolle Standard.</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </AccordionItem>
+
             {/* DESIGN TAB */}
             <AccordionItem id="design" label="Design & Themes" icon={Palette} keys={['design', 'theme', 'themes', 'blur', 'widget', 'look', 'appearance', 'pro']}>
                <section id="settings-design" className="space-y-6">
@@ -8842,6 +9042,25 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
                     >
                       <Palette className="w-4 h-4" /> Öffnen
+                    </button>
+                  </div>
+                </div>
+
+
+                <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-white flex items-center gap-2"><Bell className="w-4 h-4" /> Benachrichtigungen & Tester</p>
+                    <p className="text-xs text-neutral-500 mt-1">Push aktivieren, lokale Tests auslösen und die Server-Diagnose findest du jetzt separat im Bereich <span className="text-neutral-300">Benachrichtigungen & Tester</span>.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Push: <span className="text-white">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</span></div>
+                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Token: <span className="text-white">{(userProfile?.fcmTokenWeb || userProfileRef?.current?.fcmTokenWeb) ? 'vorhanden' : 'fehlt'}</span></div>
+                    <button
+                      type="button"
+                      onClick={() => { setSettingsTab('notifications'); setSettingsQuery(''); }}
+                      className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
+                    >
+                      <Bell className="w-4 h-4" /> Öffnen
                     </button>
                   </div>
                 </div>

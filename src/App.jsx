@@ -478,23 +478,64 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 
       useEffect(() => {
         try {
-          document.documentElement.setAttribute('data-mode', uiTheme);
-          document.documentElement.setAttribute('data-theme', selectedAppTheme || 'obsidian');
-          document.documentElement.setAttribute('data-bg', selectedAppBg || 'none');
-          if (document.body) {
-            document.body.setAttribute('data-mode', uiTheme);
-            document.body.setAttribute('data-theme', selectedAppTheme || 'obsidian');
-            document.body.setAttribute('data-bg', selectedAppBg || 'none');
-          }
-          document.documentElement.classList.toggle('onyx-theme-light', uiTheme === 'light');
+          const themeValue = selectedAppTheme || 'obsidian';
+          const bgValue = selectedAppBg || 'none';
+          const applyDarkTheme = uiTheme === 'dark';
+          const html = document.documentElement;
+          const body = document.body;
+
+          html.setAttribute('data-mode', uiTheme);
+          html.classList.toggle('onyx-theme-light', uiTheme === 'light');
+
+          const syncNode = (node) => {
+            if (!node) return;
+            node.setAttribute('data-mode', uiTheme);
+            if (applyDarkTheme) {
+              node.setAttribute('data-theme', themeValue);
+              if (bgValue && bgValue !== 'none') node.setAttribute('data-bg', bgValue);
+              else node.removeAttribute('data-bg');
+            } else {
+              node.removeAttribute('data-theme');
+              node.removeAttribute('data-bg');
+            }
+          };
+
+          syncNode(html);
+          syncNode(body);
+
           localStorage.setItem('onyx_theme_mode', uiTheme);
           localStorage.setItem('onyx_theme', uiTheme);
-          localStorage.setItem('onyx_app_theme', selectedAppTheme || 'obsidian');
-          localStorage.setItem('onyx_app_bg', selectedAppBg || 'none');
+          localStorage.setItem('onyx_app_theme', themeValue);
+          localStorage.setItem('onyx_app_bg', bgValue);
         } catch (_) {}
       }, [uiTheme, selectedAppTheme, selectedAppBg]);
 
       const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : '');
+      const shellGreeting = `Guten Morgen${dashboardName ? `, ${dashboardName}` : ''}.`;
+      const AppChromeHeader = () => (
+        <div className="sticky top-0 z-30 border-b border-neutral-800 bg-black/92 backdrop-blur supports-[backdrop-filter]:bg-black/72">
+          <div className="max-w-7xl mx-auto px-4 md:px-8 py-3 md:py-4 flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={handleOnyxSecretTap}
+              className="min-w-0 text-left select-none rounded-xl px-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500"
+              title="ONYX"
+            >
+              <div className="text-[10px] uppercase tracking-[0.32em] text-neutral-500">ONYX</div>
+              <div className="mt-1 text-base md:text-2xl font-light text-white truncate">{shellGreeting}</div>
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="w-11 h-11 md:w-12 md:h-12 rounded-2xl border border-neutral-800 bg-black/55 text-neutral-100 hover:border-neutral-500 transition-colors flex items-center justify-center shrink-0"
+              title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+              aria-label={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+            >
+              {uiTheme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      );
       const todayKey = new Date().toISOString().split('T')[0];
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
@@ -1999,29 +2040,6 @@ const handleTouchEnd = () => {
       };
 
       const toggleTheme = () => setUiTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-      const themeToggleTitle = uiTheme === 'light' ? 'Dunkelmodus aktivieren' : 'Hellmodus aktivieren';
-      const themeToggleAria = uiTheme === 'light' ? 'Dunkelmodus aktivieren' : 'Hellmodus aktivieren';
-      const themeToggleButtonClasses = 'inline-flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors shrink-0';
-      const renderTopBrandBar = (extraClass = '') => (
-        <div className={`flex items-center justify-between gap-3 ${extraClass}`.trim()}>
-          <button
-            type="button"
-            onClick={handleOnyxSecretTap}
-            className="text-base md:text-lg font-semibold tracking-[0.28em] uppercase text-white select-none"
-          >
-            Onyx
-          </button>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className={themeToggleButtonClasses}
-            title={themeToggleTitle}
-            aria-label={themeToggleAria}
-          >
-            {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-          </button>
-        </div>
-      );
       const isExtraFieldEnabled = (field) => {
         const defaultOn = true;
         return ((userProfile && Object.prototype.hasOwnProperty.call(userProfile, field)) ? userProfile[field] : defaultOn) === true;
@@ -3140,13 +3158,12 @@ const requestNotificationPermission = async (currentUser) => {
 	          unsubscribeMessage = onMessage(messaging, (payload) => {
 	            const kind = payload?.data?.kind || '';
 	            const chatId = payload?.data?.chatId || '';
-	            const messageId = payload?.data?.messageId || '';
 	            const incomingTitle = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
 	            const incomingBody = payload?.data?.body || payload?.notification?.body || '';
 	            const tag = payload?.data?.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
 	            const notifTitle = (kind === 'chat') ? 'Kalender Aktuell 🔏' : incomingTitle;
-	            const chatTimestamp = Number(payload?.data?.sentAt || payload?.data?.timestamp || Date.now()) || Date.now();
 
+	            // Diagnostics: mark push as received even in foreground (SW only fires in background)
 	            try {
 	              setPushDiag((prev) => ({
 	                ...prev,
@@ -3155,12 +3172,14 @@ const requestNotificationPermission = async (currentUser) => {
 	              }));
 	            } catch (_) {}
 
+	            // Wenn Chat stummgeschaltet ist: keine In-App Benachrichtigung
 	            try {
-	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
-	              const muted = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
+	              const muted = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
 	              if (kind === 'chat' && chatId && muted.includes(chatId)) return;
 	            } catch (_) {}
 
+	            // Foreground: UI aktualisiert sich via Firestore Listener.
+	            // Chat: optional In-App Ping (Sound/Vibration) wenn App sichtbar ist.
 	            let __isOpenChat = false;
 	            try {
 	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
@@ -3169,32 +3188,35 @@ const requestNotificationPermission = async (currentUser) => {
 	                const enableSound = !(prof && prof.inAppChatSound === false);
 	                const enableVibe = !(prof && prof.inAppChatVibrate === false);
 	                if (enableSound || enableVibe) {
-	                  try { lastChatPingRef.current[chatId] = Math.max(lastChatPingRef.current[chatId] || 0, chatTimestamp); } catch (_) {}
+	                  try { lastChatPingRef.current[chatId] = Math.max(lastChatPingRef.current[chatId] || 0, Date.now()); } catch (_) {}
 	                  try { pingInApp({ sound: enableSound, vibrate: enableVibe }); } catch (_) {}
 	                }
 	              }
 	            } catch (_) {}
 
+	            // Toast als Feedback
 	            try {
 	              const toastMsg = (kind === 'chat') ? 'Kalender Aktuell 🔏' : (incomingBody ? `${notifTitle}: ${incomingBody}` : notifTitle);
 	              showToast(toastMsg);
 	            } catch (_) {}
 
+	            // System-Notification im Vordergrund nur bei Test/forceShow oder wenn Tab nicht sichtbar.
+	            // Optional: auch für Chat im Vordergrund, falls aktiviert.
 	            try {
 	              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
 	              const forceShow = String(payload?.data?.forceShow || '') === '1' || kind === 'test';
 	              if (!canNotify) return;
 
+	              // Always show a real OS notification for incoming chat messages (also while app is open).
 	              if (kind === 'chat' && chatId) {
-	                const shouldNotify = consumeChatNotificationSlot(chatId, chatTimestamp || Date.now());
-	                if (!shouldNotify) return;
-	                const quoteText = incomingBody || pickNextNotificationQuote();
-	                showSystemNotification('Kalender Aktuell 🔏', quoteText, tag || `onyx_chat_${chatId}_${messageId || 'msg'}`, { compactBody: true });
+	                // Privacy: Chat OS notification should not show preview/body
+	                showSystemNotification('Kalender Aktuell 🔏', null, tag);
 	                return;
 	              }
 
+	              // Non-chat pushes (tests, reminders, etc.)
 	              if (forceShow || document.visibilityState !== 'visible') {
-	                showSystemNotification(notifTitle, incomingBody, tag);
+	                showSystemNotification(notifTitle, (kind === 'chat') ? null : incomingBody, tag);
 	              }
 	            } catch (_) {}
 	          });
@@ -4187,8 +4209,8 @@ const requestNotificationPermission = async (currentUser) => {
         };
       }, []);
 
-      // Live fallback while the app is running.
-      // With active FCM we only do sound/vibration here to avoid duplicate OS notifications.
+      // Reliable live notifications for new messages while the app is running.
+      // This prevents the "toast only" situation when server push is unavailable.
       useEffect(() => {
         try {
           if (!user) return;
@@ -4196,7 +4218,6 @@ const requestNotificationPermission = async (currentUser) => {
           const enableSound = !(prof.inAppChatSound === false);
           const enableVibe = !(prof.inAppChatVibrate === false);
           const canNotify = (('Notification' in window) && Notification.permission === 'granted');
-          const hasActiveWebPushToken = !!String(prof?.fcmTokenWeb || prof?.fcmToken || '').trim();
           if (!enableSound && !enableVibe && !canNotify) return;
           if (!Array.isArray(myChats) || myChats.length === 0) return;
           if (document.visibilityState !== 'visible') return;
@@ -4205,6 +4226,7 @@ const requestNotificationPermission = async (currentUser) => {
             const updatedAt = (c && typeof c.updatedAt === 'number') ? c.updatedAt : 0;
             if (!updatedAt) continue;
             if (c.lastMessageSenderId === user?.uid) {
+              // keep watermark up to date
               const prev = lastChatPingRef.current[c.id] || 0;
               if (updatedAt > prev) lastChatPingRef.current[c.id] = updatedAt;
               continue;
@@ -4212,12 +4234,14 @@ const requestNotificationPermission = async (currentUser) => {
             const prev = lastChatPingRef.current[c.id] || 0;
             if (updatedAt <= prev) continue;
 
+            // don't ping if currently inside this chat
             const isOpen = (currentViewRef.current === 'secret_chat') && (activeChatIdRef.current === c.id);
             if (isOpen) {
               lastChatPingRef.current[c.id] = updatedAt;
               continue;
             }
 
+            // muted?
             const muted = Array.isArray(prof.mutedChatIds) ? prof.mutedChatIds : [];
             if (muted.includes(c.id)) {
               lastChatPingRef.current[c.id] = updatedAt;
@@ -4225,15 +4249,17 @@ const requestNotificationPermission = async (currentUser) => {
             }
 
             lastChatPingRef.current[c.id] = updatedAt;
-            const shouldNotify = hasActiveWebPushToken ? true : consumeChatNotificationSlot(c.id, updatedAt);
+            const shouldNotify = consumeChatNotificationSlot(c.id, updatedAt);
             if (!shouldNotify) continue;
 
+            // 1) Optional in-app ping (sound/vibration)
             if (enableSound || enableVibe) pingInApp({ sound: enableSound, vibrate: enableVibe });
 
+            // 2) System notification with rotating quote
             try {
-              if (canNotify && !hasActiveWebPushToken) {
+              if (canNotify) {
                 const quoteText = pickNextNotificationQuote();
-                showSystemNotification('Kalender Aktuell 🔏', quoteText, `onyx_chat_${c.id}`, { compactBody: true });
+                showSystemNotification('Kalender Aktuell', quoteText, `onyx_chat_${c.id}`);
               }
             } catch (_) {}
           }
@@ -4266,7 +4292,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=43`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=42`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -4383,14 +4409,13 @@ useEffect(() => {
 }, []);
 
 
-      const showSystemNotification = async (title, body, tag = 'onyx', opts = {}) => {
+      const showSystemNotification = async (title, body, tag = 'onyx') => {
         try {
           if (typeof window === 'undefined') return;
           if (!('Notification' in window)) return;
           if (Notification.permission !== 'granted') return;
 
           const silentMode = (userProfile && String(userProfile?.notificationSoundMode||'system') === 'silent');
-          const compactBody = !!opts.compactBody;
 
           const options = {
             icon: './icon-192.png',
@@ -4401,12 +4426,11 @@ useEffect(() => {
             ...(silentMode ? {} : { vibrate: [200, 100, 200, 100, 300] })
           };
 
+          // body === null means: do not show any body text (privacy mode)
           if (body !== null && body !== undefined) {
-            const cleanBody = String(body || '').trim();
-            options.body = compactBody
-              ? (cleanBody || 'Kalender aktuell')
-              : (cleanBody ? `${cleanBody}
-Kalender aktuell` : 'Kalender aktuell');
+            const finalBody = (body && String(body).trim().length > 0) ? `${body}
+Kalender aktuell` : 'Kalender aktuell';
+            options.body = finalBody;
           }
 
           if ('serviceWorker' in navigator) {
@@ -4417,6 +4441,8 @@ Kalender aktuell` : 'Kalender aktuell');
             }
           }
 
+          // Fallback (falls kein SW verfügbar ist)
+          // eslint-disable-next-line no-new
           new Notification(title, options);
         } catch (e) {}
       };
@@ -7206,7 +7232,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       if (!isAppReady) {
         return (
           <div className="flex h-screen w-full bg-black text-white font-sans items-center justify-center p-4" style={{ height: 'var(--app-height, 100vh)' }}>
-            <div className="flex flex-col items-center animate-pulse"><div className="w-12 h-12 bg-white rounded-sm mb-6"></div><h1 className="text-xl tracking-widest text-neutral-500">Onyx lädt...</h1></div>
+            <div className="flex flex-col items-center animate-pulse"><div className="w-12 h-12 bg-white rounded-sm mb-6"></div><h1 className="text-xl tracking-widest text-neutral-500">ONYX LÄDT...</h1></div>
           </div>
         );
       }
@@ -7265,7 +7291,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 bg-white rounded-sm"></div>
                   <div>
-                    <div className="text-xs text-neutral-500 uppercase tracking-widest">Onyx • Public Share</div>
+                    <div className="text-xs text-neutral-500 uppercase tracking-widest">ONYX • Public Share</div>
                     <div className="text-lg font-medium text-white">{d.kind === 'calendar' ? (d.calName || 'Kalender') : (d.eventSnapshot?.title || 'Termin')}</div>
                   </div>
                 </div>
@@ -7362,7 +7388,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               {toasts.map(toast => (<div key={toast.id} className="bg-neutral-900 border border-neutral-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-fade-in"><CheckCircle2 className="w-5 h-5 text-neutral-400" /><span className="text-sm font-medium">{toast.message}</span></div>))}
             </div>
             <div className="max-w-md w-full p-8 flex flex-col items-center bg-black border border-neutral-800 rounded-2xl shadow-2xl z-10">
-              <div className="w-10 h-10 bg-white rounded-sm mb-6"></div><button type="button" onClick={handleOnyxSecretTap} className="text-3xl font-bold tracking-widest mb-2 select-none">Onyx</button>
+              <div className="w-10 h-10 bg-white rounded-sm mb-6"></div><button type="button" onClick={handleOnyxSecretTap} className="text-3xl font-bold tracking-widest mb-2 select-none">ONYX</button>
               <p className="text-neutral-500 mb-8 text-center text-sm">{isRegistering ? 'Erstelle deinen Account.' : 'Melde dich an, um fortzufahren.'}</p>
               {authError && <div className="w-full bg-red-950/30 border border-red-900/50 text-red-400 p-3 rounded-lg mb-6 text-xs flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><p>{authError}</p></div>}
               <form onSubmit={handleAuth} className="w-full space-y-4">
@@ -7512,7 +7538,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
           <aside className="hidden md:flex w-64 border-r border-neutral-800 flex-col shrink-0 bg-black z-10">
             <div className="p-6 flex-1 overflow-y-auto">
-              <button type="button" onClick={handleOnyxSecretTap} className="text-xl font-bold tracking-wider mb-8 flex items-center gap-3 select-none"><div className="w-4 h-4 bg-white rounded-sm"></div>Onyx</button>
+              <button type="button" onClick={handleOnyxSecretTap} className="text-xl font-bold tracking-wider mb-8 flex items-center gap-3 select-none"><div className="w-4 h-4 bg-white rounded-sm"></div>ONYX</button>
               <button onClick={() => setPlusMenuOpen(true)} className="w-full flex items-center justify-center gap-2 bg-white text-black py-3 px-4 rounded-md font-medium hover:bg-gray-200 transition-colors mb-8"><Plus className="w-5 h-5" /> Neuer Termin</button>
               <nav className="space-y-2 mb-8">
                 <button onClick={() => setCurrentView('dashboard')} className={`w-full flex items-center gap-3 px-4 py-2 rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-neutral-900' : 'hover:bg-neutral-900/50 text-neutral-400 hover:text-white'}`}><Home className="w-5 h-5" /> Dashboard</button>
@@ -7574,18 +7600,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           </nav>
 
           <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
-            {currentView !== 'secret_chat' && (
-              <div className="sticky top-0 z-20 border-b border-neutral-800 bg-black/90 backdrop-blur supports-[backdrop-filter]:bg-black/75">
-                <div className="max-w-7xl mx-auto px-4 md:px-8 py-3">
-                  {renderTopBrandBar()}
-                </div>
-              </div>
-            )}
+            <AppChromeHeader />
             {currentView === 'dashboard' && (
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
-                <div className="mb-8 md:mb-10">
-                  <h2 className="text-3xl md:text-4xl font-light">Guten Morgen{dashboardName ? `, ${dashboardName}` : ''}.</h2>
-                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
                   <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between gap-4 cursor-pointer hover:border-neutral-600 transition-colors group">
                     <div className="min-w-0 flex-1">
@@ -7751,7 +7768,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       <button onClick={nextMonth} className="p-1.5 md:p-2 hover:bg-neutral-900 rounded-full transition-colors border border-transparent hover:border-neutral-800"><ChevronRight className="w-5 h-5 md:w-6 md:h-6" /></button>
                     </div>
                   </div>
-<div className="h-10 w-10 shrink-0" aria-hidden="true" />
                 </header>
 
                 {/* VIEW TOGGLE & SUCHE */}
@@ -8383,14 +8399,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
     const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
     const APP_THEME_OPTIONS = [
-      { id: 'obsidian', name: 'Deep Obsidian', desc: 'Reines AMOLED-Schwarz (Default)', preview: 'linear-gradient(135deg, #050505 0%, #151515 100%)', accent: '#f5f5f5' },
-      { id: 'midnight', name: 'Midnight Blue', desc: 'Dunkles Marineblau', preview: 'linear-gradient(135deg, #071120 0%, #163257 100%)', accent: '#93c5fd' },
-      { id: 'gold', name: 'Onyx Gold', desc: 'Schwarz mit Gold-Akzenten', preview: 'linear-gradient(135deg, #120d08 0%, #3a2710 100%)', accent: '#d4af37' },
+      { id: 'obsidian', name: 'Deep Obsidian', desc: 'Reines AMOLED-Schwarz (Default)' },
+      { id: 'midnight', name: 'Midnight Blue', desc: 'Dunkles Marineblau' },
+      { id: 'gold', name: 'Onyx Gold', desc: 'Schwarz mit Gold-Akzenten' },
     ];
     const APP_BG_OPTIONS = [
-      { id: 'none', name: 'Mattes Schwarz', desc: 'Standard UI', preview: 'linear-gradient(135deg, #080808 0%, #171717 100%)', accent: '#5a5a5a' },
-      { id: 'glass-1', name: 'Neon Blur', desc: 'Starker Cyan/Blau-Glow mit Glassmorphism', preview: 'radial-gradient(circle at 15% 20%, rgba(34,211,238,0.8) 0%, transparent 28%), radial-gradient(circle at 85% 25%, rgba(59,130,246,0.75) 0%, transparent 30%), linear-gradient(135deg, #06101f 0%, #111827 100%)', accent: '#38bdf8' },
-      { id: 'glass-2', name: 'Gold Blur', desc: 'Warmer Gold/Amber-Look mit Ambient-Licht', preview: 'radial-gradient(circle at 18% 18%, rgba(250,204,21,0.82) 0%, transparent 28%), radial-gradient(circle at 82% 22%, rgba(234,88,12,0.62) 0%, transparent 30%), linear-gradient(135deg, #140d08 0%, #22130c 100%)', accent: '#fbbf24' },
+      { id: 'none', name: 'Mattes Schwarz', desc: 'Standard UI' },
+      { id: 'glass-1', name: 'Neon Blur', desc: 'Animierte Farbverläufe mit Glassmorphism' },
+      { id: 'glass-2', name: 'Gold Blur', desc: 'Elegantes Gold-Ambient' },
     ];
     const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
       .filter((field) => isExtraFieldEnabled(field))
@@ -8941,13 +8957,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                          onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
                          className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
                        >
-                         <div className="h-14 rounded-lg border border-white/10 mb-3 overflow-hidden relative" style={{ background: t.preview }}>
-                           <div className="absolute inset-x-3 bottom-3 flex gap-2">
-                             <span className="h-2.5 w-10 rounded-full bg-black/50 backdrop-blur" />
-                             <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: t.accent }} />
-                           </div>
-                         </div>
-                         <div className="flex items-center justify-between gap-3">
+                         <div className="flex items-center justify-between">
                             <div className="font-semibold text-white text-base sm:text-sm">{t.name}</div>
                             {(userProfile?.appTheme || 'obsidian') === t.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
                          </div>
@@ -8968,14 +8978,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                          onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}
                          className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
                        >
-                         <div className="h-14 rounded-lg border border-white/10 mb-3 overflow-hidden relative" style={{ background: bg.preview }}>
-                           <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-                           <div className="absolute inset-x-3 bottom-3 flex gap-2">
-                             <span className="h-2.5 w-10 rounded-full bg-black/40 backdrop-blur" />
-                             <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: bg.accent }} />
-                           </div>
-                         </div>
-                         <div className="flex items-center justify-between gap-3">
+                         <div className="flex items-center justify-between">
                             <div className="font-semibold text-white text-base sm:text-sm">{bg.name}</div>
                             {(userProfile?.appBg || 'none') === bg.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
                          </div>
@@ -9296,7 +9299,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             {currentView === 'secret_chat' && (
               <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>
               <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up" style={{ height: 'var(--app-height, 100vh)' }}>
-                <div className="border-b border-neutral-800 bg-black/90 px-4 md:px-8 py-3">{renderTopBrandBar()}</div>
                 
                 {/* Geheimer Chat Header */}
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
@@ -12031,10 +12033,6 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
   const [requests, setRequests] = React.useState([]);
   
   const code = userProfile?.friendCode;
-  const bookingBaseUrl = React.useMemo(() => {
-    const base = `${window.location.origin}${String(BASE_PATH || '/').startsWith('/') ? String(BASE_PATH || '/') : `/${String(BASE_PATH || '/')}`}`;
-    return `${base.replace(/\/$/, '') || window.location.origin}?book=${encodeURIComponent(String(code || ''))}`;
-  }, [code]);
   
   // Combine imports/logic safety
   const { doc, getDoc, setDoc, query, collection, where, onSnapshot, updateDoc, addDoc, serverTimestamp } = require('firebase/firestore');
@@ -12061,25 +12059,24 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
     const busyEvents = (events || []).map(e => ({ startMs: e.startMs, endMs: e.endMs, isAllDay: e.isAllDay === true }));
     const toSave = {
       ...bProfile,
-      uid: user?.uid,
+      uid: user?.uid || bProfile?.uid || '',
       code,
-      appTheme: userProfile?.appTheme || 'obsidian',
-      appBg: userProfile?.appBg || 'none',
+      title: (bProfile?.title || userProfile?.displayName || 'Termin buchen').trim(),
+      duration: Number(bProfile?.duration || 30) || 30,
+      appTheme: userProfile?.appTheme || null,
+      appBg: userProfile?.appBg || null,
       busyEvents,
       updatedAt: Date.now(),
     };
     await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code), toSave, { merge: true });
-    setBProfile((prev) => ({ ...(prev || {}), ...toSave }));
+    setBProfile(prev => ({ ...(prev || {}), ...toSave }));
     alert('Booking-Profil gespeichert!');
   };
 
-  const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(bookingBaseUrl);
-      alert('Link kopiert!');
-    } catch (_) {
-      window.prompt('Booking-Link kopieren', bookingBaseUrl);
-    }
+  const copyLink = () => {
+    const url = `${window.location.origin}${window.location.pathname}?book=${code}`;
+    navigator.clipboard.writeText(url);
+    alert('Link kopiert!');
   };
 
   const accept = async (req) => {
@@ -12146,8 +12143,8 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
           <div>
              <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Dein Kalender Link</label>
              <div className="flex items-center gap-2 mt-2">
-               <div className="flex-1 bg-neutral-900 border border-neutral-800 text-emerald-400 font-mono text-sm px-4 py-3 rounded-xl truncate select-all">{bookingBaseUrl}</div>
-               <button onClick={copyLink} className="p-3 bg-neutral-800 text-white rounded-xl hover:bg-neutral-700 transition" title="Booking-Link kopieren"><CalendarPlus className="w-5 h-5" /></button>
+               <div className="flex-1 bg-neutral-900 border border-neutral-800 text-emerald-400 font-mono text-sm px-4 py-3 rounded-xl truncate select-all">{window.location.origin}{window.location.pathname}?book={code}</div>
+               <button onClick={copyLink} className="p-3 bg-neutral-800 text-white rounded-xl hover:bg-neutral-700 transition"><CalendarPlus className="w-5 h-5" /></button>
              </div>
           </div>
           <div>

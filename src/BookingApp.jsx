@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { db, APP_ID, BASE_PATH } from './utils/firebase.js';
+import { db, APP_ID } from './utils/firebase.js';
 import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { Loader2, Calendar as CalendarIcon, Clock, User, MessageSquare, CheckCircle2, AlertCircle, Sun, Moon } from 'lucide-react';
-import './themes.css';
+import { Loader2, Calendar as CalendarIcon, Clock, User, MessageSquare, CheckCircle2, AlertCircle, Moon } from 'lucide-react';
 
 export default function BookingApp({ code }) {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState('');
-  const [uiTheme, setUiTheme] = useState(() => document.documentElement.classList.contains('onyx-theme-light') ? 'light' : 'dark');
   
   const [busyEvents, setBusyEvents] = useState([]);
   
@@ -21,14 +19,26 @@ export default function BookingApp({ code }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    const timeoutId = window.setTimeout(() => {
-      if (!cancelled) {
-        setError('Der Booking-Link antwortet nicht. Bitte Seite neu laden oder Link erneut speichern.');
-        setLoading(false);
-      }
-    }, 12000);
+    const html = document.documentElement;
+    const body = document.body;
+    const mode = 'dark';
+    const theme = profile?.appTheme || 'obsidian';
+    const bg = profile?.appBg || 'none';
 
+    const syncNode = (node) => {
+      if (!node) return;
+      node.setAttribute('data-mode', mode);
+      node.classList.remove('onyx-theme-light');
+      node.setAttribute('data-theme', theme);
+      if (bg && bg !== 'none') node.setAttribute('data-bg', bg);
+      else node.removeAttribute('data-bg');
+    };
+
+    syncNode(html);
+    syncNode(body);
+  }, [profile?.appTheme, profile?.appBg]);
+
+  useEffect(() => {
     async function loadProfile() {
       if (!code) {
         setError('Kein Booking-Code angegeben.');
@@ -38,26 +48,42 @@ export default function BookingApp({ code }) {
       try {
         const docRef = doc(db, `artifacts/${APP_ID}/public/data/bookingProfiles`, code);
         const snap = await getDoc(docRef);
-        if (cancelled) return;
         if (!snap.exists()) {
           setError(`Der Link ist ungültig oder wurde deaktiviert.`);
           setLoading(false);
           return;
         }
-        const data = snap.data() || {};
+        const data = snap.data();
         if (!data.isActive) {
           setError(`Dieser Kalender akzeptiert derzeit keine Termine.`);
           setLoading(false);
           return;
         }
-        setProfile(data);
-        setBusyEvents(Array.isArray(data.busyEvents) ? data.busyEvents : []);
 
+        const normalizedProfile = {
+          ...data,
+          uid: data.uid || data.ownerUid || data.createdByUid || '',
+          title: data.title || 'Termin buchen',
+          duration: Number(data.duration || 30) || 30,
+          appTheme: data.appTheme || 'obsidian',
+          appBg: data.appBg || 'none',
+          schedule: data.schedule || {}
+        };
+
+        setProfile(normalizedProfile);
+
+        if (Array.isArray(data.busyEvents) && data.busyEvents.length > 0) {
+          setBusyEvents(data.busyEvents);
+          setLoading(false);
+          return;
+        }
+
+        // Fallback: fetch busy times from shared busy-only feed if provided
         if (data.shareToken) {
           const shareRef = doc(db, `artifacts/${APP_ID}/public/data/shares`, data.shareToken);
           const shareSnap = await getDoc(shareRef);
-          if (!cancelled && shareSnap.exists()) {
-            const shareData = shareSnap.data() || {};
+          if (shareSnap.exists()) {
+            const shareData = shareSnap.data();
             const isRevoked = shareData.revokedAtMs > 0;
             const isExpired = shareData.expiresAtMs > 0 && Date.now() > shareData.expiresAtMs;
             if (!isRevoked && !isExpired && Array.isArray(shareData.events)) {
@@ -65,106 +91,31 @@ export default function BookingApp({ code }) {
             }
           }
         }
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       } catch (err) {
         console.error(err);
-        if (!cancelled) {
-          setError('Netzwerkfehler beim Laden.');
-          setLoading(false);
-        }
-      } finally {
-        window.clearTimeout(timeoutId);
+        setError('Netzwerkfehler beim Laden.');
+        setLoading(false);
       }
     }
     loadProfile();
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-    };
   }, [code]);
-
-  useEffect(() => {
-    const theme = String(profile?.appTheme || 'obsidian');
-    const bg = String(profile?.appBg || 'none');
-    try {
-      if (uiTheme === 'light') {
-        document.documentElement.classList.add('onyx-theme-light');
-        document.documentElement.removeAttribute('data-theme');
-        document.documentElement.removeAttribute('data-bg');
-        if (document.body) {
-          document.body.classList.add('onyx-theme-light');
-          document.body.removeAttribute('data-theme');
-          document.body.removeAttribute('data-bg');
-        }
-      } else {
-        document.documentElement.classList.remove('onyx-theme-light');
-        document.documentElement.setAttribute('data-theme', theme);
-        document.documentElement.setAttribute('data-bg', bg);
-        if (document.body) {
-          document.body.classList.remove('onyx-theme-light');
-          document.body.setAttribute('data-theme', theme);
-          document.body.setAttribute('data-bg', bg);
-        }
-      }
-    } catch (_) {}
-    return () => {
-      try {
-        document.documentElement.classList.remove('onyx-theme-light');
-        document.documentElement.removeAttribute('data-theme');
-        document.documentElement.removeAttribute('data-bg');
-        if (document.body) {
-          document.body.classList.remove('onyx-theme-light');
-          document.body.removeAttribute('data-theme');
-          document.body.removeAttribute('data-bg');
-        }
-      } catch (_) {}
-    };
-  }, [profile?.appTheme, profile?.appBg, uiTheme]);
-
-  const toggleTheme = () => setUiTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-  const bookingBaseUrl = `${window.location.origin}${String(BASE_PATH || '/').startsWith('/') ? String(BASE_PATH || '/') : `/${String(BASE_PATH || '/')}`}`.replace(/\/$/, '') + `?book=${encodeURIComponent(String(code || ''))}`;
-  const headerBar = (
-    <div className="sticky top-0 z-20 border-b border-neutral-800 bg-black/90 backdrop-blur supports-[backdrop-filter]:bg-black/75">
-      <div className="max-w-2xl mx-auto px-4 md:px-8 py-3 flex items-center justify-between gap-3">
-        <div className="text-base md:text-lg font-semibold tracking-[0.28em] uppercase text-white select-none">Onyx</div>
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors shrink-0"
-          title={uiTheme === 'light' ? 'Dunkelmodus aktivieren' : 'Hellmodus aktivieren'}
-          aria-label={uiTheme === 'light' ? 'Dunkelmodus aktivieren' : 'Hellmodus aktivieren'}
-        >
-          {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-        </button>
-      </div>
-    </div>
-  );
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950 text-white">
-        {headerBar}
-        <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center gap-4 px-6 text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-neutral-500" />
-          <div>
-            <div className="text-white font-medium">Booking-Link wird geladen</div>
-            <div className="text-sm text-neutral-500 mt-1 break-all">{bookingBaseUrl}</div>
-          </div>
-        </div>
+      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-neutral-500" />
       </div>
     );
   }
 
   if (error || !profile) {
     return (
-      <div className="min-h-screen bg-neutral-950 text-white">
-        {headerBar}
-        <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6">
-          <div className="max-w-md w-full text-center">
-             <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
-             <h2 className="text-xl font-bold mb-2">Termin-Buchung</h2>
-             <p className="text-neutral-400">{error}</p>
-          </div>
+      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-6">
+        <div className="max-w-md w-full text-center">
+           <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
+           <h2 className="text-xl font-bold mb-2">Termin-Buchung</h2>
+           <p className="text-neutral-400">{error}</p>
         </div>
       </div>
     );
@@ -248,6 +199,9 @@ export default function BookingApp({ code }) {
     setSubmitting(true);
     
     try {
+      if (!profile?.uid) {
+        throw new Error('BOOKING_PROFILE_UID_MISSING');
+      }
       const reqRef = collection(db, `artifacts/${APP_ID}/users/${profile.uid}/bookingRequests`);
       await addDoc(reqRef, {
         guestName,
@@ -261,19 +215,30 @@ export default function BookingApp({ code }) {
       setStep('success');
     } catch (err) {
       console.error(err);
-      alert('Fehler beim Buchen!');
+      alert(err?.message === 'BOOKING_PROFILE_UID_MISSING' ? 'Dieses Booking-Profil ist unvollständig. Bitte im Onyx-Konto einmal speichern.' : 'Fehler beim Buchen!');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-200 font-sans selection:bg-neutral-800">
-       {headerBar}
-       <div className="max-w-2xl mx-auto p-4 md:p-8 pt-8 md:pt-10">
+    <div className="min-h-screen bg-[var(--onyx-app-shell-bg)] text-neutral-200 font-sans selection:bg-neutral-800">
+       <div className="sticky top-0 z-30 border-b border-neutral-800 bg-black/92 backdrop-blur supports-[backdrop-filter]:bg-black/72">
+         <div className="max-w-3xl mx-auto px-4 md:px-8 py-3 md:py-4 flex items-center justify-between gap-4">
+           <div className="min-w-0 text-left select-none rounded-xl px-1 py-0.5">
+             <div className="text-[10px] uppercase tracking-[0.32em] text-neutral-500">ONYX</div>
+             <div className="mt-1 text-base md:text-2xl font-light text-white truncate">Guten Morgen.</div>
+           </div>
+           <div className="w-11 h-11 md:w-12 md:h-12 rounded-2xl border border-neutral-800 bg-black/55 text-neutral-100 flex items-center justify-center shrink-0" aria-hidden="true">
+             <Moon className="w-5 h-5" />
+           </div>
+         </div>
+       </div>
+       <div className="max-w-3xl mx-auto p-4 md:p-8 pt-6 md:pt-8">
           
           <div className="mb-8 text-center">
-             <div className="w-16 h-16 bg-neutral-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-neutral-700 shadow-xl">
+             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-neutral-800 bg-neutral-950/70 text-[11px] uppercase tracking-[0.22em] text-neutral-400 mb-4">Öffentliche Terminbuchung</div>
+             <div className="w-16 h-16 bg-neutral-900/80 rounded-full flex items-center justify-center mx-auto mb-4 border border-neutral-700 shadow-xl">
                 <User className="w-8 h-8 text-neutral-400" />
              </div>
              <h1 className="text-2xl font-bold text-white tracking-tight">{profile.title || 'Termin buchen'}</h1>

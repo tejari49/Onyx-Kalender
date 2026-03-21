@@ -10,14 +10,6 @@ const APP_TIME_ZONE = "Europe/Zurich";
 const REMINDER_LOOKAHEAD_MS = 90 * 1000;
 const PROFILE_PAGE_SIZE = 250;
 
-const CHAT_NEUTRAL_QUOTES = [
-  "Eine neue diskrete Nachricht ist eingetroffen.",
-  "Etwas Neues wartet im Secret Chat.",
-  "Du hast eine neue private Nachricht.",
-  "Im geschützten Chat gibt es ein Update.",
-  "Eine stille Nachricht ist für dich da."
-];
-
 const fnv1a32 = (input) => {
   let h = 0x811c9dc5;
   const s = String(input || "");
@@ -26,33 +18,6 @@ const fnv1a32 = (input) => {
     h = Math.imul(h, 0x01000193);
   }
   return (h >>> 0);
-};
-
-const pickChatQuote = (seed = '') => {
-  const list = Array.isArray(CHAT_NEUTRAL_QUOTES) && CHAT_NEUTRAL_QUOTES.length ? CHAT_NEUTRAL_QUOTES : ["Eine neue diskrete Nachricht ist eingetroffen."];
-  const idx = fnv1a32(String(seed || Date.now())) % list.length;
-  return list[idx] || list[0];
-};
-
-const normalizeTokenList = (...values) => {
-  const out = [];
-  const seen = new Set();
-  for (const value of values) {
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        const token = String(item || '').trim();
-        if (!token || seen.has(token)) continue;
-        seen.add(token);
-        out.push(token);
-      }
-      continue;
-    }
-    const token = String(value || '').trim();
-    if (!token || seen.has(token)) continue;
-    seen.add(token);
-    out.push(token);
-  }
-  return out;
 };
 
 const parseIntSafe = (v) => {
@@ -352,96 +317,6 @@ exports.sendDueEventReminders = onSchedule(
         lastDoc = profilesSnap.docs[profilesSnap.docs.length - 1];
         if (profilesSnap.size < PROFILE_PAGE_SIZE) break;
       }
-    }
-  }
-);
-
-exports.sendChatPushOnCreate = onDocumentCreated(
-  {
-    region: REGION,
-    document: "artifacts/{appId}/public/data/chats/{chatId}/messages/{messageId}",
-  },
-  async (event) => {
-    const snap = event.data;
-    if (!snap) return;
-
-    const message = snap.data() || {};
-    const appId = String(event.params.appId || '');
-    const chatId = String(event.params.chatId || '');
-    const messageId = String(event.params.messageId || '');
-    const senderId = String(message.senderId || '');
-    const createdAtMs = Number(message.timestamp || message.createdAtMs || Date.now()) || Date.now();
-
-    if (!appId || !chatId || !messageId || !senderId) return;
-
-    try {
-      const db = admin.firestore();
-      const chatRef = db.doc(`artifacts/${appId}/public/data/chats/${chatId}`);
-      const chatSnap = await chatRef.get();
-      if (!chatSnap.exists) return;
-
-      const chat = chatSnap.data() || {};
-      const participants = Array.isArray(chat.participants) ? chat.participants.map((v) => String(v || '').trim()).filter(Boolean) : [];
-      const recipientIds = participants.filter((uid) => uid && uid !== senderId);
-      if (!recipientIds.length) return;
-
-      const senderProfileSnap = await db.doc(`artifacts/${appId}/public/data/profiles/${senderId}`).get().catch(() => null);
-      const senderProfile = senderProfileSnap && senderProfileSnap.exists ? (senderProfileSnap.data() || {}) : {};
-      const senderName = String(senderProfile.displayName || senderProfile.username || senderProfile.email || 'Kontakt');
-      const quote = pickChatQuote(`${chatId}:${messageId}:${senderId}`);
-      const isGroup = String(chat.type || '') === 'group' || participants.length > 2;
-      const title = isGroup ? `Kalender Aktuell 🔏` : 'Kalender Aktuell 🔏';
-      const baseData = {
-        kind: 'chat',
-        title,
-        body: quote,
-        chatId,
-        messageId,
-        senderId,
-        senderName,
-        sentAt: String(createdAtMs),
-        tag: `onyx_chat_${chatId}`,
-      };
-
-      const hasLink = isValidHttpsUrl(APP_LINK);
-      for (const recipientId of recipientIds) {
-        const profileRef = db.doc(`artifacts/${appId}/public/data/profiles/${recipientId}`);
-        const profileSnap = await profileRef.get();
-        if (!profileSnap.exists) continue;
-        const profile = profileSnap.data() || {};
-        const mutedChatIds = Array.isArray(profile.mutedChatIds) ? profile.mutedChatIds.map((v) => String(v || '')) : [];
-        if (mutedChatIds.includes(chatId)) continue;
-
-        const tokens = normalizeTokenList(profile.fcmTokenWeb, profile.fcmToken, profile.fcmTokensWeb, profile.fcmTokens);
-        if (!tokens.length) continue;
-
-        for (const token of tokens) {
-          try {
-            await admin.messaging().send({
-              token,
-              notification: { title, body: quote },
-              data: { ...baseData, recipientId },
-              webpush: {
-                headers: { Urgency: 'high', TTL: '120' },
-                ...(hasLink ? { fcmOptions: { link: APP_LINK } } : {}),
-              },
-            });
-          } catch (e) {
-            const errCode = String(e?.code || e?.errorInfo?.code || '');
-            if (errCode.includes('registration-token-not-registered') || errCode.includes('invalid-registration-token')) {
-              await profileRef.set({
-                fcmTokenWeb: profile.fcmTokenWeb === token ? admin.firestore.FieldValue.delete() : profile.fcmTokenWeb,
-                fcmToken: profile.fcmToken === token ? admin.firestore.FieldValue.delete() : profile.fcmToken,
-                updatedAt: Date.now(),
-              }, { merge: true }).catch(() => {});
-            }
-          }
-        }
-      }
-
-      await chatRef.set({ lastServerPushAt: Date.now() }, { merge: true }).catch(() => {});
-    } catch (_) {
-      return;
     }
   }
 );

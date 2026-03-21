@@ -13,7 +13,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-const CACHE_NAME = 'onyx-v43';
+const CACHE_NAME = 'onyx-v42';
 const STATIC_ASSETS = [
   './manifest.json',
   './icon-192.png',
@@ -30,7 +30,6 @@ const STATIC_ASSETS = [
 
 const RECENT_NOTIFICATIONS = new Map();
 const RECENT_TTL_MS = 15000;
-let QUOTES_CACHE = null;
 
 function cleanupRecentNotifications() {
   const now = Date.now();
@@ -50,40 +49,15 @@ function hasSeenNotification(key) {
   return !!ts && ((Date.now() - ts) <= RECENT_TTL_MS);
 }
 
-async function loadQuotes() {
-  if (Array.isArray(QUOTES_CACHE) && QUOTES_CACHE.length) return QUOTES_CACHE;
-  try {
-    const res = await fetch('./quotes.json', { cache: 'no-store' });
-    const data = await res.json();
-    const list = Array.isArray(data) ? data : (Array.isArray(data?.quotes) ? data.quotes : []);
-    QUOTES_CACHE = list.map((q) => String(q || '').trim()).filter(Boolean);
-    return QUOTES_CACHE;
-  } catch (_) {
-    QUOTES_CACHE = [];
-    return QUOTES_CACHE;
-  }
-}
-
-async function pickNeutralQuote(seed = '') {
-  const quotes = await loadQuotes();
-  if (!Array.isArray(quotes) || quotes.length === 0) return 'Eine neue diskrete Nachricht ist eingetroffen.';
-  let hash = 0;
-  const value = String(seed || Date.now());
-  for (let i = 0; i < value.length; i++) hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
-  const idx = Math.abs(hash) % quotes.length;
-  return quotes[idx] || quotes[0] || 'Eine neue diskrete Nachricht ist eingetroffen.';
-}
-
 function extractPayload(rawPayload = {}) {
   const data = rawPayload?.data || {};
   const notification = rawPayload?.notification || {};
   const kind = String(data.kind || '');
   const chatId = String(data.chatId || '');
-  const messageId = String(data.messageId || '');
   const title = kind === 'chat'
     ? 'Kalender Aktuell 🔏'
     : String(data.title || notification.title || 'Onyx');
-  const body = String(data.body || notification.body || '');
+  const body = String(data.body || notification.body || 'Kalender aktuell');
   let tag = String(data.tag || '');
   if (!tag) {
     if (kind === 'chat' && chatId) tag = `chat_${chatId}`;
@@ -98,13 +72,12 @@ function extractPayload(rawPayload = {}) {
     tag,
     kind,
     chatId,
-    messageId,
     calendarId: String(data.calendarId || ''),
     eventId: String(data.eventId || ''),
     occurrenceDate: String(data.occurrenceDate || ''),
     silent,
     requireInteraction: ['reminder', 'event', 'deadline'].includes(kind),
-    dedupeKey: String(messageId || data.tag || tag || `${title}|${body}|${kind}|${chatId}`)
+    dedupeKey: String(data.tag || tag || `${title}|${body}|${kind}|${chatId}`)
   };
 }
 
@@ -112,21 +85,17 @@ async function broadcastPushReceived(meta) {
   try {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of windows) {
-      client.postMessage({ type: 'PUSH_RECEIVED', at: Date.now(), title: meta?.title || '', kind: meta?.kind || '' });
+      client.postMessage({ type: 'PUSH_RECEIVED', at: Date.now(), title: meta?.title || '' });
     }
   } catch (_) {}
 }
 
 async function showOnyxNotification(rawPayload = {}, source = 'unknown') {
   const meta = extractPayload(rawPayload);
-  if (meta.kind === 'chat') {
-    meta.title = 'Kalender Aktuell 🔏';
-    meta.body = meta.body || await pickNeutralQuote(meta.messageId || meta.chatId || Date.now());
-  }
   if (hasSeenNotification(meta.dedupeKey)) return;
   markNotificationSeen(meta.dedupeKey);
   const options = {
-    body: meta.body || 'Kalender aktuell',
+    body: meta.body,
     icon: './icon-192.png',
     badge: './badge-icon.png',
     tag: meta.tag,
@@ -142,7 +111,6 @@ async function showOnyxNotification(rawPayload = {}, source = 'unknown') {
       source,
       kind: meta.kind,
       chatId: meta.chatId,
-      messageId: meta.messageId,
       calendarId: meta.calendarId,
       eventId: meta.eventId,
       occurrenceDate: meta.occurrenceDate,

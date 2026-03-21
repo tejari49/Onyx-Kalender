@@ -20,20 +20,20 @@
 }
 
 html.onyx-theme-light {
-  --onyx-bg: #f7f4ec;
-  --onyx-surface: #fffdf8;
-  --onyx-surface-soft: #f1ece2;
-  --onyx-overlay: rgba(235, 229, 216, 0.86);
+  --onyx-bg: #f6f5f2;
+  --onyx-surface: #eceae4;
+  --onyx-surface-soft: #f1efe9;
+  --onyx-overlay: rgba(220, 217, 208, 0.82);
   --onyx-text: #171717;
-  --onyx-muted: #59564f;
-  --onyx-border: #d9d2c5;
-  --onyx-input-bg: #f3efe6;
-  --onyx-hover-bg: #e9e1d3;
-  --onyx-hover-border: #beb6a6;
+  --onyx-muted: #585753;
+  --onyx-border: #d7d3c8;
+  --onyx-input-bg: #f2f0ea;
+  --onyx-hover-bg: #e2dfd6;
+  --onyx-hover-border: #bcb8ab;
   --onyx-accent-bg: #171717;
   --onyx-accent-text: #f8f7f4;
   --onyx-ring: rgba(23, 23, 23, 0.24);
-  --onyx-app-shell-bg: linear-gradient(180deg, #fbf8f1 0%, #f3eee3 100%);
+  --onyx-app-shell-bg: var(--onyx-bg);
   color-scheme: light;
 }
 

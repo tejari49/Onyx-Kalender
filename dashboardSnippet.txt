@@ -1,0 +1,46 @@
+it', 'verlauf', 'log', 'aenderung', 'wer'] },
+    ];
+    const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
+    const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
+    const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
+      .filter((field) => isExtraFieldEnabled(field))
+      .length;
+
+    const AccordionItem = ({ id, keys, children }) => {
+      const visible = !q || match(keys);
+      if (!visible) return null;
+      const open = q ? true : (settingsTab === id);
+      if (!open) return null;
+      return (
+        <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+          <div className="settings-section-body px-5 py-4">
+            {children}
+          </div>
+        </section>
+      );
+    };
+
+    return (
+      <div className="settings-pro p-5 md:p-8 xl:p-10 max-w-7xl mx-auto w-full animate-fade-in space-y-6">
+        <section className="settings-hero rounded-3xl border border-neutral-800 bg-gradient-to-br from-neutral-950 via-black to-neutral-950 p-5 md:p-7">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3">
+                <h2 className="text-3xl md:text-4xl font-light flex items-center gap-2">Einstellungen <span aria-hidden="true" className="text-2xl">✨</span></h2>
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
+                  title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+                >
+                  {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                  <span>{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-neutral-400">Alle Einstellungen zentral, klar gruppiert und direkt durchsuchbar.</p>
+            </div>
+            <div className="hidden md:grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Tab</div><div className="text-neutral-200 mt-1">{activeTab?.label || 'Kalender'}</div></div>
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Extras aktiv</div><div className="text-neutral-200 mt-1">{enabledExtraCount}</div></div>
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-500 uppercase tracking-widest">Push</div><div className="text-neutral-200 mt-1">{isStandalone ? 'PWA' : 'Browser'}</div></div>
+              <div className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/40"><div className="text-neutral-

@@ -1,3 +1,4 @@
+import './themes.css';
 import React, { useState, useEffect, useRef } from 'react';
 
     import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -7,7 +8,7 @@ import ImageViewer from './components/ImageViewer.jsx';
 import { 
       Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip, Paperclip,
       Copy, Link2, History, Star, SmilePlus
-    } from 'lucide-react';
+    , Palette, LayoutDashboard, MonitorSmartphone } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
@@ -2952,7 +2953,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
     } catch (_) { return false; }
   };
 
-  if (!isStandaloneNow()) return;
+  if (!isStandaloneNow() && !forcePrompt) { console.log('[Push] Not standalone, skipping auto-prompt'); return; }
 
   const messaging = await getMessagingSafe();
   if (!messaging) return;
@@ -3034,10 +3035,7 @@ const requestNotificationPermission = async (currentUser) => {
     } catch (_) { return false; }
   };
 
-  if (!isStandaloneNow()) {
-    showToast(isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren, dann Benachrichtigungen aktivieren.' : 'Bitte als PWA installieren, dann Benachrichtigungen aktivieren.');
-    return;
-  }
+  if (!isStandaloneNow() && isIosUA) { showToast('iPhone/iPad benötigt ggf. PWA-Installation für Push.'); }  }
 
   try {
     await ensureWebPushToken(currentUser, { forcePrompt: true });
@@ -8288,6 +8286,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const TABS = [
       { id: 'account', label: 'Account & Sicherheit', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'sicherheit', 'datenschutz', 'abmelden', 'email'] },
       { id: 'calendars', label: 'Kalender & Freigaben', subtitle: 'Farben, Schichtpläne und Teilen', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
+      { id: 'design', label: 'Onyx Pro Design', subtitle: 'Premium Themes, Blurs & Widgets', icon: Palette, keys: ['design', 'theme', 'blur', 'widget', 'pro'] },
       { id: 'booking', label: 'Booking-Link', subtitle: 'Gäste-Terminkalender', icon: CalendarPlus, keys: ['booking', 'buchung', 'link', 'meet', 'calendly'] },
       { id: 'links', label: 'Public Links', subtitle: 'Busy-only Links und Ablauf', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
       { id: 'ics', label: 'Import/Export', subtitle: 'ICS Export und Import', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
@@ -8606,6 +8605,58 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                  <BookingHostManager user={user} userProfile={userProfile} db={db} APP_ID={APP_ID} events={events} />
                </section>
             </AccordionItem>
+            {/* DESIGN TAB */}
+            <AccordionItem id="design" label="Onyx Pro Design" icon={Palette} keys={['design', 'theme', 'blur', 'widget', 'pro']}>
+               <section id="settings-design" className="space-y-6">
+                 
+                 <div>
+                   <h3 className="text-sm font-medium text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-900/50 pb-2 flex items-center gap-2">
+                     <MonitorSmartphone className="w-4 h-4" /> App Theme
+                   </h3>
+                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                     {[
+                       { id: 'obsidian', name: 'Deep Obsidian', desc: 'Reines AMOLED-Schwarz (Default)' },
+                       { id: 'midnight', name: 'Midnight Blue', desc: 'Dunkles Marineblau' },
+                       { id: 'gold', name: 'Onyx Gold', desc: 'Schwarz mit Gold-Akzenten' }
+                     ].map(t => (
+                       <button
+                         key={t.id}
+                         onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
+                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
+                       >
+                         <div className="font-semibold text-white text-sm">{t.name}</div>
+                         <div className="text-xs text-neutral-500 mt-1">{t.desc}</div>
+                       </button>
+                     ))}
+                   </div>
+                 </div>
+
+                 <div>
+                   <h3 className="text-sm font-medium text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-900/50 pb-2 flex items-center gap-2">
+                     <LayoutDashboard className="w-4 h-4" /> Glassmorphism & Hintergrund
+                   </h3>
+                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                     {[
+                       { id: 'none', name: 'Mattes Schwarz', desc: 'Standard UI' },
+                       { id: 'glass-1', name: 'Neon Blur', desc: 'Animierte Farbverläufe mit Glassmorphism' },
+                       { id: 'glass-2', name: 'Gold Blur', desc: 'Elegantes Gold-Ambient' }
+                     ].map(bg => (
+                       <button
+                         key={bg.id}
+                         onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}
+                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
+                       >
+                         <div className="font-semibold text-white text-sm">{bg.name}</div>
+                         <div className="text-xs text-neutral-500 mt-1">{bg.desc}</div>
+                       </button>
+                     ))}
+                   </div>
+                   <p className="mt-3 text-xs text-neutral-500 italic">Hinweis: Glassmorphismus kann auf sehr alten Geräten die Akkulaufzeit beeinträchtigen.</p>
+                 </div>
+                 
+               </section>
+            </AccordionItem>
+
 
             {/* AUDIT LOG */}
             <AccordionItem id="audit" label="Audit" icon={History} keys={['audit','log','verlauf','änderung','wer']} >

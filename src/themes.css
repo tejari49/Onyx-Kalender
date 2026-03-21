@@ -1,0 +1,51 @@
+/* PREMIUM THEMES (Onyx Pro) */
+
+/* MIDNIGHT BLUE THEME */
+body[data-theme='midnight'] { background-color: #020617 !important; color: #f8fafc; }
+body[data-theme='midnight'] .bg-black { background-color: #020617 !important; }
+body[data-theme='midnight'] .bg-neutral-950 { background-color: #0f172a !important; }
+body[data-theme='midnight'] .bg-neutral-900 { background-color: #1e293b !important; }
+body[data-theme='midnight'] .border-neutral-800 { border-color: #334155 !important; }
+body[data-theme='midnight'] .border-neutral-900 { border-color: #1e293b !important; }
+body[data-theme='midnight'] .text-neutral-500 { color: #94a3b8 !important; }
+body[data-theme='midnight'] .text-neutral-400 { color: #cbd5e1 !important; }
+
+/* GOLD/BLACK THEME */
+body[data-theme='gold'] { background-color: #000000 !important; }
+body[data-theme='gold'] .bg-emerald-500, body[data-theme='gold'] .bg-emerald-600 { background-color: #d4af37 !important; color: #000 !important; border-color: #d4af37 !important; }
+body[data-theme='gold'] .text-emerald-500, body[data-theme='gold'] .text-emerald-400 { color: #d4af37 !important; }
+body[data-theme='gold'] .border-emerald-500, body[data-theme='gold'] .border-emerald-900 { border-color: #d4af37 !important; }
+body[data-theme='gold'] .bg-emerald-900\/20 { background-color: rgba(212, 175, 55, 0.1) !important; border-color: rgba(212, 175, 55, 0.3) !important; }
+body[data-theme='gold'] .shadow-emerald-900\/20 { box-shadow: 0 4px 20px rgba(212, 175, 55, 0.2) !important; }
+
+/* DYNAMIC GLASSMORPHISM BACKGROUNDS */
+body[data-bg='glass-1'] {
+  background: radial-gradient(circle at 10% 20%, rgba(13, 148, 136, 0.15) 0%, transparent 40%),
+              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.15) 0%, transparent 40%),
+              #000000 !important;
+  background-attachment: fixed !important;
+}
+
+body[data-bg='glass-2'] {
+  background: radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.15) 0%, transparent 50%),
+              #000000 !important;
+  background-attachment: fixed !important;
+}
+
+/* Base class for glass elements */
+body[data-bg^='glass'] .bg-neutral-950,
+body[data-bg^='glass'] .bg-black {
+  background-color: rgba(10, 10, 10, 0.6) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Ensure topmost modals get deeper blur */
+body[data-bg^='glass'] .z-\\[100\\] .bg-neutral-950,
+body[data-bg^='glass'] .z-\\[90\\] .bg-neutral-950,
+body[data-bg^='glass'] .z-\\[80\\] .bg-neutral-950 {
+  background-color: rgba(15, 15, 15, 0.75) !important;
+  backdrop-filter: blur(30px) !important;
+  -webkit-backdrop-filter: blur(30px) !important;
+}

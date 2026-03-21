@@ -82,13 +82,28 @@ import {
       }
     };
 
-    
+    const isStandaloneDisplayMode = () => {
+      try {
+        const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
+        const dm = !!(m && m.matches);
+        const ios = !!(window.navigator && window.navigator.standalone);
+        return dm || ios;
+      } catch (_) { return false; }
+    };
 
-    
+    const requiresInstalledPwaForPush = () => {
+      try {
+        if (typeof navigator === 'undefined') return false;
+        const ua = String(navigator.userAgent || '').toLowerCase();
+        const isiPhoneOrIPad = /iphone|ipad|ipod/.test(ua);
+        const iPadDesktopMode = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+        return isiPhoneOrIPad || iPadDesktopMode;
+      } catch (_) { return false; }
+    };
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v28 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v29 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -2983,28 +2998,34 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       };
 
       const ensureWebPushToken = async (currentUser, opts = {}) => {
-  if (!currentUser) return;
+  if (!currentUser) return null;
   const forcePrompt = !!opts.forcePrompt;
+  const requiresStandalone = requiresInstalledPwaForPush();
 
-  const isStandaloneNow = () => {
-    try {
-      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
-      const dm = !!(m && m.matches);
-      const ios = !!(window.navigator && window.navigator.standalone);
-      return dm || ios;
-    } catch (_) { return false; }
-  };
-
-  if (!isStandaloneNow() && !forcePrompt) { console.log('[Push] Not standalone, skipping auto-prompt'); return; }
+  if (requiresStandalone && !isStandaloneDisplayMode() && !forcePrompt) {
+    const reason = 'IOS_REQUIRES_PWA_INSTALL';
+    setPushDiag(prev => ({ ...prev, lastError: reason }));
+    console.log('[Push] iOS requires installed PWA before auto-setup');
+    return null;
+  }
 
   const messaging = await getMessagingSafe();
-  if (!messaging) return;
-  if (!('Notification' in window)) return;
+  if (!messaging) {
+    setPushDiag(prev => ({ ...prev, lastError: 'FCM_NOT_SUPPORTED_IN_THIS_BROWSER' }));
+    return null;
+  }
+  if (!('Notification' in window)) {
+    setPushDiag(prev => ({ ...prev, lastError: 'NOTIFICATION_API_NOT_AVAILABLE' }));
+    return null;
+  }
 
   if (Notification.permission !== 'granted') {
-    if (!forcePrompt) return;
+    if (!forcePrompt) return null;
     const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return;
+    if (permission !== 'granted') {
+      setPushDiag(prev => ({ ...prev, lastError: `NOTIFICATION_PERMISSION_${String(permission || 'default').toUpperCase()}` }));
+      return null;
+    }
   }
 
   try {
@@ -3046,9 +3067,11 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         { merge: true }
       );
       setPushDiag(prev => ({ ...prev, lastTokenAt: Date.now(), lastError: '' }));
-    } else {
-      setPushDiag(prev => ({ ...prev, lastError: 'NO_TOKEN_RETURNED' }));
+      return token;
     }
+
+    setPushDiag(prev => ({ ...prev, lastError: 'NO_TOKEN_RETURNED' }));
+    return null;
   } catch (e) {
     console.warn('[FCM] ensure token failed', e?.message || e);
     const friendly = (() => {
@@ -3062,29 +3085,23 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       } catch (_) { return String(e?.message || e); }
     })();
     setPushDiag(prev => ({ ...prev, lastError: friendly }));
+    return null;
   }
 };
 
 const requestNotificationPermission = async (currentUser) => {
   if (!currentUser) return;
 
-  const isStandaloneNow = () => {
-    try {
-      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
-      const dm = !!(m && m.matches);
-      const ios = !!(window.navigator && window.navigator.standalone);
-      return dm || ios;
-    } catch (_) { return false; }
-  };
-
-  if (!isStandaloneNow()) {
-    showToast(isIosUA ? 'iPhone/iPad: Teilen -> "Zum Home-Bildschirm" installieren, dann Benachrichtigungen aktivieren.' : 'Bitte als PWA installieren, dann Benachrichtigungen aktivieren.');
+  if (requiresInstalledPwaForPush() && !isStandaloneDisplayMode()) {
+    setPushDiag(prev => ({ ...prev, lastError: 'IOS_REQUIRES_PWA_INSTALL' }));
+    showToast('iPhone/iPad: Erst über Teilen → „Zum Home-Bildschirm“, dann Benachrichtigungen aktivieren.');
     return;
   }
 
   try {
-    await ensureWebPushToken(currentUser, { forcePrompt: true });
-    showToast('Benachrichtigungen aktiviert ✅');
+    const token = await ensureWebPushToken(currentUser, { forcePrompt: true });
+    if (token) showToast('Benachrichtigungen aktiviert ✅');
+    else showToast('Benachrichtigungen konnten nicht aktiviert werden');
   } catch (err) {
     console.log('FCM Error', err);
     showToast('Benachrichtigungen konnten nicht aktiviert werden');
@@ -4248,14 +4265,7 @@ const registerPushServiceWorker = async () => {
 }
 
 useEffect(() => {
-  const computeStandalone = () => {
-    try {
-      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
-      const dm = !!(m && m.matches);
-      const ios = !!(window.navigator && window.navigator.standalone);
-      return dm || ios;
-    } catch (_) { return false; }
-  };
+  const computeStandalone = () => isStandaloneDisplayMode();
 
   // 1) Track standalone state (PWA)
   setIsStandalone(computeStandalone());
@@ -4447,15 +4457,33 @@ Kalender aktuell` : 'Kalender aktuell';
         try {
           if (!user) return;
 
-          const canNotify = ('Notification' in window) && Notification.permission === 'granted';
-          if (!canNotify) {
-            showToast('Keine Benachrichtigungs-Berechtigung');
-            setPushDiag((prev) => ({ ...prev, lastError: 'NOTIFICATION_PERMISSION_NOT_GRANTED' }));
+          if (!('Notification' in window)) {
+            showToast('Dieser Browser unterstützt keine Benachrichtigungen');
+            setPushDiag((prev) => ({ ...prev, lastError: 'NOTIFICATION_API_NOT_AVAILABLE' }));
             return;
           }
 
-          try { await ensureWebPushToken(user, { forcePrompt: false }); } catch (_) {}
-          const currentWebToken = String((userProfileRef?.current && userProfileRef.current?.fcmTokenWeb) || userProfile?.fcmTokenWeb || '').trim();
+          let permissionState = Notification.permission;
+          let ensuredToken = '';
+          if (permissionState !== 'granted') {
+            ensuredToken = (await ensureWebPushToken(user, { forcePrompt: true })) || '';
+            permissionState = Notification.permission;
+          } else {
+            ensuredToken = (await ensureWebPushToken(user, { forcePrompt: false })) || '';
+          }
+
+          if (permissionState !== 'granted') {
+            showToast('Keine Benachrichtigungs-Berechtigung');
+            setPushDiag((prev) => ({ ...prev, lastError: `NOTIFICATION_PERMISSION_${String(permissionState || 'default').toUpperCase()}` }));
+            return;
+          }
+
+          const currentWebToken = String(
+            ensuredToken ||
+            (userProfileRef?.current && userProfileRef.current?.fcmTokenWeb) ||
+            userProfile?.fcmTokenWeb ||
+            ''
+          ).trim();
           const tokenPresent = !!currentWebToken;
           if (!tokenPresent) {
             showToast('Kein Web-Token vorhanden');
@@ -8428,12 +8456,12 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-4 md:p-5 space-y-5">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-4 md:p-5">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">Schnellzugriff</p>
-              <h3 className="mt-1 text-lg font-semibold text-white flex items-center gap-2"><Palette className="w-5 h-5" /> Design & Themes sofort sichtbar</h3>
-              <p className="mt-1 text-sm text-neutral-400">Falls der Tab leicht zu übersehen ist, kannst du die Theme-Änderung direkt hier oben vornehmen.</p>
+              <h3 className="mt-1 text-base font-semibold text-white">Wichtige Bereiche direkt öffnen</h3>
+              <p className="mt-1 text-sm text-neutral-400">Die doppelte Theme-Vorschau wurde entfernt. Design und Push bleiben jetzt über kompakte Schnellaktionen erreichbar.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
@@ -8441,69 +8469,22 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 onClick={() => { setSettingsTab('design'); setSettingsQuery(''); }}
                 className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
               >
-                <Palette className="w-4 h-4" /> Theme-Tab öffnen
+                <Palette className="w-4 h-4" /> Design & Themes
               </button>
               <button
                 type="button"
                 onClick={() => { setSettingsTab('notifications'); setSettingsQuery(''); }}
                 className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-neutral-200 text-xs font-semibold hover:border-neutral-600 transition-colors inline-flex items-center gap-2"
               >
-                <Bell className="w-4 h-4" /> Benachrichtigungen öffnen
+                <Bell className="w-4 h-4" /> Benachrichtigungen
               </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <div className="rounded-2xl border border-neutral-800 bg-black p-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">App Theme</p>
-                  <p className="text-sm text-neutral-400 mt-1">Farbschema der Oberfläche</p>
-                </div>
-                <div className="px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-950 text-xs text-neutral-300">Aktiv: <span className="text-white">{selectedAppTheme === 'midnight' ? 'Midnight Blue' : selectedAppTheme === 'gold' ? 'Onyx Gold' : 'Deep Obsidian'}</span></div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {APP_THEME_OPTIONS.map((t) => (
-                  <button
-                    key={`quick-theme-${t.id}`}
-                    type="button"
-                    onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
-                    className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-600'}`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-semibold text-white text-sm">{t.name}</div>
-                      {(userProfile?.appTheme || 'obsidian') === t.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
-                    </div>
-                    <div className="text-xs text-neutral-400 mt-2">{t.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-neutral-800 bg-black p-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">Hintergrund</p>
-                  <p className="text-sm text-neutral-400 mt-1">Glassmorphism und Ambient-Look</p>
-                </div>
-                <div className="px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-950 text-xs text-neutral-300">Aktiv: <span className="text-white">{selectedAppBg === 'glass-1' ? 'Neon Blur' : selectedAppBg === 'glass-2' ? 'Gold Blur' : 'Mattes Schwarz'}</span></div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {APP_BG_OPTIONS.map((bg) => (
-                  <button
-                    key={`quick-bg-${bg.id}`}
-                    type="button"
-                    onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}
-                    className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-600'}`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-semibold text-white text-sm">{bg.name}</div>
-                      {(userProfile?.appBg || 'none') === bg.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
-                    </div>
-                    <div className="text-xs text-neutral-400 mt-2">{bg.desc}</div>
-                  </button>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => { setSettingsTab('account'); setSettingsQuery(''); }}
+                className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-neutral-200 text-xs font-semibold hover:border-neutral-600 transition-colors inline-flex items-center gap-2"
+              >
+                <User className="w-4 h-4" /> Account
+              </button>
             </div>
           </div>
         </section>
@@ -8512,7 +8493,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-3 space-y-2">
             <div>
               <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Einstellungsbereich</p>
-              <p className="mt-1 text-sm text-neutral-300">Mobilansicht als Dropdown statt nebeneinanderliegenden Tabs.</p>
+              <p className="mt-1 text-sm text-neutral-300">Mobilansicht mit einem kompakten Dropdown pro Bereich.</p>
             </div>
             <div className="relative">
               <select

@@ -1,0 +1,40 @@
+ensureWebPushToken = async (currentUser, opts = {}) => {
+  if (!currentUser) return;
+  const forcePrompt = !!opts.forcePrompt;
+
+  const isStandaloneNow = () => {
+    try {
+      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
+      const dm = !!(m && m.matches);
+      const ios = !!(window.navigator && window.navigator.standalone);
+      return dm || ios;
+    } catch (_) { return false; }
+  };
+
+  if (!isStandaloneNow()) return;
+
+  const messaging = await getMessagingSafe();
+  if (!messaging) return;
+  if (!('Notification' in window)) return;
+
+  if (Notification.permission !== 'granted') {
+    if (!forcePrompt) return;
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+  }
+
+  try {
+    const swRegistration = await registerPushServiceWorker();
+    if (!swRegistration) throw new Error('SERVICE_WORKER_NOT_READY');
+
+    let token = '';
+    const vapidCandidates = [String(FCM_WEB_VAPID_KEY || '').trim(), String(FCM_WEB_VAPID_KEY_LEGACY || '').trim()].filter(Boolean);
+    for (let i = 0; i < vapidCandidates.length; i++) {
+      const vapidKey = vapidCandidates[i];
+      try {
+        token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swRegistration });
+        if (token) break;
+      } catch (err) {
+        const isLastTry = i >= vapidCandidates.length - 1;
+        if (isLastTry) throw err;
+        console.warn('[FCM] getToken failed, trying next VAPID key', err?.code || err

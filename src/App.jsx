@@ -127,8 +127,10 @@ function AmoledCalendarApp() {
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
       const [uiTheme, setUiTheme] = useState(() => {
         try {
-          const stored = localStorage.getItem('onyx_theme');
+          const stored = localStorage.getItem('onyx_theme_mode');
           if (stored === 'light' || stored === 'dark') return stored;
+          const legacyStored = localStorage.getItem('onyx_theme');
+          if (legacyStored === 'light' || legacyStored === 'dark') return legacyStored;
           const prefersDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
           return prefersDark ? 'dark' : 'light';
         } catch (_) { return 'dark'; }
@@ -138,13 +140,6 @@ function AmoledCalendarApp() {
         push: true,
         workclock: false,
       });
-
-      useEffect(() => {
-        try {
-          document.documentElement.setAttribute('data-theme', uiTheme);
-          localStorage.setItem('onyx_theme', uiTheme);
-        } catch (_) {}
-      }, [uiTheme]);
 
       const [currentDate, setCurrentDate] = useState(new Date());
       
@@ -437,6 +432,31 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
+      const selectedAppTheme = ((userProfile && userProfile?.appTheme) ? userProfile?.appTheme : (() => {
+        try { return localStorage.getItem('onyx_app_theme') || 'obsidian'; } catch (_) { return 'obsidian'; }
+      })());
+      const selectedAppBg = ((userProfile && userProfile?.appBg) ? userProfile?.appBg : (() => {
+        try { return localStorage.getItem('onyx_app_bg') || 'none'; } catch (_) { return 'none'; }
+      })());
+
+      useEffect(() => {
+        try {
+          document.documentElement.setAttribute('data-mode', uiTheme);
+          document.documentElement.setAttribute('data-theme', selectedAppTheme || 'obsidian');
+          document.documentElement.setAttribute('data-bg', selectedAppBg || 'none');
+          if (document.body) {
+            document.body.setAttribute('data-mode', uiTheme);
+            document.body.setAttribute('data-theme', selectedAppTheme || 'obsidian');
+            document.body.setAttribute('data-bg', selectedAppBg || 'none');
+          }
+          document.documentElement.classList.toggle('onyx-theme-light', uiTheme === 'light');
+          localStorage.setItem('onyx_theme_mode', uiTheme);
+          localStorage.setItem('onyx_theme', uiTheme);
+          localStorage.setItem('onyx_app_theme', selectedAppTheme || 'obsidian');
+          localStorage.setItem('onyx_app_bg', selectedAppBg || 'none');
+        } catch (_) {}
+      }, [uiTheme, selectedAppTheme, selectedAppBg]);
+
       const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : '');
       const todayKey = new Date().toISOString().split('T')[0];
       const [allProfiles, setAllProfiles] = useState([]);
@@ -5693,11 +5713,15 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
   const updateProfileField = async (field, value) => {
     if (!user?.uid) return;
     try {
-      const { doc, updateDoc } = require('firebase/firestore');
-      await updateDoc(doc(db, `artifacts/${APP_ID}/users/${user.uid}`), { [field]: value });
-      setUserProfile(prev => ({ ...prev, [field]: value })); // Optimistic update
+      await setDoc(
+        doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid),
+        { [field]: value, updatedAt: Date.now() },
+        { merge: true }
+      );
+      setUserProfile(prev => ({ ...(prev || {}), [field]: value, updatedAt: Date.now() }));
     } catch(err) {
       console.error('Error updating profile field', err);
+      showToast('Design konnte nicht gespeichert werden');
     }
   };
 
@@ -8298,7 +8322,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const TABS = [
       { id: 'account', label: 'Account & Sicherheit', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'sicherheit', 'datenschutz', 'abmelden', 'email'] },
       { id: 'calendars', label: 'Kalender & Freigaben', subtitle: 'Farben, Schichtpläne und Teilen', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
-      { id: 'design', label: 'Onyx Pro Design', subtitle: 'Premium Themes, Blurs & Widgets', icon: Palette, keys: ['design', 'theme', 'blur', 'widget', 'pro'] },
+      { id: 'design', label: 'Design & Themes', subtitle: 'App-Theme, Hintergrund und Look', icon: Palette, keys: ['design', 'theme', 'themes', 'blur', 'widget', 'look', 'appearance', 'pro'] },
       { id: 'booking', label: 'Booking-Link', subtitle: 'Gäste-Terminkalender', icon: CalendarPlus, keys: ['booking', 'buchung', 'link', 'meet', 'calendly'] },
       { id: 'links', label: 'Public Links', subtitle: 'Busy-only Links und Ablauf', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
       { id: 'ics', label: 'Import/Export', subtitle: 'ICS Export und Import', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
@@ -8618,7 +8642,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                </section>
             </AccordionItem>
             {/* DESIGN TAB */}
-            <AccordionItem id="design" label="Onyx Pro Design" icon={Palette} keys={['design', 'theme', 'blur', 'widget', 'pro']}>
+            <AccordionItem id="design" label="Design & Themes" icon={Palette} keys={['design', 'theme', 'themes', 'blur', 'widget', 'look', 'appearance', 'pro']}>
                <section id="settings-design" className="space-y-6">
                  
                  <div>
@@ -8802,6 +8826,24 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     )}
                   </div>
                   <button onClick={handleLogout} className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors">Abmelden</button>
+                </div>
+
+                <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-white flex items-center gap-2"><Palette className="w-4 h-4" /> Design & Themes</p>
+                    <p className="text-xs text-neutral-500 mt-1">Theme-Auswahl, Farben und Glassmorphism findest du jetzt separat im Bereich <span className="text-neutral-300">Design & Themes</span>.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Theme: <span className="text-white">{selectedAppTheme === 'midnight' ? 'Midnight Blue' : selectedAppTheme === 'gold' ? 'Onyx Gold' : 'Deep Obsidian'}</span></div>
+                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Hintergrund: <span className="text-white">{selectedAppBg === 'glass-1' ? 'Neon Blur' : selectedAppBg === 'glass-2' ? 'Gold Blur' : 'Mattes Schwarz'}</span></div>
+                    <button
+                      type="button"
+                      onClick={() => { setSettingsTab('design'); setSettingsQuery(''); }}
+                      className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
+                    >
+                      <Palette className="w-4 h-4" /> Öffnen
+                    </button>
+                  </div>
                 </div>
               
                 <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">

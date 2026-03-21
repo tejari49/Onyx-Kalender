@@ -1,51 +1,106 @@
-/* PREMIUM THEMES (Onyx Pro) */
+/* PREMIUM THEMES (Onyx Pro)
+   Applied via html/body data-theme and data-bg attributes. */
 
-/* MIDNIGHT BLUE THEME */
-body[data-theme='midnight'] { background-color: #020617 !important; color: #f8fafc; }
-body[data-theme='midnight'] .bg-black { background-color: #020617 !important; }
-body[data-theme='midnight'] .bg-neutral-950 { background-color: #0f172a !important; }
-body[data-theme='midnight'] .bg-neutral-900 { background-color: #1e293b !important; }
-body[data-theme='midnight'] .border-neutral-800 { border-color: #334155 !important; }
-body[data-theme='midnight'] .border-neutral-900 { border-color: #1e293b !important; }
-body[data-theme='midnight'] .text-neutral-500 { color: #94a3b8 !important; }
-body[data-theme='midnight'] .text-neutral-400 { color: #cbd5e1 !important; }
+html[data-theme='obsidian'],
+body[data-theme='obsidian'] {
+  --onyx-app-shell-bg: var(--onyx-bg);
+}
 
-/* GOLD/BLACK THEME */
-body[data-theme='gold'] { background-color: #000000 !important; }
-body[data-theme='gold'] .bg-emerald-500, body[data-theme='gold'] .bg-emerald-600 { background-color: #d4af37 !important; color: #000 !important; border-color: #d4af37 !important; }
-body[data-theme='gold'] .text-emerald-500, body[data-theme='gold'] .text-emerald-400 { color: #d4af37 !important; }
-body[data-theme='gold'] .border-emerald-500, body[data-theme='gold'] .border-emerald-900 { border-color: #d4af37 !important; }
-body[data-theme='gold'] .bg-emerald-900\/20 { background-color: rgba(212, 175, 55, 0.1) !important; border-color: rgba(212, 175, 55, 0.3) !important; }
-body[data-theme='gold'] .shadow-emerald-900\/20 { box-shadow: 0 4px 20px rgba(212, 175, 55, 0.2) !important; }
+html[data-theme='midnight'],
+body[data-theme='midnight'] {
+  --onyx-bg: #020617;
+  --onyx-surface: #0f172a;
+  --onyx-surface-soft: #162033;
+  --onyx-overlay: rgba(2, 6, 23, 0.82);
+  --onyx-text: #f8fafc;
+  --onyx-muted: #cbd5e1;
+  --onyx-border: #334155;
+  --onyx-input-bg: #0b1220;
+  --onyx-hover-bg: #172033;
+  --onyx-hover-border: #475569;
+  --onyx-accent-bg: #dbeafe;
+  --onyx-accent-text: #0f172a;
+  --onyx-ring: rgba(148, 163, 184, 0.28);
+  --onyx-app-shell-bg: var(--onyx-bg);
+}
 
-/* DYNAMIC GLASSMORPHISM BACKGROUNDS */
+html[data-theme='gold'],
+body[data-theme='gold'] {
+  --onyx-bg: #080604;
+  --onyx-surface: #14100b;
+  --onyx-surface-soft: #1b1610;
+  --onyx-overlay: rgba(8, 6, 4, 0.84);
+  --onyx-text: #f7f1e3;
+  --onyx-muted: #d1b96a;
+  --onyx-border: #6f5620;
+  --onyx-input-bg: #120d08;
+  --onyx-hover-bg: #23190f;
+  --onyx-hover-border: #b78a28;
+  --onyx-accent-bg: #d4af37;
+  --onyx-accent-text: #100c05;
+  --onyx-ring: rgba(212, 175, 55, 0.28);
+  --onyx-app-shell-bg: var(--onyx-bg);
+}
+
+html[data-theme='gold'] .text-emerald-400,
+html[data-theme='gold'] .text-emerald-500,
+body[data-theme='gold'] .text-emerald-400,
+body[data-theme='gold'] .text-emerald-500 {
+  color: #d4af37 !important;
+}
+
+html[data-theme='gold'] .border-emerald-500,
+html[data-theme='gold'] .border-emerald-900,
+body[data-theme='gold'] .border-emerald-500,
+body[data-theme='gold'] .border-emerald-900 {
+  border-color: rgba(212, 175, 55, 0.75) !important;
+}
+
+html[data-theme='gold'] .bg-emerald-900\/20,
+body[data-theme='gold'] .bg-emerald-900\/20 {
+  background-color: rgba(212, 175, 55, 0.12) !important;
+}
+
+html[data-bg='glass-1'],
 body[data-bg='glass-1'] {
-  background: radial-gradient(circle at 10% 20%, rgba(13, 148, 136, 0.15) 0%, transparent 40%),
-              radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.15) 0%, transparent 40%),
-              #000000 !important;
-  background-attachment: fixed !important;
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 12% 18%, rgba(13, 148, 136, 0.16) 0%, transparent 38%),
+    radial-gradient(circle at 88% 82%, rgba(59, 130, 246, 0.16) 0%, transparent 42%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.96), rgba(0, 0, 0, 1));
 }
 
+html[data-bg='glass-2'],
 body[data-bg='glass-2'] {
-  background: radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.15) 0%, transparent 50%),
-              #000000 !important;
-  background-attachment: fixed !important;
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.18) 0%, transparent 48%),
+    radial-gradient(circle at 20% 90%, rgba(120, 53, 15, 0.16) 0%, transparent 42%),
+    linear-gradient(180deg, rgba(12, 10, 8, 0.98), rgba(0, 0, 0, 1));
 }
 
-/* Base class for glass elements */
+html[data-bg^='glass'] .bg-neutral-950,
+html[data-bg^='glass'] .bg-neutral-950\/30,
+html[data-bg^='glass'] .bg-neutral-950\/40,
+html[data-bg^='glass'] .bg-neutral-950\/50,
+html[data-bg^='glass'] .bg-neutral-950\/60,
+html[data-bg^='glass'] .bg-black,
+html[data-bg^='glass'] .bg-black\/40,
+html[data-bg^='glass'] .bg-black\/60,
 body[data-bg^='glass'] .bg-neutral-950,
-body[data-bg^='glass'] .bg-black {
-  background-color: rgba(10, 10, 10, 0.6) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+body[data-bg^='glass'] .bg-neutral-950\/30,
+body[data-bg^='glass'] .bg-neutral-950\/40,
+body[data-bg^='glass'] .bg-neutral-950\/50,
+body[data-bg^='glass'] .bg-neutral-950\/60,
+body[data-bg^='glass'] .bg-black,
+body[data-bg^='glass'] .bg-black\/40,
+body[data-bg^='glass'] .bg-black\/60 {
+  background-color: rgba(10, 10, 10, 0.58) !important;
+  backdrop-filter: blur(20px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(130%) !important;
 }
 
-/* Ensure topmost modals get deeper blur */
-body[data-bg^='glass'] .z-\\[100\\] .bg-neutral-950,
-body[data-bg^='glass'] .z-\\[90\\] .bg-neutral-950,
-body[data-bg^='glass'] .z-\\[80\\] .bg-neutral-950 {
-  background-color: rgba(15, 15, 15, 0.75) !important;
-  backdrop-filter: blur(30px) !important;
-  -webkit-backdrop-filter: blur(30px) !important;
+html[data-bg^='glass'] .border-neutral-800,
+html[data-bg^='glass'] .border-neutral-900,
+body[data-bg^='glass'] .border-neutral-800,
+body[data-bg^='glass'] .border-neutral-900 {
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }

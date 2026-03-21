@@ -16,6 +16,7 @@
   --onyx-accent-bg: #ffffff;
   --onyx-accent-text: #000000;
   --onyx-ring: rgba(255, 255, 255, 0.24);
+  --onyx-app-shell-bg: var(--onyx-bg);
 }
 
 html.onyx-theme-light {
@@ -32,20 +33,22 @@ html.onyx-theme-light {
   --onyx-accent-bg: #171717;
   --onyx-accent-text: #f8f7f4;
   --onyx-ring: rgba(23, 23, 23, 0.24);
+  --onyx-app-shell-bg: var(--onyx-bg);
   color-scheme: light;
 }
 
 /* Ensure full-viewport background */
 html,
 body {
-  background: var(--onyx-bg);
+  background: var(--onyx-app-shell-bg, var(--onyx-bg));
   height: 100%;
 }
 
 #root {
   min-height: 100vh;
-  background: var(--onyx-bg);
+  background: var(--onyx-app-shell-bg, var(--onyx-bg));
 }
+
 
 /* Utility remap via centralized theme variables */
 .bg-black,

@@ -1143,7 +1143,7 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
       }
     }
 
-    // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt (bombensicher, ohne Full-Scan)
+    // 5-stellige Chat-ID (friendCode) erzeugen, wenn fehlt – einmal vergeben, danach stabil halten
     const normalizeFriendCode = (v) => {
       const s = String(v ?? '').trim();
       if (/^\d{5}$/.test(s)) return s;
@@ -1153,48 +1153,73 @@ const ensureProfileAfterAuth = async (authUser, opts = {}) => {
       return '';
     };
 
-    if (!existing || !normalizeFriendCode(existing.friendCode)) {
+    const getCachedFriendCode = () => {
+      try {
+        return normalizeFriendCode(localStorage.getItem(`onyx_friendCode_${authUser.uid}`));
+      } catch (_) {
+        return '';
+      }
+    };
+
+    const findReservedFriendCodeByUid = async () => {
+      try {
+        const friendCodesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'friendCodes');
+        const qByUid = query(friendCodesCol, where('uid', '==', authUser.uid), limit(1));
+        const snapByUid = await getDocs(qByUid);
+        if (!snapByUid.empty) {
+          return normalizeFriendCode(snapByUid.docs[0]?.id || snapByUid.docs[0]?.data?.()?.code || '');
+        }
+      } catch (_) {}
+      return '';
+    };
+
+    const claimFriendCode = async (rawCandidate) => {
+      const candidate = normalizeFriendCode(rawCandidate);
+      if (!candidate) return '';
+      const codeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendCodes', candidate);
+      try {
+        await runTransaction(db, async (tx) => {
+          const ds = await tx.get(codeRef);
+          if (ds.exists()) {
+            const ownerUid = String(ds.data()?.uid || '');
+            if (ownerUid !== authUser.uid) throw new Error('CODE_TAKEN');
+            return;
+          }
+          tx.set(codeRef, { uid: authUser.uid, createdAt: Date.now() });
+        });
+        return candidate;
+      } catch (e) {
+        const code = String(e?.code || '');
+        const msg = String(e?.message || '');
+        if (code === 'permission-denied' || msg.toLowerCase().includes('permission')) {
+          try {
+            const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
+            const q2 = query(profilesCol, where('friendCode', '==', candidate), limit(1));
+            const s2 = await getDocs(q2);
+            if (s2.empty || String(s2.docs[0]?.id || '') === String(authUser.uid)) return candidate;
+          } catch (_) {
+            return candidate;
+          }
+        }
+      }
+      return '';
+    };
+
+    let stableFriendCode = normalizeFriendCode(existing?.friendCode);
+    if (!stableFriendCode) stableFriendCode = await findReservedFriendCodeByUid();
+    if (!stableFriendCode) stableFriendCode = await claimFriendCode(getCachedFriendCode());
+
+    if (!stableFriendCode) {
       let claimed = '';
       for (let i = 0; i < 25 && !claimed; i++) {
         const candidate = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
-        const codeRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendCodes', candidate);
-        try {
-          await runTransaction(db, async (tx) => {
-            const ds = await tx.get(codeRef);
-            if (ds.exists()) throw new Error('CODE_TAKEN');
-            tx.set(codeRef, { uid: authUser.uid, createdAt: Date.now() });
-          });
-          claimed = candidate;
-        } catch (e) {
-          const code = String(e?.code || '');
-          const msg = String(e?.message || '');
-          // Wenn friendCodes wegen Rules nicht erlaubt ist, fallback auf random ohne Reservierung
-          if (code === 'permission-denied' || msg.toLowerCase().includes('permission')) {
-            // friendCodes-Registry nicht erlaubt -> uniqueness best-effort über profiles Query
-            try {
-              const profilesCol = collection(db, 'artifacts', APP_ID, 'public', 'data', 'profiles');
-              const q2 = query(profilesCol, where('friendCode', '==', candidate), limit(1));
-              const s2 = await getDocs(q2);
-              if (s2.empty) {
-                claimed = candidate;
-                break;
-              }
-              // sonst weiter versuchen
-            } catch (_) {
-              // im Zweifel trotzdem setzen
-              claimed = candidate;
-              break;
-            }
-          }
-          // sonst: erneut versuchen
-        }
+        claimed = await claimFriendCode(candidate);
       }
-      if (!claimed) claimed = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
-      next.friendCode = claimed;
+      stableFriendCode = claimed || String(Math.floor(Math.random() * 100000)).padStart(5, '0');
       next.createdAt = existing && existing.createdAt ? existing.createdAt : Date.now();
-    } else {
-      next.friendCode = normalizeFriendCode(existing.friendCode);
     }
+
+    next.friendCode = stableFriendCode;
 
 
     // username nur setzen, wenn fehlt/leer
@@ -2741,7 +2766,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         const acceptedTargets = Array.from(new Set((Array.isArray(outgoingFriendRequestDocs) ? outgoingFriendRequestDocs : [])
           .filter((request) => String(request?.status || '') === 'accepted')
           .map((request) => String(request?.toUid || ''))
-          .filter((targetUid) => targetUid && !friendIds.includes(targetUid))));
+          .filter((targetUid) => targetUid && !friendIds.includes(targetUid) && !removedFriendIds.includes(targetUid) && !blockedUserIds.includes(targetUid))));
         if (acceptedTargets.length === 0) return;
         acceptedTargets.forEach((targetUid) => {
           setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
@@ -2753,7 +2778,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             console.warn('syncAcceptedFriendRequest failed', err);
           });
         });
-      }, [user?.uid, outgoingFriendRequestDocs, friendIds]);
+      }, [user?.uid, outgoingFriendRequestDocs, friendIds, removedFriendIds, blockedUserIds]);
 
       // --- CHAT FRIEND LOOKUP (5-stellige Chat-ID, exakt) ---
       useEffect(() => {
@@ -6062,16 +6087,37 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           const thumb = await compressAvatarFileToDataUrl(file, { size: 256, quality: 0.86 });
           const full = await compressImageFileToDataUrl(file, { maxDim: 1200, quality: 0.78 });
           if (user) {
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
+            const patch = {
               avatarBase64: thumb,
               avatarThumbBase64: thumb,
-              avatarFullBase64: full
-            }, { merge: true });
+              avatarFullBase64: full,
+              updatedAt: Date.now()
+            };
+            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
+            try { setUserProfile(prev => ({ ...(prev || {}), ...patch })); } catch (_) {}
             showToast('Avatar geändert');
           }
         } catch (err) {
           console.warn('avatar compress/upload failed', err);
           showToast('Fehler bei Avatar');
+        }
+      };
+
+      const removeProfileAvatar = async () => {
+        if (!user?.uid) return;
+        try {
+          const patch = {
+            avatarBase64: null,
+            avatarThumbBase64: null,
+            avatarFullBase64: null,
+            updatedAt: Date.now()
+          };
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
+          try { setUserProfile(prev => ({ ...(prev || {}), ...patch })); } catch (_) {}
+          showToast('Profilbild entfernt');
+        } catch (err) {
+          console.warn('removeProfileAvatar failed', err);
+          showToast('Fehler beim Entfernen');
         }
       };
 
@@ -6221,23 +6267,32 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       const blockUser = async (targetUid) => {
         if (!user?.uid || !targetUid) return;
         try {
+          const now = Date.now();
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
             blockedUsers: arrayUnion(targetUid),
             friends: arrayRemove(targetUid),
-            updatedAt: Date.now()
+            updatedAt: now
           }, { merge: true });
+          try {
+            setUserProfile((prev) => ({
+              ...(prev || {}),
+              blockedUsers: Array.from(new Set([...(Array.isArray(prev?.blockedUsers) ? prev.blockedUsers : []), targetUid])),
+              friends: (Array.isArray(prev?.friends) ? prev.friends : []).filter((id) => id !== targetUid),
+              updatedAt: now
+            }));
+          } catch (_) {}
           const outgoing = pendingOutgoingFriendRequests.filter((request) => String(request?.toUid || '') === String(targetUid));
           const incoming = pendingIncomingFriendRequests.filter((request) => String(request?.fromUid || '') === String(targetUid));
           await Promise.all([
             ...outgoing.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
               status: 'cancelled',
-              updatedAt: Date.now(),
-              cancelledAt: Date.now()
+              updatedAt: now,
+              cancelledAt: now
             })),
             ...incoming.map((request) => updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'friendRequests', request.id), {
               status: 'declined',
-              updatedAt: Date.now(),
-              handledAt: Date.now(),
+              updatedAt: now,
+              handledAt: now,
               handledByUid: user?.uid
             }))
           ]);
@@ -6251,10 +6306,18 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       const unblockUser = async (targetUid) => {
         if (!user?.uid || !targetUid) return;
         try {
+          const now = Date.now();
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), {
             blockedUsers: arrayRemove(targetUid),
-            updatedAt: Date.now()
+            updatedAt: now
           }, { merge: true });
+          try {
+            setUserProfile((prev) => ({
+              ...(prev || {}),
+              blockedUsers: (Array.isArray(prev?.blockedUsers) ? prev.blockedUsers : []).filter((id) => id !== targetUid),
+              updatedAt: now
+            }));
+          } catch (_) {}
           showToast('Blockierung aufgehoben');
         } catch (e) {
           console.warn('unblockUser failed', e);
@@ -6345,15 +6408,25 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       const removeFriend = async (friendUid) => {
         if (!user || !friendUid) return;
         try {
+          const now = Date.now();
           // hide existing DM chat (optional UX)
           const dm = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(friendUid));
           const updates = {
             friends: arrayRemove(friendUid),
             removedFriendIds: arrayUnion(friendUid),
-            updatedAt: Date.now()
+            updatedAt: now
           };
           if (dm && dm.id) updates.hiddenChats = arrayUnion(dm.id);
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), updates, { merge: true });
+          try {
+            setUserProfile((prev) => ({
+              ...(prev || {}),
+              friends: (Array.isArray(prev?.friends) ? prev.friends : []).filter((id) => id !== friendUid),
+              removedFriendIds: Array.from(new Set([...(Array.isArray(prev?.removedFriendIds) ? prev.removedFriendIds : []), friendUid])),
+              hiddenChats: dm?.id ? Array.from(new Set([...(Array.isArray(prev?.hiddenChats) ? prev.hiddenChats : []), dm.id])) : (Array.isArray(prev?.hiddenChats) ? prev.hiddenChats : []),
+              updatedAt: now
+            }));
+          } catch (_) {}
           await writeAudit({ calId: 'default', action: 'friend.remove', targetType: 'friend', targetId: friendUid, summary: `Freund entfernt: ${getProfile(friendUid)?.displayName || getProfile(friendUid)?.username || shortId(friendUid,6)}` });
           showToast('Freund entfernt');
         } catch (e) {
@@ -6365,14 +6438,24 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       const restoreRemovedFriend = async (friendUid) => {
         if (!user || !friendUid) return;
         try {
+          const now = Date.now();
           const dm = myChats.find(c => Array.isArray(c.participants) && c.participants.length === 2 && c.participants.includes(friendUid));
           const patch = {
             friends: arrayUnion(friendUid),
             removedFriendIds: arrayRemove(friendUid),
-            updatedAt: Date.now()
+            updatedAt: now
           };
           if (dm?.id) patch.hiddenChats = arrayRemove(dm.id);
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), patch, { merge: true });
+          try {
+            setUserProfile((prev) => ({
+              ...(prev || {}),
+              friends: Array.from(new Set([...(Array.isArray(prev?.friends) ? prev.friends : []), friendUid])),
+              removedFriendIds: (Array.isArray(prev?.removedFriendIds) ? prev.removedFriendIds : []).filter((id) => id !== friendUid),
+              hiddenChats: dm?.id ? (Array.isArray(prev?.hiddenChats) ? prev.hiddenChats : []).filter((id) => id !== dm.id) : (Array.isArray(prev?.hiddenChats) ? prev.hiddenChats : []),
+              updatedAt: now
+            }));
+          } catch (_) {}
           showToast('Freund wiederhergestellt');
         } catch (e) {
           console.warn('restoreRemovedFriend failed', e);
@@ -9131,6 +9214,15 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                             />
                           ) : (
                             <div className="w-32 h-32 bg-neutral-900 border-2 border-neutral-700 rounded-full flex items-center justify-center text-4xl font-medium text-neutral-500">{initialsFrom(userProfile?.displayName || userProfile?.username || userProfile?.email || '')}</div>
+                          )}
+                          {userProfile?.avatarBase64 && (
+                            <button
+                              type="button"
+                              onClick={removeProfileAvatar}
+                              className="absolute bottom-0 left-0 px-3 py-2 rounded-full border border-red-900/60 bg-red-950/90 text-red-200 text-[11px] font-medium hover:bg-red-900/80 shadow-lg"
+                            >
+                              Bild löschen
+                            </button>
                           )}
                           <label className="absolute bottom-0 right-0 p-2 bg-white text-black rounded-full cursor-pointer hover:bg-gray-200 shadow-lg">
                             <Camera className="w-4 h-4" />

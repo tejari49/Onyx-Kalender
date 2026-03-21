@@ -8509,27 +8509,29 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         </section>
 
         <div className="lg:hidden -mt-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-1">
-            {(q ? visibleTabs : TABS).map((t) => {
-              const Icon = t.icon;
-              const active = settingsTab === t.id && !q;
-              return (
-                <button
-                  key={`mobile-${t.id}`}
-                  type="button"
-                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                  className={
-                    "w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs transition-colors " +
-                    (active
-                      ? "bg-white text-black border-white"
-                      : "bg-neutral-950/60 text-neutral-300 border-neutral-800 hover:border-neutral-600")
-                  }
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{t.label}</span>
-                </button>
-              );
-            })}
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-3 space-y-2">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Einstellungsbereich</p>
+              <p className="mt-1 text-sm text-neutral-300">Mobilansicht als Dropdown statt nebeneinanderliegenden Tabs.</p>
+            </div>
+            <div className="relative">
+              <select
+                value={settingsTab}
+                onChange={(e) => { setSettingsTab(e.target.value); setSettingsQuery(''); }}
+                className="w-full appearance-none rounded-xl border border-neutral-800 bg-black text-white px-4 py-3 pr-11 text-sm focus:outline-none focus:border-neutral-600"
+              >
+                {(q ? visibleTabs : TABS).map((t) => (
+                  <option key={`mobile-select-${t.id}`} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-neutral-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+            <div className="rounded-xl border border-neutral-800 bg-black/50 px-3 py-2">
+              <div className="text-xs font-medium text-white">{activeTab?.label || 'Account & Sicherheit'}</div>
+              <div className="mt-1 text-[11px] text-neutral-500">{activeTab?.subtitle || 'Profil, Passwort und Datenschutz'}</div>
+            </div>
           </div>
         </div>
 

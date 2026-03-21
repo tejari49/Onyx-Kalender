@@ -478,35 +478,19 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 
       useEffect(() => {
         try {
-          const themeValue = selectedAppTheme || 'obsidian';
-          const bgValue = selectedAppBg || 'none';
-          const applyDarkTheme = uiTheme === 'dark';
-          const html = document.documentElement;
-          const body = document.body;
-
-          html.setAttribute('data-mode', uiTheme);
-          html.classList.toggle('onyx-theme-light', uiTheme === 'light');
-
-          const syncNode = (node) => {
-            if (!node) return;
-            node.setAttribute('data-mode', uiTheme);
-            if (applyDarkTheme) {
-              node.setAttribute('data-theme', themeValue);
-              if (bgValue && bgValue !== 'none') node.setAttribute('data-bg', bgValue);
-              else node.removeAttribute('data-bg');
-            } else {
-              node.removeAttribute('data-theme');
-              node.removeAttribute('data-bg');
-            }
-          };
-
-          syncNode(html);
-          syncNode(body);
-
+          document.documentElement.setAttribute('data-mode', uiTheme);
+          document.documentElement.setAttribute('data-theme', selectedAppTheme || 'obsidian');
+          document.documentElement.setAttribute('data-bg', selectedAppBg || 'none');
+          if (document.body) {
+            document.body.setAttribute('data-mode', uiTheme);
+            document.body.setAttribute('data-theme', selectedAppTheme || 'obsidian');
+            document.body.setAttribute('data-bg', selectedAppBg || 'none');
+          }
+          document.documentElement.classList.toggle('onyx-theme-light', uiTheme === 'light');
           localStorage.setItem('onyx_theme_mode', uiTheme);
           localStorage.setItem('onyx_theme', uiTheme);
-          localStorage.setItem('onyx_app_theme', themeValue);
-          localStorage.setItem('onyx_app_bg', bgValue);
+          localStorage.setItem('onyx_app_theme', selectedAppTheme || 'obsidian');
+          localStorage.setItem('onyx_app_bg', selectedAppBg || 'none');
         } catch (_) {}
       }, [uiTheme, selectedAppTheme, selectedAppBg]);
 
@@ -3133,12 +3117,13 @@ const requestNotificationPermission = async (currentUser) => {
 	          unsubscribeMessage = onMessage(messaging, (payload) => {
 	            const kind = payload?.data?.kind || '';
 	            const chatId = payload?.data?.chatId || '';
+	            const messageId = payload?.data?.messageId || '';
 	            const incomingTitle = payload?.data?.title || payload?.notification?.title || 'Neue Benachrichtigung!';
 	            const incomingBody = payload?.data?.body || payload?.notification?.body || '';
 	            const tag = payload?.data?.tag || `onyx_${kind || 'push'}_${chatId || 'x'}`;
 	            const notifTitle = (kind === 'chat') ? 'Kalender Aktuell 🔏' : incomingTitle;
+	            const chatTimestamp = Number(payload?.data?.sentAt || payload?.data?.timestamp || Date.now()) || Date.now();
 
-	            // Diagnostics: mark push as received even in foreground (SW only fires in background)
 	            try {
 	              setPushDiag((prev) => ({
 	                ...prev,
@@ -3147,14 +3132,12 @@ const requestNotificationPermission = async (currentUser) => {
 	              }));
 	            } catch (_) {}
 
-	            // Wenn Chat stummgeschaltet ist: keine In-App Benachrichtigung
 	            try {
-	              const muted = (userProfile && Array.isArray(userProfile?.mutedChatIds)) ? userProfile?.mutedChatIds : [];
+	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+	              const muted = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
 	              if (kind === 'chat' && chatId && muted.includes(chatId)) return;
 	            } catch (_) {}
 
-	            // Foreground: UI aktualisiert sich via Firestore Listener.
-	            // Chat: optional In-App Ping (Sound/Vibration) wenn App sichtbar ist.
 	            let __isOpenChat = false;
 	            try {
 	              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
@@ -3163,35 +3146,32 @@ const requestNotificationPermission = async (currentUser) => {
 	                const enableSound = !(prof && prof.inAppChatSound === false);
 	                const enableVibe = !(prof && prof.inAppChatVibrate === false);
 	                if (enableSound || enableVibe) {
-	                  try { lastChatPingRef.current[chatId] = Math.max(lastChatPingRef.current[chatId] || 0, Date.now()); } catch (_) {}
+	                  try { lastChatPingRef.current[chatId] = Math.max(lastChatPingRef.current[chatId] || 0, chatTimestamp); } catch (_) {}
 	                  try { pingInApp({ sound: enableSound, vibrate: enableVibe }); } catch (_) {}
 	                }
 	              }
 	            } catch (_) {}
 
-	            // Toast als Feedback
 	            try {
 	              const toastMsg = (kind === 'chat') ? 'Kalender Aktuell 🔏' : (incomingBody ? `${notifTitle}: ${incomingBody}` : notifTitle);
 	              showToast(toastMsg);
 	            } catch (_) {}
 
-	            // System-Notification im Vordergrund nur bei Test/forceShow oder wenn Tab nicht sichtbar.
-	            // Optional: auch für Chat im Vordergrund, falls aktiviert.
 	            try {
 	              const canNotify = ('Notification' in window) && Notification.permission === 'granted';
 	              const forceShow = String(payload?.data?.forceShow || '') === '1' || kind === 'test';
 	              if (!canNotify) return;
 
-	              // Always show a real OS notification for incoming chat messages (also while app is open).
 	              if (kind === 'chat' && chatId) {
-	                // Privacy: Chat OS notification should not show preview/body
-	                showSystemNotification('Kalender Aktuell 🔏', null, tag);
+	                const shouldNotify = consumeChatNotificationSlot(chatId, chatTimestamp || Date.now());
+	                if (!shouldNotify) return;
+	                const quoteText = incomingBody || pickNextNotificationQuote();
+	                showSystemNotification('Kalender Aktuell 🔏', quoteText, tag || `onyx_chat_${chatId}_${messageId || 'msg'}`, { compactBody: true });
 	                return;
 	              }
 
-	              // Non-chat pushes (tests, reminders, etc.)
 	              if (forceShow || document.visibilityState !== 'visible') {
-	                showSystemNotification(notifTitle, (kind === 'chat') ? null : incomingBody, tag);
+	                showSystemNotification(notifTitle, incomingBody, tag);
 	              }
 	            } catch (_) {}
 	          });
@@ -4184,8 +4164,8 @@ const requestNotificationPermission = async (currentUser) => {
         };
       }, []);
 
-      // Reliable live notifications for new messages while the app is running.
-      // This prevents the "toast only" situation when server push is unavailable.
+      // Live fallback while the app is running.
+      // With active FCM we only do sound/vibration here to avoid duplicate OS notifications.
       useEffect(() => {
         try {
           if (!user) return;
@@ -4193,6 +4173,7 @@ const requestNotificationPermission = async (currentUser) => {
           const enableSound = !(prof.inAppChatSound === false);
           const enableVibe = !(prof.inAppChatVibrate === false);
           const canNotify = (('Notification' in window) && Notification.permission === 'granted');
+          const hasActiveWebPushToken = !!String(prof?.fcmTokenWeb || prof?.fcmToken || '').trim();
           if (!enableSound && !enableVibe && !canNotify) return;
           if (!Array.isArray(myChats) || myChats.length === 0) return;
           if (document.visibilityState !== 'visible') return;
@@ -4201,7 +4182,6 @@ const requestNotificationPermission = async (currentUser) => {
             const updatedAt = (c && typeof c.updatedAt === 'number') ? c.updatedAt : 0;
             if (!updatedAt) continue;
             if (c.lastMessageSenderId === user?.uid) {
-              // keep watermark up to date
               const prev = lastChatPingRef.current[c.id] || 0;
               if (updatedAt > prev) lastChatPingRef.current[c.id] = updatedAt;
               continue;
@@ -4209,14 +4189,12 @@ const requestNotificationPermission = async (currentUser) => {
             const prev = lastChatPingRef.current[c.id] || 0;
             if (updatedAt <= prev) continue;
 
-            // don't ping if currently inside this chat
             const isOpen = (currentViewRef.current === 'secret_chat') && (activeChatIdRef.current === c.id);
             if (isOpen) {
               lastChatPingRef.current[c.id] = updatedAt;
               continue;
             }
 
-            // muted?
             const muted = Array.isArray(prof.mutedChatIds) ? prof.mutedChatIds : [];
             if (muted.includes(c.id)) {
               lastChatPingRef.current[c.id] = updatedAt;
@@ -4224,17 +4202,15 @@ const requestNotificationPermission = async (currentUser) => {
             }
 
             lastChatPingRef.current[c.id] = updatedAt;
-            const shouldNotify = consumeChatNotificationSlot(c.id, updatedAt);
+            const shouldNotify = hasActiveWebPushToken ? true : consumeChatNotificationSlot(c.id, updatedAt);
             if (!shouldNotify) continue;
 
-            // 1) Optional in-app ping (sound/vibration)
             if (enableSound || enableVibe) pingInApp({ sound: enableSound, vibrate: enableVibe });
 
-            // 2) System notification with rotating quote
             try {
-              if (canNotify) {
+              if (canNotify && !hasActiveWebPushToken) {
                 const quoteText = pickNextNotificationQuote();
-                showSystemNotification('Kalender Aktuell', quoteText, `onyx_chat_${c.id}`);
+                showSystemNotification('Kalender Aktuell 🔏', quoteText, `onyx_chat_${c.id}`, { compactBody: true });
               }
             } catch (_) {}
           }
@@ -4267,7 +4243,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=42`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=43`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -4384,13 +4360,14 @@ useEffect(() => {
 }, []);
 
 
-      const showSystemNotification = async (title, body, tag = 'onyx') => {
+      const showSystemNotification = async (title, body, tag = 'onyx', opts = {}) => {
         try {
           if (typeof window === 'undefined') return;
           if (!('Notification' in window)) return;
           if (Notification.permission !== 'granted') return;
 
           const silentMode = (userProfile && String(userProfile?.notificationSoundMode||'system') === 'silent');
+          const compactBody = !!opts.compactBody;
 
           const options = {
             icon: './icon-192.png',
@@ -4401,11 +4378,12 @@ useEffect(() => {
             ...(silentMode ? {} : { vibrate: [200, 100, 200, 100, 300] })
           };
 
-          // body === null means: do not show any body text (privacy mode)
           if (body !== null && body !== undefined) {
-            const finalBody = (body && String(body).trim().length > 0) ? `${body}
-Kalender aktuell` : 'Kalender aktuell';
-            options.body = finalBody;
+            const cleanBody = String(body || '').trim();
+            options.body = compactBody
+              ? (cleanBody || 'Kalender aktuell')
+              : (cleanBody ? `${cleanBody}
+Kalender aktuell` : 'Kalender aktuell');
           }
 
           if ('serviceWorker' in navigator) {
@@ -4416,8 +4394,6 @@ Kalender aktuell` : 'Kalender aktuell';
             }
           }
 
-          // Fallback (falls kein SW verfügbar ist)
-          // eslint-disable-next-line no-new
           new Notification(title, options);
         } catch (e) {}
       };
@@ -8403,14 +8379,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
     const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
     const APP_THEME_OPTIONS = [
-      { id: 'obsidian', name: 'Deep Obsidian', desc: 'Reines AMOLED-Schwarz (Default)' },
-      { id: 'midnight', name: 'Midnight Blue', desc: 'Dunkles Marineblau' },
-      { id: 'gold', name: 'Onyx Gold', desc: 'Schwarz mit Gold-Akzenten' },
+      { id: 'obsidian', name: 'Deep Obsidian', desc: 'Reines AMOLED-Schwarz (Default)', preview: 'linear-gradient(135deg, #050505 0%, #151515 100%)', accent: '#f5f5f5' },
+      { id: 'midnight', name: 'Midnight Blue', desc: 'Dunkles Marineblau', preview: 'linear-gradient(135deg, #071120 0%, #163257 100%)', accent: '#93c5fd' },
+      { id: 'gold', name: 'Onyx Gold', desc: 'Schwarz mit Gold-Akzenten', preview: 'linear-gradient(135deg, #120d08 0%, #3a2710 100%)', accent: '#d4af37' },
     ];
     const APP_BG_OPTIONS = [
-      { id: 'none', name: 'Mattes Schwarz', desc: 'Standard UI' },
-      { id: 'glass-1', name: 'Neon Blur', desc: 'Animierte Farbverläufe mit Glassmorphism' },
-      { id: 'glass-2', name: 'Gold Blur', desc: 'Elegantes Gold-Ambient' },
+      { id: 'none', name: 'Mattes Schwarz', desc: 'Standard UI', preview: 'linear-gradient(135deg, #080808 0%, #171717 100%)', accent: '#5a5a5a' },
+      { id: 'glass-1', name: 'Neon Blur', desc: 'Starker Cyan/Blau-Glow mit Glassmorphism', preview: 'radial-gradient(circle at 15% 20%, rgba(34,211,238,0.8) 0%, transparent 28%), radial-gradient(circle at 85% 25%, rgba(59,130,246,0.75) 0%, transparent 30%), linear-gradient(135deg, #06101f 0%, #111827 100%)', accent: '#38bdf8' },
+      { id: 'glass-2', name: 'Gold Blur', desc: 'Warmer Gold/Amber-Look mit Ambient-Licht', preview: 'radial-gradient(circle at 18% 18%, rgba(250,204,21,0.82) 0%, transparent 28%), radial-gradient(circle at 82% 22%, rgba(234,88,12,0.62) 0%, transparent 30%), linear-gradient(135deg, #140d08 0%, #22130c 100%)', accent: '#fbbf24' },
     ];
     const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
       .filter((field) => isExtraFieldEnabled(field))
@@ -8970,7 +8946,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                          onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
                          className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
                        >
-                         <div className="flex items-center justify-between">
+                         <div className="h-14 rounded-lg border border-white/10 mb-3 overflow-hidden relative" style={{ background: t.preview }}>
+                           <div className="absolute inset-x-3 bottom-3 flex gap-2">
+                             <span className="h-2.5 w-10 rounded-full bg-black/50 backdrop-blur" />
+                             <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: t.accent }} />
+                           </div>
+                         </div>
+                         <div className="flex items-center justify-between gap-3">
                             <div className="font-semibold text-white text-base sm:text-sm">{t.name}</div>
                             {(userProfile?.appTheme || 'obsidian') === t.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
                          </div>
@@ -8991,7 +8973,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                          onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}
                          className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
                        >
-                         <div className="flex items-center justify-between">
+                         <div className="h-14 rounded-lg border border-white/10 mb-3 overflow-hidden relative" style={{ background: bg.preview }}>
+                           <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
+                           <div className="absolute inset-x-3 bottom-3 flex gap-2">
+                             <span className="h-2.5 w-10 rounded-full bg-black/40 backdrop-blur" />
+                             <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: bg.accent }} />
+                           </div>
+                         </div>
+                         <div className="flex items-center justify-between gap-3">
                             <div className="font-semibold text-white text-base sm:text-sm">{bg.name}</div>
                             {(userProfile?.appBg || 'none') === bg.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
                          </div>
@@ -12070,19 +12059,8 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
   const save = async () => {
     if (!code) return;
     const busyEvents = (events || []).map(e => ({ startMs: e.startMs, endMs: e.endMs, isAllDay: e.isAllDay === true }));
-    const toSave = {
-      ...bProfile,
-      uid: user?.uid || bProfile?.uid || '',
-      code,
-      title: (bProfile?.title || userProfile?.displayName || 'Termin buchen').trim(),
-      duration: Number(bProfile?.duration || 30) || 30,
-      appTheme: userProfile?.appTheme || null,
-      appBg: userProfile?.appBg || null,
-      busyEvents,
-      updatedAt: Date.now(),
-    };
-    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code), toSave, { merge: true });
-    setBProfile(prev => ({ ...(prev || {}), ...toSave }));
+    const toSave = { ...bProfile, busyEvents };
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code), toSave);
     alert('Booking-Profil gespeichert!');
   };
 

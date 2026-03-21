@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-    import { 
+    import ErrorBoundary from './components/ErrorBoundary.jsx';
+import ShiftSelectionModal from './components/ShiftSelectionModal.jsx';
+import ShareEventModal from './components/ShareEventModal.jsx';
+import ImageViewer from './components/ImageViewer.jsx';
+import { 
       Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip, Paperclip,
       Copy, Link2, History, Star, SmilePlus
     } from 'lucide-react';
@@ -10,108 +14,15 @@ import React, { useState, useEffect, useRef } from 'react';
     import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment } from "firebase/firestore";
     import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
     import heic2any from 'heic2any';
-
-    const customFirebaseConfig = {
-      apiKey: "AIzaSyDkdRI4tNh5fe-dyBBGDlGgIiT7vHmoFvg",
-      authDomain: "kalender-rai.firebaseapp.com",
-      projectId: "kalender-rai",
-      storageBucket: "kalender-rai.firebasestorage.app",
-      messagingSenderId: "407396898664",
-      appId: "1:407396898664:web:3fafd51433481e7bb668dd"
-    };
-
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : customFirebaseConfig;
-    const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'onyx-pwa-live';
-    const BASE_PATH = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/Onyx-Kalender/';
-const FCM_WEB_VAPID_KEY = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
-  ? String(import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
-  : 'BLif9DBsVeYOPqRfhhBZsftnDbJvWfbfVrkjf14s7HsygsnYh4yfIKOr30oM58jIakPKBDu0arXj5oEZWhWG-E0';
-const FCM_WEB_VAPID_KEY_LEGACY = 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI';
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-
-    const DEFAULT_EXTRAS_ORDER = ['workclock','goals','sollist','notes','weather'];
-
-    function normalizeShoppingItems(input) {
-      const rows = Array.isArray(input) ? input : [];
-      return rows.map((item, idx) => ({
-        id: String(item?.id || `item_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
-        text: String(item?.text || ''),
-        qty: String(item?.qty || ''),
-        price: item?.price === 0 ? '0' : String(item?.price || ''),
-        done: item?.done === true,
-        checkedAt: Number(item?.checkedAt || 0) || 0,
-      }));
-    }
-
-    function normalizeShoppingLists(input) {
-      const rows = Array.isArray(input) ? input : [];
-      return rows.map((list, idx) => ({
-        id: String(list?.id || `shop_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
-        title: String(list?.title || 'Einkaufsliste'),
-        store: String(list?.store || ''),
-        createdAt: Number(list?.createdAt || Date.now()) || Date.now(),
-        updatedAt: Number(list?.updatedAt || Date.now()) || Date.now(),
-        items: normalizeShoppingItems(list?.items),
-      })).sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
-    }
-
-    function formatCurrencyCHF(value) {
-      const num = Number(value || 0);
-      if (!Number.isFinite(num)) return 'CHF 0.00';
-      return new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF' }).format(num);
-    }
-
-    function normalizeDailyGoals(input) {
-      const arr = Array.isArray(input) ? input : [];
-      const out = arr.slice(0, 6).map((item, idx) => ({
-        id: String(item?.id || `goal_${idx + 1}`),
-        text: String(item?.text || ''),
-        done: item?.done === true,
-      }));
-      while (out.length < 3) out.push({ id: `goal_${out.length + 1}`, text: '', done: false });
-      return out;
-    }
+import { 
+  DEFAULT_EXTRAS_ORDER, normalizeShoppingItems, rows, normalizeShoppingLists, rows, formatCurrencyCHF, num, normalizeDailyGoals, arr, out, normalizeQuickCaptureNotes, arr, normalizeExtrasOrder, raw, seen, ordered, reorderExtraKeys, src, from, to, next, PASTEL_COLORS, QUOTES_URL, DEFAULT_QUOTES, stableHash, _bufToHex, bytes, sha256Hex, s, enc, buf, randomToken, arr, pickQuoteForDay, list, idx, QUOTE_COLOR_CLASSES, colorForQuote, text, baseIdx, MONATE, WOCHENTAGE, safeTrim, initialsFrom, s, parts, first, second, a, b, out, shortId, s 
+} from './utils/helpers.js';
 
 
-    function normalizeQuickCaptureNotes(input) {
-      const arr = Array.isArray(input) ? input : [];
-      return arr
-        .map((item, idx) => ({
-          id: String(item?.id || `note_${idx + 1}`),
-          text: String(item?.text || '').trim().slice(0, 400),
-          createdAt: Number(item?.createdAt || Date.now()),
-        }))
-        .filter((item) => item.text.length > 0)
-        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
-        .slice(0, 40);
-    }
+    import { app, auth, db, APP_ID, BASE_PATH, FCM_WEB_VAPID_KEY, FCM_WEB_VAPID_KEY_LEGACY } from './utils/firebase.js';
 
-    function normalizeExtrasOrder(input) {
-      const raw = Array.isArray(input) ? input.map((x) => String(x || '').trim().toLowerCase()).filter(Boolean) : [];
-      const seen = new Set();
-      const ordered = [];
-      for (const key of [...raw, ...DEFAULT_EXTRAS_ORDER]) {
-        if (!DEFAULT_EXTRAS_ORDER.includes(key)) continue;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        ordered.push(key);
-      }
-      return ordered;
-    }
 
-    function reorderExtraKeys(list, draggedKey, targetKey) {
-      const src = normalizeExtrasOrder(list);
-      const from = src.indexOf(String(draggedKey || ''));
-      const to = src.indexOf(String(targetKey || ''));
-      if (from < 0 || to < 0 || from === to) return src;
-      const next = src.slice();
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    }
+    
 
 
     // --- Auth hardening: if the browser keeps a stale Firebase auth cache after project reset,
@@ -148,144 +59,9 @@ const FCM_WEB_VAPID_KEY_LEGACY = 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlgl
       }
     };
 
-    const PASTEL_COLORS = ['#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#E8BAFF', '#D3D3D3', '#FFC8DD'];
-
-
-    const QUOTES_URL = 'quotes.json';
-
-    // Fallback quotes (wird genutzt, falls quotes.json nicht geladen werden kann)
-    const DEFAULT_QUOTES = [
-      "Struktur bringt Ruhe.",
-      "Fokus ist eine Entscheidung.",
-      "Kleine Schritte, große Wirkung.",
-      "Wenn&apos;s brennt: Wasser. Wenn&apos;s chaotisch ist: Kalender.",
-      "Planung ist die halbe Miete – die andere Hälfte ist Kaffee."
-    ];
-
-    const stableHash = (str) => {
-      let h = 2166136261;
-      for (let i = 0; i < str.length; i++) {
-        h ^= str.charCodeAt(i);
-        h = Math.imul(h, 16777619);
-      }
-      return (h >>> 0);
-    };
-
-    const _bufToHex = (buffer) => {
-      const bytes = new Uint8Array(buffer);
-      let out = '';
-      for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
-      return out;
-    };
-
-    const sha256Hex = async (input) => {
-      const s = String(input ?? '');
-      try {
-        if (crypto?.subtle?.digest) {
-          const enc = new TextEncoder();
-          const buf = await crypto.subtle.digest('SHA-256', enc.encode(s));
-          return _bufToHex(buf);
-        }
-      } catch (_) {}
-      // Fallback: not cryptographically strong, but avoids hard crash in rare environments.
-      return String(stableHash(s));
-    };
-
-    const randomToken = (byteLen = 16) => {
-      try {
-        const arr = new Uint8Array(byteLen);
-        crypto.getRandomValues(arr);
-        let str = '';
-        for (let i = 0; i < arr.length; i++) str += String.fromCharCode(arr[i]);
-        // base64url
-        return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-      } catch (_) {
-        return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-      }
-    };
-
-    const pickQuoteForDay = (quotes, dayKey) => {
-      const list = (Array.isArray(quotes) && quotes.length) ? quotes : DEFAULT_QUOTES;
-      const idx = stableHash(String(dayKey)) % list.length;
-      return list[idx];
-    };
-
-    const QUOTE_COLOR_CLASSES = [
-      'text-emerald-300',
-      'text-cyan-300',
-      'text-sky-300',
-      'text-violet-300',
-      'text-fuchsia-300',
-      'text-amber-300',
-      'text-rose-300',
-      'text-lime-300',
-    ];
-
-    const colorForQuote = (quote, prevColor = '') => {
-      const text = String(quote || '').trim();
-      if (!text) return 'text-neutral-100';
-      const baseIdx = stableHash(text) % QUOTE_COLOR_CLASSES.length;
-      let next = QUOTE_COLOR_CLASSES[baseIdx] || 'text-neutral-100';
-      if (prevColor && QUOTE_COLOR_CLASSES.length > 1 && next === prevColor) {
-        next = QUOTE_COLOR_CLASSES[(baseIdx + 1) % QUOTE_COLOR_CLASSES.length] || next;
-      }
-      return next;
-    };
-
-
-    const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
-    const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    
 
     
-    // --- ERROR BOUNDARY (verhindert "schwarzer Screen" bei Runtime-Fehlern) ---
-    class ErrorBoundary extends React.Component {
-      constructor(props) {
-        super(props);
-        this.state = { hasError: false, error: null };
-      }
-      static getDerivedStateFromError(error) {
-        return { hasError: true, error };
-      }
-      componentDidCatch(error, info) {
-        console.error('[Onyx] UI ErrorBoundary:', error, info);
-      }
-      render() {
-        if (this.state.hasError) {
-          return (
-            <div className="absolute inset-0 bg-black text-white flex items-center justify-center p-6">
-              <div className="max-w-md w-full border border-neutral-800 rounded-2xl p-6 bg-neutral-950/60">
-                <h3 className="text-lg font-semibold mb-2">Ups – ein Fehler ist passiert</h3>
-                <p className="text-sm text-neutral-400 mb-4">
-                  Die Ansicht konnte nicht gerendert werden. Du kannst zurückgehen oder neu laden.
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    className="flex-1 bg-white text-black font-semibold py-2 rounded-xl hover:bg-gray-200 transition-colors"
-                    onClick={() => {
-                      this.setState({ hasError: false, error: null });
-                      try { this.props.onReset && this.props.onReset(); } catch (e) {}
-                    }}
-                  >
-                    Zurück
-                  </button>
-                  <button
-                    className="flex-1 bg-neutral-800 text-white font-semibold py-2 rounded-xl hover:bg-neutral-700 transition-colors"
-                    onClick={() => window.location.reload()}
-                  >
-                    Neu laden
-                  </button>
-                </div>
-                <details className="mt-4">
-                  <summary className="text-xs text-neutral-500 cursor-pointer">Details</summary>
-                  <pre className="mt-2 text-[10px] text-neutral-400 whitespace-pre-wrap break-words">{String(this.state.error || '')}</pre>
-                </details>
-              </div>
-            </div>
-          );
-        }
-        return this.props.children;
-      }
-    }
 
 
 // ===== Build marker (v9) =====
@@ -302,26 +78,7 @@ window.isGroupChat = window.isGroupChat || function(chat) {
 
 
     // --- Robust helper functions (v20) ---
-    function safeTrim(v) {
-      return (v ?? "").toString().trim();
-    }
-    function initialsFrom(nameOrEmail) {
-      const s = safeTrim(nameOrEmail);
-      if (!s) return "??";
-      const parts = s.split(/\s+/).filter(Boolean);
-      const first = (parts[0] || "");
-      const second = (parts[1] || "");
-      const a = first.charAt(0);
-      const b = (second.charAt(0) || first.charAt(1));
-      const out = (a + b).toUpperCase();
-      return out || "??";
-    }
-
-    function shortId(id, n = 6) {
-      const s = String(id || '');
-      if (s.length <= n) return s;
-      return s.slice(0, n);
-    }
+    
 
 function AmoledCalendarApp() {
   
@@ -8531,6 +8288,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const TABS = [
       { id: 'account', label: 'Account & Sicherheit', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'sicherheit', 'datenschutz', 'abmelden', 'email'] },
       { id: 'calendars', label: 'Kalender & Freigaben', subtitle: 'Farben, Schichtpläne und Teilen', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
+      { id: 'booking', label: 'Booking-Link', subtitle: 'Gäste-Terminkalender', icon: CalendarPlus, keys: ['booking', 'buchung', 'link', 'meet', 'calendly'] },
       { id: 'links', label: 'Public Links', subtitle: 'Busy-only Links und Ablauf', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
       { id: 'ics', label: 'Import/Export', subtitle: 'ICS Export und Import', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
       { id: 'audit', label: 'Audit & Verlauf', subtitle: 'Aktionsprotokoll und Kalenderhistorie', icon: History, keys: ['audit', 'verlauf', 'log', 'aenderung', 'wer'] },
@@ -8837,6 +8595,16 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
   );
 })()}</div>
               </section>
+            </AccordionItem>
+
+            {/* BOOKING LINK */}
+            <AccordionItem id="booking" label="Booking Link" icon={CalendarPlus} keys={['booking','buchung','link','meet']}>
+               <section id="settings-booking">
+                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                   <CalendarPlus className="w-4 h-4" /> Guest Booking Hub
+                 </h3>
+                 <BookingHostManager user={user} userProfile={userProfile} db={db} APP_ID={APP_ID} events={events} />
+               </section>
             </AccordionItem>
 
             {/* AUDIT LOG */}
@@ -11558,26 +11326,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           )}
 
 
-          {/* SCHICHT AUSWAHL MODAL (Langes Drücken) */}
-          {shiftModalData && (
-             <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => setShiftModalData(null)}>
-                <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-xs rounded-t-2xl sm:rounded-xl p-4 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
-                   <h3 className="text-white font-medium mb-1 text-center">Schicht wählen</h3>
-                   <p className="text-neutral-500 text-xs text-center mb-4 border-b border-neutral-800 pb-3">{new Date(shiftModalData.dateStr).toLocaleDateString('de-DE')}</p>
-                   
-                   <div className="space-y-2 max-h-[50vh] overflow-y-auto no-scrollbar">
-                      {(shiftModalData?.shifts || []).filter(Boolean).map(s => (
-                         <button key={s.id} onClick={() => handleShiftModalSelect(s)} className="w-full py-3 rounded-xl text-sm font-semibold text-black transition-transform active:scale-95 shadow-sm" style={{backgroundColor: s?.color || '#ffffff'}}>
-                            {s?.name || 'Schicht'} <span className="font-normal opacity-70 ml-2">{s?.time || ''}</span>
-                         </button>
-                      ))}
-                      <button onClick={() => handleShiftModalSelect('delete')} className="w-full py-3 rounded-xl text-sm font-medium text-red-500 bg-red-500/10 border border-red-900/50 hover:bg-red-500/20 mt-4 transition-colors">
-                         Frei / Löschen
-                      </button>
-                   </div>
-                </div>
-             </div>
-          )}
+          <ShiftSelectionModal data={shiftModalData} onClose={() => setShiftModalData(null)} onSelect={handleShiftModalSelect} />
+
 
           {showCreateGroup && (
             <div className="fixed inset-0 z-[75] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
@@ -11842,56 +11592,145 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             </div>
           )}
 
-          {isShareEventModalOpen && (
-            <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
-               <div className="bg-neutral-950 border border-neutral-800 w-full max-w-sm rounded-xl p-6 shadow-2xl animate-fade-in">
-                  <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2"><CalendarPlus className="w-5 h-5"/> Termin teilen</h3>
-                  <form onSubmit={(e) => {
-                    e.preventDefault();
-                    const fd = new FormData(e.target);
-                    const ev = { title: fd.get('title'), date: fd.get('date'), time: fd.get('time'), type: 'Chat-Einladung' };
-                    sendMessage(null, null, null, ev);
-                    setIsShareEventModalOpen(false);
-                  }} className="space-y-4">
-                    <input type="text" name="title" required placeholder="Titel (z.B. Kino heute?)" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
-                    <div className="flex gap-2">
-                      <input type="date" name="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
-                      <input type="time" name="time" required defaultValue="18:00" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                      <button type="button" onClick={() => setIsShareEventModalOpen(false)} className="flex-1 py-3 rounded-lg text-sm text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 transition-colors">Abbrechen</button>
-                      <button type="submit" className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">In Chat senden</button>
-                    </div>
-                  </form>
-               </div>
-            </div>
-          )}
+          <ShareEventModal isOpen={isShareEventModalOpen} onClose={() => setIsShareEventModalOpen(false)} onShare={(ev) => sendMessage(null, null, null, ev)} />
 
-          {/* IMAGE VIEWER (Vollbild) */}
-          {isImageViewerOpen && imageViewerSrc && (
-            <div
-              className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
-              onClick={closeImageViewer}
-            >
-              <button
-                onClick={(e) => { e.stopPropagation(); closeImageViewer(); }}
-                className="absolute top-4 right-4 p-2 rounded-full bg-neutral-900/70 border border-neutral-700 text-white hover:bg-neutral-800 transition-colors"
-                aria-label="Schließen"
-                title="Schließen"
-              >
-                <X className="w-5 h-5" />
-              </button>
-              <img
-                src={imageViewerSrc}
-                alt="Bild"
-                className="max-h-[90vh] max-w-[95vw] object-contain rounded-2xl border border-neutral-800 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
-          )}
+
+          <ImageViewer isOpen={isImageViewerOpen} src={imageViewerSrc} onClose={closeImageViewer} />
+
         </div>
       );
     }
 
+
+
+// --- BOOKING HOST MANAGER ---
+function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
+  const [bProfile, setBProfile] = React.useState(null);
+  const [bLoading, setBLoading] = React.useState(true);
+  const [requests, setRequests] = React.useState([]);
+  
+  const code = userProfile?.friendCode;
+  
+  // Combine imports/logic safety
+  const { doc, getDoc, setDoc, query, collection, where, onSnapshot, updateDoc, addDoc, serverTimestamp } = require('firebase/firestore');
+
+  React.useEffect(() => {
+    if (!code) { setBLoading(false); return; }
+    getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code)).then(snap => {
+      if (snap.exists()) setBProfile(snap.data());
+      else setBProfile({ uid: user?.uid, isActive: false, title: userProfile?.displayName || 'Termin buchen', duration: 30, schedule: { mon:{active:true,start:'09:00',end:'17:00'}, tue:{active:true,start:'09:00',end:'17:00'}, wed:{active:true,start:'09:00',end:'17:00'}, thu:{active:true,start:'09:00',end:'17:00'}, fri:{active:true,start:'09:00',end:'17:00'} } });
+      setBLoading(false);
+    });
+  }, [code, db, APP_ID, user, userProfile]);
+
+  React.useEffect(() => {
+    if (!user?.uid) return;
+    const q = query(collection(db, `artifacts/${APP_ID}/users/${user.uid}/bookingRequests`), where('status', '==', 'pending'));
+    return onSnapshot(q, snap => {
+      setRequests(snap.docs.map(d => ({id: d.id, ...d.data()})));
+    });
+  }, [user?.uid, db, APP_ID]);
+
+  const save = async () => {
+    if (!code) return;
+    const busyEvents = (events || []).map(e => ({ startMs: e.startMs, endMs: e.endMs, isAllDay: e.isAllDay === true }));
+    const toSave = { ...bProfile, busyEvents };
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code), toSave);
+    alert('Booking-Profil gespeichert!');
+  };
+
+  const copyLink = () => {
+    const url = `${window.location.origin}${window.location.pathname}?book=${code}`;
+    navigator.clipboard.writeText(url);
+    alert('Link kopiert!');
+  };
+
+  const accept = async (req) => {
+    if (!confirm('Buchung annehmen und Kalendereintrag erstellen?')) return;
+    await addDoc(collection(db, `artifacts/${APP_ID}/users/${user.uid}/events`), {
+       title: `Meeting mit ${req.guestName}`,
+       date: new Date(req.startMs).toISOString().split('T')[0],
+       time: new Date(req.startMs).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+       durationMinutes: req.duration,
+       desc: req.guestNote || '',
+       type: 'Booking',
+       createdAt: serverTimestamp()
+    });
+    await updateDoc(doc(db, `artifacts/${APP_ID}/users/${user.uid}/bookingRequests`, req.id), { status: 'accepted' });
+  };
+
+  const decline = async (req) => {
+    if (!confirm('Buchung ablehnen?')) return;
+    await updateDoc(doc(db, `artifacts/${APP_ID}/users/${user.uid}/bookingRequests`, req.id), { status: 'declined' });
+  };
+
+  if (bLoading) return <div className="text-neutral-500">Lade...</div>;
+  if (!code) return <div className="text-neutral-500 p-4 bg-black border border-neutral-800 rounded-xl">Kein Profil-Code gefunden.</div>;
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      
+      {requests.length > 0 && (
+         <div className="bg-emerald-900/20 border border-emerald-900/50 rounded-2xl p-5 mb-6">
+            <h3 className="text-emerald-400 font-bold flex items-center gap-2 mb-4">
+               <CalendarPlus className="w-5 h-5" /> 
+               {requests.length} Neue Buchungsanfragen
+            </h3>
+            <div className="space-y-3">
+               {requests.map(r => (
+                  <div key={r.id} className="bg-black/60 border border-emerald-900/40 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
+                     <div>
+                        <div className="text-white font-medium text-lg">{r.guestName}</div>
+                        <div className="text-sm text-neutral-300 mt-1">
+                           {new Date(r.startMs).toLocaleDateString()} um {new Date(r.startMs).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} Uhr ({r.duration} Min)
+                        </div>
+                        {r.guestNote && <div className="text-sm text-neutral-400 mt-2 italic bg-neutral-900/50 p-2 rounded-lg">"{r.guestNote}"</div>}
+                     </div>
+                     <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => accept(r)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Zusagen</button>
+                        <button onClick={() => decline(r)} className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-sm transition">Absagen</button>
+                     </div>
+                  </div>
+               ))}
+            </div>
+         </div>
+      )}
+
+      <div className="flex items-center justify-between bg-black border border-neutral-800 p-5 rounded-2xl">
+        <div>
+          <div className="text-white font-medium text-base">Öffentlichen Link aktivieren</div>
+          <div className="text-xs text-neutral-500 mt-1">Gäste können über einen Link freie Zeitslots buchen.</div>
+        </div>
+        <input type="checkbox" checked={bProfile.isActive} onChange={e => setBProfile({...bProfile, isActive: e.target.checked})} className="w-6 h-6 accent-emerald-500" />
+      </div>
+
+      {bProfile.isActive && (
+        <div className="bg-black border border-neutral-800 p-6 rounded-2xl space-y-5">
+          <div>
+             <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Dein Kalender Link</label>
+             <div className="flex items-center gap-2 mt-2">
+               <div className="flex-1 bg-neutral-900 border border-neutral-800 text-emerald-400 font-mono text-sm px-4 py-3 rounded-xl truncate select-all">{window.location.origin}{window.location.pathname}?book={code}</div>
+               <button onClick={copyLink} className="p-3 bg-neutral-800 text-white rounded-xl hover:bg-neutral-700 transition"><CalendarPlus className="w-5 h-5" /></button>
+             </div>
+          </div>
+          <div>
+             <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Seitentitel</label>
+             <input className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white mt-2 focus:border-neutral-500 outline-none" value={bProfile.title} onChange={e => setBProfile({...bProfile, title: e.target.value})} placeholder="z.B. Termin buchen" />
+          </div>
+          <div>
+             <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Standard-Dauer (Minuten)</label>
+             <select className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white mt-2 focus:border-neutral-500 outline-none" value={bProfile.duration} onChange={e => setBProfile({...bProfile, duration: Number(e.target.value)})}>
+                <option value={15}>15 Min</option>
+                <option value={30}>30 Min</option>
+                <option value={45}>45 Min</option>
+                <option value={60}>60 Min</option>
+             </select>
+          </div>
+          <button onClick={save} className="w-full bg-white text-black py-3.5 rounded-xl text-sm font-semibold hover:bg-gray-200 transition">Einstellungen speichern</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default AmoledCalendarApp;

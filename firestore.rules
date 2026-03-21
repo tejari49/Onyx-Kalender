@@ -107,6 +107,14 @@ service cloud.firestore {
       }
 
       // ----------------
+      // Booking Requests Inbox
+      // ----------------
+      match /users/{userId}/bookingRequests/{reqId} {
+        allow read, update, delete: if isSelf(userId);
+        allow create: if true;
+      }
+
+      // ----------------
       // Public data namespace
       // ----------------
       match /public/data {
@@ -163,6 +171,14 @@ service cloud.firestore {
 
           // Keine Updates/Deletes (sonst kann man Codes klauen/freischalten)
           allow update, delete: if false;
+        }
+
+        // ---- Booking Profiles ----
+        match /bookingProfiles/{code} {
+          allow read: if true;
+          allow create: if signedIn() && request.resource.data.uid == uid();
+          allow update: if signedIn() && resource.data.uid == uid() && request.resource.data.uid == uid();
+          allow delete: if signedIn() && resource.data.uid == uid();
         }
 
         // ---- Public shares (Busy-only links, etc.) ----

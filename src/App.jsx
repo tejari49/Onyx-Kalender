@@ -5689,7 +5689,19 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
-      const updateProfileSettings = async (e) => {
+      
+  const updateProfileField = async (field, value) => {
+    if (!user?.uid) return;
+    try {
+      const { doc, updateDoc } = require('firebase/firestore');
+      await updateDoc(doc(db, `artifacts/${APP_ID}/users/${user.uid}`), { [field]: value });
+      setUserProfile(prev => ({ ...prev, [field]: value })); // Optimistic update
+    } catch(err) {
+      console.error('Error updating profile field', err);
+    }
+  };
+
+  const updateProfileSettings = async (e) => {
         e.preventDefault();
         if (!user) return;
         const nameRaw = new FormData(e.target).get('displayName') || new FormData(e.target).get('username') || '';
@@ -8613,7 +8625,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                    <h3 className="text-sm font-medium text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-900/50 pb-2 flex items-center gap-2">
                      <MonitorSmartphone className="w-4 h-4" /> App Theme
                    </h3>
-                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-3">
                      {[
                        { id: 'obsidian', name: 'Deep Obsidian', desc: 'Reines AMOLED-Schwarz (Default)' },
                        { id: 'midnight', name: 'Midnight Blue', desc: 'Dunkles Marineblau' },
@@ -8624,8 +8636,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                          onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
                          className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
                        >
-                         <div className="font-semibold text-white text-sm">{t.name}</div>
-                         <div className="text-xs text-neutral-500 mt-1">{t.desc}</div>
+                         <div className="flex items-center justify-between">
+                            <div className="font-semibold text-white text-base sm:text-sm">{t.name}</div>
+                            {(userProfile?.appTheme || 'obsidian') === t.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
+                         </div>
+                         <div className="text-sm sm:text-xs text-neutral-400 mt-2">{t.desc}</div>
                        </button>
                      ))}
                    </div>
@@ -8635,7 +8650,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                    <h3 className="text-sm font-medium text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-900/50 pb-2 flex items-center gap-2">
                      <LayoutDashboard className="w-4 h-4" /> Glassmorphism & Hintergrund
                    </h3>
-                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-3">
                      {[
                        { id: 'none', name: 'Mattes Schwarz', desc: 'Standard UI' },
                        { id: 'glass-1', name: 'Neon Blur', desc: 'Animierte Farbverläufe mit Glassmorphism' },
@@ -8646,8 +8661,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                          onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}
                          className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
                        >
-                         <div className="font-semibold text-white text-sm">{bg.name}</div>
-                         <div className="text-xs text-neutral-500 mt-1">{bg.desc}</div>
+                         <div className="flex items-center justify-between">
+                            <div className="font-semibold text-white text-base sm:text-sm">{bg.name}</div>
+                            {(userProfile?.appBg || 'none') === bg.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
+                         </div>
+                         <div className="text-sm sm:text-xs text-neutral-400 mt-2">{bg.desc}</div>
                        </button>
                      ))}
                    </div>

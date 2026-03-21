@@ -1,0 +1,11 @@
+const { execSync } = require('child_process');
+const result = execSync('git show HEAD:src/App.jsx').toString();
+const hasDesign = result.includes("id: 'design'");
+const hasBooking = result.includes("id: 'booking'");
+const hasThemes = result.includes('themes.css');
+const hasUpdateProfileField = result.includes('updateProfileField');
+console.log("HEAD:App.jsx has id:design?", hasDesign);
+console.log("HEAD:App.jsx has id:booking?", hasBooking);
+console.log("HEAD:App.jsx has themes.css?", hasThemes);
+console.log("HEAD:App.jsx has updateProfileField?", hasUpdateProfileField);
+console.log("HEAD lines:", result.split('\n').length);

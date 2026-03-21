@@ -66,7 +66,7 @@ import {
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v27 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v28 loaded @', new Date().toISOString());
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {

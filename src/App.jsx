@@ -123,19 +123,46 @@ function AmoledCalendarApp() {
 
       // Fix: keep app height in sync (prevents white area at bottom in some browsers)
       useEffect(() => {
+        let lastAppliedHeight = 0;
+        const isEditableElement = (el) => {
+          try {
+            if (!el || typeof el?.matches !== 'function') return false;
+            return el.matches('input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"]');
+          } catch (_) {
+            return false;
+          }
+        };
         const setAppHeight = () => {
-          document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
+          const nextHeight = Math.round(window.visualViewport?.height || window.innerHeight || 0);
+          if (!nextHeight) return;
+
+          const activeEl = document.activeElement;
+          const keyboardLikelyOpen =
+            isEditableElement(activeEl) &&
+            lastAppliedHeight > 0 &&
+            nextHeight < (lastAppliedHeight - 120);
+
+          // Mobile keyboards trigger resize events. If we shrink the fixed app shell here,
+          // focused inputs/selects can instantly lose focus and native pickers may dismiss.
+          if (keyboardLikelyOpen) return;
+
+          lastAppliedHeight = nextHeight;
+          document.documentElement.style.setProperty('--app-height', `${nextHeight}px`);
         };
         setAppHeight();
         window.addEventListener('resize', setAppHeight);
         window.addEventListener('orientationchange', setAppHeight);
         window.addEventListener('pageshow', setAppHeight);
         document.addEventListener('visibilitychange', setAppHeight);
+        window.visualViewport?.addEventListener('resize', setAppHeight);
+        window.visualViewport?.addEventListener('scroll', setAppHeight);
         return () => {
           window.removeEventListener('resize', setAppHeight);
           window.removeEventListener('orientationchange', setAppHeight);
           window.removeEventListener('pageshow', setAppHeight);
           document.removeEventListener('visibilitychange', setAppHeight);
+          window.visualViewport?.removeEventListener('resize', setAppHeight);
+          window.visualViewport?.removeEventListener('scroll', setAppHeight);
         };
       }, []);
 
@@ -10758,8 +10785,20 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
           {/* EVENT MODAL */}
           {isModalOpen && (
-            <div className="fixed inset-0 z-[85] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={closeEventModal}>
-              <div ref={eventModalScrollRef} className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up max-h-[92dvh] overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }} onClick={(e) => e.stopPropagation()}>
+            <div
+              className="fixed inset-0 z-[85] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) closeEventModal();
+              }}
+            >
+              <div
+                ref={eventModalScrollRef}
+                className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up max-h-[92dvh] overflow-y-auto overscroll-contain"
+                style={{ WebkitOverflowScrolling: 'touch' }}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+              >
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500">{eventToEdit ? (eventModalMode === 'view' ? 'Ansicht' : 'Bearbeiten') : 'Neu'}</p>

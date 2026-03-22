@@ -13,7 +13,7 @@ import {
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
     import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment } from "firebase/firestore";
-    import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
+    import { getMessaging, getToken, deleteToken, onMessage, isSupported } from "firebase/messaging";
     import heic2any from 'heic2any';
 import {
   DEFAULT_EXTRAS_ORDER,
@@ -129,9 +129,13 @@ function AmoledCalendarApp() {
         setAppHeight();
         window.addEventListener('resize', setAppHeight);
         window.addEventListener('orientationchange', setAppHeight);
+        window.addEventListener('pageshow', setAppHeight);
+        document.addEventListener('visibilitychange', setAppHeight);
         return () => {
           window.removeEventListener('resize', setAppHeight);
           window.removeEventListener('orientationchange', setAppHeight);
+          window.removeEventListener('pageshow', setAppHeight);
+          document.removeEventListener('visibilitychange', setAppHeight);
         };
       }, []);
 
@@ -3030,9 +3034,63 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setChatStats({ sent, received, total: sent + received });
       };
 
+      const clearStoredWebPushTokens = async (currentUser, reason = '') => {
+  try {
+    if (!currentUser?.uid) return;
+    const cleared = {
+      fcmTokenWeb: '',
+      fcmToken: '',
+      fcmTokensWeb: [],
+      fcmTokens: [],
+      pushTarget: 'web',
+      pushTokenClearedAt: Date.now(),
+      pushTokenClearReason: String(reason || '').slice(0, 180),
+      lastTokenRefreshAt: Date.now(),
+      lastWebTokenAt: 0,
+    };
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid), cleared, { merge: true });
+    try { userProfileRef.current = { ...(userProfileRef.current || {}), ...cleared }; } catch (_) {}
+    try { setUserProfile((prev) => ({ ...(prev || {}), ...cleared })); } catch (_) {}
+  } catch (_) {}
+};
+
+      const resetBrowserPushState = async () => {
+  try {
+    const messaging = await getMessagingSafe();
+    if (messaging) {
+      try { await deleteToken(messaging); } catch (_) {}
+    }
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker?.getRegistrations) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs || []) {
+        const scriptUrl = String(reg?.active?.scriptURL || reg?.waiting?.scriptURL || reg?.installing?.scriptURL || '');
+        if (scriptUrl.includes('firebase-messaging-sw.js')) {
+          try { await reg.unregister(); } catch (_) {}
+        }
+      }
+    }
+  } catch (_) {}
+};
+
+      const classifyPushError = (error) => {
+  try {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || error || '');
+    const full = `${code} ${message}`.toLowerCase();
+    if (full.includes('401')) return 'FCM_TOKEN_SUBSCRIBE_FAILED_401 (VAPID/Web-Push-Konfiguration prüfen)';
+    if (code.includes('messaging/token-subscribe-failed')) return 'FCM_TOKEN_SUBSCRIBE_FAILED (VAPID/FCM-Konfiguration prüfen)';
+    if (code.includes('messaging/permission-blocked')) return 'NOTIFICATION_PERMISSION_BLOCKED';
+    if (code.includes('messaging/unsupported-browser')) return 'FCM_UNSUPPORTED_BROWSER';
+    if (code.includes('messaging/invalid-vapid-key')) return 'FCM_INVALID_VAPID_KEY';
+    if (full.includes('registration-token-not-registered')) return 'FCM_TOKEN_NOT_REGISTERED';
+    return message || 'UNKNOWN_PUSH_ERROR';
+  } catch (_) { return String(error?.message || error || 'UNKNOWN_PUSH_ERROR'); }
+};
+
       const ensureWebPushToken = async (currentUser, opts = {}) => {
   if (!currentUser) return null;
   const forcePrompt = !!opts.forcePrompt;
+  const resetConnection = !!opts.resetConnection;
   const requiresStandalone = requiresInstalledPwaForPush();
 
   if (requiresStandalone && !isStandaloneDisplayMode() && !forcePrompt) {
@@ -3061,21 +3119,44 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
     }
   }
 
-  try {
-    const swRegistration = await registerPushServiceWorker();
-    if (!swRegistration) throw new Error('SERVICE_WORKER_NOT_READY');
-
-    let token = '';
+  const tryGetToken = async (swRegistration) => {
     const vapidCandidates = [String(FCM_WEB_VAPID_KEY || '').trim(), String(FCM_WEB_VAPID_KEY_LEGACY || '').trim()].filter(Boolean);
+    if (!vapidCandidates.length) throw new Error('NO_VAPID_KEY_CONFIGURED');
+    let lastError = null;
     for (let i = 0; i < vapidCandidates.length; i++) {
       const vapidKey = vapidCandidates[i];
       try {
-        token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swRegistration });
+        const nextToken = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swRegistration });
+        if (nextToken) return nextToken;
+      } catch (err) {
+        lastError = err;
+        const isLastTry = i >= vapidCandidates.length - 1;
+        if (!isLastTry) console.warn('[FCM] getToken failed, trying next VAPID key', err?.code || err?.message || err);
+      }
+    }
+    if (lastError) throw lastError;
+    return '';
+  };
+
+  try {
+    const phases = resetConnection ? ['fresh'] : ['current', 'fresh'];
+    let token = '';
+    let lastError = null;
+
+    for (const phase of phases) {
+      if (phase === 'fresh') {
+        await clearStoredWebPushTokens(currentUser, 'TOKEN_RESET_BEFORE_REFRESH');
+        await resetBrowserPushState();
+      }
+
+      const swRegistration = await registerPushServiceWorker();
+      if (!swRegistration) throw new Error('SERVICE_WORKER_NOT_READY');
+
+      try {
+        token = await tryGetToken(swRegistration);
         if (token) break;
       } catch (err) {
-        const isLastTry = i >= vapidCandidates.length - 1;
-        if (isLastTry) throw err;
-        console.warn('[FCM] getToken failed, trying next VAPID key', err?.code || err?.message || err);
+        lastError = err;
       }
     }
 
@@ -3087,36 +3168,34 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         existingToken = profileSnap.exists() ? profileSnap.data().fcmTokenWeb : null;
       } catch (_) {}
       if (token !== existingToken) console.log('[FCM] Token erneuert');
-      await setDoc(
-        profileRef,
-        {
-          fcmTokenWeb: token,
-          lastWebTokenAt: Date.now(),
-          pushTarget: 'web',
-          pushPlatform: navigator.userAgent.includes('Android') ? 'android' : navigator.userAgent.includes('iPhone') ? 'ios' : 'desktop',
-          pushBrowser: navigator.userAgent.includes('Chrome') ? 'chrome' : navigator.userAgent.includes('Firefox') ? 'firefox' : navigator.userAgent.includes('Safari') ? 'safari' : 'other',
-          lastTokenRefreshAt: Date.now()
-        },
-        { merge: true }
-      );
+
+      const profilePatch = {
+        fcmTokenWeb: token,
+        fcmToken: '',
+        fcmTokensWeb: [token],
+        fcmTokens: [],
+        lastWebTokenAt: Date.now(),
+        pushTarget: 'web',
+        pushPlatform: navigator.userAgent.includes('Android') ? 'android' : navigator.userAgent.includes('iPhone') ? 'ios' : 'desktop',
+        pushBrowser: navigator.userAgent.includes('Chrome') ? 'chrome' : navigator.userAgent.includes('Firefox') ? 'firefox' : navigator.userAgent.includes('Safari') ? 'safari' : 'other',
+        lastTokenRefreshAt: Date.now(),
+        pushTokenClearReason: '',
+      };
+      await setDoc(profileRef, profilePatch, { merge: true });
+      try { userProfileRef.current = { ...(userProfileRef.current || {}), ...profilePatch }; } catch (_) {}
+      try { setUserProfile((prev) => ({ ...(prev || {}), ...profilePatch })); } catch (_) {}
       setPushDiag(prev => ({ ...prev, lastTokenAt: Date.now(), lastError: '' }));
+      try { localStorage.setItem('onyx_last_web_push_token', token); } catch (_) {}
       return token;
     }
 
+    await clearStoredWebPushTokens(currentUser, 'NO_TOKEN_RETURNED_AFTER_REFRESH');
     setPushDiag(prev => ({ ...prev, lastError: 'NO_TOKEN_RETURNED' }));
     return null;
   } catch (e) {
     console.warn('[FCM] ensure token failed', e?.message || e);
-    const friendly = (() => {
-      try {
-        const code = String(e?.code || '').toLowerCase();
-        if (code.includes('messaging/token-subscribe-failed')) return 'FCM_TOKEN_SUBSCRIBE_FAILED (VAPID/FCM-Konfiguration prüfen)';
-        if (code.includes('messaging/permission-blocked')) return 'NOTIFICATION_PERMISSION_BLOCKED';
-        if (code.includes('messaging/unsupported-browser')) return 'FCM_UNSUPPORTED_BROWSER';
-        if (code.includes('messaging/invalid-vapid-key')) return 'FCM_INVALID_VAPID_KEY';
-        return String(e?.message || e);
-      } catch (_) { return String(e?.message || e); }
-    })();
+    const friendly = classifyPushError(e);
+    await clearStoredWebPushTokens(currentUser, `ENSURE_FAIL:${friendly}`);
     setPushDiag(prev => ({ ...prev, lastError: friendly }));
     return null;
   }
@@ -3132,7 +3211,7 @@ const requestNotificationPermission = async (currentUser) => {
   }
 
   try {
-    const token = await ensureWebPushToken(currentUser, { forcePrompt: true });
+    const token = await ensureWebPushToken(currentUser, { forcePrompt: true, resetConnection: true });
     if (token) showToast('Benachrichtigungen aktiviert ✅');
     else showToast('Benachrichtigungen konnten nicht aktiviert werden');
   } catch (err) {
@@ -4284,7 +4363,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=42`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=43`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -4499,10 +4578,11 @@ Kalender aktuell` : 'Kalender aktuell';
           let permissionState = Notification.permission;
           let ensuredToken = '';
           if (permissionState !== 'granted') {
-            ensuredToken = (await ensureWebPushToken(user, { forcePrompt: true })) || '';
+            ensuredToken = (await ensureWebPushToken(user, { forcePrompt: true, resetConnection: true })) || '';
             permissionState = Notification.permission;
           } else {
             ensuredToken = (await ensureWebPushToken(user, { forcePrompt: false })) || '';
+            if (!ensuredToken) ensuredToken = (await ensureWebPushToken(user, { forcePrompt: false, resetConnection: true })) || '';
           }
 
           if (permissionState !== 'granted') {
@@ -4584,6 +4664,9 @@ Kalender aktuell` : 'Kalender aktuell';
               if (status && status !== 'pending') { try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {} }
               if (status === 'error' && lastError) {
                 setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
+                if (/registration-token-not-registered|invalid-registration-token/i.test(lastError)) {
+                  try { clearStoredWebPushTokens(user, `SERVER_TEST:${lastError}`); } catch (_) {}
+                }
               }
               if (status === 'sent') {
                 // Let SW handle the visible notification; this toast is just feedback.
@@ -7588,8 +7671,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           </aside>
 
           <nav
-            className={`${isMobileChatView ? 'hidden ' : ''}md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]`}
-            style={{ position: 'fixed', left: 0, right: 0, bottom: 0 }}
+            className={`${isMobileChatView ? 'hidden ' : ''}md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-[80] px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]`}
+            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
           >
             <div className="grid grid-cols-5 items-center w-full h-full gap-1">
               <button onClick={() => setCurrentView('dashboard')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`} title="Startseite"><Home className="w-7 h-7" /></button>
@@ -8810,8 +8893,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                             type="button"
                             onClick={async () => {
                               try {
-                                await registerPushServiceWorker();
-                                await ensureWebPushToken(user, { forcePrompt: false });
+                                await ensureWebPushToken(user, { forcePrompt: false, resetConnection: true });
                                 showToast('Push-Setup aktualisiert ✅');
                               } catch (e) {
                                 setPushDiag((prev) => ({ ...prev, lastError: `PUSH_REFRESH_FAILED: ${e?.message || String(e)}` }));

@@ -193,6 +193,22 @@ exports.sendPushTestOnCreate = onDocumentCreated(
         { merge: true }
       );
     } catch (e) {
+      const errCode = String(e?.code || e?.errorInfo?.code || '').toLowerCase();
+      const errMsg = String(e?.message || e || '');
+      const isStaleToken = errCode.includes('registration-token-not-registered') || errCode.includes('invalid-registration-token') || errMsg.toLowerCase().includes('registration-token-not-registered');
+      if (isStaleToken) {
+        try {
+          await admin.firestore().doc(`artifacts/${appId}/public/data/profiles/${uid}`).set({
+            fcmTokenWeb: '',
+            fcmToken: '',
+            fcmTokensWeb: [],
+            fcmTokens: [],
+            pushTokenClearedAt: Date.now(),
+            pushTokenClearReason: 'SERVER_TEST_STALE_TOKEN',
+            updatedAt: Date.now(),
+          }, { merge: true });
+        } catch (_) {}
+      }
       await testRef.set(
         { status: "error", lastError: `${String(e?.code || "unknown")}: ${String(e?.message || e)}`.slice(0, 500), updatedAt: Date.now() },
         { merge: true }

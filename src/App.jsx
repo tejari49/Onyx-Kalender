@@ -5301,6 +5301,29 @@ useEffect(() => {
       }, [user, userProfile]);
 
       useEffect(() => {
+        const html = document.documentElement;
+        const body = document.body;
+        const prevHtmlOverflow = html.style.overflow;
+        const prevBodyOverflow = body.style.overflow;
+        const prevHtmlOverscroll = html.style.overscrollBehavior;
+        const prevBodyOverscroll = body.style.overscrollBehavior;
+
+        if (currentView === 'secret_chat') {
+          html.style.overflow = 'hidden';
+          body.style.overflow = 'hidden';
+          html.style.overscrollBehavior = 'none';
+          body.style.overscrollBehavior = 'none';
+        }
+
+        return () => {
+          html.style.overflow = prevHtmlOverflow;
+          body.style.overflow = prevBodyOverflow;
+          html.style.overscrollBehavior = prevHtmlOverscroll;
+          body.style.overscrollBehavior = prevBodyOverscroll;
+        };
+      }, [currentView]);
+
+      useEffect(() => {
         if (currentView !== 'secret_chat') return;
         const panicOnHide = (userProfile?.secretPanicOnHide !== false);
         if (!panicOnHide) return;
@@ -9302,7 +9325,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
             {currentView === 'secret_chat' && (
               <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>
-              <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up" style={{ height: 'var(--app-height, 100vh)' }}>
+              <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up overflow-hidden overscroll-none" style={{ height: 'var(--app-height, 100vh)', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
                 
                 {/* Geheimer Chat Header */}
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
@@ -9401,7 +9424,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   </div>
                 </header>
 
-                <div className="flex-1 overflow-hidden flex flex-col">
+                <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                   {!userProfile ? (
                     <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">Identität festlegen</h3><p className="text-sm text-neutral-500 mb-6">Wähle einen einzigartigen Benutzernamen.</p>
                     <form onSubmit={saveUsername}>
@@ -9759,7 +9782,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => { setSelectedMessageId(null); setMessageReactionPickerFor(null); }}>
+                    <div className="flex-1 min-h-0 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => { setSelectedMessageId(null); setMessageReactionPickerFor(null); }}>
                       {isMessageSearchOpen && (
 
                         <div className="px-4 py-2 bg-neutral-950 border-b border-neutral-900 flex flex-col gap-2 shrink-0">
@@ -9840,7 +9863,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                             loadMoreChatMessages();
                           }
                         }}
-                        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 flex flex-col"
+                        className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 flex flex-col" style={{ WebkitOverflowScrolling: 'touch' }}
                       >
                         {chatHasMore && (
                           <div className="-mt-2 mb-2 flex items-center justify-center">

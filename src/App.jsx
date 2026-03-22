@@ -150,6 +150,7 @@ function AmoledCalendarApp() {
       
       const [currentView, setCurrentView] = useState('dashboard');
       const [settingsTab, setSettingsTab] = useState('account');
+      const [settingsMobileOpenId, setSettingsMobileOpenId] = useState('account');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
       const [uiTheme, setUiTheme] = useState(() => {
@@ -7531,10 +7532,12 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       })();
       const completedGoals = normalizeDailyGoals(dailyGoals).filter((g) => g.done && String(g.text || '').trim()).length;
       const activeCalForView = getCalendarById(activeCalendarId);
+      const isMobileChatView = currentView === 'secret_chat' && secretView === 'chat';
+      const mobileBottomInsetClass = isMobileChatView ? 'pb-0' : 'pb-[calc(5.25rem+env(safe-area-inset-bottom))]';
 
       return (
         <div 
-          className={`flex h-screen w-full text-white font-sans overflow-hidden flex-col md:flex-row pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)', background: 'var(--onyx-app-shell-bg)' }}
+          className={`flex h-screen w-full text-white font-sans overflow-hidden flex-col md:flex-row ${mobileBottomInsetClass} md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)', background: 'var(--onyx-app-shell-bg)' }}
           onTouchStart={handleGlobalTouchStart}
           onTouchMove={handleGlobalTouchMove}
           onTouchEnd={handleGlobalTouchEnd}
@@ -7585,7 +7588,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           </aside>
 
           <nav
-            className="md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]"
+            className={`${isMobileChatView ? 'hidden ' : ''}md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]`}
             style={{ position: 'fixed', left: 0, right: 0, bottom: 0 }}
           >
             <div className="grid grid-cols-5 items-center w-full h-full gap-1">
@@ -7614,7 +7617,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
           <main className="flex-1 flex flex-col h-full overflow-hidden bg-black relative md:pb-0">
             <AppChromeHeader />
-            <div ref={mainRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
+            <div ref={mainRef} className={`flex-1 min-h-0 overflow-y-auto overscroll-contain ${isMobileChatView ? 'pb-0' : 'pb-[calc(5.25rem+env(safe-area-inset-bottom))]'} md:pb-0`}>
             {currentView === 'dashboard' && (
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
@@ -8428,17 +8431,50 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       .filter((field) => isExtraFieldEnabled(field))
       .length;
 
-    const AccordionItem = ({ id, keys, children }) => {
+    const AccordionItem = ({ id, label, subtitle, icon: Icon, keys, children }) => {
       const visible = !q || match(keys);
       if (!visible) return null;
-      const open = q ? true : (settingsTab === id);
-      if (!open) return null;
+      const desktopOpen = q ? true : (settingsTab === id);
+      const mobileOpen = q ? true : (settingsMobileOpenId === id);
       return (
-        <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/50 backdrop-blur-xl shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
-          <div className="settings-section-body px-5 py-4">
-            {children}
+        <>
+          <div className="lg:hidden space-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSettingsTab(id);
+                setSettingsQuery('');
+                setSettingsMobileOpenId((prev) => (prev === id ? '' : id));
+              }}
+              className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${mobileOpen ? 'border-white bg-white text-black' : 'border-neutral-800 bg-neutral-950/60 text-white'}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex items-center gap-3">
+                  {Icon ? <Icon className="w-4 h-4 shrink-0" /> : null}
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold truncate">{label || id}</div>
+                    <div className={`mt-0.5 text-[11px] truncate ${mobileOpen ? 'text-black/70' : 'text-neutral-500'}`}>{subtitle || ''}</div>
+                  </div>
+                </div>
+                <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${mobileOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+            {mobileOpen && (
+              <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/50 backdrop-blur-xl shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+                <div className="settings-section-body px-4 py-4">
+                  {children}
+                </div>
+              </section>
+            )}
           </div>
-        </section>
+          {desktopOpen && (
+            <section className="hidden lg:block settings-section rounded-2xl border border-neutral-800 bg-neutral-950/50 backdrop-blur-xl shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+              <div className="settings-section-body px-5 py-4">
+                {children}
+              </div>
+            </section>
+          )}
+        </>
       );
     };
 
@@ -8485,21 +8521,21 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => { setSettingsTab('design'); setSettingsQuery(''); }}
+                onClick={() => { setSettingsTab('design'); setSettingsMobileOpenId('design'); setSettingsQuery(''); }}
                 className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
               >
                 <Palette className="w-4 h-4" /> Design & Themes
               </button>
               <button
                 type="button"
-                onClick={() => { setSettingsTab('notifications'); setSettingsQuery(''); }}
+                onClick={() => { setSettingsTab('notifications'); setSettingsMobileOpenId('notifications'); setSettingsQuery(''); }}
                 className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-neutral-200 text-xs font-semibold hover:border-neutral-600 transition-colors inline-flex items-center gap-2"
               >
                 <Bell className="w-4 h-4" /> Benachrichtigungen
               </button>
               <button
                 type="button"
-                onClick={() => { setSettingsTab('account'); setSettingsQuery(''); }}
+                onClick={() => { setSettingsTab('account'); setSettingsMobileOpenId('account'); setSettingsQuery(''); }}
                 className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-neutral-200 text-xs font-semibold hover:border-neutral-600 transition-colors inline-flex items-center gap-2"
               >
                 <User className="w-4 h-4" /> Account
@@ -8511,26 +8547,12 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         <div className="lg:hidden -mt-2">
           <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-3 space-y-2">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Einstellungsbereich</p>
-              <p className="mt-1 text-sm text-neutral-300">Mobilansicht mit einem kompakten Dropdown pro Bereich.</p>
-            </div>
-            <div className="relative">
-              <select
-                value={settingsTab}
-                onChange={(e) => { setSettingsTab(e.target.value); setSettingsQuery(''); }}
-                className="w-full appearance-none rounded-xl border border-neutral-800 bg-black text-white px-4 py-3 pr-11 text-sm focus:outline-none focus:border-neutral-600"
-              >
-                {(q ? visibleTabs : TABS).map((t) => (
-                  <option key={`mobile-select-${t.id}`} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-4 h-4 text-neutral-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Einstellungsbereiche</p>
+              <p className="mt-1 text-sm text-neutral-300">Mobil werden alle Kategorien als aufklappbare Bereiche angezeigt. Tippe auf einen Bereich, um ihn zu öffnen oder wieder zu schließen.</p>
             </div>
             <div className="rounded-xl border border-neutral-800 bg-black/50 px-3 py-2">
-              <div className="text-xs font-medium text-white">{activeTab?.label || 'Account & Sicherheit'}</div>
-              <div className="mt-1 text-[11px] text-neutral-500">{activeTab?.subtitle || 'Profil, Passwort und Datenschutz'}</div>
+              <div className="text-xs font-medium text-white">{(q ? `${visibleTabs.length} Treffer` : 'Akkordeon aktiv')}</div>
+              <div className="mt-1 text-[11px] text-neutral-500">{q ? 'Alle passenden Bereiche bleiben geöffnet.' : 'Nur der gewählte Bereich wird geöffnet, damit es auf dem Smartphone übersichtlich bleibt.'}</div>
             </div>
           </div>
         </div>
@@ -8545,7 +8567,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 return (
                   <button
                     key={t.id}
-                    onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
+                    onClick={() => { setSettingsTab(t.id); setSettingsMobileOpenId(t.id); setSettingsQuery(''); }}
                     className={
                       "settings-nav-item w-full text-left px-3 py-3 rounded-xl transition-colors " +
                       (active ? "bg-white text-black" : "text-neutral-200 hover:bg-neutral-900") +
@@ -9149,7 +9171,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Hintergrund: <span className="text-white">{selectedAppBg === 'glass-1' ? 'Neon Blur' : selectedAppBg === 'glass-2' ? 'Gold Blur' : selectedAppBg === 'glass-3' ? 'Ruby Blur' : 'Mattes Schwarz'}</span></div>
                     <button
                       type="button"
-                      onClick={() => { setSettingsTab('design'); setSettingsQuery(''); }}
+                      onClick={() => { setSettingsTab('design'); setSettingsMobileOpenId('design'); setSettingsQuery(''); }}
                       className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
                     >
                       <Palette className="w-4 h-4" /> Öffnen
@@ -9168,7 +9190,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Token: <span className="text-white">{(userProfile?.fcmTokenWeb || userProfileRef?.current?.fcmTokenWeb) ? 'vorhanden' : 'fehlt'}</span></div>
                     <button
                       type="button"
-                      onClick={() => { setSettingsTab('notifications'); setSettingsQuery(''); }}
+                      onClick={() => { setSettingsTab('notifications'); setSettingsMobileOpenId('notifications'); setSettingsQuery(''); }}
                       className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
                     >
                       <Bell className="w-4 h-4" /> Öffnen

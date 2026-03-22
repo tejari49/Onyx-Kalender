@@ -7585,13 +7585,19 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           </aside>
 
           <nav
-            className="md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)] relative"
+            className="md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]"
             style={{ position: 'fixed', left: 0, right: 0, bottom: 0 }}
           >
-            <div className="grid grid-cols-5 items-center w-full h-full">
-              <button onClick={() => setCurrentView('dashboard')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
-              <button onClick={() => setCurrentView('calendar')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
-              <div aria-hidden="true" />
+            <div className="grid grid-cols-5 items-center w-full h-full gap-1">
+              <button onClick={() => setCurrentView('dashboard')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`} title="Startseite"><Home className="w-7 h-7" /></button>
+              <button onClick={() => setCurrentView('calendar')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`} title="Kalender"><CalendarIcon className="w-7 h-7" /></button>
+              <button
+                onClick={() => setPlusMenuOpen(true)}
+                className="min-w-0 p-3.5 rounded-2xl flex items-center justify-center text-white"
+                title="Neu"
+              >
+                <Plus className="w-7 h-7" />
+              </button>
               <button
                 onClick={() => {
                   setCurrentView('extras');
@@ -7602,19 +7608,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               >
                 <Timer className="w-7 h-7" />
               </button>
-              <button onClick={() => setCurrentView('settings')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
+              <button onClick={() => setCurrentView('settings')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`} title="Einstellungen"><Settings className="w-7 h-7" /></button>
             </div>
-            <button
-              onClick={() => setPlusMenuOpen(true)}
-              className="absolute left-1/2 -translate-x-1/2 -top-5 p-3.5 bg-white text-black rounded-full border-4 border-black shadow-lg z-10"
-              title="Neu"
-            >
-              <Plus className="w-6 h-6" />
-            </button>
           </nav>
 
-          <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
+          <main className="flex-1 flex flex-col h-full overflow-hidden bg-black relative md:pb-0">
             <AppChromeHeader />
+            <div ref={mainRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
             {currentView === 'dashboard' && (
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
@@ -10291,6 +10291,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               </div>
               </ErrorBoundary>
               )}
+            </div>
           </main>
 
           

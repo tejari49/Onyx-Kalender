@@ -39,6 +39,14 @@ export default function BookingApp({ code }) {
   }, [profile?.appTheme, profile?.appBg]);
 
   useEffect(() => {
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      if (!cancelled) {
+        setError('Booking-Link konnte nicht geladen werden. Bitte später erneut versuchen.');
+        setLoading(false);
+      }
+    }, 12000);
+
     async function loadProfile() {
       if (!code) {
         setError('Kein Booking-Code angegeben.');
@@ -70,10 +78,12 @@ export default function BookingApp({ code }) {
           schedule: data.schedule || {}
         };
 
+        if (cancelled) return;
         setProfile(normalizedProfile);
 
         if (Array.isArray(data.busyEvents) && data.busyEvents.length > 0) {
-          setBusyEvents(data.busyEvents);
+          setBusyEvents(data.busyEvents.map((item) => ({ ...item, startMs: Number(item?.startMs || 0), endMs: Number(item?.endMs || 0) })).filter((item) => item.startMs > 0));
+          window.clearTimeout(timeoutId);
           setLoading(false);
           return;
         }
@@ -87,18 +97,26 @@ export default function BookingApp({ code }) {
             const isRevoked = shareData.revokedAtMs > 0;
             const isExpired = shareData.expiresAtMs > 0 && Date.now() > shareData.expiresAtMs;
             if (!isRevoked && !isExpired && Array.isArray(shareData.events)) {
-              setBusyEvents(shareData.events);
+              setBusyEvents(shareData.events.map((item) => ({ ...item, startMs: Number(item?.startMs || 0), endMs: Number(item?.endMs || 0) })).filter((item) => item.startMs > 0));
             }
           }
         }
-        setLoading(false);
+        window.clearTimeout(timeoutId);
+        if (!cancelled) setLoading(false);
       } catch (err) {
         console.error(err);
-        setError('Netzwerkfehler beim Laden.');
-        setLoading(false);
+        window.clearTimeout(timeoutId);
+        if (!cancelled) {
+          setError('Netzwerkfehler beim Laden.');
+          setLoading(false);
+        }
       }
     }
     loadProfile();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [code]);
 
   if (loading) {
@@ -223,13 +241,13 @@ export default function BookingApp({ code }) {
 
   return (
     <div className="min-h-screen bg-[var(--onyx-app-shell-bg)] text-neutral-200 font-sans selection:bg-neutral-800">
-       <div className="sticky top-0 z-30 border-b border-neutral-800 bg-black/92 backdrop-blur supports-[backdrop-filter]:bg-black/72">
+       <div className="sticky top-0 z-30 border-b border-neutral-800 backdrop-blur" style={{ backgroundColor: 'var(--onyx-overlay)' }}>
          <div className="max-w-3xl mx-auto px-4 md:px-8 py-3 md:py-4 flex items-center justify-between gap-4">
            <div className="min-w-0 text-left select-none rounded-xl px-1 py-0.5">
              <div className="text-[10px] uppercase tracking-[0.32em] text-neutral-500">ONYX</div>
              <div className="mt-1 text-base md:text-2xl font-light text-white truncate">Guten Morgen.</div>
            </div>
-           <div className="w-11 h-11 md:w-12 md:h-12 rounded-2xl border border-neutral-800 bg-black/55 text-neutral-100 flex items-center justify-center shrink-0" aria-hidden="true">
+           <div className="w-11 h-11 md:w-12 md:h-12 rounded-2xl border border-neutral-800 text-neutral-100 flex items-center justify-center shrink-0" style={{ backgroundColor: 'var(--onyx-surface-soft)' }} aria-hidden="true">
              <Moon className="w-5 h-5" />
            </div>
          </div>

@@ -49,6 +49,20 @@ body {
   background: var(--onyx-app-shell-bg, var(--onyx-bg));
 }
 
+.onyx-shell-bg {
+  background: var(--onyx-app-shell-bg, var(--onyx-bg));
+}
+
+.onyx-glass-panel {
+  background-color: rgba(10, 10, 12, 0.56);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+}
+
+.onyx-overlay-surface {
+  background-color: var(--onyx-overlay) !important;
+}
+
 
 /* Utility remap via centralized theme variables */
 .bg-black,
@@ -136,4 +150,9 @@ select {
 
 .hover\:text-white:hover {
   color: var(--onyx-text) !important;
+}
+
+html[data-bg^='glass'] .onyx-glass-panel,
+body[data-bg^='glass'] .onyx-glass-panel {
+  background-color: rgba(7, 7, 9, 0.42) !important;
 }

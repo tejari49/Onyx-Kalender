@@ -503,7 +503,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : '');
       const shellGreeting = `Guten Morgen${dashboardName ? `, ${dashboardName}` : ''}.`;
       const AppChromeHeader = () => (
-        <div className="sticky top-0 z-30 border-b border-neutral-800 bg-black/92 backdrop-blur supports-[backdrop-filter]:bg-black/72">
+        <div className="sticky top-0 z-30 border-b border-neutral-800 backdrop-blur" style={{ backgroundColor: 'var(--onyx-overlay)' }}>
           <div className="max-w-7xl mx-auto px-4 md:px-8 py-3 md:py-4 flex items-center justify-between gap-4">
             <button
               type="button"
@@ -7534,7 +7534,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       return (
         <div 
-          className={`flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)' }}
+          className={`flex h-screen w-full text-white font-sans overflow-hidden flex-col md:flex-row pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)', background: 'var(--onyx-app-shell-bg)' }}
           onTouchStart={handleGlobalTouchStart}
           onTouchMove={handleGlobalTouchMove}
           onTouchEnd={handleGlobalTouchEnd}
@@ -8434,7 +8434,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       const open = q ? true : (settingsTab === id);
       if (!open) return null;
       return (
-        <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+        <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/50 backdrop-blur-xl shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
           <div className="settings-section-body px-5 py-4">
             {children}
           </div>
@@ -8971,7 +8971,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                        <button
                          key={t.id}
                          onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
-                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
+                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
                        >
                          <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: t.preview }} />
                          <div className="flex items-center justify-between gap-3">
@@ -8993,7 +8993,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                        <button
                          key={bg.id}
                          onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}
-                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
+                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
                        >
                          <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: bg.preview }} />
                          <div className="flex items-center justify-between gap-3">
@@ -12055,8 +12055,6 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
   
   const code = userProfile?.friendCode;
   
-  // Combine imports/logic safety
-  const { doc, getDoc, setDoc, query, collection, where, onSnapshot, updateDoc, addDoc, serverTimestamp } = require('firebase/firestore');
 
   React.useEffect(() => {
     if (!code) { setBLoading(false); return; }
@@ -12075,6 +12073,14 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
     });
   }, [user?.uid, db, APP_ID]);
 
+  const getBookingPublicUrl = React.useCallback((value) => {
+    const safeCode = String(value || code || '').trim();
+    if (!safeCode) return '';
+    const rawBase = String(BASE_PATH || window.location.pathname || '/');
+    const normalizedBase = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+    return `${window.location.origin}${normalizedBase}?book=${encodeURIComponent(safeCode)}`;
+  }, [code]);
+
   const save = async () => {
     if (!code) return;
     const busyEvents = (events || []).map(e => ({ startMs: e.startMs, endMs: e.endMs, isAllDay: e.isAllDay === true }));
@@ -12084,8 +12090,8 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
       code,
       title: (bProfile?.title || userProfile?.displayName || 'Termin buchen').trim(),
       duration: Number(bProfile?.duration || 30) || 30,
-      appTheme: userProfile?.appTheme || null,
-      appBg: userProfile?.appBg || null,
+      appTheme: userProfile?.appTheme || 'obsidian',
+      appBg: userProfile?.appBg || 'none',
       busyEvents,
       updatedAt: Date.now(),
     };
@@ -12095,7 +12101,8 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
   };
 
   const copyLink = () => {
-    const url = `${window.location.origin}${window.location.pathname}?book=${code}`;
+    const url = getBookingPublicUrl(code);
+    if (!url) return;
     navigator.clipboard.writeText(url);
     alert('Link kopiert!');
   };
@@ -12164,7 +12171,7 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
           <div>
              <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Dein Kalender Link</label>
              <div className="flex items-center gap-2 mt-2">
-               <div className="flex-1 bg-neutral-900 border border-neutral-800 text-emerald-400 font-mono text-sm px-4 py-3 rounded-xl truncate select-all">{window.location.origin}{window.location.pathname}?book={code}</div>
+               <div className="flex-1 bg-neutral-900 border border-neutral-800 text-emerald-400 font-mono text-sm px-4 py-3 rounded-xl truncate select-all">{getBookingPublicUrl(code)}</div>
                <button onClick={copyLink} className="p-3 bg-neutral-800 text-white rounded-xl hover:bg-neutral-700 transition"><CalendarPlus className="w-5 h-5" /></button>
              </div>
           </div>

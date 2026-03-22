@@ -8399,14 +8399,16 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
     const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
     const APP_THEME_OPTIONS = [
-      { id: 'obsidian', name: 'Deep Obsidian', desc: 'Reines AMOLED-Schwarz (Default)' },
-      { id: 'midnight', name: 'Midnight Blue', desc: 'Dunkles Marineblau' },
-      { id: 'gold', name: 'Onyx Gold', desc: 'Schwarz mit Gold-Akzenten' },
+      { id: 'obsidian', name: 'Deep Obsidian', desc: 'Kräftiges Graphit mit weichen Kanten', preview: 'linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 55%, #000000 100%)' },
+      { id: 'deepblack', name: 'Deep Black', desc: 'Echtes AMOLED-Schwarz mit maximalem Kontrast', preview: 'linear-gradient(135deg, #050505 0%, #010101 55%, #000000 100%)' },
+      { id: 'midnight', name: 'Midnight Blue', desc: 'Sattes Nachtblau mit kühlem Glow', preview: 'linear-gradient(135deg, #0f2747 0%, #081224 55%, #010409 100%)' },
+      { id: 'gold', name: 'Onyx Gold', desc: 'Warmes Schwarz mit kräftigem Goldton', preview: 'linear-gradient(135deg, #3a2507 0%, #181108 50%, #020100 100%)' },
     ];
     const APP_BG_OPTIONS = [
-      { id: 'none', name: 'Mattes Schwarz', desc: 'Standard UI' },
-      { id: 'glass-1', name: 'Neon Blur', desc: 'Animierte Farbverläufe mit Glassmorphism' },
-      { id: 'glass-2', name: 'Gold Blur', desc: 'Elegantes Gold-Ambient' },
+      { id: 'none', name: 'Mattes Schwarz', desc: 'Ruhiger Hintergrund ohne Farbglow', preview: 'linear-gradient(135deg, #121212 0%, #060606 60%, #000000 100%)' },
+      { id: 'glass-1', name: 'Neon Blur', desc: 'Deutlich kräftiger Cyan-Violett-Glow', preview: 'radial-gradient(circle at 18% 20%, rgba(34,211,238,0.95) 0%, rgba(34,211,238,0) 34%), radial-gradient(circle at 82% 18%, rgba(168,85,247,0.9) 0%, rgba(168,85,247,0) 32%), linear-gradient(135deg, #0c1224 0%, #020409 100%)' },
+      { id: 'glass-2', name: 'Gold Blur', desc: 'Kräftiger Goldschein mit warmem Ambient', preview: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.9) 0%, rgba(245,158,11,0) 38%), radial-gradient(circle at 82% 76%, rgba(251,191,36,0.75) 0%, rgba(251,191,36,0) 28%), linear-gradient(135deg, #1d1306 0%, #030100 100%)' },
+      { id: 'glass-3', name: 'Ruby Blur', desc: 'Kräftige Rot- und Rubin-Akzente', preview: 'radial-gradient(circle at 18% 18%, rgba(244,63,94,0.9) 0%, rgba(244,63,94,0) 34%), radial-gradient(circle at 82% 18%, rgba(234,88,12,0.82) 0%, rgba(234,88,12,0) 30%), linear-gradient(135deg, #1b090d 0%, #030101 100%)' },
     ];
     const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
       .filter((field) => isExtraFieldEnabled(field))
@@ -8950,14 +8952,15 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                    <h3 className="text-sm font-medium text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-900/50 pb-2 flex items-center gap-2">
                      <MonitorSmartphone className="w-4 h-4" /> App Theme
                    </h3>
-                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-3">
+                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-3">
                      {APP_THEME_OPTIONS.map(t => (
                        <button
                          key={t.id}
                          onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
-                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
+                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
                        >
-                         <div className="flex items-center justify-between">
+                         <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: t.preview }} />
+                         <div className="flex items-center justify-between gap-3">
                             <div className="font-semibold text-white text-base sm:text-sm">{t.name}</div>
                             {(userProfile?.appTheme || 'obsidian') === t.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
                          </div>
@@ -8971,14 +8974,15 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                    <h3 className="text-sm font-medium text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-900/50 pb-2 flex items-center gap-2">
                      <LayoutDashboard className="w-4 h-4" /> Glassmorphism & Hintergrund
                    </h3>
-                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-3">
+                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-3">
                      {APP_BG_OPTIONS.map(bg => (
                        <button
                          key={bg.id}
                          onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}
-                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
+                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-black border-neutral-800 hover:border-neutral-600'}`}
                        >
-                         <div className="flex items-center justify-between">
+                         <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: bg.preview }} />
+                         <div className="flex items-center justify-between gap-3">
                             <div className="font-semibold text-white text-base sm:text-sm">{bg.name}</div>
                             {(userProfile?.appBg || 'none') === bg.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
                          </div>
@@ -9127,8 +9131,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     <p className="text-xs text-neutral-500 mt-1">Theme-Auswahl, Farben und Glassmorphism findest du jetzt separat im Bereich <span className="text-neutral-300">Design & Themes</span>.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Theme: <span className="text-white">{selectedAppTheme === 'midnight' ? 'Midnight Blue' : selectedAppTheme === 'gold' ? 'Onyx Gold' : 'Deep Obsidian'}</span></div>
-                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Hintergrund: <span className="text-white">{selectedAppBg === 'glass-1' ? 'Neon Blur' : selectedAppBg === 'glass-2' ? 'Gold Blur' : 'Mattes Schwarz'}</span></div>
+                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Theme: <span className="text-white">{selectedAppTheme === 'deepblack' ? 'Deep Black' : selectedAppTheme === 'midnight' ? 'Midnight Blue' : selectedAppTheme === 'gold' ? 'Onyx Gold' : 'Deep Obsidian'}</span></div>
+                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Hintergrund: <span className="text-white">{selectedAppBg === 'glass-1' ? 'Neon Blur' : selectedAppBg === 'glass-2' ? 'Gold Blur' : selectedAppBg === 'glass-3' ? 'Ruby Blur' : 'Mattes Schwarz'}</span></div>
                     <button
                       type="button"
                       onClick={() => { setSettingsTab('design'); setSettingsQuery(''); }}

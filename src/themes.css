@@ -3,78 +3,149 @@
 
 html[data-theme='obsidian'],
 body[data-theme='obsidian'] {
-  --onyx-app-shell-bg: var(--onyx-bg);
+  --onyx-bg: #060606;
+  --onyx-surface: #121212;
+  --onyx-surface-soft: #1b1b1b;
+  --onyx-overlay: rgba(6, 6, 6, 0.82);
+  --onyx-text: #fbfbfb;
+  --onyx-muted: #b8b8b8;
+  --onyx-border: #303030;
+  --onyx-input-bg: #141414;
+  --onyx-hover-bg: #1d1d1d;
+  --onyx-hover-border: #5c5c5c;
+  --onyx-accent-bg: #ffffff;
+  --onyx-accent-text: #070707;
+  --onyx-ring: rgba(255, 255, 255, 0.22);
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 18% 10%, rgba(255,255,255,0.05) 0%, transparent 28%),
+    linear-gradient(180deg, #101010 0%, #050505 58%, #000000 100%);
+}
+
+html[data-theme='deepblack'],
+body[data-theme='deepblack'] {
+  --onyx-bg: #000000;
+  --onyx-surface: #050505;
+  --onyx-surface-soft: #0a0a0a;
+  --onyx-overlay: rgba(0, 0, 0, 0.88);
+  --onyx-text: #ffffff;
+  --onyx-muted: #9a9a9a;
+  --onyx-border: #1a1a1a;
+  --onyx-input-bg: #030303;
+  --onyx-hover-bg: #0b0b0b;
+  --onyx-hover-border: #2a2a2a;
+  --onyx-accent-bg: #ffffff;
+  --onyx-accent-text: #000000;
+  --onyx-ring: rgba(255, 255, 255, 0.18);
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 50% -10%, rgba(255,255,255,0.035) 0%, transparent 35%),
+    linear-gradient(180deg, #020202 0%, #000000 62%, #000000 100%);
 }
 
 html[data-theme='midnight'],
 body[data-theme='midnight'] {
   --onyx-bg: #020617;
-  --onyx-surface: #0f172a;
-  --onyx-surface-soft: #162033;
-  --onyx-overlay: rgba(2, 6, 23, 0.82);
-  --onyx-text: #f8fafc;
-  --onyx-muted: #cbd5e1;
-  --onyx-border: #334155;
-  --onyx-input-bg: #0b1220;
-  --onyx-hover-bg: #172033;
-  --onyx-hover-border: #475569;
-  --onyx-accent-bg: #dbeafe;
-  --onyx-accent-text: #0f172a;
-  --onyx-ring: rgba(148, 163, 184, 0.28);
-  --onyx-app-shell-bg: var(--onyx-bg);
+  --onyx-surface: #081224;
+  --onyx-surface-soft: #0d1b33;
+  --onyx-overlay: rgba(2, 6, 23, 0.84);
+  --onyx-text: #f8fbff;
+  --onyx-muted: #b8c7df;
+  --onyx-border: #28405f;
+  --onyx-input-bg: #07111f;
+  --onyx-hover-bg: #10233f;
+  --onyx-hover-border: #4f78b5;
+  --onyx-accent-bg: #d8e8ff;
+  --onyx-accent-text: #07111f;
+  --onyx-ring: rgba(96, 165, 250, 0.28);
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 18% 16%, rgba(37, 99, 235, 0.28) 0%, transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(56, 189, 248, 0.2) 0%, transparent 32%),
+    linear-gradient(180deg, #081327 0%, #030712 62%, #010409 100%);
 }
 
 html[data-theme='gold'],
 body[data-theme='gold'] {
-  --onyx-bg: #080604;
-  --onyx-surface: #14100b;
-  --onyx-surface-soft: #1b1610;
-  --onyx-overlay: rgba(8, 6, 4, 0.84);
-  --onyx-text: #f7f1e3;
-  --onyx-muted: #d1b96a;
-  --onyx-border: #6f5620;
-  --onyx-input-bg: #120d08;
-  --onyx-hover-bg: #23190f;
-  --onyx-hover-border: #b78a28;
-  --onyx-accent-bg: #d4af37;
-  --onyx-accent-text: #100c05;
-  --onyx-ring: rgba(212, 175, 55, 0.28);
-  --onyx-app-shell-bg: var(--onyx-bg);
+  --onyx-bg: #0b0702;
+  --onyx-surface: #181108;
+  --onyx-surface-soft: #23180b;
+  --onyx-overlay: rgba(11, 7, 2, 0.86);
+  --onyx-text: #fff6db;
+  --onyx-muted: #e3c56d;
+  --onyx-border: #8f6920;
+  --onyx-input-bg: #140d05;
+  --onyx-hover-bg: #2b1b08;
+  --onyx-hover-border: #e1aa2e;
+  --onyx-accent-bg: #e1b84b;
+  --onyx-accent-text: #120c05;
+  --onyx-ring: rgba(225, 184, 75, 0.3);
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 16% 14%, rgba(251, 191, 36, 0.25) 0%, transparent 30%),
+    radial-gradient(circle at 85% 18%, rgba(180, 83, 9, 0.18) 0%, transparent 30%),
+    linear-gradient(180deg, #1a1206 0%, #0b0702 62%, #020100 100%);
 }
 
 html[data-theme='gold'] .text-emerald-400,
 html[data-theme='gold'] .text-emerald-500,
 body[data-theme='gold'] .text-emerald-400,
 body[data-theme='gold'] .text-emerald-500 {
-  color: #d4af37 !important;
+  color: #e1b84b !important;
 }
 
 html[data-theme='gold'] .border-emerald-500,
 html[data-theme='gold'] .border-emerald-900,
 body[data-theme='gold'] .border-emerald-500,
 body[data-theme='gold'] .border-emerald-900 {
-  border-color: rgba(212, 175, 55, 0.75) !important;
+  border-color: rgba(225, 184, 75, 0.78) !important;
 }
 
 html[data-theme='gold'] .bg-emerald-900\/20,
 body[data-theme='gold'] .bg-emerald-900\/20 {
-  background-color: rgba(212, 175, 55, 0.12) !important;
+  background-color: rgba(225, 184, 75, 0.12) !important;
+}
+
+html[data-theme='midnight'] .text-emerald-400,
+html[data-theme='midnight'] .text-emerald-500,
+body[data-theme='midnight'] .text-emerald-400,
+body[data-theme='midnight'] .text-emerald-500 {
+  color: #7dd3fc !important;
+}
+
+html[data-theme='midnight'] .border-emerald-500,
+html[data-theme='midnight'] .border-emerald-900,
+body[data-theme='midnight'] .border-emerald-500,
+body[data-theme='midnight'] .border-emerald-900 {
+  border-color: rgba(96, 165, 250, 0.78) !important;
+}
+
+html[data-theme='midnight'] .bg-emerald-900\/20,
+body[data-theme='midnight'] .bg-emerald-900\/20 {
+  background-color: rgba(59, 130, 246, 0.14) !important;
 }
 
 html[data-bg='glass-1'],
 body[data-bg='glass-1'] {
   --onyx-app-shell-bg:
-    radial-gradient(circle at 12% 18%, rgba(13, 148, 136, 0.16) 0%, transparent 38%),
-    radial-gradient(circle at 88% 82%, rgba(59, 130, 246, 0.16) 0%, transparent 42%),
-    linear-gradient(180deg, rgba(2, 6, 23, 0.96), rgba(0, 0, 0, 1));
+    radial-gradient(circle at 12% 16%, rgba(34, 211, 238, 0.38) 0%, transparent 30%),
+    radial-gradient(circle at 82% 18%, rgba(168, 85, 247, 0.36) 0%, transparent 28%),
+    radial-gradient(circle at 50% 82%, rgba(59, 130, 246, 0.28) 0%, transparent 26%),
+    linear-gradient(180deg, rgba(5, 8, 18, 0.97), rgba(0, 0, 0, 1));
 }
 
 html[data-bg='glass-2'],
 body[data-bg='glass-2'] {
   --onyx-app-shell-bg:
-    radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.18) 0%, transparent 48%),
-    radial-gradient(circle at 20% 90%, rgba(120, 53, 15, 0.16) 0%, transparent 42%),
-    linear-gradient(180deg, rgba(12, 10, 8, 0.98), rgba(0, 0, 0, 1));
+    radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.34) 0%, transparent 36%),
+    radial-gradient(circle at 18% 88%, rgba(217, 119, 6, 0.24) 0%, transparent 28%),
+    radial-gradient(circle at 86% 76%, rgba(251, 191, 36, 0.22) 0%, transparent 26%),
+    linear-gradient(180deg, rgba(19, 12, 4, 0.98), rgba(0, 0, 0, 1));
+}
+
+html[data-bg='glass-3'],
+body[data-bg='glass-3'] {
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 18% 18%, rgba(244, 63, 94, 0.34) 0%, transparent 30%),
+    radial-gradient(circle at 82% 18%, rgba(234, 88, 12, 0.28) 0%, transparent 28%),
+    radial-gradient(circle at 50% 84%, rgba(239, 68, 68, 0.22) 0%, transparent 24%),
+    linear-gradient(180deg, rgba(22, 6, 10, 0.98), rgba(0, 0, 0, 1));
 }
 
 html[data-bg^='glass'] .bg-neutral-950,
@@ -93,14 +164,14 @@ body[data-bg^='glass'] .bg-neutral-950\/60,
 body[data-bg^='glass'] .bg-black,
 body[data-bg^='glass'] .bg-black\/40,
 body[data-bg^='glass'] .bg-black\/60 {
-  background-color: rgba(10, 10, 10, 0.58) !important;
-  backdrop-filter: blur(20px) saturate(130%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(130%) !important;
+  background-color: rgba(7, 7, 9, 0.54) !important;
+  backdrop-filter: blur(24px) saturate(155%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(155%) !important;
 }
 
 html[data-bg^='glass'] .border-neutral-800,
 html[data-bg^='glass'] .border-neutral-900,
 body[data-bg^='glass'] .border-neutral-800,
 body[data-bg^='glass'] .border-neutral-900 {
-  border-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
 }

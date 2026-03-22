@@ -148,17 +148,7 @@ function AmoledCalendarApp() {
       const [fullName, setFullName] = useState('');
       const [authError, setAuthError] = useState('');
       
-      const [currentView, setCurrentView] = useState(() => {
-        try {
-          const raw = String(localStorage.getItem('onyx_last_view') || '').trim();
-          const allowed = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
-          if (!allowed.has(raw)) return 'dashboard';
-          if (raw === 'secret_chat') return 'calendar';
-          return raw;
-        } catch (_) {
-          return 'dashboard';
-        }
-      });
+      const [currentView, setCurrentView] = useState('dashboard');
       const [settingsTab, setSettingsTab] = useState('account');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
@@ -2175,6 +2165,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
   setIsAppReady(true);
 
   if (currentUser) {
+    setCurrentView('dashboard');
     // Profil immer sicherstellen (nach Reset/neu)
     (async () => {
       await ensureProfileAfterAuth(currentUser);
@@ -9326,7 +9317,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             {currentView === 'secret_chat' && (
               <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>
               <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up overflow-hidden overscroll-none" style={{ height: 'var(--app-height, 100vh)', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
-                
+                <div className="shrink-0">
+                  <AppChromeHeader />
+                </div>
+
                 {/* Geheimer Chat Header */}
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
                   {secretView === 'chat' && activeChat ? (

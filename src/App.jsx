@@ -103,7 +103,7 @@ import {
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v29 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v30 loaded @', new Date().toISOString());
 
 
 const EXCLUSIVE_SESSION_DOC_ID = 'current';
@@ -153,6 +153,95 @@ window.isGroupChat = window.isGroupChat || function(chat) {
   } catch (e) { return false; }
 };
 
+
+const ChoiceCards = ({ label, helper, value, onChange, options = [], columnsClassName = 'grid-cols-1 sm:grid-cols-2' }) => (
+  <div className="space-y-2">
+    {label ? <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">{label}</div> : null}
+    <div className={`grid ${columnsClassName} gap-2`}>
+      {options.map((opt) => {
+        const active = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${active ? 'border-white bg-white text-black' : 'border-neutral-800 bg-black text-white hover:border-neutral-600'}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className={`text-sm font-semibold ${active ? 'text-black' : 'text-white'}`}>{opt.label}</div>
+                {opt.description ? <div className={`mt-1 text-[11px] ${active ? 'text-black/70' : 'text-neutral-500'}`}>{opt.description}</div> : null}
+              </div>
+              {active ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : null}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+    {helper ? <p className="text-[11px] text-neutral-500">{helper}</p> : null}
+  </div>
+);
+
+const AccordionItem = ({
+  id,
+  label,
+  subtitle,
+  icon: Icon,
+  keys,
+  children,
+  query,
+  matchFn,
+  settingsTab,
+  settingsMobileOpenId,
+  setSettingsTab,
+  setSettingsQuery,
+  setSettingsMobileOpenId,
+}) => {
+  const visible = !query || matchFn(keys);
+  if (!visible) return null;
+  const desktopOpen = query ? true : (settingsTab === id);
+  const mobileOpen = query ? true : (settingsMobileOpenId === id);
+  return (
+    <>
+      <div className="lg:hidden space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            setSettingsTab(id);
+            setSettingsQuery('');
+            setSettingsMobileOpenId((prev) => (prev === id ? '' : id));
+          }}
+          className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${mobileOpen ? 'border-white bg-white text-black' : 'border-neutral-800 bg-neutral-950/60 text-white'}`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex items-center gap-3">
+              {Icon ? <Icon className="w-4 h-4 shrink-0" /> : null}
+              <div className="min-w-0">
+                <div className="text-sm font-semibold truncate">{label || id}</div>
+                <div className={`mt-0.5 text-[11px] truncate ${mobileOpen ? 'text-black/70' : 'text-neutral-500'}`}>{subtitle || ''}</div>
+              </div>
+            </div>
+            <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${mobileOpen ? 'rotate-180' : ''}`} />
+          </div>
+        </button>
+        {mobileOpen && (
+          <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/50 backdrop-blur-xl shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+            <div className="settings-section-body px-4 py-4">
+              {children}
+            </div>
+          </section>
+        )}
+      </div>
+      {desktopOpen && (
+        <section className="hidden lg:block settings-section rounded-2xl border border-neutral-800 bg-neutral-950/50 backdrop-blur-xl shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+          <div className="settings-section-body px-5 py-4">
+            {children}
+          </div>
+        </section>
+      )}
+    </>
+  );
+};
 
     // --- Robust helper functions (v20) ---
     
@@ -3939,9 +4028,11 @@ const requestNotificationPermission = async (currentUser) => {
 
 
       useEffect(() => {
+        if (currentView === 'settings') return;
+        if (!workClockActive?.startedAt || workClockActive?.isPaused) return;
         const t = setInterval(() => setWorkClockTick(Date.now()), 1000);
         return () => clearInterval(t);
-      }, []);
+      }, [currentView, workClockActive?.startedAt, workClockActive?.isPaused]);
 
       useEffect(() => {
         if (!user?.uid) return;
@@ -7400,9 +7491,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const getStorageKey = (suffix) => `onyx_${APP_ID}_${user?.uid || 'guest'}_${suffix}`;
       useEffect(() => {
+        if (currentView === 'settings') return;
+        if (!focusState?.startedAt) return;
         const id = setInterval(() => setFocusTick(Date.now()), 1000);
         return () => clearInterval(id);
-      }, []);
+      }, [currentView, focusState?.startedAt]);
       useEffect(() => {
         extrasCloudReadyRef.current = false;
         try {
@@ -8712,80 +8805,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       .filter((field) => isExtraFieldEnabled(field))
       .length;
 
-    const ChoiceCards = ({ label, helper, value, onChange, options = [], columnsClassName = 'grid-cols-1 sm:grid-cols-2' }) => (
-      <div className="space-y-2">
-        {label ? <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">{label}</div> : null}
-        <div className={`grid ${columnsClassName} gap-2`}>
-          {options.map((opt) => {
-            const active = value === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => onChange(opt.value)}
-                className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${active ? 'border-white bg-white text-black' : 'border-neutral-800 bg-black text-white hover:border-neutral-600'}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className={`text-sm font-semibold ${active ? 'text-black' : 'text-white'}`}>{opt.label}</div>
-                    {opt.description ? <div className={`mt-1 text-[11px] ${active ? 'text-black/70' : 'text-neutral-500'}`}>{opt.description}</div> : null}
-                  </div>
-                  {active ? <Check className="w-4 h-4 shrink-0" /> : null}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-        {helper ? <p className="text-[11px] text-neutral-500">{helper}</p> : null}
-      </div>
-    );
-
-    const AccordionItem = ({ id, label, subtitle, icon: Icon, keys, children }) => {
-      const visible = !q || match(keys);
-      if (!visible) return null;
-      const desktopOpen = q ? true : (settingsTab === id);
-      const mobileOpen = q ? true : (settingsMobileOpenId === id);
-      return (
-        <>
-          <div className="lg:hidden space-y-2">
-            <button
-              type="button"
-              onClick={() => {
-                setSettingsTab(id);
-                setSettingsQuery('');
-                setSettingsMobileOpenId((prev) => (prev === id ? '' : id));
-              }}
-              className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${mobileOpen ? 'border-white bg-white text-black' : 'border-neutral-800 bg-neutral-950/60 text-white'}`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 flex items-center gap-3">
-                  {Icon ? <Icon className="w-4 h-4 shrink-0" /> : null}
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold truncate">{label || id}</div>
-                    <div className={`mt-0.5 text-[11px] truncate ${mobileOpen ? 'text-black/70' : 'text-neutral-500'}`}>{subtitle || ''}</div>
-                  </div>
-                </div>
-                <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${mobileOpen ? 'rotate-180' : ''}`} />
-              </div>
-            </button>
-            {mobileOpen && (
-              <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/50 backdrop-blur-xl shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
-                <div className="settings-section-body px-4 py-4">
-                  {children}
-                </div>
-              </section>
-            )}
-          </div>
-          {desktopOpen && (
-            <section className="hidden lg:block settings-section rounded-2xl border border-neutral-800 bg-neutral-950/50 backdrop-blur-xl shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
-              <div className="settings-section-body px-5 py-4">
-                {children}
-              </div>
-            </section>
-          )}
-        </>
-      );
-    };
+    const accordionStateProps = { query: q, matchFn: match, settingsTab, settingsMobileOpenId, setSettingsTab, setSettingsQuery, setSettingsMobileOpenId };
 
     return (
       <div className="settings-pro p-5 md:p-8 xl:p-10 max-w-7xl mx-auto w-full animate-fade-in space-y-6">
@@ -8820,52 +8840,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-4 md:p-5">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">Schnellzugriff</p>
-              <h3 className="mt-1 text-base font-semibold text-white">Wichtige Bereiche direkt öffnen</h3>
-              <p className="mt-1 text-sm text-neutral-400">Die doppelte Theme-Vorschau wurde entfernt. Design und Push bleiben jetzt über kompakte Schnellaktionen erreichbar.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => { setSettingsTab('design'); setSettingsMobileOpenId('design'); setSettingsQuery(''); }}
-                className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
-              >
-                <Palette className="w-4 h-4" /> Design & Themes
-              </button>
-              <button
-                type="button"
-                onClick={() => { setSettingsTab('notifications'); setSettingsMobileOpenId('notifications'); setSettingsQuery(''); }}
-                className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-neutral-200 text-xs font-semibold hover:border-neutral-600 transition-colors inline-flex items-center gap-2"
-              >
-                <Bell className="w-4 h-4" /> Benachrichtigungen
-              </button>
-              <button
-                type="button"
-                onClick={() => { setSettingsTab('account'); setSettingsMobileOpenId('account'); setSettingsQuery(''); }}
-                className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-neutral-200 text-xs font-semibold hover:border-neutral-600 transition-colors inline-flex items-center gap-2"
-              >
-                <User className="w-4 h-4" /> Account
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <div className="lg:hidden -mt-2">
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-3 space-y-2">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Einstellungsbereiche</p>
-              <p className="mt-1 text-sm text-neutral-300">Mobil werden alle Kategorien als aufklappbare Bereiche angezeigt. Tippe auf einen Bereich, um ihn zu öffnen oder wieder zu schließen.</p>
-            </div>
-            <div className="rounded-xl border border-neutral-800 bg-black/50 px-3 py-2">
-              <div className="text-xs font-medium text-white">{(q ? `${visibleTabs.length} Treffer` : 'Akkordeon aktiv')}</div>
-              <div className="mt-1 text-[11px] text-neutral-500">{q ? 'Alle passenden Bereiche bleiben geöffnet.' : 'Nur der gewählte Bereich wird geöffnet, damit es auf dem Smartphone übersichtlich bleibt.'}</div>
-            </div>
-          </div>
-        </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)] gap-6 xl:gap-8 items-start">
           <aside className="settings-nav-wrap hidden lg:block sticky top-6 self-start space-y-3">
             <div className="settings-nav bg-neutral-950/60 border border-neutral-800 rounded-2xl p-2">
@@ -8899,7 +8873,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
           <main className="space-y-4 min-w-0">
             {/* KALENDER VERWALTUNG */}
-            <AccordionItem id="calendars" label="Kalender" icon={CalendarIcon} keys={['kalender','schicht','farbe','privat','freigabe','teilen','share','busy']} >
+            <AccordionItem {...accordionStateProps} id="calendars" label="Kalender" subtitle="Kalender, Farben und Freigaben" icon={CalendarIcon} keys={['kalender','schicht','farbe','privat','freigabe','teilen','share','busy']} >
               <section id="settings-calendars">
                 <div className="flex items-center justify-between border-b border-neutral-800 pb-2 mb-4">
                   <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-2">
@@ -8967,7 +8941,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               </section>
             </AccordionItem>
 
-            <AccordionItem id="links" label="Public Links" icon={Link2} keys={['public','link','busy','passcode','magic','ablauf']} >
+            <AccordionItem {...accordionStateProps} id="links" label="Public Links" subtitle="Busy-only Links und Schutz" icon={Link2} keys={['public','link','busy','passcode','magic','ablauf']} >
               <section id="settings-links">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <Link2 className="w-4 h-4" /> Public Links <span aria-hidden="true">🔗</span>
@@ -9087,7 +9061,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             </AccordionItem>
 
             {/* BOOKING LINK */}
-            <AccordionItem id="booking" label="Booking Link" icon={CalendarPlus} keys={['booking','buchung','link','meet']}>
+            <AccordionItem {...accordionStateProps} id="booking" label="Booking Link" subtitle="Öffentlicher Terminlink für Gäste" icon={CalendarPlus} keys={['booking','buchung','link','meet']}>
                <section id="settings-booking">
                  <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                    <CalendarPlus className="w-4 h-4" /> Guest Booking Hub
@@ -9096,7 +9070,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                </section>
             </AccordionItem>
 
-            <AccordionItem id="notifications" label="Benachrichtigungen & Tester" icon={Bell} keys={['benachrichtigung', 'notifications', 'push', 'tester', 'test', 'reminder', 'erinnerung', 'fcm']}>
+            <AccordionItem {...accordionStateProps} id="notifications" label="Benachrichtigungen & Tester" subtitle="Push, Erinnerungen und Diagnose" icon={Bell} keys={['benachrichtigung', 'notifications', 'push', 'tester', 'test', 'reminder', 'erinnerung', 'fcm']}>
               <section id="settings-notifications" className="space-y-6">
                 <div>
                   <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
@@ -9290,7 +9264,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             </AccordionItem>
 
             {/* DESIGN TAB */}
-            <AccordionItem id="design" label="Design & Themes" icon={Palette} keys={['design', 'theme', 'themes', 'blur', 'widget', 'look', 'appearance', 'pro']}>
+            <AccordionItem {...accordionStateProps} id="design" label="Design & Themes" subtitle="Theme, Hintergrund und Stil" icon={Palette} keys={['design', 'theme', 'themes', 'blur', 'widget', 'look', 'appearance', 'pro']}>
                <section id="settings-design" className="space-y-6">
                  
                  <div>
@@ -9343,7 +9317,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
 
             {/* AUDIT LOG */}
-            <AccordionItem id="audit" label="Audit" icon={History} keys={['audit','log','verlauf','änderung','wer']} >
+            <AccordionItem {...accordionStateProps} id="audit" label="Audit" subtitle="Verlauf und Protokoll" icon={History} keys={['audit','log','verlauf','änderung','wer']} >
               <section id="settings-audit">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <History className="w-4 h-4" /> Audit Log
@@ -9410,12 +9384,12 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             </AccordionItem>
 
             {/* ACCOUNT */}
-            <AccordionItem id="account" label="Account" icon={User} keys={['account','datenschutz','abmelden','email']} >
+            <AccordionItem {...accordionStateProps} id="account" label="Account" subtitle="Profil, Passwort und Anmeldung" icon={User} keys={['account','datenschutz','abmelden','email']} >
               <section id="settings-account">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <User className="w-4 h-4" /> Datenschutz & Account
                 </h3>
-                <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="bg-neutral-950/50 border border-neutral-800 rounded-2xl p-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
                   <div>
                     <p className="font-medium text-white">Angemeldet als: {user?.email}</p>
 
@@ -9472,42 +9446,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   <button onClick={handleLogout} className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors">Abmelden</button>
                 </div>
 
-                <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <div>
-                    <p className="font-medium text-white flex items-center gap-2"><Palette className="w-4 h-4" /> Design & Themes</p>
-                    <p className="text-xs text-neutral-500 mt-1">Theme-Auswahl, Farben und Glassmorphism findest du jetzt separat im Bereich <span className="text-neutral-300">Design & Themes</span>.</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Theme: <span className="text-white">{selectedAppTheme === 'deepblack' ? 'Deep Black' : selectedAppTheme === 'midnight' ? 'Midnight Blue' : selectedAppTheme === 'gold' ? 'Onyx Gold' : 'Deep Obsidian'}</span></div>
-                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Hintergrund: <span className="text-white">{selectedAppBg === 'glass-1' ? 'Neon Blur' : selectedAppBg === 'glass-2' ? 'Gold Blur' : selectedAppBg === 'glass-3' ? 'Ruby Blur' : 'Mattes Schwarz'}</span></div>
-                    <button
-                      type="button"
-                      onClick={() => { setSettingsTab('design'); setSettingsMobileOpenId('design'); setSettingsQuery(''); }}
-                      className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
-                    >
-                      <Palette className="w-4 h-4" /> Öffnen
-                    </button>
-                  </div>
-                </div>
-
-
-                <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <div>
-                    <p className="font-medium text-white flex items-center gap-2"><Bell className="w-4 h-4" /> Benachrichtigungen & Tester</p>
-                    <p className="text-xs text-neutral-500 mt-1">Push aktivieren, lokale Tests auslösen und die Server-Diagnose findest du jetzt separat im Bereich <span className="text-neutral-300">Benachrichtigungen & Tester</span>.</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Push: <span className="text-white">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</span></div>
-                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Token: <span className="text-white">{(userProfile?.fcmTokenWeb || userProfileRef?.current?.fcmTokenWeb) ? 'vorhanden' : 'fehlt'}</span></div>
-                    <button
-                      type="button"
-                      onClick={() => { setSettingsTab('notifications'); setSettingsMobileOpenId('notifications'); setSettingsQuery(''); }}
-                      className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
-                    >
-                      <Bell className="w-4 h-4" /> Öffnen
-                    </button>
-                  </div>
-                </div>
                 <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -9615,7 +9553,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             </AccordionItem>
 
             {/* ICS */}
-            <AccordionItem id="ics" label="Import/Export" icon={Download} keys={['ics','import','export','download','upload']} >
+            <AccordionItem {...accordionStateProps} id="ics" label="Import/Export" subtitle="Kalender importieren oder exportieren" icon={Download} keys={['ics','import','export','download','upload']} >
               <section id="settings-ics">
                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                   <Download className="w-4 h-4" /> Import / Export (.ics) <span aria-hidden="true">📥</span>

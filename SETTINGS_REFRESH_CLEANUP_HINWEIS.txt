@@ -1,0 +1,12 @@
+Einstellungen – Refresh/Fokus/Cleanup Fix
+
+Umgesetzt:
+- stabile Settings-Komponenten: AccordionItem und ChoiceCards sind nicht mehr innerhalb des Render-Blocks definiert
+- dadurch verlieren Inputs in den Einstellungen beim Tippen nicht mehr sofort den Fokus
+- sekundentaktige Timer (Focus/WorkClock) pausieren in der Einstellungsansicht
+- doppelte Schnellzugriffe / Querverweise in den Einstellungen entfernt
+- Account-Bereich aufgeräumt
+- dist/ neu gebaut
+
+Hinweis:
+- Diese Version ersetzt die vorherige Accordion-Fix-ZIP.

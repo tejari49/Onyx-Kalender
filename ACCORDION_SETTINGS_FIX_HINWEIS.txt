@@ -1,0 +1,11 @@
+Einstellungen ohne Dropdowns
+
+Geändert:
+- problematische native Select-Felder im Bereich Einstellungen entfernt
+- Auswahl jetzt über direkte Karten/Buttons statt Dropdown
+- Passwortbereich als aufklappbares Akkordeon umgesetzt
+- Eingabefelder im Passwortbereich zusätzlich mit viewport-lock markiert
+
+Ziel:
+- Android soll Eingaben und Auswahlen in den Einstellungen stabil offen halten
+- kein sofortiges Zuklappen von nativen Menüs in diesem Bereich

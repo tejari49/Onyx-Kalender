@@ -1,117 +1,51 @@
+import './themes.css';
 import React, { useState, useEffect, useRef } from 'react';
 
-    import { 
+    import ErrorBoundary from './components/ErrorBoundary.jsx';
+import ShiftSelectionModal from './components/ShiftSelectionModal.jsx';
+import ShareEventModal from './components/ShareEventModal.jsx';
+import ImageViewer from './components/ImageViewer.jsx';
+import { 
       Calendar as CalendarIcon, Home, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Video, AlignLeft, Users, Clock, Cloud, Sun, Moon, CloudRain, Info, LogOut, MapPin, Search, Download, Upload, Bell, BellOff, Trash2, CheckCircle2, AlertCircle, Mail, Lock, MessageSquare, Send, Image as ImageIcon, Camera, ArrowLeft, Edit2, CornerUpLeft, X, User, RefreshCw, Mic, Square, Play, Pause, Activity, Bomb, CalendarPlus, Share2, Paintbrush, Pin, Timer, BarChart3, Briefcase, StopCircle, GripVertical, ChevronUp, CheckSquare, ListTodo, NotebookText, ShoppingCart, Grip, Paperclip,
       Copy, Link2, History, Star, SmilePlus
-    } from 'lucide-react';
+    , Palette, LayoutDashboard, MonitorSmartphone } from 'lucide-react';
 
     import { initializeApp } from "firebase/app";
     import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail } from "firebase/auth";
     import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, setDoc, getDoc, getDocs, arrayUnion, arrayRemove, where, limit, orderBy, serverTimestamp, runTransaction, startAfter, increment } from "firebase/firestore";
-    import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
+    import { getMessaging, getToken, deleteToken, onMessage, isSupported } from "firebase/messaging";
     import heic2any from 'heic2any';
-
-    const customFirebaseConfig = {
-      apiKey: "AIzaSyDkdRI4tNh5fe-dyBBGDlGgIiT7vHmoFvg",
-      authDomain: "kalender-rai.firebaseapp.com",
-      projectId: "kalender-rai",
-      storageBucket: "kalender-rai.firebasestorage.app",
-      messagingSenderId: "407396898664",
-      appId: "1:407396898664:web:3fafd51433481e7bb668dd"
-    };
-
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : customFirebaseConfig;
-    const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'onyx-pwa-live';
-    const BASE_PATH = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/Onyx-Kalender/';
-const FCM_WEB_VAPID_KEY = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
-  ? String(import.meta.env.VITE_FIREBASE_WEB_PUSH_CERTIFICATE_KEY)
-  : 'BLif9DBsVeYOPqRfhhBZsftnDbJvWfbfVrkjf14s7HsygsnYh4yfIKOr30oM58jIakPKBDu0arXj5oEZWhWG-E0';
-const FCM_WEB_VAPID_KEY_LEGACY = 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlglke_ti9Vx3PTGcHjQZJ34HJw0xRK18oO14jZBI2rJI';
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-
-    const DEFAULT_EXTRAS_ORDER = ['workclock','goals','sollist','notes','weather'];
-
-    function normalizeShoppingItems(input) {
-      const rows = Array.isArray(input) ? input : [];
-      return rows.map((item, idx) => ({
-        id: String(item?.id || `item_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
-        text: String(item?.text || ''),
-        qty: String(item?.qty || ''),
-        price: item?.price === 0 ? '0' : String(item?.price || ''),
-        done: item?.done === true,
-        checkedAt: Number(item?.checkedAt || 0) || 0,
-      }));
-    }
-
-    function normalizeShoppingLists(input) {
-      const rows = Array.isArray(input) ? input : [];
-      return rows.map((list, idx) => ({
-        id: String(list?.id || `shop_${idx + 1}_${Math.random().toString(36).slice(2, 6)}`),
-        title: String(list?.title || 'Einkaufsliste'),
-        store: String(list?.store || ''),
-        createdAt: Number(list?.createdAt || Date.now()) || Date.now(),
-        updatedAt: Number(list?.updatedAt || Date.now()) || Date.now(),
-        items: normalizeShoppingItems(list?.items),
-      })).sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
-    }
-
-    function formatCurrencyCHF(value) {
-      const num = Number(value || 0);
-      if (!Number.isFinite(num)) return 'CHF 0.00';
-      return new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF' }).format(num);
-    }
-
-    function normalizeDailyGoals(input) {
-      const arr = Array.isArray(input) ? input : [];
-      const out = arr.slice(0, 6).map((item, idx) => ({
-        id: String(item?.id || `goal_${idx + 1}`),
-        text: String(item?.text || ''),
-        done: item?.done === true,
-      }));
-      while (out.length < 3) out.push({ id: `goal_${out.length + 1}`, text: '', done: false });
-      return out;
-    }
+import {
+  DEFAULT_EXTRAS_ORDER,
+  normalizeShoppingItems,
+  normalizeShoppingLists,
+  formatCurrencyCHF,
+  normalizeDailyGoals,
+  normalizeQuickCaptureNotes,
+  normalizeExtrasOrder,
+  reorderExtraKeys,
+  PASTEL_COLORS,
+  QUOTES_URL,
+  DEFAULT_QUOTES,
+  stableHash,
+  _bufToHex,
+  sha256Hex,
+  randomToken,
+  pickQuoteForDay,
+  QUOTE_COLOR_CLASSES,
+  colorForQuote,
+  MONATE,
+  WOCHENTAGE,
+  safeTrim,
+  initialsFrom,
+  shortId,
+} from './utils/helpers.js';
 
 
-    function normalizeQuickCaptureNotes(input) {
-      const arr = Array.isArray(input) ? input : [];
-      return arr
-        .map((item, idx) => ({
-          id: String(item?.id || `note_${idx + 1}`),
-          text: String(item?.text || '').trim().slice(0, 400),
-          createdAt: Number(item?.createdAt || Date.now()),
-        }))
-        .filter((item) => item.text.length > 0)
-        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
-        .slice(0, 40);
-    }
+    import { app, auth, db, APP_ID, BASE_PATH, FCM_WEB_VAPID_KEY, FCM_WEB_VAPID_KEY_LEGACY } from './utils/firebase.js';
 
-    function normalizeExtrasOrder(input) {
-      const raw = Array.isArray(input) ? input.map((x) => String(x || '').trim().toLowerCase()).filter(Boolean) : [];
-      const seen = new Set();
-      const ordered = [];
-      for (const key of [...raw, ...DEFAULT_EXTRAS_ORDER]) {
-        if (!DEFAULT_EXTRAS_ORDER.includes(key)) continue;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        ordered.push(key);
-      }
-      return ordered;
-    }
 
-    function reorderExtraKeys(list, draggedKey, targetKey) {
-      const src = normalizeExtrasOrder(list);
-      const from = src.indexOf(String(draggedKey || ''));
-      const to = src.indexOf(String(targetKey || ''));
-      if (from < 0 || to < 0 || from === to) return src;
-      const next = src.slice();
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    }
+    
 
 
     // --- Auth hardening: if the browser keeps a stale Firebase auth cache after project reset,
@@ -148,148 +82,67 @@ const FCM_WEB_VAPID_KEY_LEGACY = 'BKwrZYTIUNm4rIcYhwED39WT0elWB8774ObVEKrJWhRlgl
       }
     };
 
-    const PASTEL_COLORS = ['#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#E8BAFF', '#D3D3D3', '#FFC8DD'];
-
-
-    const QUOTES_URL = 'quotes.json';
-
-    // Fallback quotes (wird genutzt, falls quotes.json nicht geladen werden kann)
-    const DEFAULT_QUOTES = [
-      "Struktur bringt Ruhe.",
-      "Fokus ist eine Entscheidung.",
-      "Kleine Schritte, große Wirkung.",
-      "Wenn&apos;s brennt: Wasser. Wenn&apos;s chaotisch ist: Kalender.",
-      "Planung ist die halbe Miete – die andere Hälfte ist Kaffee."
-    ];
-
-    const stableHash = (str) => {
-      let h = 2166136261;
-      for (let i = 0; i < str.length; i++) {
-        h ^= str.charCodeAt(i);
-        h = Math.imul(h, 16777619);
-      }
-      return (h >>> 0);
-    };
-
-    const _bufToHex = (buffer) => {
-      const bytes = new Uint8Array(buffer);
-      let out = '';
-      for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
-      return out;
-    };
-
-    const sha256Hex = async (input) => {
-      const s = String(input ?? '');
+    const isStandaloneDisplayMode = () => {
       try {
-        if (crypto?.subtle?.digest) {
-          const enc = new TextEncoder();
-          const buf = await crypto.subtle.digest('SHA-256', enc.encode(s));
-          return _bufToHex(buf);
-        }
-      } catch (_) {}
-      // Fallback: not cryptographically strong, but avoids hard crash in rare environments.
-      return String(stableHash(s));
+        const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
+        const dm = !!(m && m.matches);
+        const ios = !!(window.navigator && window.navigator.standalone);
+        return dm || ios;
+      } catch (_) { return false; }
     };
 
-    const randomToken = (byteLen = 16) => {
+    const requiresInstalledPwaForPush = () => {
       try {
-        const arr = new Uint8Array(byteLen);
-        crypto.getRandomValues(arr);
-        let str = '';
-        for (let i = 0; i < arr.length; i++) str += String.fromCharCode(arr[i]);
-        // base64url
-        return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-      } catch (_) {
-        return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-      }
+        if (typeof navigator === 'undefined') return false;
+        const ua = String(navigator.userAgent || '').toLowerCase();
+        const isiPhoneOrIPad = /iphone|ipad|ipod/.test(ua);
+        const iPadDesktopMode = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+        return isiPhoneOrIPad || iPadDesktopMode;
+      } catch (_) { return false; }
     };
-
-    const pickQuoteForDay = (quotes, dayKey) => {
-      const list = (Array.isArray(quotes) && quotes.length) ? quotes : DEFAULT_QUOTES;
-      const idx = stableHash(String(dayKey)) % list.length;
-      return list[idx];
-    };
-
-    const QUOTE_COLOR_CLASSES = [
-      'text-emerald-300',
-      'text-cyan-300',
-      'text-sky-300',
-      'text-violet-300',
-      'text-fuchsia-300',
-      'text-amber-300',
-      'text-rose-300',
-      'text-lime-300',
-    ];
-
-    const colorForQuote = (quote, prevColor = '') => {
-      const text = String(quote || '').trim();
-      if (!text) return 'text-neutral-100';
-      const baseIdx = stableHash(text) % QUOTE_COLOR_CLASSES.length;
-      let next = QUOTE_COLOR_CLASSES[baseIdx] || 'text-neutral-100';
-      if (prevColor && QUOTE_COLOR_CLASSES.length > 1 && next === prevColor) {
-        next = QUOTE_COLOR_CLASSES[(baseIdx + 1) % QUOTE_COLOR_CLASSES.length] || next;
-      }
-      return next;
-    };
-
-
-    const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
-    const WOCHENTAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-
-    
-    // --- ERROR BOUNDARY (verhindert "schwarzer Screen" bei Runtime-Fehlern) ---
-    class ErrorBoundary extends React.Component {
-      constructor(props) {
-        super(props);
-        this.state = { hasError: false, error: null };
-      }
-      static getDerivedStateFromError(error) {
-        return { hasError: true, error };
-      }
-      componentDidCatch(error, info) {
-        console.error('[Onyx] UI ErrorBoundary:', error, info);
-      }
-      render() {
-        if (this.state.hasError) {
-          return (
-            <div className="absolute inset-0 bg-black text-white flex items-center justify-center p-6">
-              <div className="max-w-md w-full border border-neutral-800 rounded-2xl p-6 bg-neutral-950/60">
-                <h3 className="text-lg font-semibold mb-2">Ups – ein Fehler ist passiert</h3>
-                <p className="text-sm text-neutral-400 mb-4">
-                  Die Ansicht konnte nicht gerendert werden. Du kannst zurückgehen oder neu laden.
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    className="flex-1 bg-white text-black font-semibold py-2 rounded-xl hover:bg-gray-200 transition-colors"
-                    onClick={() => {
-                      this.setState({ hasError: false, error: null });
-                      try { this.props.onReset && this.props.onReset(); } catch (e) {}
-                    }}
-                  >
-                    Zurück
-                  </button>
-                  <button
-                    className="flex-1 bg-neutral-800 text-white font-semibold py-2 rounded-xl hover:bg-neutral-700 transition-colors"
-                    onClick={() => window.location.reload()}
-                  >
-                    Neu laden
-                  </button>
-                </div>
-                <details className="mt-4">
-                  <summary className="text-xs text-neutral-500 cursor-pointer">Details</summary>
-                  <pre className="mt-2 text-[10px] text-neutral-400 whitespace-pre-wrap break-words">{String(this.state.error || '')}</pre>
-                </details>
-              </div>
-            </div>
-          );
-        }
-        return this.props.children;
-      }
-    }
 
 
 // ===== Build marker (v9) =====
-console.log('[Onyx-Kalender] build v27 loaded @', new Date().toISOString());
+console.log('[Onyx-Kalender] build v29 loaded @', new Date().toISOString());
+
+
+const EXCLUSIVE_SESSION_DOC_ID = 'current';
+const deviceStorageKey = () => `onyx_${APP_ID}_device_id`;
+const activeSessionStorageKey = () => `onyx_${APP_ID}_active_session_id`;
+const createOpaqueSessionId = () => {
+  try {
+    if (globalThis?.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  } catch (_) {}
+  return `${Date.now()}_${Math.random().toString(36).slice(2)}_${randomToken(10)}`;
+};
+const getOrCreateDeviceId = () => {
+  try {
+    const key = deviceStorageKey();
+    const existing = localStorage.getItem(key);
+    if (existing) return existing;
+    const created = createOpaqueSessionId();
+    localStorage.setItem(key, created);
+    return created;
+  } catch (_) {
+    return createOpaqueSessionId();
+  }
+};
+const getLocalExclusiveSessionId = () => {
+  try {
+    return localStorage.getItem(activeSessionStorageKey()) || '';
+  } catch (_) {
+    return '';
+  }
+};
+const setLocalExclusiveSessionId = (sessionId) => {
+  try {
+    if (sessionId) localStorage.setItem(activeSessionStorageKey(), String(sessionId));
+  } catch (_) {}
+  return sessionId;
+};
+const clearLocalExclusiveSessionId = () => {
+  try { localStorage.removeItem(activeSessionStorageKey()); } catch (_) {}
+};
 
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
@@ -302,26 +155,7 @@ window.isGroupChat = window.isGroupChat || function(chat) {
 
 
     // --- Robust helper functions (v20) ---
-    function safeTrim(v) {
-      return (v ?? "").toString().trim();
-    }
-    function initialsFrom(nameOrEmail) {
-      const s = safeTrim(nameOrEmail);
-      if (!s) return "??";
-      const parts = s.split(/\s+/).filter(Boolean);
-      const first = (parts[0] || "");
-      const second = (parts[1] || "");
-      const a = first.charAt(0);
-      const b = (second.charAt(0) || first.charAt(1));
-      const out = (a + b).toUpperCase();
-      return out || "??";
-    }
-
-    function shortId(id, n = 6) {
-      const s = String(id || '');
-      if (s.length <= n) return s;
-      return s.slice(0, n);
-    }
+    
 
 function AmoledCalendarApp() {
   
@@ -425,24 +259,17 @@ function AmoledCalendarApp() {
       const [fullName, setFullName] = useState('');
       const [authError, setAuthError] = useState('');
       
-      const [currentView, setCurrentView] = useState(() => {
-        try {
-          const raw = String(localStorage.getItem('onyx_last_view') || '').trim();
-          const allowed = new Set(['dashboard', 'calendar', 'shopping', 'extras', 'settings', 'secret_chat']);
-          if (!allowed.has(raw)) return 'dashboard';
-          if (raw === 'secret_chat') return 'calendar';
-          return raw;
-        } catch (_) {
-          return 'dashboard';
-        }
-      });
+      const [currentView, setCurrentView] = useState('dashboard');
       const [settingsTab, setSettingsTab] = useState('account');
+      const [settingsMobileOpenId, setSettingsMobileOpenId] = useState('account');
       const [settingsQuery, setSettingsQuery] = useState('');
       const [settingsShareCalId, setSettingsShareCalId] = useState('default');
       const [uiTheme, setUiTheme] = useState(() => {
         try {
-          const stored = localStorage.getItem('onyx_theme');
+          const stored = localStorage.getItem('onyx_theme_mode');
           if (stored === 'light' || stored === 'dark') return stored;
+          const legacyStored = localStorage.getItem('onyx_theme');
+          if (legacyStored === 'light' || legacyStored === 'dark') return legacyStored;
           const prefersDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
           return prefersDark ? 'dark' : 'light';
         } catch (_) { return 'dark'; }
@@ -452,13 +279,6 @@ function AmoledCalendarApp() {
         push: true,
         workclock: false,
       });
-
-      useEffect(() => {
-        try {
-          document.documentElement.setAttribute('data-theme', uiTheme);
-          localStorage.setItem('onyx_theme', uiTheme);
-        } catch (_) {}
-      }, [uiTheme]);
 
       const [currentDate, setCurrentDate] = useState(new Date());
       
@@ -751,7 +571,73 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
+      const selectedAppTheme = ((userProfile && userProfile?.appTheme) ? userProfile?.appTheme : (() => {
+        try { return localStorage.getItem('onyx_app_theme') || 'obsidian'; } catch (_) { return 'obsidian'; }
+      })());
+      const selectedAppBg = ((userProfile && userProfile?.appBg) ? userProfile?.appBg : (() => {
+        try { return localStorage.getItem('onyx_app_bg') || 'none'; } catch (_) { return 'none'; }
+      })());
+
+      useEffect(() => {
+        try {
+          const themeValue = selectedAppTheme || 'obsidian';
+          const bgValue = selectedAppBg || 'none';
+          const applyDarkTheme = uiTheme === 'dark';
+          const html = document.documentElement;
+          const body = document.body;
+
+          html.setAttribute('data-mode', uiTheme);
+          html.classList.toggle('onyx-theme-light', uiTheme === 'light');
+
+          const syncNode = (node) => {
+            if (!node) return;
+            node.setAttribute('data-mode', uiTheme);
+            if (applyDarkTheme) {
+              node.setAttribute('data-theme', themeValue);
+              if (bgValue && bgValue !== 'none') node.setAttribute('data-bg', bgValue);
+              else node.removeAttribute('data-bg');
+            } else {
+              node.removeAttribute('data-theme');
+              node.removeAttribute('data-bg');
+            }
+          };
+
+          syncNode(html);
+          syncNode(body);
+
+          localStorage.setItem('onyx_theme_mode', uiTheme);
+          localStorage.setItem('onyx_theme', uiTheme);
+          localStorage.setItem('onyx_app_theme', themeValue);
+          localStorage.setItem('onyx_app_bg', bgValue);
+        } catch (_) {}
+      }, [uiTheme, selectedAppTheme, selectedAppBg]);
+
       const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : '');
+      const shellGreeting = `Guten Morgen${dashboardName ? `, ${dashboardName}` : ''}.`;
+      const AppChromeHeader = () => (
+        <div className="sticky top-0 z-30 border-b border-neutral-800 backdrop-blur" style={{ backgroundColor: 'var(--onyx-overlay)' }}>
+          <div className="max-w-7xl mx-auto px-4 md:px-8 py-3 md:py-4 flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={handleOnyxSecretTap}
+              className="min-w-0 text-left select-none rounded-xl px-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500"
+              title="ONYX"
+            >
+              <div className="text-[10px] uppercase tracking-[0.32em] text-neutral-500">ONYX</div>
+              <div className="mt-1 text-base md:text-2xl font-light text-white truncate">{shellGreeting}</div>
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="w-11 h-11 md:w-12 md:h-12 rounded-2xl border border-neutral-800 bg-black/55 text-neutral-100 hover:border-neutral-500 transition-colors flex items-center justify-center shrink-0"
+              title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+              aria-label={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
+            >
+              {uiTheme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      );
       const todayKey = new Date().toISOString().split('T')[0];
       const [allProfiles, setAllProfiles] = useState([]);
       const [chatSearchQuery, setChatSearchQuery] = useState('');
@@ -893,6 +779,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 // --- PULL TO REFRESH (GLOBAL TOUCH) ---
 const mainRef = useRef(null);
 const canPullRef = useRef(false);
+const exclusiveSessionUnsubRef = useRef(null);
+const exclusiveSessionLogoutInFlightRef = useRef(false);
 
 const handleGlobalTouchStart = (e) => {
   if (!e.touches || e.touches.length === 0) return;
@@ -2360,6 +2248,76 @@ const handleTouchEnd = () => {
 
 
 
+      const getExclusiveSessionDocRef = (userId) => doc(db, 'artifacts', APP_ID, 'users', userId, 'authState', EXCLUSIVE_SESSION_DOC_ID);
+
+      const stopExclusiveSessionWatch = () => {
+        try {
+          if (exclusiveSessionUnsubRef.current) exclusiveSessionUnsubRef.current();
+        } catch (_) {}
+        exclusiveSessionUnsubRef.current = null;
+      };
+
+      const activateExclusiveSession = async (authUser, preferredSessionId = null) => {
+        if (!authUser?.uid) return '';
+        const sessionId = preferredSessionId || getLocalExclusiveSessionId() || createOpaqueSessionId();
+        const payload = {
+          activeSessionId: sessionId,
+          activeDeviceId: getOrCreateDeviceId(),
+          activeUid: authUser.uid,
+          changedAt: Date.now(),
+          lastLoginAt: Date.now(),
+        };
+        setLocalExclusiveSessionId(sessionId);
+        await setDoc(getExclusiveSessionDocRef(authUser.uid), payload, { merge: true });
+        return sessionId;
+      };
+
+      const releaseExclusiveSession = async (authUser) => {
+        const localSessionId = getLocalExclusiveSessionId();
+        clearLocalExclusiveSessionId();
+        if (!authUser?.uid || !localSessionId) return;
+        try {
+          await runTransaction(db, async (tx) => {
+            const sessionRef = getExclusiveSessionDocRef(authUser.uid);
+            const snap = await tx.get(sessionRef);
+            if (!snap.exists()) return;
+            const data = snap.data() || {};
+            if (data.activeSessionId !== localSessionId) return;
+            tx.set(sessionRef, {
+              activeSessionId: null,
+              activeDeviceId: null,
+              changedAt: Date.now(),
+              lastLogoutAt: Date.now(),
+            }, { merge: true });
+          });
+        } catch (error) {
+          console.warn('[Auth] exclusive session release failed', error);
+        }
+      };
+
+      const startExclusiveSessionWatch = (authUser) => {
+        stopExclusiveSessionWatch();
+        if (!authUser?.uid) return;
+        const sessionRef = getExclusiveSessionDocRef(authUser.uid);
+        exclusiveSessionUnsubRef.current = onSnapshot(sessionRef, async (snap) => {
+          const remote = snap.data() || {};
+          const localSessionId = getLocalExclusiveSessionId();
+          if (!localSessionId || !remote?.activeSessionId) return;
+          if (remote.activeSessionId === localSessionId) return;
+          if (exclusiveSessionLogoutInFlightRef.current) return;
+          exclusiveSessionLogoutInFlightRef.current = true;
+          stopExclusiveSessionWatch();
+          clearLocalExclusiveSessionId();
+          try {
+            await signOut(auth);
+          } catch (_) {}
+          exclusiveSessionLogoutInFlightRef.current = false;
+          try { showToast('Du wurdest abgemeldet, weil dein Konto auf einem anderen Gerät angemeldet wurde.'); } catch (_) {}
+        }, (error) => {
+          console.warn('[Auth] exclusive session watch failed', error);
+        });
+      };
+
       useEffect(() => {
         const dayKey = new Date().toISOString().split('T')[0];
         // Optionaler Override (User klickt "Neuer Spruch")
@@ -2386,23 +2344,34 @@ const handleTouchEnd = () => {
 
         
 const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+  stopExclusiveSessionWatch();
   setUser(currentUser);
   setIsLoggedIn(!!currentUser);
   setIsAppReady(true);
 
   if (currentUser) {
-    // Profil immer sicherstellen (nach Reset/neu)
+    setCurrentView('dashboard');
     (async () => {
+      try {
+        await activateExclusiveSession(currentUser);
+      } catch (error) {
+        console.warn('[Auth] exclusive session activation failed', error);
+      }
+      startExclusiveSessionWatch(currentUser);
       await ensureProfileAfterAuth(currentUser);
       try { ensureWebPushToken(currentUser, { forcePrompt: false }); } catch(_) {}
     })();
   } else {
+    exclusiveSessionLogoutInFlightRef.current = false;
     setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]); setIncomingFriendRequestDocs([]); setOutgoingFriendRequestDocs([]);
     setCurrentView('dashboard');
   }
 });
 
-        return () => unsubscribeAuth();
+        return () => {
+          stopExclusiveSessionWatch();
+          unsubscribeAuth();
+        };
       }, []);
 
       // --- PRESENCE (online/offline + last seen) ---
@@ -3254,46 +3223,129 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         setChatStats({ sent, received, total: sent + received });
       };
 
+      const clearStoredWebPushTokens = async (currentUser, reason = '') => {
+  try {
+    if (!currentUser?.uid) return;
+    const cleared = {
+      fcmTokenWeb: '',
+      fcmToken: '',
+      fcmTokensWeb: [],
+      fcmTokens: [],
+      pushTarget: 'web',
+      pushTokenClearedAt: Date.now(),
+      pushTokenClearReason: String(reason || '').slice(0, 180),
+      lastTokenRefreshAt: Date.now(),
+      lastWebTokenAt: 0,
+    };
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', currentUser.uid), cleared, { merge: true });
+    try { userProfileRef.current = { ...(userProfileRef.current || {}), ...cleared }; } catch (_) {}
+    try { setUserProfile((prev) => ({ ...(prev || {}), ...cleared })); } catch (_) {}
+  } catch (_) {}
+};
+
+      const resetBrowserPushState = async () => {
+  try {
+    const messaging = await getMessagingSafe();
+    if (messaging) {
+      try { await deleteToken(messaging); } catch (_) {}
+    }
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker?.getRegistrations) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs || []) {
+        const scriptUrl = String(reg?.active?.scriptURL || reg?.waiting?.scriptURL || reg?.installing?.scriptURL || '');
+        if (scriptUrl.includes('firebase-messaging-sw.js')) {
+          try { await reg.unregister(); } catch (_) {}
+        }
+      }
+    }
+  } catch (_) {}
+};
+
+      const classifyPushError = (error) => {
+  try {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || error || '');
+    const full = `${code} ${message}`.toLowerCase();
+    if (full.includes('401')) return 'FCM_TOKEN_SUBSCRIBE_FAILED_401 (VAPID/Web-Push-Konfiguration prüfen)';
+    if (code.includes('messaging/token-subscribe-failed')) return 'FCM_TOKEN_SUBSCRIBE_FAILED (VAPID/FCM-Konfiguration prüfen)';
+    if (code.includes('messaging/permission-blocked')) return 'NOTIFICATION_PERMISSION_BLOCKED';
+    if (code.includes('messaging/unsupported-browser')) return 'FCM_UNSUPPORTED_BROWSER';
+    if (code.includes('messaging/invalid-vapid-key')) return 'FCM_INVALID_VAPID_KEY';
+    if (full.includes('registration-token-not-registered')) return 'FCM_TOKEN_NOT_REGISTERED';
+    return message || 'UNKNOWN_PUSH_ERROR';
+  } catch (_) { return String(error?.message || error || 'UNKNOWN_PUSH_ERROR'); }
+};
+
       const ensureWebPushToken = async (currentUser, opts = {}) => {
-  if (!currentUser) return;
+  if (!currentUser) return null;
   const forcePrompt = !!opts.forcePrompt;
+  const resetConnection = !!opts.resetConnection;
+  const requiresStandalone = requiresInstalledPwaForPush();
 
-  const isStandaloneNow = () => {
-    try {
-      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
-      const dm = !!(m && m.matches);
-      const ios = !!(window.navigator && window.navigator.standalone);
-      return dm || ios;
-    } catch (_) { return false; }
-  };
-
-  if (!isStandaloneNow()) return;
-
-  const messaging = await getMessagingSafe();
-  if (!messaging) return;
-  if (!('Notification' in window)) return;
-
-  if (Notification.permission !== 'granted') {
-    if (!forcePrompt) return;
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return;
+  if (requiresStandalone && !isStandaloneDisplayMode() && !forcePrompt) {
+    const reason = 'IOS_REQUIRES_PWA_INSTALL';
+    setPushDiag(prev => ({ ...prev, lastError: reason }));
+    console.log('[Push] iOS requires installed PWA before auto-setup');
+    return null;
   }
 
-  try {
-    const swRegistration = await registerPushServiceWorker();
-    if (!swRegistration) throw new Error('SERVICE_WORKER_NOT_READY');
+  const messaging = await getMessagingSafe();
+  if (!messaging) {
+    setPushDiag(prev => ({ ...prev, lastError: 'FCM_NOT_SUPPORTED_IN_THIS_BROWSER' }));
+    return null;
+  }
+  if (!('Notification' in window)) {
+    setPushDiag(prev => ({ ...prev, lastError: 'NOTIFICATION_API_NOT_AVAILABLE' }));
+    return null;
+  }
 
-    let token = '';
+  if (Notification.permission !== 'granted') {
+    if (!forcePrompt) return null;
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      setPushDiag(prev => ({ ...prev, lastError: `NOTIFICATION_PERMISSION_${String(permission || 'default').toUpperCase()}` }));
+      return null;
+    }
+  }
+
+  const tryGetToken = async (swRegistration) => {
     const vapidCandidates = [String(FCM_WEB_VAPID_KEY || '').trim(), String(FCM_WEB_VAPID_KEY_LEGACY || '').trim()].filter(Boolean);
+    if (!vapidCandidates.length) throw new Error('NO_VAPID_KEY_CONFIGURED');
+    let lastError = null;
     for (let i = 0; i < vapidCandidates.length; i++) {
       const vapidKey = vapidCandidates[i];
       try {
-        token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swRegistration });
+        const nextToken = await getToken(messaging, { vapidKey, serviceWorkerRegistration: swRegistration });
+        if (nextToken) return nextToken;
+      } catch (err) {
+        lastError = err;
+        const isLastTry = i >= vapidCandidates.length - 1;
+        if (!isLastTry) console.warn('[FCM] getToken failed, trying next VAPID key', err?.code || err?.message || err);
+      }
+    }
+    if (lastError) throw lastError;
+    return '';
+  };
+
+  try {
+    const phases = resetConnection ? ['fresh'] : ['current', 'fresh'];
+    let token = '';
+    let lastError = null;
+
+    for (const phase of phases) {
+      if (phase === 'fresh') {
+        await clearStoredWebPushTokens(currentUser, 'TOKEN_RESET_BEFORE_REFRESH');
+        await resetBrowserPushState();
+      }
+
+      const swRegistration = await registerPushServiceWorker();
+      if (!swRegistration) throw new Error('SERVICE_WORKER_NOT_READY');
+
+      try {
+        token = await tryGetToken(swRegistration);
         if (token) break;
       } catch (err) {
-        const isLastTry = i >= vapidCandidates.length - 1;
-        if (isLastTry) throw err;
-        console.warn('[FCM] getToken failed, trying next VAPID key', err?.code || err?.message || err);
+        lastError = err;
       }
     }
 
@@ -3305,58 +3357,52 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         existingToken = profileSnap.exists() ? profileSnap.data().fcmTokenWeb : null;
       } catch (_) {}
       if (token !== existingToken) console.log('[FCM] Token erneuert');
-      await setDoc(
-        profileRef,
-        {
-          fcmTokenWeb: token,
-          lastWebTokenAt: Date.now(),
-          pushTarget: 'web',
-          pushPlatform: navigator.userAgent.includes('Android') ? 'android' : navigator.userAgent.includes('iPhone') ? 'ios' : 'desktop',
-          pushBrowser: navigator.userAgent.includes('Chrome') ? 'chrome' : navigator.userAgent.includes('Firefox') ? 'firefox' : navigator.userAgent.includes('Safari') ? 'safari' : 'other',
-          lastTokenRefreshAt: Date.now()
-        },
-        { merge: true }
-      );
+
+      const profilePatch = {
+        fcmTokenWeb: token,
+        fcmToken: '',
+        fcmTokensWeb: [token],
+        fcmTokens: [],
+        lastWebTokenAt: Date.now(),
+        pushTarget: 'web',
+        pushPlatform: navigator.userAgent.includes('Android') ? 'android' : navigator.userAgent.includes('iPhone') ? 'ios' : 'desktop',
+        pushBrowser: navigator.userAgent.includes('Chrome') ? 'chrome' : navigator.userAgent.includes('Firefox') ? 'firefox' : navigator.userAgent.includes('Safari') ? 'safari' : 'other',
+        lastTokenRefreshAt: Date.now(),
+        pushTokenClearReason: '',
+      };
+      await setDoc(profileRef, profilePatch, { merge: true });
+      try { userProfileRef.current = { ...(userProfileRef.current || {}), ...profilePatch }; } catch (_) {}
+      try { setUserProfile((prev) => ({ ...(prev || {}), ...profilePatch })); } catch (_) {}
       setPushDiag(prev => ({ ...prev, lastTokenAt: Date.now(), lastError: '' }));
-    } else {
-      setPushDiag(prev => ({ ...prev, lastError: 'NO_TOKEN_RETURNED' }));
+      try { localStorage.setItem('onyx_last_web_push_token', token); } catch (_) {}
+      return token;
     }
+
+    await clearStoredWebPushTokens(currentUser, 'NO_TOKEN_RETURNED_AFTER_REFRESH');
+    setPushDiag(prev => ({ ...prev, lastError: 'NO_TOKEN_RETURNED' }));
+    return null;
   } catch (e) {
     console.warn('[FCM] ensure token failed', e?.message || e);
-    const friendly = (() => {
-      try {
-        const code = String(e?.code || '').toLowerCase();
-        if (code.includes('messaging/token-subscribe-failed')) return 'FCM_TOKEN_SUBSCRIBE_FAILED (VAPID/FCM-Konfiguration prüfen)';
-        if (code.includes('messaging/permission-blocked')) return 'NOTIFICATION_PERMISSION_BLOCKED';
-        if (code.includes('messaging/unsupported-browser')) return 'FCM_UNSUPPORTED_BROWSER';
-        if (code.includes('messaging/invalid-vapid-key')) return 'FCM_INVALID_VAPID_KEY';
-        return String(e?.message || e);
-      } catch (_) { return String(e?.message || e); }
-    })();
+    const friendly = classifyPushError(e);
+    await clearStoredWebPushTokens(currentUser, `ENSURE_FAIL:${friendly}`);
     setPushDiag(prev => ({ ...prev, lastError: friendly }));
+    return null;
   }
 };
 
 const requestNotificationPermission = async (currentUser) => {
   if (!currentUser) return;
 
-  const isStandaloneNow = () => {
-    try {
-      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
-      const dm = !!(m && m.matches);
-      const ios = !!(window.navigator && window.navigator.standalone);
-      return dm || ios;
-    } catch (_) { return false; }
-  };
-
-  if (!isStandaloneNow()) {
-    showToast(isIosUA ? 'iPhone/iPad: Teilen → „Zum Home-Bildschirm“ installieren, dann Benachrichtigungen aktivieren.' : 'Bitte als PWA installieren, dann Benachrichtigungen aktivieren.');
+  if (requiresInstalledPwaForPush() && !isStandaloneDisplayMode()) {
+    setPushDiag(prev => ({ ...prev, lastError: 'IOS_REQUIRES_PWA_INSTALL' }));
+    showToast('iPhone/iPad: Erst über Teilen → „Zum Home-Bildschirm“, dann Benachrichtigungen aktivieren.');
     return;
   }
 
   try {
-    await ensureWebPushToken(currentUser, { forcePrompt: true });
-    showToast('Benachrichtigungen aktiviert ✅');
+    const token = await ensureWebPushToken(currentUser, { forcePrompt: true, resetConnection: true });
+    if (token) showToast('Benachrichtigungen aktiviert ✅');
+    else showToast('Benachrichtigungen konnten nicht aktiviert werden');
   } catch (err) {
     console.log('FCM Error', err);
     showToast('Benachrichtigungen konnten nicht aktiviert werden');
@@ -4506,7 +4552,7 @@ const registerPushServiceWorker = async () => {
       return null;
     }
     const base = (import.meta && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : '/';
-    const swUrl = `${base}firebase-messaging-sw.js?v=42`;
+    const swUrl = `${base}firebase-messaging-sw.js?v=43`;
     const reg = await navigator.serviceWorker.register(swUrl, { scope: base });
     let readyReg = null;
     try { readyReg = await navigator.serviceWorker.ready; } catch (_) {}
@@ -4520,14 +4566,7 @@ const registerPushServiceWorker = async () => {
 }
 
 useEffect(() => {
-  const computeStandalone = () => {
-    try {
-      const m = (window.matchMedia && window.matchMedia('(display-mode: standalone)'));
-      const dm = !!(m && m.matches);
-      const ios = !!(window.navigator && window.navigator.standalone);
-      return dm || ios;
-    } catch (_) { return false; }
-  };
+  const computeStandalone = () => isStandaloneDisplayMode();
 
   // 1) Track standalone state (PWA)
   setIsStandalone(computeStandalone());
@@ -4719,15 +4758,35 @@ Kalender aktuell` : 'Kalender aktuell';
         try {
           if (!user) return;
 
-          const canNotify = ('Notification' in window) && Notification.permission === 'granted';
-          if (!canNotify) {
-            showToast('Keine Benachrichtigungs-Berechtigung');
-            setPushDiag((prev) => ({ ...prev, lastError: 'NOTIFICATION_PERMISSION_NOT_GRANTED' }));
+          if (!('Notification' in window)) {
+            showToast('Dieser Browser unterstützt keine Benachrichtigungen');
+            setPushDiag((prev) => ({ ...prev, lastError: 'NOTIFICATION_API_NOT_AVAILABLE' }));
             return;
           }
 
-          try { await ensureWebPushToken(user, { forcePrompt: false }); } catch (_) {}
-          const tokenPresent = !!((userProfileRef?.current && userProfileRef.current?.fcmTokenWeb) || userProfile?.fcmTokenWeb);
+          let permissionState = Notification.permission;
+          let ensuredToken = '';
+          if (permissionState !== 'granted') {
+            ensuredToken = (await ensureWebPushToken(user, { forcePrompt: true, resetConnection: true })) || '';
+            permissionState = Notification.permission;
+          } else {
+            ensuredToken = (await ensureWebPushToken(user, { forcePrompt: false })) || '';
+            if (!ensuredToken) ensuredToken = (await ensureWebPushToken(user, { forcePrompt: false, resetConnection: true })) || '';
+          }
+
+          if (permissionState !== 'granted') {
+            showToast('Keine Benachrichtigungs-Berechtigung');
+            setPushDiag((prev) => ({ ...prev, lastError: `NOTIFICATION_PERMISSION_${String(permissionState || 'default').toUpperCase()}` }));
+            return;
+          }
+
+          const currentWebToken = String(
+            ensuredToken ||
+            (userProfileRef?.current && userProfileRef.current?.fcmTokenWeb) ||
+            userProfile?.fcmTokenWeb ||
+            ''
+          ).trim();
+          const tokenPresent = !!currentWebToken;
           if (!tokenPresent) {
             showToast('Kein Web-Token vorhanden');
             setPushDiag((prev) => ({ ...prev, lastError: 'NO_WEB_PUSH_TOKEN' }));
@@ -4746,6 +4805,7 @@ Kalender aktuell` : 'Kalender aktuell';
               status: 'pending',
               platform: 'web',
               tokenPresent: true,
+              fcmTokenWeb: currentWebToken,
               ua: String((typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '').slice(0, 220)
             },
             { merge: true }
@@ -4793,6 +4853,9 @@ Kalender aktuell` : 'Kalender aktuell';
               if (status && status !== 'pending') { try { if (pushTestTimeoutRef.current) clearTimeout(pushTestTimeoutRef.current); } catch (_) {} }
               if (status === 'error' && lastError) {
                 setPushDiag((p) => ({ ...p, lastError: `SERVER_TEST: ${lastError}` }));
+                if (/registration-token-not-registered|invalid-registration-token/i.test(lastError)) {
+                  try { clearStoredWebPushTokens(user, `SERVER_TEST:${lastError}`); } catch (_) {}
+                }
               }
               if (status === 'sent') {
                 // Let SW handle the visible notification; this toast is just feedback.
@@ -4861,6 +4924,12 @@ const handleAuth = async (e) => {
     }
 
     await ensureProfileAfterAuth(signedInUser, { fullName: String(fullName||'').trim(), isRegistering });
+    try {
+      await activateExclusiveSession(signedInUser);
+      startExclusiveSessionWatch(signedInUser);
+    } catch (sessionError) {
+      console.warn('[Auth] immediate exclusive session activation failed', sessionError);
+    }
   } catch (error) {
     console.error("AUTH_ERROR", error);
 
@@ -4891,6 +4960,9 @@ const handleAuth = async (e) => {
 
       const handleLogout = async () => {
         try {
+          const currentAuthUser = auth.currentUser || user;
+          stopExclusiveSessionWatch();
+          await releaseExclusiveSession(currentAuthUser);
           await signOut(auth);
           showToast("Abgemeldet");
           setEmail(''); setPassword('');
@@ -5502,6 +5574,29 @@ useEffect(() => {
       }, [user, userProfile]);
 
       useEffect(() => {
+        const html = document.documentElement;
+        const body = document.body;
+        const prevHtmlOverflow = html.style.overflow;
+        const prevBodyOverflow = body.style.overflow;
+        const prevHtmlOverscroll = html.style.overscrollBehavior;
+        const prevBodyOverscroll = body.style.overscrollBehavior;
+
+        if (currentView === 'secret_chat') {
+          html.style.overflow = 'hidden';
+          body.style.overflow = 'hidden';
+          html.style.overscrollBehavior = 'none';
+          body.style.overscrollBehavior = 'none';
+        }
+
+        return () => {
+          html.style.overflow = prevHtmlOverflow;
+          body.style.overflow = prevBodyOverflow;
+          html.style.overscrollBehavior = prevHtmlOverscroll;
+          body.style.overscrollBehavior = prevBodyOverscroll;
+        };
+      }, [currentView]);
+
+      useEffect(() => {
         if (currentView !== 'secret_chat') return;
         const panicOnHide = (userProfile?.secretPanicOnHide !== false);
         if (!panicOnHide) return;
@@ -6006,7 +6101,23 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
-      const updateProfileSettings = async (e) => {
+      
+  const updateProfileField = async (field, value) => {
+    if (!user?.uid) return;
+    try {
+      await setDoc(
+        doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid),
+        { [field]: value, updatedAt: Date.now() },
+        { merge: true }
+      );
+      setUserProfile(prev => ({ ...(prev || {}), [field]: value, updatedAt: Date.now() }));
+    } catch(err) {
+      console.error('Error updating profile field', err);
+      showToast('Design konnte nicht gespeichert werden');
+    }
+  };
+
+  const updateProfileSettings = async (e) => {
         e.preventDefault();
         if (!user) return;
         const nameRaw = new FormData(e.target).get('displayName') || new FormData(e.target).get('username') || '';
@@ -7702,10 +7813,12 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       })();
       const completedGoals = normalizeDailyGoals(dailyGoals).filter((g) => g.done && String(g.text || '').trim()).length;
       const activeCalForView = getCalendarById(activeCalendarId);
+      const isMobileChatView = currentView === 'secret_chat' && secretView === 'chat';
+      const mobileBottomInsetClass = isMobileChatView ? 'pb-0' : 'pb-[calc(5.25rem+env(safe-area-inset-bottom))]';
 
       return (
         <div 
-          className={`flex h-screen w-full bg-black text-white font-sans overflow-hidden flex-col md:flex-row pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)' }}
+          className={`flex h-screen w-full text-white font-sans overflow-hidden flex-col md:flex-row ${mobileBottomInsetClass} md:pb-0 relative ${uiTheme === 'light' ? 'theme-light' : 'theme-dark'}`} style={{ height: 'var(--app-height, 100vh)', background: 'var(--onyx-app-shell-bg)' }}
           onTouchStart={handleGlobalTouchStart}
           onTouchMove={handleGlobalTouchMove}
           onTouchEnd={handleGlobalTouchEnd}
@@ -7756,13 +7869,19 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           </aside>
 
           <nav
-            className="md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-40 px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)] relative"
-            style={{ position: 'fixed', left: 0, right: 0, bottom: 0 }}
+            className={`${isMobileChatView ? 'hidden ' : ''}md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-[80] px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]`}
+            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
           >
-            <div className="grid grid-cols-5 items-center w-full h-full">
-              <button onClick={() => setCurrentView('dashboard')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`}><Home className="w-7 h-7" /></button>
-              <button onClick={() => setCurrentView('calendar')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`}><CalendarIcon className="w-7 h-7" /></button>
-              <div aria-hidden="true" />
+            <div className="grid grid-cols-5 items-center w-full h-full gap-1">
+              <button onClick={() => setCurrentView('dashboard')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'dashboard' ? 'text-white' : 'text-neutral-500'}`} title="Startseite"><Home className="w-7 h-7" /></button>
+              <button onClick={() => setCurrentView('calendar')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'calendar' ? 'text-white' : 'text-neutral-500'}`} title="Kalender"><CalendarIcon className="w-7 h-7" /></button>
+              <button
+                onClick={() => setPlusMenuOpen(true)}
+                className="min-w-0 p-3.5 rounded-2xl flex items-center justify-center text-white"
+                title="Neu"
+              >
+                <Plus className="w-7 h-7" />
+              </button>
               <button
                 onClick={() => {
                   setCurrentView('extras');
@@ -7773,41 +7892,15 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               >
                 <Timer className="w-7 h-7" />
               </button>
-              <button onClick={() => setCurrentView('settings')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`}><Settings className="w-7 h-7" /></button>
+              <button onClick={() => setCurrentView('settings')} className={`min-w-0 p-3.5 rounded-2xl flex items-center justify-center ${currentView === 'settings' ? 'text-white' : 'text-neutral-500'}`} title="Einstellungen"><Settings className="w-7 h-7" /></button>
             </div>
-            <button
-              onClick={() => setPlusMenuOpen(true)}
-              className="absolute left-1/2 -translate-x-1/2 -top-5 p-3.5 bg-white text-black rounded-full border-4 border-black shadow-lg z-10"
-              title="Neu"
-            >
-              <Plus className="w-6 h-6" />
-            </button>
           </nav>
 
-          <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-y-auto bg-black relative pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
+          <main className="flex-1 flex flex-col h-full overflow-hidden bg-black relative md:pb-0">
+            <AppChromeHeader />
+            <div ref={mainRef} className={`flex-1 min-h-0 overflow-y-auto overscroll-contain ${isMobileChatView ? 'pb-0' : 'pb-[calc(5.25rem+env(safe-area-inset-bottom))]'} md:pb-0`}>
             {currentView === 'dashboard' && (
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
-                <header className="flex justify-between items-center mb-8 md:mb-10 gap-4">
-                  <div>
-                    <button
-                      type="button"
-                      onClick={handleOnyxSecretTap}
-                      className="mb-2 text-[10px] uppercase tracking-[0.32em] text-neutral-600 hover:text-neutral-300 transition-colors select-none"
-                    >
-                      ONYX
-                    </button>
-                    <h2 className="text-3xl md:text-4xl font-light">Guten Morgen{dashboardName ? `, ${dashboardName}` : ''}.</h2>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={toggleTheme}
-                    className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
-                    title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
-                  >
-                    {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                    <span>{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
-                  </button>
-                </header>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
                   <div onClick={() => setIsWeatherModalOpen(true)} className="p-5 md:p-6 border border-neutral-800 rounded-xl bg-neutral-950/30 flex items-center justify-between gap-4 cursor-pointer hover:border-neutral-600 transition-colors group">
                     <div className="min-w-0 flex-1">
@@ -7973,15 +8066,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       <button onClick={nextMonth} className="p-1.5 md:p-2 hover:bg-neutral-900 rounded-full transition-colors border border-transparent hover:border-neutral-800"><ChevronRight className="w-5 h-5 md:w-6 md:h-6" /></button>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={toggleTheme}
-                    className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
-                    title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
-                  >
-                    {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                    <span className="hidden sm:inline">{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
-                  </button>
                 </header>
 
                 {/* VIEW TOGGLE & SUCHE */}
@@ -8603,27 +8687,103 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const TABS = [
       { id: 'account', label: 'Account & Sicherheit', subtitle: 'Profil, Passwort und Datenschutz', icon: User, keys: ['account', 'sicherheit', 'datenschutz', 'abmelden', 'email'] },
       { id: 'calendars', label: 'Kalender & Freigaben', subtitle: 'Farben, Schichtpläne und Teilen', icon: CalendarIcon, keys: ['kalender', 'schicht', 'farbe', 'freigabe', 'teilen', 'share', 'busy'] },
+      { id: 'notifications', label: 'Benachrichtigungen & Tester', subtitle: 'Push, Erinnerungen und Diagnose', icon: Bell, keys: ['benachrichtigung', 'notifications', 'push', 'tester', 'test', 'reminder', 'erinnerung', 'fcm'] },
+      { id: 'design', label: 'Design & Themes', subtitle: 'App-Theme, Hintergrund und Look', icon: Palette, keys: ['design', 'theme', 'themes', 'blur', 'widget', 'look', 'appearance', 'pro'] },
+      { id: 'booking', label: 'Booking-Link', subtitle: 'Gäste-Terminkalender', icon: CalendarPlus, keys: ['booking', 'buchung', 'link', 'meet', 'calendly'] },
       { id: 'links', label: 'Public Links', subtitle: 'Busy-only Links und Ablauf', icon: Link2, keys: ['link', 'busy', 'public', 'passcode', 'ablauf', 'magic'] },
       { id: 'ics', label: 'Import/Export', subtitle: 'ICS Export und Import', icon: Download, keys: ['ics', 'import', 'export', 'download', 'upload'] },
       { id: 'audit', label: 'Audit & Verlauf', subtitle: 'Aktionsprotokoll und Kalenderhistorie', icon: History, keys: ['audit', 'verlauf', 'log', 'aenderung', 'wer'] },
     ];
     const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
     const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
+    const APP_THEME_OPTIONS = [
+      { id: 'obsidian', name: 'Deep Obsidian', desc: 'Kräftiges Graphit mit weichen Kanten', preview: 'linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 55%, #000000 100%)' },
+      { id: 'deepblack', name: 'Deep Black', desc: 'Echtes AMOLED-Schwarz mit maximalem Kontrast', preview: 'linear-gradient(135deg, #050505 0%, #010101 55%, #000000 100%)' },
+      { id: 'midnight', name: 'Midnight Blue', desc: 'Sattes Nachtblau mit kühlem Glow', preview: 'linear-gradient(135deg, #0f2747 0%, #081224 55%, #010409 100%)' },
+      { id: 'gold', name: 'Onyx Gold', desc: 'Warmes Schwarz mit kräftigem Goldton', preview: 'linear-gradient(135deg, #3a2507 0%, #181108 50%, #020100 100%)' },
+    ];
+    const APP_BG_OPTIONS = [
+      { id: 'none', name: 'Mattes Schwarz', desc: 'Ruhiger Hintergrund ohne Farbglow', preview: 'linear-gradient(135deg, #121212 0%, #060606 60%, #000000 100%)' },
+      { id: 'glass-1', name: 'Neon Blur', desc: 'Deutlich kräftiger Cyan-Violett-Glow', preview: 'radial-gradient(circle at 18% 20%, rgba(34,211,238,0.95) 0%, rgba(34,211,238,0) 34%), radial-gradient(circle at 82% 18%, rgba(168,85,247,0.9) 0%, rgba(168,85,247,0) 32%), linear-gradient(135deg, #0c1224 0%, #020409 100%)' },
+      { id: 'glass-2', name: 'Gold Blur', desc: 'Kräftiger Goldschein mit warmem Ambient', preview: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.9) 0%, rgba(245,158,11,0) 38%), radial-gradient(circle at 82% 76%, rgba(251,191,36,0.75) 0%, rgba(251,191,36,0) 28%), linear-gradient(135deg, #1d1306 0%, #030100 100%)' },
+      { id: 'glass-3', name: 'Ruby Blur', desc: 'Kräftige Rot- und Rubin-Akzente', preview: 'radial-gradient(circle at 18% 18%, rgba(244,63,94,0.9) 0%, rgba(244,63,94,0) 34%), radial-gradient(circle at 82% 18%, rgba(234,88,12,0.82) 0%, rgba(234,88,12,0) 30%), linear-gradient(135deg, #1b090d 0%, #030101 100%)' },
+    ];
     const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
       .filter((field) => isExtraFieldEnabled(field))
       .length;
 
-    const AccordionItem = ({ id, keys, children }) => {
+    const ChoiceCards = ({ label, helper, value, onChange, options = [], columnsClassName = 'grid-cols-1 sm:grid-cols-2' }) => (
+      <div className="space-y-2">
+        {label ? <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">{label}</div> : null}
+        <div className={`grid ${columnsClassName} gap-2`}>
+          {options.map((opt) => {
+            const active = value === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onChange(opt.value)}
+                className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${active ? 'border-white bg-white text-black' : 'border-neutral-800 bg-black text-white hover:border-neutral-600'}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className={`text-sm font-semibold ${active ? 'text-black' : 'text-white'}`}>{opt.label}</div>
+                    {opt.description ? <div className={`mt-1 text-[11px] ${active ? 'text-black/70' : 'text-neutral-500'}`}>{opt.description}</div> : null}
+                  </div>
+                  {active ? <Check className="w-4 h-4 shrink-0" /> : null}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {helper ? <p className="text-[11px] text-neutral-500">{helper}</p> : null}
+      </div>
+    );
+
+    const AccordionItem = ({ id, label, subtitle, icon: Icon, keys, children }) => {
       const visible = !q || match(keys);
       if (!visible) return null;
-      const open = q ? true : (settingsTab === id);
-      if (!open) return null;
+      const desktopOpen = q ? true : (settingsTab === id);
+      const mobileOpen = q ? true : (settingsMobileOpenId === id);
       return (
-        <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/60 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
-          <div className="settings-section-body px-5 py-4">
-            {children}
+        <>
+          <div className="lg:hidden space-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSettingsTab(id);
+                setSettingsQuery('');
+                setSettingsMobileOpenId((prev) => (prev === id ? '' : id));
+              }}
+              className={`w-full rounded-2xl border px-4 py-3 text-left transition-colors ${mobileOpen ? 'border-white bg-white text-black' : 'border-neutral-800 bg-neutral-950/60 text-white'}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex items-center gap-3">
+                  {Icon ? <Icon className="w-4 h-4 shrink-0" /> : null}
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold truncate">{label || id}</div>
+                    <div className={`mt-0.5 text-[11px] truncate ${mobileOpen ? 'text-black/70' : 'text-neutral-500'}`}>{subtitle || ''}</div>
+                  </div>
+                </div>
+                <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${mobileOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+            {mobileOpen && (
+              <section className="settings-section rounded-2xl border border-neutral-800 bg-neutral-950/50 backdrop-blur-xl shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+                <div className="settings-section-body px-4 py-4">
+                  {children}
+                </div>
+              </section>
+            )}
           </div>
-        </section>
+          {desktopOpen && (
+            <section className="hidden lg:block settings-section rounded-2xl border border-neutral-800 bg-neutral-950/50 backdrop-blur-xl shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+              <div className="settings-section-body px-5 py-4">
+                {children}
+              </div>
+            </section>
+          )}
+        </>
       );
     };
 
@@ -8634,15 +8794,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             <div className="min-w-0">
               <div className="flex items-center gap-3">
                 <h2 className="text-3xl md:text-4xl font-light flex items-center gap-2">Einstellungen <span aria-hidden="true" className="text-2xl">✨</span></h2>
-                <button
-                  type="button"
-                  onClick={toggleTheme}
-                  className="px-3 py-2 rounded-xl border border-neutral-800 bg-black/60 text-neutral-200 hover:border-neutral-500 transition-colors flex items-center gap-2 text-xs"
-                  title={uiTheme === 'light' ? 'Zu Dunkel wechseln' : 'Zu Hell wechseln'}
-                >
-                  {uiTheme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                  <span>{uiTheme === 'light' ? 'Dunkel' : 'Hell'}</span>
-                </button>
               </div>
               <p className="mt-2 text-sm text-neutral-400">Alle Einstellungen zentral, klar gruppiert und direkt durchsuchbar.</p>
             </div>
@@ -8669,28 +8820,49 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           </div>
         </section>
 
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-4 md:p-5">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-neutral-500">Schnellzugriff</p>
+              <h3 className="mt-1 text-base font-semibold text-white">Wichtige Bereiche direkt öffnen</h3>
+              <p className="mt-1 text-sm text-neutral-400">Die doppelte Theme-Vorschau wurde entfernt. Design und Push bleiben jetzt über kompakte Schnellaktionen erreichbar.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => { setSettingsTab('design'); setSettingsMobileOpenId('design'); setSettingsQuery(''); }}
+                className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
+              >
+                <Palette className="w-4 h-4" /> Design & Themes
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSettingsTab('notifications'); setSettingsMobileOpenId('notifications'); setSettingsQuery(''); }}
+                className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-neutral-200 text-xs font-semibold hover:border-neutral-600 transition-colors inline-flex items-center gap-2"
+              >
+                <Bell className="w-4 h-4" /> Benachrichtigungen
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSettingsTab('account'); setSettingsMobileOpenId('account'); setSettingsQuery(''); }}
+                className="px-3 py-2 rounded-xl border border-neutral-800 bg-black text-neutral-200 text-xs font-semibold hover:border-neutral-600 transition-colors inline-flex items-center gap-2"
+              >
+                <User className="w-4 h-4" /> Account
+              </button>
+            </div>
+          </div>
+        </section>
+
         <div className="lg:hidden -mt-2">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            {(q ? visibleTabs : TABS).map((t) => {
-              const Icon = t.icon;
-              const active = settingsTab === t.id && !q;
-              return (
-                <button
-                  key={`mobile-${t.id}`}
-                  type="button"
-                  onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
-                  className={
-                    "shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs transition-colors " +
-                    (active
-                      ? "bg-white text-black border-white"
-                      : "bg-neutral-950/60 text-neutral-300 border-neutral-800 hover:border-neutral-600")
-                  }
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{t.label}</span>
-                </button>
-              );
-            })}
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-3 space-y-2">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Einstellungsbereiche</p>
+              <p className="mt-1 text-sm text-neutral-300">Mobil werden alle Kategorien als aufklappbare Bereiche angezeigt. Tippe auf einen Bereich, um ihn zu öffnen oder wieder zu schließen.</p>
+            </div>
+            <div className="rounded-xl border border-neutral-800 bg-black/50 px-3 py-2">
+              <div className="text-xs font-medium text-white">{(q ? `${visibleTabs.length} Treffer` : 'Akkordeon aktiv')}</div>
+              <div className="mt-1 text-[11px] text-neutral-500">{q ? 'Alle passenden Bereiche bleiben geöffnet.' : 'Nur der gewählte Bereich wird geöffnet, damit es auf dem Smartphone übersichtlich bleibt.'}</div>
+            </div>
           </div>
         </div>
 
@@ -8704,7 +8876,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                 return (
                   <button
                     key={t.id}
-                    onClick={() => { setSettingsTab(t.id); setSettingsQuery(''); }}
+                    onClick={() => { setSettingsTab(t.id); setSettingsMobileOpenId(t.id); setSettingsQuery(''); }}
                     className={
                       "settings-nav-item w-full text-left px-3 py-3 rounded-xl transition-colors " +
                       (active ? "bg-white text-black" : "text-neutral-200 hover:bg-neutral-900") +
@@ -8808,31 +8980,34 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     <div className="text-sm text-white font-medium">Busy‑Only Links</div>
     <div className="text-[11px] text-neutral-500 mt-1">Externe sehen nur belegte Zeitblöcke (keine Titel/Orte). Optional mit Ablauf & Passcode.</div>
   </div>
-  <div className="flex flex-col sm:flex-row gap-2">
-    <select
+  <div className="flex-1 min-w-0">
+    <ChoiceCards
+      label="Kalender auswählen"
       value={settingsShareCalId}
-      onChange={(e) => setSettingsShareCalId(e.target.value)}
-      className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
-      title="Kalender auswählen"
-    >
-      <option value="default">Privat</option>
-      {(customCalendars || []).filter(Boolean).filter(c => c?.ownerId === user?.uid).map(c => (
-        <option key={c.id} value={c.id}>{c.name}</option>
-      ))}
-    </select>
-    <button
-      type="button"
-      onClick={() => {
-        const cal = (settingsShareCalId === 'default')
-          ? { id: 'default', name: 'Privat' }
-          : (customCalendars || []).find(c => c.id === settingsShareCalId) || { id: 'default', name: 'Privat' };
-        openShareLinkModalForCalendar(cal);
-      }}
-      className="px-3 py-2 bg-white text-black rounded-lg text-xs font-semibold hover:bg-gray-200"
-    >
-      Link erstellen
-    </button>
+      onChange={(next) => setSettingsShareCalId(next)}
+      columnsClassName="grid-cols-1 sm:grid-cols-2"
+      options={[
+        { value: 'default', label: 'Privat', description: 'Dein persönlicher Standard-Kalender' },
+        ...((customCalendars || [])
+          .filter(Boolean)
+          .filter(c => c?.ownerId === user?.uid)
+          .map(c => ({ value: c.id, label: c.name || 'Kalender', description: c.type === 'shift' ? 'Eigener Schichtplan' : 'Eigener Kalender' })))
+      ]}
+      helper="Kein Dropdown mehr: Kalender werden direkt als Auswahlkarten angezeigt."
+    />
   </div>
+  <button
+    type="button"
+    onClick={() => {
+      const cal = (settingsShareCalId === 'default')
+        ? { id: 'default', name: 'Privat' }
+        : (customCalendars || []).find(c => c.id === settingsShareCalId) || { id: 'default', name: 'Privat' };
+      openShareLinkModalForCalendar(cal);
+    }}
+    className="px-3 py-2 bg-white text-black rounded-lg text-xs font-semibold hover:bg-gray-200 self-start sm:self-end"
+  >
+    Link erstellen
+  </button>
 </div>
 
 {(() => {
@@ -8911,6 +9086,262 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               </section>
             </AccordionItem>
 
+            {/* BOOKING LINK */}
+            <AccordionItem id="booking" label="Booking Link" icon={CalendarPlus} keys={['booking','buchung','link','meet']}>
+               <section id="settings-booking">
+                 <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                   <CalendarPlus className="w-4 h-4" /> Guest Booking Hub
+                 </h3>
+                 <BookingHostManager user={user} userProfile={userProfile} db={db} APP_ID={APP_ID} events={events} />
+               </section>
+            </AccordionItem>
+
+            <AccordionItem id="notifications" label="Benachrichtigungen & Tester" icon={Bell} keys={['benachrichtigung', 'notifications', 'push', 'tester', 'test', 'reminder', 'erinnerung', 'fcm']}>
+              <section id="settings-notifications" className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                    <Bell className="w-4 h-4" /> Push & Erinnerungen
+                  </h3>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-white">Push aktivieren</p>
+                          <p className="text-xs text-neutral-500 mt-1">Fordert die Berechtigung an, registriert den Service Worker und erneuert bei Bedarf das Web-Token.</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { try { requestNotificationPermission(user); } catch (_) {} }}
+                            className="px-4 py-2 rounded-md text-sm font-semibold bg-white text-black hover:bg-gray-200 transition-colors"
+                          >
+                            Aktivieren
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await ensureWebPushToken(user, { forcePrompt: false, resetConnection: true });
+                                showToast('Push-Setup aktualisiert ✅');
+                              } catch (e) {
+                                setPushDiag((prev) => ({ ...prev, lastError: `PUSH_REFRESH_FAILED: ${e?.message || String(e)}` }));
+                                showToast('Push-Setup konnte nicht aktualisiert werden');
+                              }
+                            }}
+                            className="px-4 py-2 rounded-md text-sm font-semibold bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-800 transition-colors inline-flex items-center gap-2"
+                          >
+                            <RefreshCw className="w-4 h-4" /> Neu verbinden
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Berechtigung</div>
+                          <div className="mt-1 text-sm text-white">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</div>
+                        </div>
+                        <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Service Worker</div>
+                          <div className="mt-1 text-sm text-white">{pushDiag?.sw || 'unknown'}</div>
+                        </div>
+                        <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Controller</div>
+                          <div className="mt-1 text-sm text-white">{pushDiag?.controlling ? 'aktiv' : 'nein'}</div>
+                        </div>
+                        <div className="rounded-lg border border-neutral-800 bg-black px-3 py-2">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Web-Token</div>
+                          <div className="mt-1 text-sm text-white">{(userProfile?.fcmTokenWeb || userProfileRef?.current?.fcmTokenWeb) ? 'vorhanden' : 'fehlt'}</div>
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] text-neutral-500 space-y-1">
+                        <div>Letzte Token-Erneuerung: <span className="text-neutral-300">{pushDiag?.lastTokenAt ? new Date(pushDiag.lastTokenAt).toLocaleString('de-CH') : '–'}</span></div>
+                        <div>Letzter Push-Empfang: <span className="text-neutral-300">{pushDiag?.lastReceivedAt ? `${new Date(pushDiag.lastReceivedAt).toLocaleString('de-CH')} · ${pushDiag?.lastReceivedTitle || 'ohne Titel'}` : '–'}</span></div>
+                        {pushDiag?.lastError ? <div className="text-red-400">Diagnose: {pushDiag.lastError}</div> : null}
+                      </div>
+                    </div>
+
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 space-y-4">
+                      <div>
+                        <p className="font-medium text-white">Tester</p>
+                        <p className="text-xs text-neutral-500 mt-1">Lokal testet nur die Betriebssystem-Benachrichtigung. Server testet die komplette Kette aus Firestore → Cloud Function → FCM → Service Worker.</p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { try { sendLocalPushTest(); } catch (_) {} }}
+                          className="px-4 py-2 rounded-md text-sm font-semibold bg-neutral-900 border border-neutral-800 text-neutral-200 hover:bg-neutral-800 transition-colors"
+                        >
+                          Lokaler Tester
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { try { sendServerPushTest(); } catch (_) {} }}
+                          className="px-4 py-2 rounded-md text-sm font-semibold bg-white text-black hover:bg-gray-200 transition-colors"
+                        >
+                          Server-Tester
+                        </button>
+                      </div>
+
+                      <div className="rounded-xl border border-neutral-800 bg-black p-4 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Letzter Server-Test</div>
+                          <div className="text-xs text-neutral-300">{pushTest?.updatedAt ? new Date(pushTest.updatedAt).toLocaleString('de-CH') : '–'}</div>
+                        </div>
+                        <div className="text-sm text-white">Status: <span className="font-semibold">{pushTest?.status || 'noch nicht gestartet'}</span></div>
+                        {pushTest?.id ? <div className="text-[11px] text-neutral-500 break-all">ID: {pushTest.id}</div> : null}
+                        {pushTest?.lastError ? <div className="text-[11px] text-red-400 break-words">Fehler: {pushTest.lastError}</div> : <div className="text-[11px] text-neutral-500">Kein Fehler gemeldet.</div>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
+                    <Clock className="w-4 h-4" /> Erinnerungs-Standard
+                  </h3>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                      <ChoiceCards
+                        label="Standard-Erinnerung"
+                        value={(() => {
+                          const v = (userProfile && typeof userProfile.defaultReminderMinutes === 'number') ? String(userProfile.defaultReminderMinutes) : 'none';
+                          return v;
+                        })()}
+                        onChange={async (v) => {
+                          try {
+                            const next = (v === 'none') ? null : (parseInt(v, 10) || 0);
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultReminderMinutes: next, updatedAt: Date.now() }, { merge: true });
+                            setUserProfile(prev => ({ ...(prev || {}), defaultReminderMinutes: next, updatedAt: Date.now() }));
+                            showToast('Erinnerung gespeichert ✅');
+                          } catch (_) {
+                            showToast('Speichern fehlgeschlagen');
+                          }
+                        }}
+                        columnsClassName="grid-cols-1 sm:grid-cols-2"
+                        options={[
+                          { value: 'none', label: 'Keine', description: 'Keine automatische Erinnerung' },
+                          { value: '0', label: 'Bei Beginn', description: 'Direkt zum Start' },
+                          { value: '5', label: '5 Minuten vorher', description: 'Kurz vorher' },
+                          { value: '10', label: '10 Minuten vorher', description: 'Etwas mehr Vorlauf' },
+                          { value: '15', label: '15 Minuten vorher', description: 'Klassischer Standard' },
+                          { value: '30', label: '30 Minuten vorher', description: 'Mehr Puffer' },
+                          { value: '60', label: '1 Stunde vorher', description: 'Frühzeitig erinnern' },
+                          { value: '120', label: '2 Stunden vorher', description: 'Langer Vorlauf' },
+                          { value: '1440', label: '1 Tag vorher', description: 'Am Vortag erinnern' },
+                        ]}
+                        helper="Gilt für neue Termine und für Termine mit Option „Standard“."
+                      />
+                    </div>
+
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                      <ChoiceCards
+                        label="Benachrichtigungston"
+                        value={(() => {
+                          const v = (userProfile && userProfile.notificationSoundMode) ? String(userProfile.notificationSoundMode) : 'system';
+                          return (v === 'silent') ? 'silent' : 'system';
+                        })()}
+                        onChange={async (v) => {
+                          try {
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { notificationSoundMode: v, updatedAt: Date.now() }, { merge: true });
+                            setUserProfile(prev => ({ ...(prev || {}), notificationSoundMode: v, updatedAt: Date.now() }));
+                            showToast('Tonmodus gespeichert ✅');
+                          } catch (_) {
+                            showToast('Speichern fehlgeschlagen');
+                          }
+                        }}
+                        options={[
+                          { value: 'system', label: 'System', description: 'Nutzt den Standardton des Geräts' },
+                          { value: 'silent', label: 'Stumm', description: 'Keine Tonwiedergabe' },
+                        ]}
+                        helper="In der PWA ist kein eigener Klingelton möglich – nur Systemton oder stumm."
+                      />
+                    </div>
+
+                    <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
+                      <ChoiceCards
+                        label="Push-Ziel"
+                        value={(() => {
+                          const v = (userProfile && userProfile.pushTarget) ? String(userProfile.pushTarget) : 'web';
+                          return (v === 'android' || v === 'web' || v === 'both') ? v : 'web';
+                        })()}
+                        onChange={async (v) => {
+                          try {
+                            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { pushTarget: v, updatedAt: Date.now() }, { merge: true });
+                            setUserProfile(prev => ({ ...(prev || {}), pushTarget: v, updatedAt: Date.now() }));
+                            showToast('Push-Ziel gespeichert ✅');
+                          } catch (_) {
+                            showToast('Speichern fehlgeschlagen');
+                          }
+                        }}
+                        options={[
+                          { value: 'web', label: 'Nur Web / PWA', description: 'Empfohlen für diese Version' },
+                          { value: 'android', label: 'Nur Android (APK)', description: 'Nur für native Android-App' },
+                          { value: 'both', label: 'Beide', description: 'Web und Android gleichzeitig' },
+                        ]}
+                        helper="Für dieses Projekt ist Web/PWA der sinnvolle Standard."
+                      />
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </AccordionItem>
+
+            {/* DESIGN TAB */}
+            <AccordionItem id="design" label="Design & Themes" icon={Palette} keys={['design', 'theme', 'themes', 'blur', 'widget', 'look', 'appearance', 'pro']}>
+               <section id="settings-design" className="space-y-6">
+                 
+                 <div>
+                   <h3 className="text-sm font-medium text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-900/50 pb-2 flex items-center gap-2">
+                     <MonitorSmartphone className="w-4 h-4" /> App Theme
+                   </h3>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-3">
+                     {APP_THEME_OPTIONS.map(t => (
+                       <button
+                         key={t.id}
+                         onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
+                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
+                       >
+                         <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: t.preview }} />
+                         <div className="flex items-center justify-between gap-3">
+                            <div className="font-semibold text-white text-base sm:text-sm">{t.name}</div>
+                            {(userProfile?.appTheme || 'obsidian') === t.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
+                         </div>
+                         <div className="text-sm sm:text-xs text-neutral-400 mt-2">{t.desc}</div>
+                       </button>
+                     ))}
+                   </div>
+                 </div>
+
+                 <div>
+                   <h3 className="text-sm font-medium text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-900/50 pb-2 flex items-center gap-2">
+                     <LayoutDashboard className="w-4 h-4" /> Glassmorphism & Hintergrund
+                   </h3>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-3">
+                     {APP_BG_OPTIONS.map(bg => (
+                       <button
+                         key={bg.id}
+                         onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}
+                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
+                       >
+                         <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: bg.preview }} />
+                         <div className="flex items-center justify-between gap-3">
+                            <div className="font-semibold text-white text-base sm:text-sm">{bg.name}</div>
+                            {(userProfile?.appBg || 'none') === bg.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
+                         </div>
+                         <div className="text-sm sm:text-xs text-neutral-400 mt-2">{bg.desc}</div>
+                       </button>
+                     ))}
+                   </div>
+                   <p className="mt-3 text-xs text-neutral-500 italic">Hinweis: Glassmorphismus kann auf sehr alten Geräten die Akkulaufzeit beeinträchtigen.</p>
+                 </div>
+                 
+               </section>
+            </AccordionItem>
+
+
             {/* AUDIT LOG */}
             <AccordionItem id="audit" label="Audit" icon={History} keys={['audit','log','verlauf','änderung','wer']} >
               <section id="settings-audit">
@@ -8941,16 +9372,18 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       <div className="border-t border-neutral-800 pt-4">
                         <div className="flex items-center justify-between gap-3">
                           <div className="text-xs text-neutral-400 font-semibold">Kalender‑Audit</div>
-                          <select
-                            value={auditCalId || 'default'}
-                            onChange={(e) => setAuditCalId(e.target.value)}
-                            className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
-                          >
-                            <option value="default">Privat (nur „Meine Aktionen“)</option>
-                            {(customCalendars || []).filter(Boolean).map(c => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
+                          <div className="w-full lg:w-[28rem]">
+                            <ChoiceCards
+                              label="Kalender-Audit"
+                              value={auditCalId || 'default'}
+                              onChange={(next) => setAuditCalId(next)}
+                              columnsClassName="grid-cols-1 sm:grid-cols-2"
+                              options={[
+                                { value: 'default', label: 'Privat', description: 'Nur „Meine Aktionen“' },
+                                ...((customCalendars || []).filter(Boolean).map(c => ({ value: c.id, label: c.name || 'Kalender', description: c.ownerId === user?.uid ? 'Eigener Kalender' : 'Geteilt mit dir' })))
+                              ]}
+                            />
+                          </div>
                         </div>
 
                         <div className="mt-3">
@@ -9038,7 +9471,43 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   </div>
                   <button onClick={handleLogout} className="px-4 py-2 bg-neutral-900 border border-neutral-800 rounded-md text-sm hover:text-white transition-colors">Abmelden</button>
                 </div>
-              
+
+                <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-white flex items-center gap-2"><Palette className="w-4 h-4" /> Design & Themes</p>
+                    <p className="text-xs text-neutral-500 mt-1">Theme-Auswahl, Farben und Glassmorphism findest du jetzt separat im Bereich <span className="text-neutral-300">Design & Themes</span>.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Theme: <span className="text-white">{selectedAppTheme === 'deepblack' ? 'Deep Black' : selectedAppTheme === 'midnight' ? 'Midnight Blue' : selectedAppTheme === 'gold' ? 'Onyx Gold' : 'Deep Obsidian'}</span></div>
+                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Hintergrund: <span className="text-white">{selectedAppBg === 'glass-1' ? 'Neon Blur' : selectedAppBg === 'glass-2' ? 'Gold Blur' : selectedAppBg === 'glass-3' ? 'Ruby Blur' : 'Mattes Schwarz'}</span></div>
+                    <button
+                      type="button"
+                      onClick={() => { setSettingsTab('design'); setSettingsMobileOpenId('design'); setSettingsQuery(''); }}
+                      className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
+                    >
+                      <Palette className="w-4 h-4" /> Öffnen
+                    </button>
+                  </div>
+                </div>
+
+
+                <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-white flex items-center gap-2"><Bell className="w-4 h-4" /> Benachrichtigungen & Tester</p>
+                    <p className="text-xs text-neutral-500 mt-1">Push aktivieren, lokale Tests auslösen und die Server-Diagnose findest du jetzt separat im Bereich <span className="text-neutral-300">Benachrichtigungen & Tester</span>.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Push: <span className="text-white">{('Notification' in window) ? (Notification.permission || 'default') : 'nicht unterstützt'}</span></div>
+                    <div className="px-3 py-2 rounded-lg border border-neutral-800 bg-black text-xs text-neutral-300">Token: <span className="text-white">{(userProfile?.fcmTokenWeb || userProfileRef?.current?.fcmTokenWeb) ? 'vorhanden' : 'fehlt'}</span></div>
+                    <button
+                      type="button"
+                      onClick={() => { setSettingsTab('notifications'); setSettingsMobileOpenId('notifications'); setSettingsQuery(''); }}
+                      className="px-3 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors inline-flex items-center gap-2"
+                    >
+                      <Bell className="w-4 h-4" /> Öffnen
+                    </button>
+                  </div>
+                </div>
                 <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -9051,16 +9520,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {hasPasswordProvider() && (
-                        <button
-                          type="button"
-                          onClick={() => { setPwEditOpen(v => !v); setPwError(''); setPwResetSent(false); }}
-                          className={"px-3 py-2 rounded-md text-xs font-semibold border transition-colors " + (pwEditOpen ? "bg-white text-black border-white hover:bg-gray-200" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
-                        >
-                          {pwEditOpen ? 'Schließen' : 'Ändern'}
-                        </button>
-                      )}
-
                       <button
                         type="button"
                         onClick={() => doSendPasswordReset()}
@@ -9076,61 +9535,80 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     <div className="mt-3 text-xs text-neutral-300">Reset‑Mail gesendet ✅</div>
                   )}
 
-                  {hasPasswordProvider() && pwEditOpen && (
-                    <div className="mt-4 space-y-3">
-                      <input
-                        type="password"
-                        value={pwCurrent}
-                        onChange={(e) => { setPwCurrent(e.target.value); setPwError(''); }}
-                        placeholder="Aktuelles Passwort"
-                        className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                        autoComplete="current-password"
-                      />
+                  {hasPasswordProvider() ? (
+                    <div className="mt-4 border border-neutral-800 rounded-xl bg-black/70 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => { setPwEditOpen(v => !v); setPwError(''); setPwResetSent(false); }}
+                        className="w-full px-4 py-3 text-left flex items-center justify-between gap-3 hover:bg-neutral-900/80 transition-colors"
+                      >
+                        <div>
+                          <div className="text-sm font-semibold text-white">Passwort ändern</div>
+                          <div className="mt-1 text-[11px] text-neutral-500">Aufklappbarer Bereich statt Dropdown oder kleinem Inline-Toggle.</div>
+                        </div>
+                        <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform ${pwEditOpen ? 'rotate-180' : ''}`} />
+                      </button>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <input
-                          type="password"
-                          value={pwNew}
-                          onChange={(e) => { setPwNew(e.target.value); setPwError(''); }}
-                          placeholder="Neues Passwort (min. 6)"
-                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                          autoComplete="new-password"
-                        />
-                        <input
-                          type="password"
-                          value={pwNew2}
-                          onChange={(e) => { setPwNew2(e.target.value); setPwError(''); }}
-                          placeholder="Wiederholen"
-                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                          autoComplete="new-password"
-                        />
-                      </div>
+                      {pwEditOpen && (
+                        <div className="border-t border-neutral-800 px-4 py-4 space-y-3">
+                          <input
+                            type="password"
+                            value={pwCurrent}
+                            onChange={(e) => { setPwCurrent(e.target.value); setPwError(''); }}
+                            placeholder="Aktuelles Passwort"
+                            className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                            autoComplete="current-password"
+                            data-viewport-lock="true"
+                          />
 
-                      {pwError ? <div className="text-xs text-red-400">{pwError}</div> : null}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <input
+                              type="password"
+                              value={pwNew}
+                              onChange={(e) => { setPwNew(e.target.value); setPwError(''); }}
+                              placeholder="Neues Passwort (min. 6)"
+                              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                              autoComplete="new-password"
+                              data-viewport-lock="true"
+                            />
+                            <input
+                              type="password"
+                              value={pwNew2}
+                              onChange={(e) => { setPwNew2(e.target.value); setPwError(''); }}
+                              placeholder="Wiederholen"
+                              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                              autoComplete="new-password"
+                              data-viewport-lock="true"
+                            />
+                          </div>
 
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => doChangePassword()}
-                          disabled={pwSaving}
-                          className="px-4 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
-                        >
-                          {pwSaving ? 'Speichern…' : 'Speichern'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setPwEditOpen(false); setPwCurrent(''); setPwNew(''); setPwNew2(''); setPwError(''); }}
-                          className="px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:bg-neutral-800"
-                        >
-                          Abbrechen
-                        </button>
-                      </div>
+                          {pwError ? <div className="text-xs text-red-400">{pwError}</div> : null}
 
-                      <div className="text-[11px] text-neutral-600">
-                        Tipp: Wenn du dein aktuelles Passwort nicht mehr weißt, nutze „Reset‑Mail“.
-                      </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => doChangePassword()}
+                              disabled={pwSaving}
+                              className="px-4 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
+                            >
+                              {pwSaving ? 'Speichern…' : 'Speichern'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setPwEditOpen(false); setPwCurrent(''); setPwNew(''); setPwNew2(''); setPwError(''); }}
+                              className="px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:bg-neutral-800"
+                            >
+                              Abbrechen
+                            </button>
+                          </div>
+
+                          <div className="text-[11px] text-neutral-600">
+                            Tipp: Wenn du dein aktuelles Passwort nicht mehr weißt, nutze „Reset‑Mail“.
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
 </section>
@@ -9179,8 +9657,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
             {currentView === 'secret_chat' && (
               <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>
-              <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up" style={{ height: 'var(--app-height, 100vh)' }}>
-                
+              <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up overflow-hidden overscroll-none" style={{ height: 'var(--app-height, 100vh)', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+                <div className="shrink-0">
+                  <AppChromeHeader />
+                </div>
+
                 {/* Geheimer Chat Header */}
                 <header className="h-16 md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
                   {secretView === 'chat' && activeChat ? (
@@ -9278,7 +9759,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   </div>
                 </header>
 
-                <div className="flex-1 overflow-hidden flex flex-col">
+                <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                   {!userProfile ? (
                     <div className="flex-1 flex items-center justify-center p-6"><div className="max-w-md w-full border border-neutral-800 p-8 rounded-xl bg-neutral-950/50 text-center"><Lock className="w-8 h-8 mx-auto mb-4 text-neutral-500" /><h3 className="text-xl font-medium mb-2">Identität festlegen</h3><p className="text-sm text-neutral-500 mb-6">Wähle einen einzigartigen Benutzernamen.</p>
                     <form onSubmit={saveUsername}>
@@ -9636,7 +10117,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex-1 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => { setSelectedMessageId(null); setMessageReactionPickerFor(null); }}>
+                    <div className="flex-1 min-h-0 flex flex-col w-full max-w-3xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => { setSelectedMessageId(null); setMessageReactionPickerFor(null); }}>
                       {isMessageSearchOpen && (
 
                         <div className="px-4 py-2 bg-neutral-950 border-b border-neutral-900 flex flex-col gap-2 shrink-0">
@@ -9717,7 +10198,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                             loadMoreChatMessages();
                           }
                         }}
-                        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 flex flex-col"
+                        className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 flex flex-col" style={{ WebkitOverflowScrolling: 'touch' }}
                       >
                         {chatHasMore && (
                           <div className="-mt-2 mb-2 flex items-center justify-center">
@@ -10151,6 +10632,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               </div>
               </ErrorBoundary>
               )}
+            </div>
           </main>
 
           
@@ -10513,8 +10995,20 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
           {/* EVENT MODAL */}
           {isModalOpen && (
-            <div className="fixed inset-0 z-[85] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={closeEventModal}>
-              <div ref={eventModalScrollRef} className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up max-h-[92dvh] overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }} onClick={(e) => e.stopPropagation()}>
+            <div
+              className="fixed inset-0 z-[85] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) closeEventModal();
+              }}
+            >
+              <div
+                ref={eventModalScrollRef}
+                className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up max-h-[92dvh] overflow-y-auto overscroll-contain"
+                style={{ WebkitOverflowScrolling: 'touch' }}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+              >
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-[10px] uppercase tracking-widest text-neutral-500">{eventToEdit ? (eventModalMode === 'view' ? 'Ansicht' : 'Bearbeiten') : 'Neu'}</p>
@@ -11630,26 +12124,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           )}
 
 
-          {/* SCHICHT AUSWAHL MODAL (Langes Drücken) */}
-          {shiftModalData && (
-             <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => setShiftModalData(null)}>
-                <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-xs rounded-t-2xl sm:rounded-xl p-4 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
-                   <h3 className="text-white font-medium mb-1 text-center">Schicht wählen</h3>
-                   <p className="text-neutral-500 text-xs text-center mb-4 border-b border-neutral-800 pb-3">{new Date(shiftModalData.dateStr).toLocaleDateString('de-DE')}</p>
-                   
-                   <div className="space-y-2 max-h-[50vh] overflow-y-auto no-scrollbar">
-                      {(shiftModalData?.shifts || []).filter(Boolean).map(s => (
-                         <button key={s.id} onClick={() => handleShiftModalSelect(s)} className="w-full py-3 rounded-xl text-sm font-semibold text-black transition-transform active:scale-95 shadow-sm" style={{backgroundColor: s?.color || '#ffffff'}}>
-                            {s?.name || 'Schicht'} <span className="font-normal opacity-70 ml-2">{s?.time || ''}</span>
-                         </button>
-                      ))}
-                      <button onClick={() => handleShiftModalSelect('delete')} className="w-full py-3 rounded-xl text-sm font-medium text-red-500 bg-red-500/10 border border-red-900/50 hover:bg-red-500/20 mt-4 transition-colors">
-                         Frei / Löschen
-                      </button>
-                   </div>
-                </div>
-             </div>
-          )}
+          <ShiftSelectionModal data={shiftModalData} onClose={() => setShiftModalData(null)} onSelect={handleShiftModalSelect} />
+
 
           {showCreateGroup && (
             <div className="fixed inset-0 z-[75] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
@@ -11914,56 +12390,163 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             </div>
           )}
 
-          {isShareEventModalOpen && (
-            <div className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
-               <div className="bg-neutral-950 border border-neutral-800 w-full max-w-sm rounded-xl p-6 shadow-2xl animate-fade-in">
-                  <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2"><CalendarPlus className="w-5 h-5"/> Termin teilen</h3>
-                  <form onSubmit={(e) => {
-                    e.preventDefault();
-                    const fd = new FormData(e.target);
-                    const ev = { title: fd.get('title'), date: fd.get('date'), time: fd.get('time'), type: 'Chat-Einladung' };
-                    sendMessage(null, null, null, ev);
-                    setIsShareEventModalOpen(false);
-                  }} className="space-y-4">
-                    <input type="text" name="title" required placeholder="Titel (z.B. Kino heute?)" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
-                    <div className="flex gap-2">
-                      <input type="date" name="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
-                      <input type="time" name="time" required defaultValue="18:00" className="w-full bg-black border border-neutral-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-neutral-500" />
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                      <button type="button" onClick={() => setIsShareEventModalOpen(false)} className="flex-1 py-3 rounded-lg text-sm text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 transition-colors">Abbrechen</button>
-                      <button type="submit" className="flex-1 py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">In Chat senden</button>
-                    </div>
-                  </form>
-               </div>
-            </div>
-          )}
+          <ShareEventModal isOpen={isShareEventModalOpen} onClose={() => setIsShareEventModalOpen(false)} onShare={(ev) => sendMessage(null, null, null, ev)} />
 
-          {/* IMAGE VIEWER (Vollbild) */}
-          {isImageViewerOpen && imageViewerSrc && (
-            <div
-              className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4"
-              onClick={closeImageViewer}
-            >
-              <button
-                onClick={(e) => { e.stopPropagation(); closeImageViewer(); }}
-                className="absolute top-4 right-4 p-2 rounded-full bg-neutral-900/70 border border-neutral-700 text-white hover:bg-neutral-800 transition-colors"
-                aria-label="Schließen"
-                title="Schließen"
-              >
-                <X className="w-5 h-5" />
-              </button>
-              <img
-                src={imageViewerSrc}
-                alt="Bild"
-                className="max-h-[90vh] max-w-[95vw] object-contain rounded-2xl border border-neutral-800 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
-          )}
+
+          <ImageViewer isOpen={isImageViewerOpen} src={imageViewerSrc} onClose={closeImageViewer} />
+
         </div>
       );
     }
 
+
+
+// --- BOOKING HOST MANAGER ---
+function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
+  const [bProfile, setBProfile] = React.useState(null);
+  const [bLoading, setBLoading] = React.useState(true);
+  const [requests, setRequests] = React.useState([]);
+  
+  const code = userProfile?.friendCode;
+  
+
+  React.useEffect(() => {
+    if (!code) { setBLoading(false); return; }
+    getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code)).then(snap => {
+      if (snap.exists()) setBProfile(snap.data());
+      else setBProfile({ uid: user?.uid, isActive: false, title: userProfile?.displayName || 'Termin buchen', duration: 30, schedule: { mon:{active:true,start:'09:00',end:'17:00'}, tue:{active:true,start:'09:00',end:'17:00'}, wed:{active:true,start:'09:00',end:'17:00'}, thu:{active:true,start:'09:00',end:'17:00'}, fri:{active:true,start:'09:00',end:'17:00'} } });
+      setBLoading(false);
+    });
+  }, [code, db, APP_ID, user, userProfile]);
+
+  React.useEffect(() => {
+    if (!user?.uid) return;
+    const q = query(collection(db, `artifacts/${APP_ID}/users/${user.uid}/bookingRequests`), where('status', '==', 'pending'));
+    return onSnapshot(q, snap => {
+      setRequests(snap.docs.map(d => ({id: d.id, ...d.data()})));
+    });
+  }, [user?.uid, db, APP_ID]);
+
+  const getBookingPublicUrl = React.useCallback((value) => {
+    const safeCode = String(value || code || '').trim();
+    if (!safeCode) return '';
+    const rawBase = String(BASE_PATH || window.location.pathname || '/');
+    const normalizedBase = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+    return `${window.location.origin}${normalizedBase}?book=${encodeURIComponent(safeCode)}`;
+  }, [code]);
+
+  const save = async () => {
+    if (!code) return;
+    const busyEvents = (events || []).map(e => ({ startMs: e.startMs, endMs: e.endMs, isAllDay: e.isAllDay === true }));
+    const toSave = {
+      ...bProfile,
+      uid: user?.uid || bProfile?.uid || '',
+      code,
+      title: (bProfile?.title || userProfile?.displayName || 'Termin buchen').trim(),
+      duration: Number(bProfile?.duration || 30) || 30,
+      appTheme: userProfile?.appTheme || 'obsidian',
+      appBg: userProfile?.appBg || 'none',
+      busyEvents,
+      updatedAt: Date.now(),
+    };
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code), toSave, { merge: true });
+    setBProfile(prev => ({ ...(prev || {}), ...toSave }));
+    alert('Booking-Profil gespeichert!');
+  };
+
+  const copyLink = () => {
+    const url = getBookingPublicUrl(code);
+    if (!url) return;
+    navigator.clipboard.writeText(url);
+    alert('Link kopiert!');
+  };
+
+  const accept = async (req) => {
+    if (!confirm('Buchung annehmen und Kalendereintrag erstellen?')) return;
+    await addDoc(collection(db, `artifacts/${APP_ID}/users/${user.uid}/events`), {
+       title: `Meeting mit ${req.guestName}`,
+       date: new Date(req.startMs).toISOString().split('T')[0],
+       time: new Date(req.startMs).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
+       durationMinutes: req.duration,
+       desc: req.guestNote || '',
+       type: 'Booking',
+       createdAt: serverTimestamp()
+    });
+    await updateDoc(doc(db, `artifacts/${APP_ID}/users/${user.uid}/bookingRequests`, req.id), { status: 'accepted' });
+  };
+
+  const decline = async (req) => {
+    if (!confirm('Buchung ablehnen?')) return;
+    await updateDoc(doc(db, `artifacts/${APP_ID}/users/${user.uid}/bookingRequests`, req.id), { status: 'declined' });
+  };
+
+  if (bLoading) return <div className="text-neutral-500">Lade...</div>;
+  if (!code) return <div className="text-neutral-500 p-4 bg-black border border-neutral-800 rounded-xl">Kein Profil-Code gefunden.</div>;
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      
+      {requests.length > 0 && (
+         <div className="bg-emerald-900/20 border border-emerald-900/50 rounded-2xl p-5 mb-6">
+            <h3 className="text-emerald-400 font-bold flex items-center gap-2 mb-4">
+               <CalendarPlus className="w-5 h-5" /> 
+               {requests.length} Neue Buchungsanfragen
+            </h3>
+            <div className="space-y-3">
+               {requests.map(r => (
+                  <div key={r.id} className="bg-black/60 border border-emerald-900/40 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
+                     <div>
+                        <div className="text-white font-medium text-lg">{r.guestName}</div>
+                        <div className="text-sm text-neutral-300 mt-1">
+                           {new Date(r.startMs).toLocaleDateString()} um {new Date(r.startMs).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} Uhr ({r.duration} Min)
+                        </div>
+                        {r.guestNote && <div className="text-sm text-neutral-400 mt-2 italic bg-neutral-900/50 p-2 rounded-lg">"{r.guestNote}"</div>}
+                     </div>
+                     <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => accept(r)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Zusagen</button>
+                        <button onClick={() => decline(r)} className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-sm transition">Absagen</button>
+                     </div>
+                  </div>
+               ))}
+            </div>
+         </div>
+      )}
+
+      <div className="flex items-center justify-between bg-black border border-neutral-800 p-5 rounded-2xl">
+        <div>
+          <div className="text-white font-medium text-base">Öffentlichen Link aktivieren</div>
+          <div className="text-xs text-neutral-500 mt-1">Gäste können über einen Link freie Zeitslots buchen.</div>
+        </div>
+        <input type="checkbox" checked={bProfile.isActive} onChange={e => setBProfile({...bProfile, isActive: e.target.checked})} className="w-6 h-6 accent-emerald-500" />
+      </div>
+
+      {bProfile.isActive && (
+        <div className="bg-black border border-neutral-800 p-6 rounded-2xl space-y-5">
+          <div>
+             <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Dein Kalender Link</label>
+             <div className="flex items-center gap-2 mt-2">
+               <div className="flex-1 bg-neutral-900 border border-neutral-800 text-emerald-400 font-mono text-sm px-4 py-3 rounded-xl truncate select-all">{getBookingPublicUrl(code)}</div>
+               <button onClick={copyLink} className="p-3 bg-neutral-800 text-white rounded-xl hover:bg-neutral-700 transition"><CalendarPlus className="w-5 h-5" /></button>
+             </div>
+          </div>
+          <div>
+             <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Seitentitel</label>
+             <input className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white mt-2 focus:border-neutral-500 outline-none" value={bProfile.title} onChange={e => setBProfile({...bProfile, title: e.target.value})} placeholder="z.B. Termin buchen" />
+          </div>
+          <div>
+             <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Standard-Dauer (Minuten)</label>
+             <select className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white mt-2 focus:border-neutral-500 outline-none" value={bProfile.duration} onChange={e => setBProfile({...bProfile, duration: Number(e.target.value)})}>
+                <option value={15}>15 Min</option>
+                <option value={30}>30 Min</option>
+                <option value={45}>45 Min</option>
+                <option value={60}>60 Min</option>
+             </select>
+          </div>
+          <button onClick={save} className="w-full bg-white text-black py-3.5 rounded-xl text-sm font-semibold hover:bg-gray-200 transition">Einstellungen speichern</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default AmoledCalendarApp;

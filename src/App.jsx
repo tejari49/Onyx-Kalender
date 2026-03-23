@@ -8712,6 +8712,34 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       .filter((field) => isExtraFieldEnabled(field))
       .length;
 
+    const ChoiceCards = ({ label, helper, value, onChange, options = [], columnsClassName = 'grid-cols-1 sm:grid-cols-2' }) => (
+      <div className="space-y-2">
+        {label ? <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">{label}</div> : null}
+        <div className={`grid ${columnsClassName} gap-2`}>
+          {options.map((opt) => {
+            const active = value === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onChange(opt.value)}
+                className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${active ? 'border-white bg-white text-black' : 'border-neutral-800 bg-black text-white hover:border-neutral-600'}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className={`text-sm font-semibold ${active ? 'text-black' : 'text-white'}`}>{opt.label}</div>
+                    {opt.description ? <div className={`mt-1 text-[11px] ${active ? 'text-black/70' : 'text-neutral-500'}`}>{opt.description}</div> : null}
+                  </div>
+                  {active ? <Check className="w-4 h-4 shrink-0" /> : null}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {helper ? <p className="text-[11px] text-neutral-500">{helper}</p> : null}
+      </div>
+    );
+
     const AccordionItem = ({ id, label, subtitle, icon: Icon, keys, children }) => {
       const visible = !q || match(keys);
       if (!visible) return null;
@@ -8952,31 +8980,34 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     <div className="text-sm text-white font-medium">Busy‑Only Links</div>
     <div className="text-[11px] text-neutral-500 mt-1">Externe sehen nur belegte Zeitblöcke (keine Titel/Orte). Optional mit Ablauf & Passcode.</div>
   </div>
-  <div className="flex flex-col sm:flex-row gap-2">
-    <select
+  <div className="flex-1 min-w-0">
+    <ChoiceCards
+      label="Kalender auswählen"
       value={settingsShareCalId}
-      onChange={(e) => setSettingsShareCalId(e.target.value)}
-      className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
-      title="Kalender auswählen"
-    >
-      <option value="default">Privat</option>
-      {(customCalendars || []).filter(Boolean).filter(c => c?.ownerId === user?.uid).map(c => (
-        <option key={c.id} value={c.id}>{c.name}</option>
-      ))}
-    </select>
-    <button
-      type="button"
-      onClick={() => {
-        const cal = (settingsShareCalId === 'default')
-          ? { id: 'default', name: 'Privat' }
-          : (customCalendars || []).find(c => c.id === settingsShareCalId) || { id: 'default', name: 'Privat' };
-        openShareLinkModalForCalendar(cal);
-      }}
-      className="px-3 py-2 bg-white text-black rounded-lg text-xs font-semibold hover:bg-gray-200"
-    >
-      Link erstellen
-    </button>
+      onChange={(next) => setSettingsShareCalId(next)}
+      columnsClassName="grid-cols-1 sm:grid-cols-2"
+      options={[
+        { value: 'default', label: 'Privat', description: 'Dein persönlicher Standard-Kalender' },
+        ...((customCalendars || [])
+          .filter(Boolean)
+          .filter(c => c?.ownerId === user?.uid)
+          .map(c => ({ value: c.id, label: c.name || 'Kalender', description: c.type === 'shift' ? 'Eigener Schichtplan' : 'Eigener Kalender' })))
+      ]}
+      helper="Kein Dropdown mehr: Kalender werden direkt als Auswahlkarten angezeigt."
+    />
   </div>
+  <button
+    type="button"
+    onClick={() => {
+      const cal = (settingsShareCalId === 'default')
+        ? { id: 'default', name: 'Privat' }
+        : (customCalendars || []).find(c => c.id === settingsShareCalId) || { id: 'default', name: 'Privat' };
+      openShareLinkModalForCalendar(cal);
+    }}
+    className="px-3 py-2 bg-white text-black rounded-lg text-xs font-semibold hover:bg-gray-200 self-start sm:self-end"
+  >
+    Link erstellen
+  </button>
 </div>
 
 {(() => {
@@ -9173,15 +9204,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   </h3>
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Standard-Erinnerung</label>
-                      <select
+                      <ChoiceCards
+                        label="Standard-Erinnerung"
                         value={(() => {
                           const v = (userProfile && typeof userProfile.defaultReminderMinutes === 'number') ? String(userProfile.defaultReminderMinutes) : 'none';
                           return v;
                         })()}
-                        onChange={async (e) => {
+                        onChange={async (v) => {
                           try {
-                            const v = e.target.value;
                             const next = (v === 'none') ? null : (parseInt(v, 10) || 0);
                             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { defaultReminderMinutes: next, updatedAt: Date.now() }, { merge: true });
                             setUserProfile(prev => ({ ...(prev || {}), defaultReminderMinutes: next, updatedAt: Date.now() }));
@@ -9190,31 +9220,31 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                             showToast('Speichern fehlgeschlagen');
                           }
                         }}
-                        className="mt-2 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                      >
-                        <option value="none">Keine</option>
-                        <option value="0">Bei Beginn</option>
-                        <option value="5">5 Minuten vorher</option>
-                        <option value="10">10 Minuten vorher</option>
-                        <option value="15">15 Minuten vorher</option>
-                        <option value="30">30 Minuten vorher</option>
-                        <option value="60">1 Stunde vorher</option>
-                        <option value="120">2 Stunden vorher</option>
-                        <option value="1440">1 Tag vorher</option>
-                      </select>
-                      <p className="mt-2 text-[11px] text-neutral-500">Gilt für neue Termine und für Termine mit Option „Standard“.</p>
+                        columnsClassName="grid-cols-1 sm:grid-cols-2"
+                        options={[
+                          { value: 'none', label: 'Keine', description: 'Keine automatische Erinnerung' },
+                          { value: '0', label: 'Bei Beginn', description: 'Direkt zum Start' },
+                          { value: '5', label: '5 Minuten vorher', description: 'Kurz vorher' },
+                          { value: '10', label: '10 Minuten vorher', description: 'Etwas mehr Vorlauf' },
+                          { value: '15', label: '15 Minuten vorher', description: 'Klassischer Standard' },
+                          { value: '30', label: '30 Minuten vorher', description: 'Mehr Puffer' },
+                          { value: '60', label: '1 Stunde vorher', description: 'Frühzeitig erinnern' },
+                          { value: '120', label: '2 Stunden vorher', description: 'Langer Vorlauf' },
+                          { value: '1440', label: '1 Tag vorher', description: 'Am Vortag erinnern' },
+                        ]}
+                        helper="Gilt für neue Termine und für Termine mit Option „Standard“."
+                      />
                     </div>
 
                     <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Benachrichtigungston</label>
-                      <select
+                      <ChoiceCards
+                        label="Benachrichtigungston"
                         value={(() => {
                           const v = (userProfile && userProfile.notificationSoundMode) ? String(userProfile.notificationSoundMode) : 'system';
                           return (v === 'silent') ? 'silent' : 'system';
                         })()}
-                        onChange={async (e) => {
+                        onChange={async (v) => {
                           try {
-                            const v = e.target.value;
                             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { notificationSoundMode: v, updatedAt: Date.now() }, { merge: true });
                             setUserProfile(prev => ({ ...(prev || {}), notificationSoundMode: v, updatedAt: Date.now() }));
                             showToast('Tonmodus gespeichert ✅');
@@ -9222,24 +9252,23 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                             showToast('Speichern fehlgeschlagen');
                           }
                         }}
-                        className="mt-2 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                      >
-                        <option value="system">System (Standard)</option>
-                        <option value="silent">Stumm</option>
-                      </select>
-                      <p className="mt-2 text-[11px] text-neutral-500">In der PWA ist kein eigener Klingelton möglich – nur Systemton oder stumm.</p>
+                        options={[
+                          { value: 'system', label: 'System', description: 'Nutzt den Standardton des Geräts' },
+                          { value: 'silent', label: 'Stumm', description: 'Keine Tonwiedergabe' },
+                        ]}
+                        helper="In der PWA ist kein eigener Klingelton möglich – nur Systemton oder stumm."
+                      />
                     </div>
 
                     <div className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Push-Ziel</label>
-                      <select
+                      <ChoiceCards
+                        label="Push-Ziel"
                         value={(() => {
                           const v = (userProfile && userProfile.pushTarget) ? String(userProfile.pushTarget) : 'web';
                           return (v === 'android' || v === 'web' || v === 'both') ? v : 'web';
                         })()}
-                        onChange={async (e) => {
+                        onChange={async (v) => {
                           try {
-                            const v = e.target.value;
                             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user.uid), { pushTarget: v, updatedAt: Date.now() }, { merge: true });
                             setUserProfile(prev => ({ ...(prev || {}), pushTarget: v, updatedAt: Date.now() }));
                             showToast('Push-Ziel gespeichert ✅');
@@ -9247,13 +9276,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                             showToast('Speichern fehlgeschlagen');
                           }
                         }}
-                        className="mt-2 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                      >
-                        <option value="web">Nur Web / PWA</option>
-                        <option value="android">Nur Android (APK)</option>
-                        <option value="both">Beide</option>
-                      </select>
-                      <p className="mt-2 text-[11px] text-neutral-500">Für dieses Projekt ist Web/PWA der sinnvolle Standard.</p>
+                        options={[
+                          { value: 'web', label: 'Nur Web / PWA', description: 'Empfohlen für diese Version' },
+                          { value: 'android', label: 'Nur Android (APK)', description: 'Nur für native Android-App' },
+                          { value: 'both', label: 'Beide', description: 'Web und Android gleichzeitig' },
+                        ]}
+                        helper="Für dieses Projekt ist Web/PWA der sinnvolle Standard."
+                      />
                     </div>
                   </div>
                 </div>
@@ -9343,16 +9372,18 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       <div className="border-t border-neutral-800 pt-4">
                         <div className="flex items-center justify-between gap-3">
                           <div className="text-xs text-neutral-400 font-semibold">Kalender‑Audit</div>
-                          <select
-                            value={auditCalId || 'default'}
-                            onChange={(e) => setAuditCalId(e.target.value)}
-                            className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white"
-                          >
-                            <option value="default">Privat (nur „Meine Aktionen“)</option>
-                            {(customCalendars || []).filter(Boolean).map(c => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
+                          <div className="w-full lg:w-[28rem]">
+                            <ChoiceCards
+                              label="Kalender-Audit"
+                              value={auditCalId || 'default'}
+                              onChange={(next) => setAuditCalId(next)}
+                              columnsClassName="grid-cols-1 sm:grid-cols-2"
+                              options={[
+                                { value: 'default', label: 'Privat', description: 'Nur „Meine Aktionen“' },
+                                ...((customCalendars || []).filter(Boolean).map(c => ({ value: c.id, label: c.name || 'Kalender', description: c.ownerId === user?.uid ? 'Eigener Kalender' : 'Geteilt mit dir' })))
+                              ]}
+                            />
+                          </div>
                         </div>
 
                         <div className="mt-3">
@@ -9477,7 +9508,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </button>
                   </div>
                 </div>
-              
                 <div className="mt-4 bg-neutral-950/50 border border-neutral-800 rounded-xl p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -9490,16 +9520,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {hasPasswordProvider() && (
-                        <button
-                          type="button"
-                          onClick={() => { setPwEditOpen(v => !v); setPwError(''); setPwResetSent(false); }}
-                          className={"px-3 py-2 rounded-md text-xs font-semibold border transition-colors " + (pwEditOpen ? "bg-white text-black border-white hover:bg-gray-200" : "bg-neutral-900 border-neutral-800 text-neutral-200 hover:bg-neutral-800")}
-                        >
-                          {pwEditOpen ? 'Schließen' : 'Ändern'}
-                        </button>
-                      )}
-
                       <button
                         type="button"
                         onClick={() => doSendPasswordReset()}
@@ -9515,61 +9535,80 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     <div className="mt-3 text-xs text-neutral-300">Reset‑Mail gesendet ✅</div>
                   )}
 
-                  {hasPasswordProvider() && pwEditOpen && (
-                    <div className="mt-4 space-y-3">
-                      <input
-                        type="password"
-                        value={pwCurrent}
-                        onChange={(e) => { setPwCurrent(e.target.value); setPwError(''); }}
-                        placeholder="Aktuelles Passwort"
-                        className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                        autoComplete="current-password"
-                      />
+                  {hasPasswordProvider() ? (
+                    <div className="mt-4 border border-neutral-800 rounded-xl bg-black/70 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => { setPwEditOpen(v => !v); setPwError(''); setPwResetSent(false); }}
+                        className="w-full px-4 py-3 text-left flex items-center justify-between gap-3 hover:bg-neutral-900/80 transition-colors"
+                      >
+                        <div>
+                          <div className="text-sm font-semibold text-white">Passwort ändern</div>
+                          <div className="mt-1 text-[11px] text-neutral-500">Aufklappbarer Bereich statt Dropdown oder kleinem Inline-Toggle.</div>
+                        </div>
+                        <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform ${pwEditOpen ? 'rotate-180' : ''}`} />
+                      </button>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <input
-                          type="password"
-                          value={pwNew}
-                          onChange={(e) => { setPwNew(e.target.value); setPwError(''); }}
-                          placeholder="Neues Passwort (min. 6)"
-                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                          autoComplete="new-password"
-                        />
-                        <input
-                          type="password"
-                          value={pwNew2}
-                          onChange={(e) => { setPwNew2(e.target.value); setPwError(''); }}
-                          placeholder="Wiederholen"
-                          className="w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                          autoComplete="new-password"
-                        />
-                      </div>
+                      {pwEditOpen && (
+                        <div className="border-t border-neutral-800 px-4 py-4 space-y-3">
+                          <input
+                            type="password"
+                            value={pwCurrent}
+                            onChange={(e) => { setPwCurrent(e.target.value); setPwError(''); }}
+                            placeholder="Aktuelles Passwort"
+                            className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                            autoComplete="current-password"
+                            data-viewport-lock="true"
+                          />
 
-                      {pwError ? <div className="text-xs text-red-400">{pwError}</div> : null}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <input
+                              type="password"
+                              value={pwNew}
+                              onChange={(e) => { setPwNew(e.target.value); setPwError(''); }}
+                              placeholder="Neues Passwort (min. 6)"
+                              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                              autoComplete="new-password"
+                              data-viewport-lock="true"
+                            />
+                            <input
+                              type="password"
+                              value={pwNew2}
+                              onChange={(e) => { setPwNew2(e.target.value); setPwError(''); }}
+                              placeholder="Wiederholen"
+                              className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                              autoComplete="new-password"
+                              data-viewport-lock="true"
+                            />
+                          </div>
 
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => doChangePassword()}
-                          disabled={pwSaving}
-                          className="px-4 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
-                        >
-                          {pwSaving ? 'Speichern…' : 'Speichern'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setPwEditOpen(false); setPwCurrent(''); setPwNew(''); setPwNew2(''); setPwError(''); }}
-                          className="px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:bg-neutral-800"
-                        >
-                          Abbrechen
-                        </button>
-                      </div>
+                          {pwError ? <div className="text-xs text-red-400">{pwError}</div> : null}
 
-                      <div className="text-[11px] text-neutral-600">
-                        Tipp: Wenn du dein aktuelles Passwort nicht mehr weißt, nutze „Reset‑Mail“.
-                      </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => doChangePassword()}
+                              disabled={pwSaving}
+                              className="px-4 py-2 rounded-lg bg-white text-black text-xs font-semibold hover:bg-gray-200 disabled:opacity-60"
+                            >
+                              {pwSaving ? 'Speichern…' : 'Speichern'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setPwEditOpen(false); setPwCurrent(''); setPwNew(''); setPwNew2(''); setPwError(''); }}
+                              className="px-4 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-xs text-neutral-200 hover:bg-neutral-800"
+                            >
+                              Abbrechen
+                            </button>
+                          </div>
+
+                          <div className="text-[11px] text-neutral-600">
+                            Tipp: Wenn du dein aktuelles Passwort nicht mehr weißt, nutze „Reset‑Mail“.
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
 </section>

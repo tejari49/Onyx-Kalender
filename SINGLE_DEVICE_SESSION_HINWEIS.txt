@@ -1,0 +1,19 @@
+Single-Device-Session wurde eingebaut.
+
+Geänderte Dateien:
+- src/App.jsx
+- firestore.rules
+- dist/* (neu gebaut)
+
+Verhalten:
+- Bei neuer Anmeldung wird die aktive Session unter
+  artifacts/{APP_ID}/users/{uid}/authState/current gespeichert.
+- Andere Geräte mit derselben UID hören auf dieses Dokument und melden sich ab,
+  sobald eine andere activeSessionId aktiv ist.
+- Logout räumt die aktive Session auf, sofern das aktuelle Gerät noch Besitzer
+  der Session ist.
+
+Wichtig für Deployment:
+1. firestore.rules deployen
+2. Hosting/Web-App deployen
+3. Danach testen: Gerät A anmelden, dann Gerät B anmelden -> Gerät A sollte sich abmelden

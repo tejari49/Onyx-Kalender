@@ -105,6 +105,45 @@ import {
 // ===== Build marker (v9) =====
 console.log('[Onyx-Kalender] build v29 loaded @', new Date().toISOString());
 
+
+const EXCLUSIVE_SESSION_DOC_ID = 'current';
+const deviceStorageKey = () => `onyx_${APP_ID}_device_id`;
+const activeSessionStorageKey = () => `onyx_${APP_ID}_active_session_id`;
+const createOpaqueSessionId = () => {
+  try {
+    if (globalThis?.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  } catch (_) {}
+  return `${Date.now()}_${Math.random().toString(36).slice(2)}_${randomToken(10)}`;
+};
+const getOrCreateDeviceId = () => {
+  try {
+    const key = deviceStorageKey();
+    const existing = localStorage.getItem(key);
+    if (existing) return existing;
+    const created = createOpaqueSessionId();
+    localStorage.setItem(key, created);
+    return created;
+  } catch (_) {
+    return createOpaqueSessionId();
+  }
+};
+const getLocalExclusiveSessionId = () => {
+  try {
+    return localStorage.getItem(activeSessionStorageKey()) || '';
+  } catch (_) {
+    return '';
+  }
+};
+const setLocalExclusiveSessionId = (sessionId) => {
+  try {
+    if (sessionId) localStorage.setItem(activeSessionStorageKey(), String(sessionId));
+  } catch (_) {}
+  return sessionId;
+};
+const clearLocalExclusiveSessionId = () => {
+  try { localStorage.removeItem(activeSessionStorageKey()); } catch (_) {}
+};
+
 // Ensure isGroupChat is always available (avoids hoisting/scope issues)
 window.isGroupChat = window.isGroupChat || function(chat) {
   try {
@@ -699,6 +738,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 // --- PULL TO REFRESH (GLOBAL TOUCH) ---
 const mainRef = useRef(null);
 const canPullRef = useRef(false);
+const exclusiveSessionUnsubRef = useRef(null);
+const exclusiveSessionLogoutInFlightRef = useRef(false);
 
 const handleGlobalTouchStart = (e) => {
   if (!e.touches || e.touches.length === 0) return;
@@ -2166,6 +2207,76 @@ const handleTouchEnd = () => {
 
 
 
+      const getExclusiveSessionDocRef = (userId) => doc(db, 'artifacts', APP_ID, 'users', userId, 'authState', EXCLUSIVE_SESSION_DOC_ID);
+
+      const stopExclusiveSessionWatch = () => {
+        try {
+          if (exclusiveSessionUnsubRef.current) exclusiveSessionUnsubRef.current();
+        } catch (_) {}
+        exclusiveSessionUnsubRef.current = null;
+      };
+
+      const activateExclusiveSession = async (authUser, preferredSessionId = null) => {
+        if (!authUser?.uid) return '';
+        const sessionId = preferredSessionId || getLocalExclusiveSessionId() || createOpaqueSessionId();
+        const payload = {
+          activeSessionId: sessionId,
+          activeDeviceId: getOrCreateDeviceId(),
+          activeUid: authUser.uid,
+          changedAt: Date.now(),
+          lastLoginAt: Date.now(),
+        };
+        setLocalExclusiveSessionId(sessionId);
+        await setDoc(getExclusiveSessionDocRef(authUser.uid), payload, { merge: true });
+        return sessionId;
+      };
+
+      const releaseExclusiveSession = async (authUser) => {
+        const localSessionId = getLocalExclusiveSessionId();
+        clearLocalExclusiveSessionId();
+        if (!authUser?.uid || !localSessionId) return;
+        try {
+          await runTransaction(db, async (tx) => {
+            const sessionRef = getExclusiveSessionDocRef(authUser.uid);
+            const snap = await tx.get(sessionRef);
+            if (!snap.exists()) return;
+            const data = snap.data() || {};
+            if (data.activeSessionId !== localSessionId) return;
+            tx.set(sessionRef, {
+              activeSessionId: null,
+              activeDeviceId: null,
+              changedAt: Date.now(),
+              lastLogoutAt: Date.now(),
+            }, { merge: true });
+          });
+        } catch (error) {
+          console.warn('[Auth] exclusive session release failed', error);
+        }
+      };
+
+      const startExclusiveSessionWatch = (authUser) => {
+        stopExclusiveSessionWatch();
+        if (!authUser?.uid) return;
+        const sessionRef = getExclusiveSessionDocRef(authUser.uid);
+        exclusiveSessionUnsubRef.current = onSnapshot(sessionRef, async (snap) => {
+          const remote = snap.data() || {};
+          const localSessionId = getLocalExclusiveSessionId();
+          if (!localSessionId || !remote?.activeSessionId) return;
+          if (remote.activeSessionId === localSessionId) return;
+          if (exclusiveSessionLogoutInFlightRef.current) return;
+          exclusiveSessionLogoutInFlightRef.current = true;
+          stopExclusiveSessionWatch();
+          clearLocalExclusiveSessionId();
+          try {
+            await signOut(auth);
+          } catch (_) {}
+          exclusiveSessionLogoutInFlightRef.current = false;
+          try { showToast('Du wurdest abgemeldet, weil dein Konto auf einem anderen Gerät angemeldet wurde.'); } catch (_) {}
+        }, (error) => {
+          console.warn('[Auth] exclusive session watch failed', error);
+        });
+      };
+
       useEffect(() => {
         const dayKey = new Date().toISOString().split('T')[0];
         // Optionaler Override (User klickt "Neuer Spruch")
@@ -2192,24 +2303,34 @@ const handleTouchEnd = () => {
 
         
 const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+  stopExclusiveSessionWatch();
   setUser(currentUser);
   setIsLoggedIn(!!currentUser);
   setIsAppReady(true);
 
   if (currentUser) {
     setCurrentView('dashboard');
-    // Profil immer sicherstellen (nach Reset/neu)
     (async () => {
+      try {
+        await activateExclusiveSession(currentUser);
+      } catch (error) {
+        console.warn('[Auth] exclusive session activation failed', error);
+      }
+      startExclusiveSessionWatch(currentUser);
       await ensureProfileAfterAuth(currentUser);
       try { ensureWebPushToken(currentUser, { forcePrompt: false }); } catch(_) {}
     })();
   } else {
+    exclusiveSessionLogoutInFlightRef.current = false;
     setEvents([]); setUserProfile(null); setMyChats([]); setCustomCalendars([]); setIncomingFriendRequestDocs([]); setOutgoingFriendRequestDocs([]);
     setCurrentView('dashboard');
   }
 });
 
-        return () => unsubscribeAuth();
+        return () => {
+          stopExclusiveSessionWatch();
+          unsubscribeAuth();
+        };
       }, []);
 
       // --- PRESENCE (online/offline + last seen) ---
@@ -4762,6 +4883,12 @@ const handleAuth = async (e) => {
     }
 
     await ensureProfileAfterAuth(signedInUser, { fullName: String(fullName||'').trim(), isRegistering });
+    try {
+      await activateExclusiveSession(signedInUser);
+      startExclusiveSessionWatch(signedInUser);
+    } catch (sessionError) {
+      console.warn('[Auth] immediate exclusive session activation failed', sessionError);
+    }
   } catch (error) {
     console.error("AUTH_ERROR", error);
 
@@ -4792,6 +4919,9 @@ const handleAuth = async (e) => {
 
       const handleLogout = async () => {
         try {
+          const currentAuthUser = auth.currentUser || user;
+          stopExclusiveSessionWatch();
+          await releaseExclusiveSession(currentAuthUser);
           await signOut(auth);
           showToast("Abgemeldet");
           setEmail(''); setPassword('');

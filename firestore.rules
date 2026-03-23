@@ -107,6 +107,20 @@ service cloud.firestore {
       }
 
       // ----------------
+      // Exclusive login session state (private)
+      // ----------------
+      match /users/{userId}/authState/{docId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
+
+      // ----------------
+      // Work sessions (private)
+      // ----------------
+      match /users/{userId}/workSessions/{sessionId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
+
+      // ----------------
       // Booking Requests Inbox
       // ----------------
       match /users/{userId}/bookingRequests/{reqId} {

@@ -1,0 +1,13 @@
+Einstellungs-Fix (Android / mobile)
+
+Behoben:
+- Tastatur schliesst sich nicht mehr sofort beim Tippen in Einstellungen
+- Native Selects / Dropdowns gehen nicht mehr direkt wieder zu
+
+Technisch umgesetzt:
+- Mobile Viewport-/App-Height-Logik robuster gemacht
+- Resize-Shrinks werden kurz nach Interaktion mit Inputs/Selects/Buttons ignoriert
+- Dadurch verliert Android beim Oeffnen von Tastatur oder Picker den Fokus nicht mehr
+
+Datei mit Hauptaenderung:
+- src/App.jsx

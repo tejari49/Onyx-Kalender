@@ -326,17 +326,89 @@ window.isGroupChat = window.isGroupChat || function(chat) {
 function AmoledCalendarApp() {
   
 
-      // Fix: keep app height in sync (prevents white area at bottom in some browsers)
+      // Fix: keep app height in sync without collapsing focused controls on mobile.
       useEffect(() => {
-        const setAppHeight = () => {
-          document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
+        let lastAppliedHeight = 0;
+        let interactiveResizeLockUntil = 0;
+        let postInteractionUpdateTimer = null;
+
+        const INTERACTIVE_RESIZE_LOCK_MS = 1400;
+        const isEditableElement = (el) => {
+          try {
+            if (!el || typeof el?.matches !== 'function') return false;
+            return el.matches('input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"]');
+          } catch (_) {
+            return false;
+          }
         };
+        const isViewportSensitiveTarget = (target) => {
+          try {
+            if (!target || typeof target?.closest !== 'function') return false;
+            return !!target.closest('input, textarea, select, button, summary, [role="button"], [contenteditable="true"], [contenteditable="plaintext-only"], [data-viewport-lock="true"]');
+          } catch (_) {
+            return false;
+          }
+        };
+        const armInteractiveResizeLock = (target) => {
+          if (!isViewportSensitiveTarget(target)) return;
+          interactiveResizeLockUntil = Date.now() + INTERACTIVE_RESIZE_LOCK_MS;
+          if (postInteractionUpdateTimer) clearTimeout(postInteractionUpdateTimer);
+          postInteractionUpdateTimer = setTimeout(() => {
+            postInteractionUpdateTimer = null;
+            setAppHeight();
+          }, INTERACTIVE_RESIZE_LOCK_MS + 120);
+        };
+        const setAppHeight = () => {
+          const nextHeight = Math.round(window.visualViewport?.height || window.innerHeight || 0);
+          if (!nextHeight) return;
+
+          const activeEl = document.activeElement;
+          const isShrink = lastAppliedHeight > 0 && nextHeight < (lastAppliedHeight - 120);
+          const lockActive = Date.now() < interactiveResizeLockUntil;
+          const keyboardLikelyOpen = isShrink && (isEditableElement(activeEl) || lockActive);
+
+          // Mobile keyboards and native pickers trigger resize events. If we shrink the fixed
+          // app shell during or right after an interaction, inputs can instantly lose focus
+          // and selects/dropdowns may dismiss themselves.
+          if (keyboardLikelyOpen) return;
+
+          lastAppliedHeight = nextHeight;
+          document.documentElement.style.setProperty('--app-height', `${nextHeight}px`);
+        };
+        const handleInteraction = (event) => {
+          armInteractiveResizeLock(event?.target);
+        };
+        const handleFocusOut = () => {
+          if (postInteractionUpdateTimer) clearTimeout(postInteractionUpdateTimer);
+          postInteractionUpdateTimer = setTimeout(() => {
+            postInteractionUpdateTimer = null;
+            setAppHeight();
+          }, 220);
+        };
+
         setAppHeight();
         window.addEventListener('resize', setAppHeight);
         window.addEventListener('orientationchange', setAppHeight);
+        window.addEventListener('pageshow', setAppHeight);
+        document.addEventListener('visibilitychange', setAppHeight);
+        document.addEventListener('pointerdown', handleInteraction, true);
+        document.addEventListener('touchstart', handleInteraction, { passive: true, capture: true });
+        document.addEventListener('focusin', handleInteraction, true);
+        document.addEventListener('focusout', handleFocusOut, true);
+        window.visualViewport?.addEventListener('resize', setAppHeight);
+        window.visualViewport?.addEventListener('scroll', setAppHeight);
         return () => {
+          if (postInteractionUpdateTimer) clearTimeout(postInteractionUpdateTimer);
           window.removeEventListener('resize', setAppHeight);
           window.removeEventListener('orientationchange', setAppHeight);
+          window.removeEventListener('pageshow', setAppHeight);
+          document.removeEventListener('visibilitychange', setAppHeight);
+          document.removeEventListener('pointerdown', handleInteraction, true);
+          document.removeEventListener('touchstart', handleInteraction, true);
+          document.removeEventListener('focusin', handleInteraction, true);
+          document.removeEventListener('focusout', handleFocusOut, true);
+          window.visualViewport?.removeEventListener('resize', setAppHeight);
+          window.visualViewport?.removeEventListener('scroll', setAppHeight);
         };
       }, []);
 

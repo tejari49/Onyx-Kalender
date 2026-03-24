@@ -1,0 +1,24 @@
+Booking + Push Fix
+==================
+
+Enthaltene Korrekturen:
+- Booking-Link wird jetzt per direktem Aktivieren/Deaktivieren-Button sofort in Firestore gespeichert.
+- Booking-Profil wird live per onSnapshot gelesen, damit der Aktiv-Status nicht sofort zurückspringt.
+- Öffentlicher Link ist nach Aktivierung direkt sichtbar und kopierbar.
+- Dauer-Auswahl im Booking-Bereich ohne Dropdown.
+- Cloud Function für den Server-Push-Test bevorzugt jetzt den frisch mitgesendeten Token aus dem Test-Dokument.
+- Falls der Profil-Token veraltet ist, wird automatisch ein alternativer gültiger Token versucht.
+- Nach erfolgreichem Versand wird der funktionierende Token zurück ins Profil geschrieben.
+
+Wichtig für den Push-Fix:
+- Für den FCM-Servertest muss zusätzlich die aktualisierte Cloud Function deployt werden,
+  nicht nur das Frontend.
+- Relevante Datei: functions/index.js
+
+Empfohlenes Deploy:
+1. Frontend neu deployen
+2. Firestore Rules deployen (falls ohnehin Standardprozess)
+3. Functions deployen
+
+Beispiel:
+- firebase deploy --only hosting,firestore:rules,functions

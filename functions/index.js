@@ -136,9 +136,12 @@ exports.sendPushTestOnCreate = onDocumentCreated(
       const profileSnap = await profileRef.get();
       const tokenFromProfile = profileSnap.exists ? (profileSnap.get("fcmTokenWeb") || profileSnap.get("fcmToken")) : null;
       const tokenFromTestDoc = data && (data.fcmTokenWeb || data.fcmToken) ? (data.fcmTokenWeb || data.fcmToken) : null;
-      const token = String(tokenFromProfile || tokenFromTestDoc || "").trim();
+      const tokenCandidates = Array.from(new Set([
+        String(tokenFromTestDoc || '').trim(),
+        String(tokenFromProfile || '').trim(),
+      ].filter(Boolean)));
 
-      if (!token) {
+      if (!tokenCandidates.length) {
         await testRef.set(
           { status: "error", lastError: "NO_FCM_TOKEN_IN_PROFILE_OR_TESTDOC", updatedAt: Date.now() },
           { merge: true }
@@ -146,7 +149,8 @@ exports.sendPushTestOnCreate = onDocumentCreated(
         return;
       }
 
-      const baseMessage = {
+      const hasLink = isValidHttpsUrl(APP_LINK);
+      const buildBaseMessage = (token) => ({
         token,
         notification: {
           title: "Onyx Test",
@@ -159,37 +163,72 @@ exports.sendPushTestOnCreate = onDocumentCreated(
           title: "Onyx Test",
           body: "Server-Push funktioniert",
         },
-      };
-
-      const hasLink = isValidHttpsUrl(APP_LINK);
-      const firstTryMessage = hasLink ? {
-        ...baseMessage,
-        webpush: {
-          fcmOptions: { link: APP_LINK },
-          headers: { Urgency: "high" },
-        },
-      } : {
-        ...baseMessage,
-        webpush: {
-          headers: { Urgency: "high" },
-        },
-      };
+      });
 
       let msgId = "";
-      try {
-        msgId = await admin.messaging().send(firstTryMessage);
-      } catch (sendErr) {
-        const sendCode = String(sendErr?.code || "");
-        const sendMsg = String(sendErr?.message || sendErr || "");
-        const isInternal = sendCode.includes("messaging/internal-error") || sendMsg.includes("messaging/internal-error");
-        if (!isInternal) throw sendErr;
+      let usedToken = "";
+      let lastError = null;
 
-        // Fallback für sporadische FCM/Internal-Errors: ohne webpush-Optionen erneut senden.
-        msgId = await admin.messaging().send(baseMessage);
+      for (const token of tokenCandidates) {
+        const baseMessage = buildBaseMessage(token);
+        const firstTryMessage = hasLink ? {
+          ...baseMessage,
+          webpush: {
+            fcmOptions: { link: APP_LINK },
+            headers: { Urgency: "high" },
+          },
+        } : {
+          ...baseMessage,
+          webpush: {
+            headers: { Urgency: "high" },
+          },
+        };
+
+        try {
+          try {
+            msgId = await admin.messaging().send(firstTryMessage);
+          } catch (sendErr) {
+            const sendCode = String(sendErr?.code || "");
+            const sendMsg = String(sendErr?.message || sendErr || "");
+            const isInternal = sendCode.includes("messaging/internal-error") || sendMsg.includes("messaging/internal-error");
+            if (!isInternal) throw sendErr;
+
+            // Fallback für sporadische FCM/Internal-Errors: ohne webpush-Optionen erneut senden.
+            msgId = await admin.messaging().send(baseMessage);
+          }
+          usedToken = token;
+          break;
+        } catch (sendErr) {
+          lastError = sendErr;
+          const sendCode = String(sendErr?.code || sendErr?.errorInfo?.code || '').toLowerCase();
+          const sendMsg = String(sendErr?.message || sendErr || '').toLowerCase();
+          const isStaleToken = sendCode.includes('registration-token-not-registered') || sendCode.includes('invalid-registration-token') || sendMsg.includes('registration-token-not-registered');
+          const hasMoreCandidates = token !== tokenCandidates[tokenCandidates.length - 1];
+          if (isStaleToken && hasMoreCandidates) {
+            continue;
+          }
+          throw sendErr;
+        }
+      }
+
+      if (!msgId) throw (lastError || new Error('FCM_SEND_FAILED'));
+
+      if (usedToken && usedToken !== String(tokenFromProfile || '').trim()) {
+        await profileRef.set({
+          fcmTokenWeb: usedToken,
+          fcmToken: '',
+          fcmTokensWeb: [usedToken],
+          fcmTokens: [],
+          lastWebTokenAt: Date.now(),
+          lastTokenRefreshAt: Date.now(),
+          pushTarget: 'web',
+          pushTokenClearReason: '',
+          updatedAt: Date.now(),
+        }, { merge: true });
       }
 
       await testRef.set(
-        { status: "sent", fcmMessageId: msgId, updatedAt: Date.now() },
+        { status: "sent", fcmMessageId: msgId, usedTokenSource: usedToken === String(tokenFromTestDoc || '').trim() ? 'testDoc' : 'profile', updatedAt: Date.now() },
         { merge: true }
       );
     } catch (e) {

@@ -9066,7 +9066,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                  <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider mb-4 border-b border-neutral-800 pb-2 flex items-center gap-2">
                    <CalendarPlus className="w-4 h-4" /> Guest Booking Hub
                  </h3>
-                 <BookingHostManager user={user} userProfile={userProfile} db={db} APP_ID={APP_ID} events={events} />
+                 <BookingHostManager user={user} userProfile={userProfile} db={db} APP_ID={APP_ID} events={events} showToast={showToast} />
                </section>
             </AccordionItem>
 
@@ -12340,28 +12340,55 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
 
 // --- BOOKING HOST MANAGER ---
-function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
-  const [bProfile, setBProfile] = React.useState(null);
+function BookingHostManager({ user, userProfile, db, APP_ID, events, showToast }) {
+  const defaultSchedule = React.useMemo(() => ({
+    mon: { active: true, start: '09:00', end: '17:00' },
+    tue: { active: true, start: '09:00', end: '17:00' },
+    wed: { active: true, start: '09:00', end: '17:00' },
+    thu: { active: true, start: '09:00', end: '17:00' },
+    fri: { active: true, start: '09:00', end: '17:00' },
+  }), []);
+  const buildDefaultProfile = React.useCallback(() => ({
+    uid: user?.uid || '',
+    isActive: false,
+    title: userProfile?.displayName || 'Termin buchen',
+    duration: 30,
+    schedule: defaultSchedule,
+  }), [defaultSchedule, user?.uid, userProfile?.displayName]);
+
+  const [bProfile, setBProfile] = React.useState(() => buildDefaultProfile());
   const [bLoading, setBLoading] = React.useState(true);
+  const [bSaving, setBSaving] = React.useState(false);
   const [requests, setRequests] = React.useState([]);
-  
+
   const code = userProfile?.friendCode;
-  
 
   React.useEffect(() => {
-    if (!code) { setBLoading(false); return; }
-    getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code)).then(snap => {
-      if (snap.exists()) setBProfile(snap.data());
-      else setBProfile({ uid: user?.uid, isActive: false, title: userProfile?.displayName || 'Termin buchen', duration: 30, schedule: { mon:{active:true,start:'09:00',end:'17:00'}, tue:{active:true,start:'09:00',end:'17:00'}, wed:{active:true,start:'09:00',end:'17:00'}, thu:{active:true,start:'09:00',end:'17:00'}, fri:{active:true,start:'09:00',end:'17:00'} } });
+    if (!code) {
+      setBProfile(buildDefaultProfile());
+      setBLoading(false);
+      return undefined;
+    }
+
+    const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code);
+    const unsubscribe = onSnapshot(profileRef, (snap) => {
+      if (snap.exists()) setBProfile({ ...buildDefaultProfile(), ...snap.data() });
+      else setBProfile(buildDefaultProfile());
+      setBLoading(false);
+    }, (error) => {
+      console.warn('[Booking] profile snapshot failed', error?.message || error);
+      setBProfile(buildDefaultProfile());
       setBLoading(false);
     });
-  }, [code, db, APP_ID, user, userProfile]);
+
+    return () => unsubscribe();
+  }, [code, db, APP_ID, buildDefaultProfile]);
 
   React.useEffect(() => {
     if (!user?.uid) return;
     const q = query(collection(db, `artifacts/${APP_ID}/users/${user.uid}/bookingRequests`), where('status', '==', 'pending'));
     return onSnapshot(q, snap => {
-      setRequests(snap.docs.map(d => ({id: d.id, ...d.data()})));
+      setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
   }, [user?.uid, db, APP_ID]);
 
@@ -12373,42 +12400,93 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
     return `${window.location.origin}${normalizedBase}?book=${encodeURIComponent(safeCode)}`;
   }, [code]);
 
-  const save = async () => {
-    if (!code) return;
-    const busyEvents = (events || []).map(e => ({ startMs: e.startMs, endMs: e.endMs, isAllDay: e.isAllDay === true }));
-    const toSave = {
-      ...bProfile,
-      uid: user?.uid || bProfile?.uid || '',
+  const persistBookingProfile = React.useCallback(async (nextProfile, opts = {}) => {
+    if (!code) return false;
+
+    const busyEvents = (events || []).map((e) => ({
+      startMs: e.startMs,
+      endMs: e.endMs,
+      isAllDay: e.isAllDay === true,
+    }));
+
+    const prepared = {
+      ...buildDefaultProfile(),
+      ...(nextProfile || {}),
+      uid: user?.uid || nextProfile?.uid || '',
       code,
-      title: (bProfile?.title || userProfile?.displayName || 'Termin buchen').trim(),
-      duration: Number(bProfile?.duration || 30) || 30,
+      title: String((nextProfile?.title || userProfile?.displayName || 'Termin buchen')).trim() || 'Termin buchen',
+      duration: Number(nextProfile?.duration || 30) || 30,
       appTheme: userProfile?.appTheme || 'obsidian',
       appBg: userProfile?.appBg || 'none',
       busyEvents,
       updatedAt: Date.now(),
     };
-    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code), toSave, { merge: true });
-    setBProfile(prev => ({ ...(prev || {}), ...toSave }));
-    alert('Booking-Profil gespeichert!');
+
+    setBSaving(true);
+    try {
+      await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'bookingProfiles', code), prepared, { merge: true });
+      setBProfile((prev) => ({ ...buildDefaultProfile(), ...(prev || {}), ...prepared }));
+      if (opts.successMessage) {
+        if (typeof showToast === 'function') showToast(opts.successMessage);
+        else alert(opts.successMessage);
+      }
+      return true;
+    } catch (error) {
+      console.warn('[Booking] save failed', error?.message || error);
+      if (typeof showToast === 'function') showToast('Booking-Link konnte nicht gespeichert werden');
+      else alert('Booking-Link konnte nicht gespeichert werden');
+      return false;
+    } finally {
+      setBSaving(false);
+    }
+  }, [code, events, buildDefaultProfile, user?.uid, userProfile?.displayName, userProfile?.appTheme, userProfile?.appBg, db, APP_ID, showToast]);
+
+  const save = async () => {
+    if (!bProfile) return;
+    await persistBookingProfile(bProfile, { successMessage: 'Booking-Profil gespeichert!' });
   };
 
-  const copyLink = () => {
+  const togglePublicBooking = async () => {
+    const currentProfile = { ...buildDefaultProfile(), ...(bProfile || {}) };
+    const nextProfile = { ...currentProfile, isActive: !Boolean(currentProfile.isActive) };
+    setBProfile(nextProfile);
+    const ok = await persistBookingProfile(nextProfile, {
+      successMessage: nextProfile.isActive ? 'Booking-Link aktiviert' : 'Booking-Link deaktiviert',
+    });
+    if (!ok) setBProfile(currentProfile);
+  };
+
+  const selectDuration = (minutes) => {
+    setBProfile((prev) => ({
+      ...buildDefaultProfile(),
+      ...(prev || {}),
+      duration: Number(minutes) || 30,
+    }));
+  };
+
+  const copyLink = async () => {
     const url = getBookingPublicUrl(code);
     if (!url) return;
-    navigator.clipboard.writeText(url);
-    alert('Link kopiert!');
+    try {
+      await navigator.clipboard.writeText(url);
+      if (typeof showToast === 'function') showToast('Link kopiert!');
+      else alert('Link kopiert!');
+    } catch (_) {
+      if (typeof showToast === 'function') showToast('Link konnte nicht kopiert werden');
+      else alert('Link konnte nicht kopiert werden');
+    }
   };
 
   const accept = async (req) => {
     if (!confirm('Buchung annehmen und Kalendereintrag erstellen?')) return;
     await addDoc(collection(db, `artifacts/${APP_ID}/users/${user.uid}/events`), {
-       title: `Meeting mit ${req.guestName}`,
-       date: new Date(req.startMs).toISOString().split('T')[0],
-       time: new Date(req.startMs).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
-       durationMinutes: req.duration,
-       desc: req.guestNote || '',
-       type: 'Booking',
-       createdAt: serverTimestamp()
+      title: `Meeting mit ${req.guestName}`,
+      date: new Date(req.startMs).toISOString().split('T')[0],
+      time: new Date(req.startMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      durationMinutes: req.duration,
+      desc: req.guestNote || '',
+      type: 'Booking',
+      createdAt: serverTimestamp(),
     });
     await updateDoc(doc(db, `artifacts/${APP_ID}/users/${user.uid}/bookingRequests`, req.id), { status: 'accepted' });
   };
@@ -12421,66 +12499,118 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events }) {
   if (bLoading) return <div className="text-neutral-500">Lade...</div>;
   if (!code) return <div className="text-neutral-500 p-4 bg-black border border-neutral-800 rounded-xl">Kein Profil-Code gefunden.</div>;
 
+  const active = Boolean(bProfile?.isActive);
+  const bookingUrl = getBookingPublicUrl(code);
+
   return (
     <div className="space-y-6 animate-fade-in">
-      
       {requests.length > 0 && (
-         <div className="bg-emerald-900/20 border border-emerald-900/50 rounded-2xl p-5 mb-6">
-            <h3 className="text-emerald-400 font-bold flex items-center gap-2 mb-4">
-               <CalendarPlus className="w-5 h-5" /> 
-               {requests.length} Neue Buchungsanfragen
-            </h3>
-            <div className="space-y-3">
-               {requests.map(r => (
-                  <div key={r.id} className="bg-black/60 border border-emerald-900/40 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
-                     <div>
-                        <div className="text-white font-medium text-lg">{r.guestName}</div>
-                        <div className="text-sm text-neutral-300 mt-1">
-                           {new Date(r.startMs).toLocaleDateString()} um {new Date(r.startMs).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} Uhr ({r.duration} Min)
-                        </div>
-                        {r.guestNote && <div className="text-sm text-neutral-400 mt-2 italic bg-neutral-900/50 p-2 rounded-lg">"{r.guestNote}"</div>}
-                     </div>
-                     <div className="flex items-center gap-2 shrink-0">
-                        <button onClick={() => accept(r)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Zusagen</button>
-                        <button onClick={() => decline(r)} className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-sm transition">Absagen</button>
-                     </div>
+        <div className="bg-emerald-900/20 border border-emerald-900/50 rounded-2xl p-5 mb-6">
+          <h3 className="text-emerald-400 font-bold flex items-center gap-2 mb-4">
+            <CalendarPlus className="w-5 h-5" />
+            {requests.length} Neue Buchungsanfragen
+          </h3>
+          <div className="space-y-3">
+            {requests.map((r) => (
+              <div key={r.id} className="bg-black/60 border border-emerald-900/40 rounded-xl p-4 flex flex-col md:flex-row justify-between gap-4">
+                <div>
+                  <div className="text-white font-medium text-lg">{r.guestName}</div>
+                  <div className="text-sm text-neutral-300 mt-1">
+                    {new Date(r.startMs).toLocaleDateString()} um {new Date(r.startMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} Uhr ({r.duration} Min)
                   </div>
-               ))}
-            </div>
-         </div>
+                  {r.guestNote && <div className="text-sm text-neutral-400 mt-2 italic bg-neutral-900/50 p-2 rounded-lg">"{r.guestNote}"</div>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => accept(r)} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Zusagen</button>
+                  <button onClick={() => decline(r)} className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-sm transition">Absagen</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
-      <div className="flex items-center justify-between bg-black border border-neutral-800 p-5 rounded-2xl">
-        <div>
-          <div className="text-white font-medium text-base">Öffentlichen Link aktivieren</div>
-          <div className="text-xs text-neutral-500 mt-1">Gäste können über einen Link freie Zeitslots buchen.</div>
+      <div className="bg-black border border-neutral-800 p-5 rounded-2xl space-y-4">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <div className="text-white font-medium text-base">Öffentlichen Link verwalten</div>
+            <div className="text-xs text-neutral-500 mt-1">
+              {active
+                ? 'Aktiv. Gäste können freie Slots sehen und direkt über deinen Booking-Link buchen.'
+                : 'Inaktiv. Aktiviere den Link, damit Gäste deinen öffentlichen Buchungslink sehen und teilen können.'}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className={`px-3 py-2 rounded-xl text-xs font-semibold border ${active ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-neutral-700 bg-neutral-900 text-neutral-300'}`}>
+              {active ? 'Aktiv' : 'Inaktiv'}
+            </div>
+            <button
+              type="button"
+              onClick={togglePublicBooking}
+              disabled={bSaving}
+              className={`px-4 py-3 rounded-xl text-sm font-semibold transition ${active ? 'bg-neutral-900 border border-neutral-700 text-white hover:bg-neutral-800' : 'bg-white text-black hover:bg-neutral-200'} disabled:opacity-60 disabled:cursor-not-allowed`}
+            >
+              {bSaving ? 'Speichert…' : active ? 'Link deaktivieren' : 'Link aktivieren'}
+            </button>
+            {active && (
+              <button type="button" onClick={copyLink} className="px-4 py-3 rounded-xl text-sm font-semibold border border-neutral-700 bg-neutral-900 text-white hover:bg-neutral-800 transition">
+                Link kopieren
+              </button>
+            )}
+          </div>
         </div>
-        <input type="checkbox" checked={bProfile.isActive} onChange={e => setBProfile({...bProfile, isActive: e.target.checked})} className="w-6 h-6 accent-emerald-500" />
+
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-950/70 p-4">
+          <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-2">Öffentlicher Booking-Link</div>
+          <div className={`font-mono text-sm break-all rounded-xl border px-4 py-3 ${active ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-neutral-800 bg-black text-neutral-500'}`}>
+            {active ? bookingUrl : 'Link aktuell deaktiviert. Aktiviere ihn, damit die URL sichtbar und teilbar wird.'}
+          </div>
+        </div>
       </div>
 
-      {bProfile.isActive && (
+      {active ? (
         <div className="bg-black border border-neutral-800 p-6 rounded-2xl space-y-5">
           <div>
-             <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Dein Kalender Link</label>
-             <div className="flex items-center gap-2 mt-2">
-               <div className="flex-1 bg-neutral-900 border border-neutral-800 text-emerald-400 font-mono text-sm px-4 py-3 rounded-xl truncate select-all">{getBookingPublicUrl(code)}</div>
-               <button onClick={copyLink} className="p-3 bg-neutral-800 text-white rounded-xl hover:bg-neutral-700 transition"><CalendarPlus className="w-5 h-5" /></button>
-             </div>
+            <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Seitentitel</label>
+            <input
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white mt-2 focus:border-neutral-500 outline-none"
+              value={bProfile?.title || ''}
+              onChange={(e) => setBProfile((prev) => ({ ...buildDefaultProfile(), ...(prev || {}), title: e.target.value }))}
+              placeholder="z.B. Termin buchen"
+            />
           </div>
+
           <div>
-             <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Seitentitel</label>
-             <input className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white mt-2 focus:border-neutral-500 outline-none" value={bProfile.title} onChange={e => setBProfile({...bProfile, title: e.target.value})} placeholder="z.B. Termin buchen" />
+            <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Standard-Dauer</label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+              {[15, 30, 45, 60].map((minutes) => {
+                const selected = Number(bProfile?.duration || 30) === minutes;
+                return (
+                  <button
+                    key={minutes}
+                    type="button"
+                    onClick={() => selectDuration(minutes)}
+                    className={`rounded-xl border px-4 py-3 text-sm font-medium transition ${selected ? 'border-white bg-white text-black' : 'border-neutral-800 bg-neutral-900 text-white hover:bg-neutral-800'}`}
+                  >
+                    {minutes} Min
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div>
-             <label className="text-xs text-neutral-500 uppercase tracking-widest font-semibold">Standard-Dauer (Minuten)</label>
-             <select className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white mt-2 focus:border-neutral-500 outline-none" value={bProfile.duration} onChange={e => setBProfile({...bProfile, duration: Number(e.target.value)})}>
-                <option value={15}>15 Min</option>
-                <option value={30}>30 Min</option>
-                <option value={45}>45 Min</option>
-                <option value={60}>60 Min</option>
-             </select>
-          </div>
-          <button onClick={save} className="w-full bg-white text-black py-3.5 rounded-xl text-sm font-semibold hover:bg-gray-200 transition">Einstellungen speichern</button>
+
+          <button
+            type="button"
+            onClick={save}
+            disabled={bSaving}
+            className="w-full bg-white text-black py-3.5 rounded-xl text-sm font-semibold hover:bg-gray-200 transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {bSaving ? 'Speichert…' : 'Booking-Einstellungen speichern'}
+          </button>
+        </div>
+      ) : (
+        <div className="bg-black border border-dashed border-neutral-800 p-5 rounded-2xl text-sm text-neutral-400">
+          Der öffentliche Booking-Link ist aktuell deaktiviert. Mit „Link aktivieren“ wird der Status sofort gespeichert, und danach ist der Link direkt sichtbar und teilbar.
         </div>
       )}
     </div>

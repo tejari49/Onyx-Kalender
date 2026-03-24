@@ -1,0 +1,20 @@
+GitHub-Deploy fuer Firebase Backend
+
+Diese Version enthaelt eine GitHub-Action unter:
+.github/workflows/firebase-backend-deploy.yml
+
+Sie deployed bei Push auf main automatisch:
+- Cloud Functions
+- firestore.rules
+
+Noetige GitHub Secrets:
+- FIREBASE_PROJECT_ID
+- FIREBASE_SERVICE_ACCOUNT
+
+FIREBASE_SERVICE_ACCOUNT = kompletter JSON-Inhalt eines Service-Accounts mit passenden Rechten.
+
+Empfohlen fuer dieses Projekt:
+- Cloud Functions Developer
+- Firebase Rules Admin
+- Service Account User
+- ggf. Secret Manager Viewer / Cloud Scheduler Admin, falls spaeter benoetigt

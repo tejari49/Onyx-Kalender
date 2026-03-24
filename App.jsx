@@ -8009,33 +8009,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   </div>
                 </div>
 
-                {compactHomeWorkClock && (
-                  <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      <div className="border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
-                        <div className="flex flex-col gap-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-2">Stempeluhr</div>
-                              <div className="text-lg md:text-xl font-semibold text-white flex items-center gap-2"><Timer className="w-5 h-5" /> {workClockActive?.startedAt ? formatDurationCompact(activeWorkMs) : formatDurationCompact(todayWorkMs)}</div>
-                              <div className="mt-2 text-sm text-neutral-400">{workClockActive?.startedAt ? (workClockActive?.isPaused ? 'Pause aktiv' : 'Läuft gerade') : `Heute ${formatDurationVerbose(todayWorkMs)}`}</div>
-                            </div>
-                            <button onClick={() => setCurrentView('extras')} className="px-3 py-2 rounded-xl border border-neutral-800 text-xs text-neutral-300 hover:border-neutral-500 transition-colors">Historie</button>
-                          </div>
-
-                          <div className="flex flex-wrap gap-2">
-                            {!workClockActive?.startedAt ? (
-                              <button onClick={startWorkClock} className="px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center gap-2"><Play className="w-4 h-4" /> Start</button>
-                            ) : (
-                              <>
-                                <button onClick={toggleWorkClockPause} className="px-3 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-xs font-semibold hover:border-neutral-500 transition-colors flex items-center gap-2">{workClockActive?.isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{workClockActive?.isPaused ? 'Pause fertig' : 'Pause'}</button>
-                                <button onClick={requestStopWorkClock} className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-900/40 text-red-200 text-xs font-semibold hover:bg-red-950/60 transition-colors flex items-center gap-2"><StopCircle className="w-4 h-4" /> Stopp</button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                  </div>
-                )}
+                {/* Stempeluhr bewusst nicht mehr auf der Startseite anzeigen. Zugriff bleibt über die untere Navigation bei Extras erhalten. */}
 
                 <div className="mb-6 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
                   <button

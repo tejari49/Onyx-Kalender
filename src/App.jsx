@@ -9688,15 +9688,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                         )}
                         <div className="flex flex-col">
                           <span className="font-medium text-white leading-tight">{getChatPartnerName(activeChat)}</span>
-                          {(activeChatData && getTypingUsers(activeChatData).length > 0) ? (
-                             <span className="text-[11px] text-green-400 animate-pulse font-medium">
-                               {isGroupChat(activeChatData) ? (getTypingUsers(activeChatData).length === 1 ? `${getProfile(getTypingUsers(activeChatData)[0])?.username || 'Jemand'} tippt...` : `${getTypingUsers(activeChatData).length} tippen...`) : 'tippt...'}
-                             </span>
-                          ) : (
-                             <span className="text-[11px] text-neutral-500">
-                               {isGroupChat(activeChatData) ? (() => { const ids = getChatParticipants(activeChatData); const onlineCount = ids.filter(id => getPresence(id).online).length; return `${onlineCount} online • ${ids.length} Mitglieder`; })() : (() => { const pr = getPresence(partnerId); if (pr.online) return 'online'; if (pr.lastSeen) return `zuletzt gesehen ${formatTime(pr.lastSeen)}`; return 'offline'; })()}
-                             </span>
-                          )}
+                          <span className="text-[11px] text-neutral-500">
+                            {isGroupChat(activeChatData) ? (() => { const ids = getChatParticipants(activeChatData); const onlineCount = ids.filter(id => getPresence(id).online).length; return `${onlineCount} online • ${ids.length} Mitglieder`; })() : (() => { const pr = getPresence(partnerId); if (pr.online) return 'online'; if (pr.lastSeen) return `zuletzt gesehen ${formatTime(pr.lastSeen)}`; return 'offline'; })()}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -10530,6 +10524,16 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                               </div>
                             </div>
                             <button onClick={() => { setReplyToMessage(null); }} className="hover:text-white shrink-0 ml-3"><X className="w-4 h-4"/></button>
+                          </div>
+                        )}
+
+                        {activeChatData && getTypingUsers(activeChatData).length > 0 && (
+                          <div className="mb-2 px-1 text-[11px] text-emerald-400 animate-pulse font-medium">
+                            {isGroupChat(activeChatData)
+                              ? (getTypingUsers(activeChatData).length === 1
+                                ? `${getProfile(getTypingUsers(activeChatData)[0])?.username || 'Jemand'} tippt...`
+                                : `${getTypingUsers(activeChatData).length} tippen...`)
+                              : 'tippt...'}
                           </div>
                         )}
 

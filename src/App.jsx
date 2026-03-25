@@ -413,6 +413,8 @@ function AmoledCalendarApp() {
       const [quickCaptureNoteInput, setQuickCaptureNoteInput] = useState('');
       const [quickCaptureNotes, setQuickCaptureNotes] = useState([]);
       const [homeNotesOpen, setHomeNotesOpen] = useState(false);
+      const [homeUpcomingOpen, setHomeUpcomingOpen] = useState(false);
+      const [showWhatsNewModal, setShowWhatsNewModal] = useState(false);
       const [editingQuickNoteId, setEditingQuickNoteId] = useState('');
       const [shoppingListModalOpen, setShoppingListModalOpen] = useState(false);
       const [shoppingDraftTitle, setShoppingDraftTitle] = useState('Neue Einkaufsliste');
@@ -660,12 +662,20 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
-      const selectedAppTheme = ((userProfile && userProfile?.appTheme) ? userProfile?.appTheme : (() => {
-        try { return localStorage.getItem('onyx_app_theme') || 'obsidian'; } catch (_) { return 'obsidian'; }
-      })());
-      const selectedAppBg = ((userProfile && userProfile?.appBg) ? userProfile?.appBg : (() => {
-        try { return localStorage.getItem('onyx_app_bg') || 'none'; } catch (_) { return 'none'; }
-      })());
+      const selectedAppTheme = (() => {
+        const validThemes = new Set(['obsidian', 'deepblack', 'midnight', 'gold', 'emerald']);
+        const rawTheme = (userProfile && userProfile?.appTheme) ? userProfile?.appTheme : (() => {
+          try { return localStorage.getItem('onyx_app_theme') || 'obsidian'; } catch (_) { return 'obsidian'; }
+        })();
+        return validThemes.has(rawTheme) ? rawTheme : 'obsidian';
+      })();
+      const selectedAppBg = (() => {
+        const validBgs = new Set(['none', 'glass-1', 'glass-2', 'glass-3', 'glass-emerald']);
+        const rawBg = (userProfile && userProfile?.appBg) ? userProfile?.appBg : (() => {
+          try { return localStorage.getItem('onyx_app_bg') || 'none'; } catch (_) { return 'none'; }
+        })();
+        return validBgs.has(rawBg) ? rawBg : 'none';
+      })();
 
       useEffect(() => {
         try {
@@ -700,6 +710,24 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
           localStorage.setItem('onyx_app_bg', bgValue);
         } catch (_) {}
       }, [uiTheme, selectedAppTheme, selectedAppBg]);
+
+      useEffect(() => {
+        if (!isLoggedIn || !user?.uid) return;
+        try {
+          const key = `onyx_whats_new_seen_v2_${user.uid}`;
+          const alreadySeen = localStorage.getItem(key) === '1';
+          if (!alreadySeen) setShowWhatsNewModal(true);
+        } catch (_) {
+          setShowWhatsNewModal(true);
+        }
+      }, [isLoggedIn, user?.uid]);
+
+      const closeWhatsNewModal = () => {
+        try {
+          if (user?.uid) localStorage.setItem(`onyx_whats_new_seen_v2_${user.uid}`, '1');
+        } catch (_) {}
+        setShowWhatsNewModal(false);
+      };
 
       const dashboardName = (userProfile && (userProfile?.displayName || userProfile?.username)) ? (userProfile?.displayName || userProfile?.username) : (user?.email ? user?.email.split('@')[0] : '');
       const shellGreeting = `Guten Morgen${dashboardName ? `, ${dashboardName}` : ''}.`;
@@ -7826,6 +7854,32 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       })();
       const nextEventLabel = nextTimedEvent ? (nextTimedEvent.event?.time ? `${nextTimedEvent.event.time} · ${nextTimedEvent.event.title || 'Termin'}` : (nextTimedEvent.event.title || 'Termin')) : 'Heute nichts mehr geplant';
       const weatherBadgeMeta = getWeatherBadgeMeta();
+      const nextUpcomingEvents = (() => {
+        const MAX_LOOKAHEAD_DAYS = 1825;
+        let lookaheadDays = 45;
+        let result = [];
+        while (lookaheadDays <= MAX_LOOKAHEAD_DAYS && result.length < 15) {
+          const endDate = addDaysStr(todayDateStr, lookaheadDays);
+          result = getOccurrencesInRange(todayDateStr, endDate)
+            .filter((ev) => {
+              if (!ev || ev.type === 'shift') return false;
+              if (!ev.date) return false;
+              const startMs = parseDateTimeLocalMs(ev.date, ev.time);
+              if (Number.isFinite(startMs)) return startMs >= nowMs;
+              return ev.date >= todayDateStr;
+            })
+            .sort((a, b) => {
+              const aMs = parseDateTimeLocalMs(a.date, a.time);
+              const bMs = parseDateTimeLocalMs(b.date, b.time);
+              const aFallback = Number.isFinite(aMs) ? aMs : parseDateTimeLocalMs(a.date, '00:00');
+              const bFallback = Number.isFinite(bMs) ? bMs : parseDateTimeLocalMs(b.date, '00:00');
+              return aFallback - bFallback;
+            })
+            .slice(0, 15);
+          lookaheadDays *= 2;
+        }
+        return result;
+      })();
 
       const activeWorkMs = getActiveWorkedMs(workClockActive, workClockTick);
       const todayWorkMs = workClockSessions.filter(s => s?.dateKey === todayDateStr).reduce((sum, s) => sum + Number(s?.workMs || 0), 0) + activeWorkMs;
@@ -8073,6 +8127,48 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       ))
                     ) : (<p className="text-neutral-500 text-sm italic p-4 text-center border border-dashed border-neutral-800 rounded-lg">Keine Termine für heute.</p>)}
                   </div>
+                </div>
+
+                <div className="mt-6 border border-neutral-800 rounded-2xl bg-neutral-950/40 p-4 md:p-5">
+                  <button
+                    type="button"
+                    onClick={() => setHomeUpcomingOpen((v) => !v)}
+                    className="w-full flex items-center justify-between gap-3"
+                  >
+                    <div className="text-left">
+                      <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-500">Nächste Termine</div>
+                      <div className="text-sm text-neutral-300 mt-1">{nextUpcomingEvents.length} von 15 geladen</div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform ${homeUpcomingOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {homeUpcomingOpen && (
+                    <div className="mt-3 space-y-2">
+                      {nextUpcomingEvents.length === 0 ? (
+                        <div className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-lg px-3 py-3">Keine kommenden Termine gefunden.</div>
+                      ) : nextUpcomingEvents.map((event) => {
+                        const dayDelta = Math.max(0, daysBetween(todayDateStr, event.date));
+                        const countdownLabel = dayDelta === 0 ? 'Heute' : (dayDelta === 1 ? 'In 1 Tag' : `In ${dayDelta} Tagen`);
+                        return (
+                          <button
+                            key={`${event._baseId || event.id}_${event._occurrenceDate || event.date}_${event.time || 'all-day'}`}
+                            type="button"
+                            onClick={() => openEditEventModal(event, event._occurrenceDate)}
+                            className="w-full border border-neutral-800 rounded-lg px-3 py-3 bg-black/70 text-left hover:border-neutral-500 transition-colors"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-sm text-white truncate">{event.title || 'Termin'}</div>
+                              <div className="text-[11px] text-emerald-400 whitespace-nowrap">{countdownLabel}</div>
+                            </div>
+                            <div className="mt-1 text-xs text-neutral-500 truncate">
+                              {new Date(`${event.date}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                              {event.time ? ` · ${event.time}` : ' · Ganztägig'}
+                              {event.type ? ` · ${event.type}` : ''}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -8768,9 +8864,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       { id: 'deepblack', name: 'Deep Black', desc: 'Echtes AMOLED-Schwarz mit maximalem Kontrast', preview: 'linear-gradient(135deg, #050505 0%, #010101 55%, #000000 100%)' },
       { id: 'midnight', name: 'Midnight Blue', desc: 'Sattes Nachtblau mit kühlem Glow', preview: 'linear-gradient(135deg, #0f2747 0%, #081224 55%, #010409 100%)' },
       { id: 'gold', name: 'Onyx Gold', desc: 'Warmes Schwarz mit kräftigem Goldton', preview: 'linear-gradient(135deg, #3a2507 0%, #181108 50%, #020100 100%)' },
+      { id: 'emerald', name: 'Onyx Emerald', desc: 'Onyx mit smaragdgrünem Akzent und tiefem Glow', preview: 'linear-gradient(135deg, #05261f 0%, #06130f 52%, #010504 100%)' },
     ];
     const APP_BG_OPTIONS = [
       { id: 'none', name: 'Mattes Schwarz', desc: 'Ruhiger Hintergrund ohne Farbglow', preview: 'linear-gradient(135deg, #121212 0%, #060606 60%, #000000 100%)' },
+      { id: 'glass-emerald', name: 'Emerald Mist', desc: 'Wie mattes Onyx, aber mit smaragdgrünem Schimmer', preview: 'radial-gradient(circle at 18% 16%, rgba(16,185,129,0.45) 0%, rgba(16,185,129,0) 34%), radial-gradient(circle at 82% 18%, rgba(5,150,105,0.35) 0%, rgba(5,150,105,0) 32%), linear-gradient(135deg, #0a1110 0%, #050908 60%, #000000 100%)' },
       { id: 'glass-1', name: 'Neon Blur', desc: 'Deutlich kräftiger Cyan-Violett-Glow', preview: 'radial-gradient(circle at 18% 20%, rgba(34,211,238,0.95) 0%, rgba(34,211,238,0) 34%), radial-gradient(circle at 82% 18%, rgba(168,85,247,0.9) 0%, rgba(168,85,247,0) 32%), linear-gradient(135deg, #0c1224 0%, #020409 100%)' },
       { id: 'glass-2', name: 'Gold Blur', desc: 'Kräftiger Goldschein mit warmem Ambient', preview: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.9) 0%, rgba(245,158,11,0) 38%), radial-gradient(circle at 82% 76%, rgba(251,191,36,0.75) 0%, rgba(251,191,36,0) 28%), linear-gradient(135deg, #1d1306 0%, #030100 100%)' },
       { id: 'glass-3', name: 'Ruby Blur', desc: 'Kräftige Rot- und Rubin-Akzente', preview: 'radial-gradient(circle at 18% 18%, rgba(244,63,94,0.9) 0%, rgba(244,63,94,0) 34%), radial-gradient(circle at 82% 18%, rgba(234,88,12,0.82) 0%, rgba(234,88,12,0) 30%), linear-gradient(135deg, #1b090d 0%, #030101 100%)' },
@@ -10901,6 +10999,39 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     Schließen
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {showWhatsNewModal && isLoggedIn && (
+            <div className="fixed inset-0 z-[96] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={closeWhatsNewModal}>
+              <div className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neutral-500">Neues in Onyx</p>
+                    <h3 className="text-lg font-medium text-white">Neu / Bearbeitet / Gefixt</h3>
+                  </div>
+                  <button type="button" onClick={closeWhatsNewModal} className="p-2 rounded-full hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors" title="Schließen">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="space-y-3 text-sm">
+                  <div className="border border-emerald-900/40 bg-emerald-900/10 rounded-xl p-3">
+                    <div className="text-emerald-300 font-medium">✅ Hinzugefügt</div>
+                    <p className="mt-1 text-neutral-300">„Nächste Termine“ als aufklappbare Liste (15 Termine) mit Countdown in Tagen.</p>
+                  </div>
+                  <div className="border border-neutral-800 bg-black rounded-xl p-3">
+                    <div className="text-white font-medium">🛠️ Bearbeitet</div>
+                    <p className="mt-1 text-neutral-400">Termin-Klick öffnet zuerst die Ansicht. Bearbeiten erfolgt gezielt über das Bleistift-Icon.</p>
+                  </div>
+                  <div className="border border-neutral-800 bg-black rounded-xl p-3">
+                    <div className="text-white font-medium">🎨 Gefixt/Erweitert</div>
+                    <p className="mt-1 text-neutral-400">Neues smaragdgrünes Design + neuer Emerald-Hintergrund für den Onyx-Look.</p>
+                  </div>
+                </div>
+                <button type="button" onClick={closeWhatsNewModal} className="mt-4 w-full py-3 rounded-lg text-sm font-medium bg-white text-black hover:bg-gray-200 transition-colors">
+                  Verstanden
+                </button>
               </div>
             </div>
           )}

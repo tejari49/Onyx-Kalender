@@ -83,6 +83,27 @@ body[data-theme='gold'] {
     linear-gradient(180deg, #1a1206 0%, #0b0702 62%, #020100 100%);
 }
 
+html[data-theme='emerald'],
+body[data-theme='emerald'] {
+  --onyx-bg: #020b08;
+  --onyx-surface: #051511;
+  --onyx-surface-soft: #09201a;
+  --onyx-overlay: rgba(2, 11, 8, 0.86);
+  --onyx-text: #e9fff8;
+  --onyx-muted: #a9d9c9;
+  --onyx-border: #1e4d41;
+  --onyx-input-bg: #06110e;
+  --onyx-hover-bg: #0c251e;
+  --onyx-hover-border: #2f7f6c;
+  --onyx-accent-bg: #34d399;
+  --onyx-accent-text: #03130e;
+  --onyx-ring: rgba(52, 211, 153, 0.3);
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 16% 14%, rgba(16, 185, 129, 0.26) 0%, transparent 32%),
+    radial-gradient(circle at 84% 16%, rgba(5, 150, 105, 0.22) 0%, transparent 30%),
+    linear-gradient(180deg, #0a1d17 0%, #030c09 62%, #010403 100%);
+}
+
 html[data-theme='gold'] .text-emerald-400,
 html[data-theme='gold'] .text-emerald-500,
 body[data-theme='gold'] .text-emerald-400,
@@ -121,6 +142,25 @@ body[data-theme='midnight'] .bg-emerald-900\/20 {
   background-color: rgba(59, 130, 246, 0.14) !important;
 }
 
+html[data-theme='emerald'] .text-emerald-400,
+html[data-theme='emerald'] .text-emerald-500,
+body[data-theme='emerald'] .text-emerald-400,
+body[data-theme='emerald'] .text-emerald-500 {
+  color: #34d399 !important;
+}
+
+html[data-theme='emerald'] .border-emerald-500,
+html[data-theme='emerald'] .border-emerald-900,
+body[data-theme='emerald'] .border-emerald-500,
+body[data-theme='emerald'] .border-emerald-900 {
+  border-color: rgba(52, 211, 153, 0.78) !important;
+}
+
+html[data-theme='emerald'] .bg-emerald-900\/20,
+body[data-theme='emerald'] .bg-emerald-900\/20 {
+  background-color: rgba(16, 185, 129, 0.14) !important;
+}
+
 html[data-bg='glass-1'],
 body[data-bg='glass-1'] {
   --onyx-app-shell-bg:
@@ -128,6 +168,15 @@ body[data-bg='glass-1'] {
     radial-gradient(circle at 82% 18%, rgba(168, 85, 247, 0.36) 0%, transparent 28%),
     radial-gradient(circle at 50% 82%, rgba(59, 130, 246, 0.28) 0%, transparent 26%),
     linear-gradient(180deg, rgba(5, 8, 18, 0.97), rgba(0, 0, 0, 1));
+}
+
+html[data-bg='glass-emerald'],
+body[data-bg='glass-emerald'] {
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 16% 14%, rgba(16, 185, 129, 0.34) 0%, transparent 32%),
+    radial-gradient(circle at 84% 16%, rgba(5, 150, 105, 0.28) 0%, transparent 30%),
+    radial-gradient(circle at 52% 86%, rgba(20, 184, 166, 0.16) 0%, transparent 25%),
+    linear-gradient(180deg, rgba(7, 12, 10, 0.98), rgba(0, 0, 0, 1));
 }
 
 html[data-bg='glass-2'],

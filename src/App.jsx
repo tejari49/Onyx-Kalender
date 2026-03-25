@@ -3093,6 +3093,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           setChatMessages(prev => {
             const prevList = Array.isArray(prev) ? prev : [];
             const pending = prevList.filter(m => m && m.pending && m.clientMsgId);
+            const pendingNoClientId = prevList.filter(m => m && m.pending && !m.clientMsgId);
 
             // Remove pending/failed local placeholders once the same clientMsgId exists on server.
             const serverClientIds = new Set(loaded.map(m => m.clientMsgId).filter(Boolean));
@@ -3110,7 +3111,7 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
             // Remove pending that already got server version
             const pendingFiltered = pending.filter(m => m.clientMsgId && !serverClientIds.has(m.clientMsgId));
 
-            const merged = [...older, ...loaded, ...pendingFiltered];
+            const merged = [...older, ...loaded, ...pendingFiltered, ...pendingNoClientId];
             merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
             return merged;
           });
@@ -7149,7 +7150,20 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         refocusChatInput();
 
         try {
-          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
+          const sentRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
+          // Strenger Ack-Pfad: optimistic Nachricht sofort auf "gesendet" heben,
+          // statt ausschließlich auf den Snapshot zu warten.
+          setChatMessages(prev => (prev || []).map(m => {
+            if (!m || m.clientMsgId !== clientMsgId) return m;
+            return {
+              ...m,
+              id: sentRef?.id || m.id,
+              pending: false,
+              failed: false,
+              retrying: false,
+              sentAt: Date.now()
+            };
+          }));
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
             updatedAt: Date.now(),
             lastMessageSenderId: user?.uid,
@@ -7208,7 +7222,18 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }));
 
         try {
-          await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
+          const sentRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
+          setChatMessages(prev => (prev || []).map(m => {
+            if (!m || String(m.id || '') !== localId) return m;
+            return {
+              ...m,
+              id: sentRef?.id || m.id,
+              pending: false,
+              failed: false,
+              retrying: false,
+              sentAt: Date.now()
+            };
+          }));
           await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id), {
             updatedAt: Date.now(),
             lastMessageSenderId: user?.uid,

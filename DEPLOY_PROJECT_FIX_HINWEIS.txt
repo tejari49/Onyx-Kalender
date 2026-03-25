@@ -1,0 +1,16 @@
+GitHub Backend Deploy Fix
+=========================
+
+Dieser Stand behebt den Fehler:
+"Error: No currently active project."
+
+Der Workflow macht jetzt beides explizit:
+1. firebase use kalender-rai
+2. firebase deploy --project kalender-rai --only functions,firestore:rules --non-interactive
+
+Wichtig in GitHub:
+- Repository Secret Name: FIREBASE_SERVICE_ACCOUNT
+- Wert: kompletter JSON-Inhalt des Service-Account-Keys
+
+Datei:
+.github/workflows/firebase-backend-deploy.yml

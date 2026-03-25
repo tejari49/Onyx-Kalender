@@ -170,6 +170,15 @@ body[data-bg='glass-1'] {
     linear-gradient(180deg, rgba(5, 8, 18, 0.97), rgba(0, 0, 0, 1));
 }
 
+html[data-bg='glass-emerald'],
+body[data-bg='glass-emerald'] {
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 16% 14%, rgba(16, 185, 129, 0.34) 0%, transparent 32%),
+    radial-gradient(circle at 84% 16%, rgba(5, 150, 105, 0.28) 0%, transparent 30%),
+    radial-gradient(circle at 52% 86%, rgba(20, 184, 166, 0.16) 0%, transparent 25%),
+    linear-gradient(180deg, rgba(7, 12, 10, 0.98), rgba(0, 0, 0, 1));
+}
+
 html[data-bg='glass-2'],
 body[data-bg='glass-2'] {
   --onyx-app-shell-bg:

@@ -1,0 +1,16 @@
+Fixfertig vorbereitet:
+
+1. Repository nach GitHub pushen
+2. In GitHub > Settings > Pages > Source = GitHub Actions setzen
+3. In GitHub > Settings > Secrets and variables > Actions den Secret anlegen:
+   FIREBASE_SERVICE_ACCOUNT
+4. Als Wert den KOMPLETTEN Inhalt deiner Service-Account-JSON einfuegen
+5. Danach auf main pushen oder die Actions manuell starten
+
+Automatisch deployt werden:
+- Frontend -> GitHub Pages
+- Cloud Functions -> Firebase
+- Firestore Rules -> Firebase
+
+Project-ID ist bereits fest gesetzt:
+kalender-rai

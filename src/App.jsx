@@ -870,6 +870,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
         const stored = localStorage.getItem('onyx_last_chat_visit');
         return stored ? parseInt(stored, 10) : 0;
       });
+      const secretChangelogKey = 'onyx_secret_changelog_seen_2026_03_ui';
 
       const [toasts, setToasts] = useState([]);
       const pressTimer = useRef(null);
@@ -885,6 +886,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [secretPinSetupNew, setSecretPinSetupNew] = useState('');
       const [secretPinSetupConfirm, setSecretPinSetupConfirm] = useState('');
       const [secretPinActionBusy, setSecretPinActionBusy] = useState(false);
+      const [secretFriendsAccordion, setSecretFriendsAccordion] = useState({ online: true, offline: true });
+      const [secretChangelogOpen, setSecretChangelogOpen] = useState(false);
 
       const [isRefreshing, setIsRefreshing] = useState(false);
       const [pullDistance, setPullDistance] = useState(0);
@@ -7512,6 +7515,19 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const getChatParticipants = (chat) => Array.isArray(chat?.participants) ? chat.participants : [];
       const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
+      useEffect(() => {
+        if (currentView !== 'secret_chat' || secretView !== 'list') return;
+        try {
+          const alreadySeen = localStorage.getItem(secretChangelogKey) === '1';
+          if (!alreadySeen) setSecretChangelogOpen(true);
+        } catch (_) {
+          setSecretChangelogOpen(true);
+        }
+      }, [currentView, secretView, secretChangelogKey]);
+      const closeSecretChangelog = () => {
+        setSecretChangelogOpen(false);
+        try { localStorage.setItem(secretChangelogKey, '1'); } catch (_) {}
+      };
       
       const exportICS = (exportAll = true) => {
         let eventsToExport = allEvents;
@@ -9693,10 +9709,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             {currentView === 'secret_chat' && (
               <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>
               <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up overflow-hidden overscroll-none" style={{ height: 'var(--app-height, 100vh)', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
-                <div className="shrink-0">
-                  <AppChromeHeader />
-                </div>
-
                 {/* Geheimer Chat Header */}
                 <header className="h-[4.5rem] md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
                   {secretView === 'chat' && activeChat ? (
@@ -10096,64 +10108,110 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-3xl w-full mx-auto">
-                      <div className="mb-4 px-2">
-                        <h3 className="text-lg font-medium text-white">Neues Secret Chat</h3>
-                        <p className="text-xs text-neutral-500 mt-1">Direktnachrichten und Gruppen in einer aufgeräumten Übersicht.</p>
-                      </div>
-                      <div className="mb-6 px-2 text-xs text-neutral-500">Freunde hinzufügen/entfernen findest du unter <span className="text-neutral-300">Secret Chat → Einstellungen → Freunde</span>.</div>
-                      <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-4 font-semibold px-2">Verlauf</h4>
-                      <div className="space-y-2">
-                        {sortedMyChats.length === 0 ? (
-                          <div className="p-8 text-center border border-dashed border-neutral-800 rounded-xl text-neutral-500 text-sm">Noch keine Chats vorhanden.</div>
-                        ) : (
-                          <>
-                            {pinnedChatIds.length > 0 && (
-                              <div className="px-2 pt-1 pb-2 text-[10px] uppercase tracking-widest text-neutral-600">Pinned</div>
+                      {secretChangelogOpen && (
+                        <div className="mb-4 border border-neutral-800 rounded-xl p-4 bg-neutral-950/70">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h3 className="text-sm font-semibold text-white">Changelog – Secret Chat</h3>
+                              <ul className="mt-2 text-xs text-neutral-400 list-disc pl-5 space-y-1">
+                                <li>Doppel-Header entfernt: nur Secret-Chat-Topbar bleibt sichtbar.</li>
+                                <li>Online/Offline jetzt einklappbar.</li>
+                                <li>Pinned-Chats bleiben dauerhaft oben sichtbar.</li>
+                              </ul>
+                            </div>
+                            <button onClick={closeSecretChangelog} className="text-neutral-500 hover:text-white text-xl leading-none px-2">&times;</button>
+                          </div>
+                        </div>
+                      )}
+                      {(() => {
+                        const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+                        const mutedChatIds = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
+                        const pinnedChats = sortedMyChats.filter((chat) => pinnedChatIds.includes(chat.id));
+                        const unpinnedChats = sortedMyChats.filter((chat) => !pinnedChatIds.includes(chat.id));
+                        const onlineChats = unpinnedChats.filter((chat) => {
+                          const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
+                          const otherUid = isDm ? chat.participants.find((id) => id !== user?.uid) : null;
+                          return !!(otherUid && getPresence(otherUid).online);
+                        });
+                        const offlineChats = unpinnedChats.filter((chat) => {
+                          const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
+                          const otherUid = isDm ? chat.participants.find((id) => id !== user?.uid) : null;
+                          return !!(otherUid && !getPresence(otherUid).online);
+                        });
+                        const groupChats = unpinnedChats.filter((chat) => isGroupChat(chat));
+                        const renderChatRow = (chat) => {
+                          const isPinned = pinnedChatIds.includes(chat.id);
+                          const isMuted = mutedChatIds.includes(chat.id);
+                          const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
+                          const otherUid = isDm ? chat.participants.find(id => id !== user?.uid) : null;
+                          const otherPresence = otherUid ? getPresence(otherUid) : null;
+                          return (
+                            <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
+                              <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
+                                {getChatPartnerAvatar(chat) ? (
+                                  <img src={getChatPartnerAvatar(chat)} className="w-full h-full object-cover cursor-zoom-in" alt="Profilbild" onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatarFull(chat) || getChatPartnerAvatar(chat)); }} />
+                                ) : initialsFrom(getChatPartnerName(chat))}
+                              </div>
+                              <div className="flex-1 overflow-hidden">
+                                <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
+                                {chat.lastMessageSenderId !== user?.uid && chat.updatedAt > lastChatVisit ? (
+                                  <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
+                                ) : (
+                                  <p className="text-xs text-neutral-500 truncate mt-0.5">
+                                    {isDm ? (otherPresence?.online ? 'online' : (otherPresence?.lastSeen ? `zuletzt ${formatTime(otherPresence.lastSeen)}` : 'offline')) : 'Tippen zum Öffnen...'}
+                                  </p>
+                                )}
+                              </div>
+                              <button onClick={(e) => { e.stopPropagation(); toggleMuteChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isMuted ? 'bg-neutral-950 text-white border-neutral-500' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isMuted ? 'Stumm aus' : 'Stumm schalten'}>
+                                {isMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); togglePinChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isPinned ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isPinned ? 'Unpin' : 'Pin'}>
+                                <Pin className="w-4 h-4" />
+                              </button>
+                            </div>
+                          );
+                        };
+                        return (
+                          <div className="space-y-2">
+                            {pinnedChats.length > 0 && (
+                              <>
+                                <div className="px-2 pt-1 pb-2 text-[10px] uppercase tracking-widest text-neutral-600">Pinned</div>
+                                {pinnedChats.map(renderChatRow)}
+                              </>
                             )}
-                            {sortedMyChats.map(chat => {
-                              const isPinned = pinnedChatIds.includes(chat.id);
-                              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
-              const mutedChatIds = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
-                              const isMuted = mutedChatIds.includes(chat.id);
-                              const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
-                              const otherUid = isDm ? chat.participants.find(id => id !== user?.uid) : null;
-                              const otherPresence = otherUid ? getPresence(otherUid) : null;
-                              return (
-                                <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
-                                  <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
-                                    {getChatPartnerAvatar(chat) ? (
-                                    <img
-                                      src={getChatPartnerAvatar(chat)}
-                                      className="w-full h-full object-cover cursor-zoom-in"
-                                      alt="Profilbild"
-                                      onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatarFull(chat) || getChatPartnerAvatar(chat)); }}
-                                    />
-                                  ) : initialsFrom(getChatPartnerName(chat))}
+                            {(onlineChats.length > 0 || offlineChats.length > 0 || groupChats.length > 0) ? (
+                              <>
+                                {onlineChats.length > 0 && (
+                                  <div className="pt-2">
+                                    <button onClick={() => setSecretFriendsAccordion((prev) => ({ ...prev, online: !prev.online }))} className="w-full px-2 pb-2 flex items-center justify-between text-[10px] uppercase tracking-widest text-neutral-600">
+                                      <span>Online ({onlineChats.length})</span>
+                                      {secretFriendsAccordion.online ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                    </button>
+                                    {secretFriendsAccordion.online && <div className="space-y-2">{onlineChats.map(renderChatRow)}</div>}
                                   </div>
-                                  <div className="flex-1 overflow-hidden">
-                                    <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
-                                    {chat.lastMessageSenderId !== user?.uid && chat.updatedAt > lastChatVisit ? (
-                                      <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
-                                    ) : (
-                                      <p className="text-xs text-neutral-500 truncate mt-0.5">
-                                        {isDm
-                                          ? (otherPresence?.online ? 'online' : (otherPresence?.lastSeen ? `zuletzt ${formatTime(otherPresence.lastSeen)}` : 'offline'))
-                                          : 'Tippen zum Öffnen...'}
-                                      </p>
-                                    )}
+                                )}
+                                {offlineChats.length > 0 && (
+                                  <div className="pt-2">
+                                    <button onClick={() => setSecretFriendsAccordion((prev) => ({ ...prev, offline: !prev.offline }))} className="w-full px-2 pb-2 flex items-center justify-between text-[10px] uppercase tracking-widest text-neutral-600">
+                                      <span>Offline ({offlineChats.length})</span>
+                                      {secretFriendsAccordion.offline ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                    </button>
+                                    {secretFriendsAccordion.offline && <div className="space-y-2">{offlineChats.map(renderChatRow)}</div>}
                                   </div>
-                                  <button onClick={(e) => { e.stopPropagation(); toggleMuteChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isMuted ? 'bg-neutral-950 text-white border-neutral-500' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isMuted ? 'Stumm aus' : 'Stumm schalten'}>
-                                    {isMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-                                  </button>
-                                  <button onClick={(e) => { e.stopPropagation(); togglePinChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isPinned ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isPinned ? 'Unpin' : 'Pin'}>
-                                    <Pin className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </>
-                        )}
-                      </div>
+                                )}
+                                {groupChats.length > 0 && (
+                                  <div className="pt-2">
+                                    <div className="px-2 pb-2 text-[10px] uppercase tracking-widest text-neutral-600">Gruppen ({groupChats.length})</div>
+                                    <div className="space-y-2">{groupChats.map(renderChatRow)}</div>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="p-8 text-center border border-dashed border-neutral-800 rounded-xl text-neutral-500 text-sm">Noch keine Chats vorhanden.</div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <div className="flex-1 min-h-0 flex flex-col w-full max-w-4xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => { setSelectedMessageId(null); setMessageReactionPickerFor(null); }}>

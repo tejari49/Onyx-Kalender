@@ -11096,13 +11096,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </div>
                   )}
                 </div>
-                {secretView !== 'chat' && (
-                  <div className="h-14 border-t border-neutral-900 bg-neutral-950 shrink-0 flex items-center justify-around md:hidden">
-                    <button type="button" onClick={() => { setActiveChat(null); setSecretView('list'); }} className={`text-xs px-3 py-2 rounded-lg border ${secretView === 'list' ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>Chats</button>
-                    <button type="button" onClick={() => setSecretView('settings')} className={`text-xs px-3 py-2 rounded-lg border ${secretView === 'settings' ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>Profil</button>
-                    <button type="button" onClick={() => hideSecretChatNow()} className="text-xs px-3 py-2 rounded-lg border border-red-900/40 text-red-300 bg-red-950/30">Panic</button>
-                  </div>
-                )}
               </div>
               </ErrorBoundary>
               )}

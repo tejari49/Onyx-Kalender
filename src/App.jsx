@@ -595,6 +595,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [agendaEnergyFilter, setAgendaEnergyFilter] = useState('all');
       const [agendaRange, setAgendaRange] = useState('7'); // '7' | '30' | 'month'
       const [eventEditScope, setEventEditScope] = useState('series'); // 'series' | 'single'
+      const [eventSimpleMode, setEventSimpleMode] = useState(true);
+      const [eventSectionsOpen, setEventSectionsOpen] = useState({ work: false, checklist: false, automation: false });
       const [selectedEventTemplate, setSelectedEventTemplate] = useState('');
       const [weeklyCapacityHours, setWeeklyCapacityHours] = useState(35);
       const [agendaManagerView, setAgendaManagerView] = useState(false);
@@ -1055,6 +1057,8 @@ const openNewEventModal = (dateStr = null) => {
 
   setEventToEdit(null);
   setSelectedEventTemplate('');
+  setEventSimpleMode(true);
+  setEventSectionsOpen({ work: false, checklist: false, automation: false });
   setEventEditScope('series');
   setSelectedDateForEvent(d);
   const targetProfile = getCalendarProfile(targetCalId);
@@ -6145,6 +6149,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       const enterEventEditMode = () => {
          if (!eventToEdit) return;
          if (!eventCanEdit) return showToast("Nur Lesezugriff.");
+         setEventSimpleMode(false);
+         setEventSectionsOpen({ work: true, checklist: true, automation: true });
          setEventModalMode('edit');
       };
 
@@ -11698,6 +11704,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
                 {!(eventToEdit && eventModalMode === 'view') && (
                   <form onSubmit={saveEvent} className="space-y-3">
+                  <div className="flex items-center justify-between bg-black border border-neutral-800 rounded-xl p-2">
+                    <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold px-2">Formular</div>
+                    <div className="flex gap-1">
+                      <button type="button" onClick={() => setEventSimpleMode(true)} className={`px-3 py-1.5 rounded-md text-xs font-semibold border ${eventSimpleMode ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800'}`}>Schnell</button>
+                      <button type="button" onClick={() => setEventSimpleMode(false)} className={`px-3 py-1.5 rounded-md text-xs font-semibold border ${!eventSimpleMode ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800'}`}>Erweitert</button>
+                    </div>
+                  </div>
                   <div className="bg-black border border-neutral-800 rounded-2xl p-4">
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">⚡ Schnelleingabe</label>
                     <textarea
@@ -11812,6 +11825,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </div>
                   </div>
 
+                  {!eventSimpleMode && (
+                  <>
                   {!eventToEdit && (
                     <div className="bg-black border border-neutral-800 rounded-2xl p-4">
                       <div className="flex items-center justify-between">
@@ -12052,7 +12067,15 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </datalist>
                   </div>
 
-                  {isWorkEventProfile && (
+                  {isWorkEventProfile && !eventSimpleMode && (
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setEventSectionsOpen(prev => ({ ...prev, work: !prev.work }))} className={`px-3 py-2 rounded-lg text-xs font-semibold border ${eventSectionsOpen.work ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800'}`}>Arbeitsdetails</button>
+                    <button type="button" onClick={() => setEventSectionsOpen(prev => ({ ...prev, checklist: !prev.checklist }))} className={`px-3 py-2 rounded-lg text-xs font-semibold border ${eventSectionsOpen.checklist ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800'}`}>Checklisten</button>
+                    <button type="button" onClick={() => setEventSectionsOpen(prev => ({ ...prev, automation: !prev.automation }))} className={`px-3 py-2 rounded-lg text-xs font-semibold border ${eventSectionsOpen.automation ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800'}`}>Automationen</button>
+                  </div>
+                  )}
+
+                  {isWorkEventProfile && !eventSimpleMode && eventSectionsOpen.work && (
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Projekt-Tag</label>
                     <input
@@ -12064,52 +12087,54 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   </div>
                   )}
 
-                  {isWorkEventProfile && (
+                  {isWorkEventProfile && !eventSimpleMode && eventSectionsOpen.work && (
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Status</label>
-                      <select
-                        value={eventForm.workStatus || 'planned'}
-                        onChange={(e) => setEventForm(prev => ({ ...prev, workStatus: e.target.value }))}
-                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                      >
-                        <option value="planned">Geplant</option>
-                        <option value="in_progress">In Arbeit</option>
-                        <option value="done">Erledigt</option>
-                        <option value="blocked">Blockiert</option>
-                      </select>
+                      <div className="mt-1 grid grid-cols-2 gap-1">
+                        {[
+                          { value: 'planned', label: 'Geplant' },
+                          { value: 'in_progress', label: 'In Arbeit' },
+                          { value: 'done', label: 'Erledigt' },
+                          { value: 'blocked', label: 'Blockiert' },
+                        ].map((opt) => (
+                          <button key={opt.value} type="button" onClick={() => setEventForm(prev => ({ ...prev, workStatus: opt.value }))} className={`px-2 py-2 rounded-md text-[11px] font-semibold border ${String(eventForm.workStatus || 'planned') === opt.value ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div>
                       <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Priorität</label>
-                      <select
-                        value={eventForm.priority || 'B'}
-                        onChange={(e) => setEventForm(prev => ({ ...prev, priority: e.target.value }))}
-                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                      >
-                        <option value="A">A – Hoch</option>
-                        <option value="B">B – Mittel</option>
-                        <option value="C">C – Niedrig</option>
-                      </select>
+                      <div className="mt-1 grid grid-cols-3 gap-1">
+                        {['A','B','C'].map((p) => (
+                          <button key={p} type="button" onClick={() => setEventForm(prev => ({ ...prev, priority: p }))} className={`px-2 py-2 rounded-md text-xs font-semibold border ${String(eventForm.priority || 'B') === p ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>
+                            {p}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                   )}
 
-                  {isWorkEventProfile && (
+                  {isWorkEventProfile && !eventSimpleMode && eventSectionsOpen.work && (
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Energielevel</label>
-                    <select
-                      value={eventForm.energyLevel || 'medium'}
-                      onChange={(e) => setEventForm(prev => ({ ...prev, energyLevel: e.target.value }))}
-                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                    >
-                      <option value="high">Hoch (Deep Work)</option>
-                      <option value="medium">Mittel</option>
-                      <option value="light">Leicht</option>
-                    </select>
+                    <div className="mt-1 grid grid-cols-3 gap-1">
+                      {[
+                        { value: 'high', label: 'Hoch' },
+                        { value: 'medium', label: 'Mittel' },
+                        { value: 'light', label: 'Leicht' },
+                      ].map((opt) => (
+                        <button key={opt.value} type="button" onClick={() => setEventForm(prev => ({ ...prev, energyLevel: opt.value }))} className={`px-2 py-2 rounded-md text-xs font-semibold border ${String(eventForm.energyLevel || 'medium') === opt.value ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   )}
 
-                  {isWorkEventProfile && (
+                  {isWorkEventProfile && !eventSimpleMode && eventSectionsOpen.checklist && (
                   <div className="bg-black border border-neutral-800 rounded-2xl p-4 space-y-3">
                     <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Checklisten aus Termin</div>
                     <div>
@@ -12127,7 +12152,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   </div>
                   )}
 
-                  {isWorkEventProfile && (
+                  {isWorkEventProfile && !eventSimpleMode && eventSectionsOpen.automation && (
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Reminder-Kette (Minuten vor Termin)</label>
                     <input value={(Array.isArray(eventForm.reminderSequence) ? eventForm.reminderSequence : []).join(', ')} onChange={(e) => {
@@ -12137,82 +12162,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     <p className="mt-1 text-[11px] text-neutral-500">Beispiel: 1440, 60 = 1 Tag + 1 Stunde vorher.</p>
                   </div>
                   )}
-
-                  <div>
-                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Projekt-Tag</label>
-                    <input
-                      value={eventForm.projectTag || ''}
-                      onChange={(e) => setEventForm(prev => ({ ...prev, projectTag: e.target.value }))}
-                      placeholder="z.B. Kunde A / Baustelle B"
-                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Status</label>
-                      <select
-                        value={eventForm.workStatus || 'planned'}
-                        onChange={(e) => setEventForm(prev => ({ ...prev, workStatus: e.target.value }))}
-                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                      >
-                        <option value="planned">Geplant</option>
-                        <option value="in_progress">In Arbeit</option>
-                        <option value="done">Erledigt</option>
-                        <option value="blocked">Blockiert</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Priorität</label>
-                      <select
-                        value={eventForm.priority || 'B'}
-                        onChange={(e) => setEventForm(prev => ({ ...prev, priority: e.target.value }))}
-                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                      >
-                        <option value="A">A – Hoch</option>
-                        <option value="B">B – Mittel</option>
-                        <option value="C">C – Niedrig</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Energielevel</label>
-                    <select
-                      value={eventForm.energyLevel || 'medium'}
-                      onChange={(e) => setEventForm(prev => ({ ...prev, energyLevel: e.target.value }))}
-                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
-                    >
-                      <option value="high">Hoch (Deep Work)</option>
-                      <option value="medium">Mittel</option>
-                      <option value="light">Leicht</option>
-                    </select>
-                  </div>
-
-                  <div className="bg-black border border-neutral-800 rounded-2xl p-4 space-y-3">
-                    <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Checklisten aus Termin</div>
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold">Vorbereitung</label>
-                      <textarea value={checklistToTextareaValue(eventForm.checklistPrep)} onChange={(e) => setEventForm(prev => ({ ...prev, checklistPrep: checklistItemsFromTextarea(e.target.value) }))} rows={2} placeholder="Je Zeile ein Punkt" className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold">Durchführung</label>
-                      <textarea value={checklistToTextareaValue(eventForm.checklistDo)} onChange={(e) => setEventForm(prev => ({ ...prev, checklistDo: checklistItemsFromTextarea(e.target.value) }))} rows={2} placeholder="Je Zeile ein Punkt" className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold">Nachbereitung</label>
-                      <textarea value={checklistToTextareaValue(eventForm.checklistFollowup)} onChange={(e) => setEventForm(prev => ({ ...prev, checklistFollowup: checklistItemsFromTextarea(e.target.value) }))} rows={2} placeholder="Je Zeile ein Punkt" className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Reminder-Kette (Minuten vor Termin)</label>
-                    <input value={(Array.isArray(eventForm.reminderSequence) ? eventForm.reminderSequence : []).join(', ')} onChange={(e) => {
-                      const parsed = String(e.target.value || '').split(',').map(v => parseInt(v.trim(), 10));
-                      setEventForm(prev => ({ ...prev, reminderSequence: normalizeReminderSequence(parsed) }));
-                    }} placeholder="z.B. 1440, 60" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500" />
-                    <p className="mt-1 text-[11px] text-neutral-500">Beispiel: 1440, 60 = 1 Tag + 1 Stunde vorher.</p>
-                  </div>
 
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Beschreibung</label>
@@ -12224,12 +12173,25 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none"
                     />
                   </div>
+                  </>
+                  )}
 
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Kalender</label>
                     <select
                       value={eventForm.calendarId}
-                      onChange={(e) => setEventForm(prev => ({ ...prev, calendarId: e.target.value }))}
+                      onChange={(e) => {
+                        const nextCalId = e.target.value;
+                        const nextProfile = getCalendarProfile(nextCalId);
+                        setEventForm(prev => ({
+                          ...prev,
+                          calendarId: nextCalId,
+                          type: (nextProfile === 'work' || nextProfile === 'production') ? (prev.type && prev.type !== 'Privat' ? prev.type : 'Arbeit') : (prev.type === 'Arbeit' ? 'Privat' : prev.type),
+                          workStatus: (nextProfile === 'work' || nextProfile === 'production') ? (prev.workStatus || 'planned') : 'planned',
+                          priority: (nextProfile === 'work' || nextProfile === 'production') ? (prev.priority || 'B') : 'B',
+                          energyLevel: (nextProfile === 'work' || nextProfile === 'production') ? (prev.energyLevel || 'medium') : 'medium',
+                        }));
+                      }}
                       disabled={ eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' }
                       className={`mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500 ${eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single' ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
@@ -12246,7 +12208,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     <p className="mt-1 text-[11px] text-neutral-500">{(eventToEdit && eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date && eventEditScope === 'single') ? 'Hinweis: Einzelnes Vorkommen kann nicht in einen anderen Kalender verschoben werden.' : 'Schichtpläne können nur über die Tagesauswahl bearbeitet werden.'}</p>
                   </div>
 
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex gap-2 pt-2 sticky bottom-0 bg-neutral-950/95 backdrop-blur-sm pb-2">
                     {eventToEdit ? (
                       (eventToEdit.recurrence && eventToEdit.recurrence.freq && eventToEdit.recurrence.freq !== 'NONE' && selectedDateForEvent && eventToEdit.date && selectedDateForEvent !== eventToEdit.date) ? (
                         <>

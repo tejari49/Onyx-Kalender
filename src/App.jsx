@@ -713,6 +713,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
+      const [secretViewportHeight, setSecretViewportHeight] = useState(0);
       const [userProfile, setUserProfile] = useState(null);
       const modeThemeField = uiTheme === 'light' ? 'appThemeLight' : 'appThemeDark';
       const modeBgField = uiTheme === 'light' ? 'appBgLight' : 'appBgDark';
@@ -5957,6 +5958,24 @@ useEffect(() => {
         return () => document.removeEventListener('visibilitychange', onSecretVisibility);
       }, [currentView, userProfile?.secretPanicOnHide]);
 
+      useEffect(() => {
+        if (currentView !== 'secret_chat') return;
+        const sync = () => {
+          try {
+            const vv = window.visualViewport;
+            const next = Math.round(vv?.height || window.innerHeight || 0);
+            if (next > 0) setSecretViewportHeight(next);
+          } catch (_) {}
+        };
+        sync();
+        window.visualViewport?.addEventListener('resize', sync);
+        window.visualViewport?.addEventListener('scroll', sync);
+        return () => {
+          window.visualViewport?.removeEventListener('resize', sync);
+          window.visualViewport?.removeEventListener('scroll', sync);
+        };
+      }, [currentView]);
+
 
       // --- NEU: PINSEL & LANGES DRÜCKEN LOGIK ---
       const handleDayContextMenu = (e, dateStr) => {
@@ -10056,9 +10075,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
             {currentView === 'secret_chat' && (
               <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>
-              <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up overflow-hidden overscroll-none" style={{ height: 'var(--app-height, 100vh)', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+              <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up overflow-hidden overscroll-none" style={{ height: (secretViewportHeight > 0 ? `${secretViewportHeight}px` : 'var(--app-height, 100vh)'), overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
                 {/* Geheimer Chat Header */}
-                <header className="h-[4.5rem] md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950 sticky top-0 z-30" style={{ transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}>
+                <header className="h-[4.5rem] md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950 sticky top-0 z-40" style={{ transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}>
                   {secretView === 'chat' && activeChat ? (
                     <div className="flex items-center gap-3">
                       <button onClick={() => { setActiveChat(null); setSecretView('list'); }} className="text-neutral-400 hover:text-white transition-colors mr-2">
@@ -10936,7 +10955,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                         <div ref={messagesEndRef} />
                       </div>
 
-                      <div className="p-3 md:p-4 bg-neutral-950 border-t border-neutral-900 shrink-0 sticky bottom-0 z-20" style={{ transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}>
+                      <div className="p-3 md:p-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] bg-neutral-950 border-t border-neutral-900 shrink-0 sticky bottom-0 z-30" style={{ transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}>
                         {editingMessage && (
                           <div className="flex items-center justify-between bg-neutral-900 border border-neutral-800 p-2 px-3 rounded-t-xl text-xs text-neutral-400 border-b-0">
                             <span className="truncate">Nachricht bearbeiten...</span>
@@ -11084,6 +11103,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </div>
                   )}
                 </div>
+                {secretView !== 'chat' && (
+                  <div className="h-14 border-t border-neutral-900 bg-neutral-950 shrink-0 flex items-center justify-around md:hidden">
+                    <button type="button" onClick={() => { setActiveChat(null); setSecretView('list'); }} className={`text-xs px-3 py-2 rounded-lg border ${secretView === 'list' ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>Chats</button>
+                    <button type="button" onClick={() => setSecretView('settings')} className={`text-xs px-3 py-2 rounded-lg border ${secretView === 'settings' ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>Profil</button>
+                    <button type="button" onClick={() => hideSecretChatNow()} className="text-xs px-3 py-2 rounded-lg border border-red-900/40 text-red-300 bg-red-950/30">Panic</button>
+                  </div>
+                )}
               </div>
               </ErrorBoundary>
               )}

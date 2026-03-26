@@ -663,15 +663,17 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
       const selectedAppTheme = (() => {
-        const validThemes = new Set(['obsidian', 'deepblack', 'midnight', 'gold', 'emerald']);
-        const rawTheme = (userProfile && userProfile?.appTheme) ? userProfile?.appTheme : (() => {
+        const validThemes = new Set(['obsidian', 'deepblack', 'midnight', 'gold', 'emerald', 'paper-light', 'sand-light', 'rose-light', 'sky-light']);
+        const hasProfileTheme = !!(userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'appTheme'));
+        const rawTheme = hasProfileTheme ? userProfile?.appTheme : (() => {
           try { return localStorage.getItem('onyx_app_theme') || 'obsidian'; } catch (_) { return 'obsidian'; }
         })();
         return validThemes.has(rawTheme) ? rawTheme : 'obsidian';
       })();
       const selectedAppBg = (() => {
-        const validBgs = new Set(['none', 'glass-1', 'glass-2', 'glass-3', 'glass-emerald']);
-        const rawBg = (userProfile && userProfile?.appBg) ? userProfile?.appBg : (() => {
+        const validBgs = new Set(['none', 'glass-1', 'glass-2', 'glass-3', 'glass-emerald', 'paper', 'linen', 'sunwash', 'mintwash']);
+        const hasProfileBg = !!(userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'appBg'));
+        const rawBg = hasProfileBg ? userProfile?.appBg : (() => {
           try { return localStorage.getItem('onyx_app_bg') || 'none'; } catch (_) { return 'none'; }
         })();
         return validBgs.has(rawBg) ? rawBg : 'none';
@@ -681,7 +683,6 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
         try {
           const themeValue = selectedAppTheme || 'obsidian';
           const bgValue = selectedAppBg || 'none';
-          const applyDarkTheme = uiTheme === 'dark';
           const html = document.documentElement;
           const body = document.body;
 
@@ -691,14 +692,9 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
           const syncNode = (node) => {
             if (!node) return;
             node.setAttribute('data-mode', uiTheme);
-            if (applyDarkTheme) {
-              node.setAttribute('data-theme', themeValue);
-              if (bgValue && bgValue !== 'none') node.setAttribute('data-bg', bgValue);
-              else node.removeAttribute('data-bg');
-            } else {
-              node.removeAttribute('data-theme');
-              node.removeAttribute('data-bg');
-            }
+            node.setAttribute('data-theme', themeValue);
+            if (bgValue && bgValue !== 'none') node.setAttribute('data-bg', bgValue);
+            else node.removeAttribute('data-bg');
           };
 
           syncNode(html);
@@ -8906,6 +8902,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       { id: 'midnight', name: 'Midnight Blue', desc: 'Sattes Nachtblau mit kühlem Glow', preview: 'linear-gradient(135deg, #0f2747 0%, #081224 55%, #010409 100%)' },
       { id: 'gold', name: 'Onyx Gold', desc: 'Warmes Schwarz mit kräftigem Goldton', preview: 'linear-gradient(135deg, #3a2507 0%, #181108 50%, #020100 100%)' },
       { id: 'emerald', name: 'Onyx Emerald', desc: 'Onyx mit smaragdgrünem Akzent und tiefem Glow', preview: 'linear-gradient(135deg, #05261f 0%, #06130f 52%, #010504 100%)' },
+      { id: 'paper-light', name: 'Papyrus Light', desc: 'Helles Beige mit natürlichem Papier-Look', preview: 'linear-gradient(135deg, #f7f1e4 0%, #efe4cf 55%, #e7d8bc 100%)' },
+      { id: 'sand-light', name: 'Sandstone', desc: 'Warmes Off-White mit sanftem Kontrast', preview: 'linear-gradient(135deg, #f8f4ea 0%, #eee6d5 60%, #e2d5bd 100%)' },
+      { id: 'rose-light', name: 'Rosé Light', desc: 'Sehr helles Rosé für weichere Flächen', preview: 'linear-gradient(135deg, #fff5f4 0%, #f8e9e6 55%, #efd8d4 100%)' },
+      { id: 'sky-light', name: 'Sky Light', desc: 'Klares, helles Blau-Grau für Fokus', preview: 'linear-gradient(135deg, #f6f9ff 0%, #e8eef9 58%, #dce6f3 100%)' },
     ];
     const APP_BG_OPTIONS = [
       { id: 'none', name: 'Mattes Schwarz', desc: 'Ruhiger Hintergrund ohne Farbglow', preview: 'linear-gradient(135deg, #121212 0%, #060606 60%, #000000 100%)' },
@@ -8913,6 +8913,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       { id: 'glass-1', name: 'Neon Blur', desc: 'Deutlich kräftiger Cyan-Violett-Glow', preview: 'radial-gradient(circle at 18% 20%, rgba(34,211,238,0.95) 0%, rgba(34,211,238,0) 34%), radial-gradient(circle at 82% 18%, rgba(168,85,247,0.9) 0%, rgba(168,85,247,0) 32%), linear-gradient(135deg, #0c1224 0%, #020409 100%)' },
       { id: 'glass-2', name: 'Gold Blur', desc: 'Kräftiger Goldschein mit warmem Ambient', preview: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.9) 0%, rgba(245,158,11,0) 38%), radial-gradient(circle at 82% 76%, rgba(251,191,36,0.75) 0%, rgba(251,191,36,0) 28%), linear-gradient(135deg, #1d1306 0%, #030100 100%)' },
       { id: 'glass-3', name: 'Ruby Blur', desc: 'Kräftige Rot- und Rubin-Akzente', preview: 'radial-gradient(circle at 18% 18%, rgba(244,63,94,0.9) 0%, rgba(244,63,94,0) 34%), radial-gradient(circle at 82% 18%, rgba(234,88,12,0.82) 0%, rgba(234,88,12,0) 30%), linear-gradient(135deg, #1b090d 0%, #030101 100%)' },
+      { id: 'paper', name: 'Papier Beige', desc: 'Heller Papyrus-Hintergrund für Light-Design', preview: 'radial-gradient(circle at 20% 14%, rgba(191,155,102,0.25) 0%, rgba(191,155,102,0) 36%), linear-gradient(135deg, #f8f2e5 0%, #eee2ca 60%, #e5d2b0 100%)' },
+      { id: 'linen', name: 'Linen Soft', desc: 'Leichter Textur-Look in Creme', preview: 'repeating-linear-gradient(45deg, rgba(124,95,54,0.08) 0 2px, rgba(124,95,54,0.02) 2px 6px), linear-gradient(135deg, #fbf7ef 0%, #f1e9db 100%)' },
+      { id: 'sunwash', name: 'Sun Wash', desc: 'Heller Pfirsich-Akzent als warmer Hintergrund', preview: 'radial-gradient(circle at 84% 12%, rgba(251,146,60,0.25) 0%, rgba(251,146,60,0) 34%), linear-gradient(135deg, #fff8ee 0%, #f9ecd7 65%, #f4dec1 100%)' },
+      { id: 'mintwash', name: 'Mint Wash', desc: 'Frischer Mint-Touch auf hellem Untergrund', preview: 'radial-gradient(circle at 12% 18%, rgba(16,185,129,0.22) 0%, rgba(16,185,129,0) 36%), linear-gradient(135deg, #f5fcf8 0%, #e9f3ea 60%, #ddecd8 100%)' },
     ];
     const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
       .filter((field) => isExtraFieldEnabled(field))
@@ -9388,7 +9392,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                      {APP_THEME_OPTIONS.map(t => (
                        <button
                          key={t.id}
-                         onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
+                         onClick={() => updateProfileField('appTheme', t.id)}
                          className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
                        >
                          <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: t.preview }} />
@@ -9410,7 +9414,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                      {APP_BG_OPTIONS.map(bg => (
                        <button
                          key={bg.id}
-                         onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}
+                         onClick={() => updateProfileField('appBg', bg.id)}
                          className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
                        >
                          <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: bg.preview }} />
@@ -12605,11 +12609,17 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events, showToast }
   const persistBookingProfile = React.useCallback(async (nextProfile, opts = {}) => {
     if (!code) return false;
 
-    const busyEvents = (events || []).map((e) => ({
-      startMs: e.startMs,
-      endMs: e.endMs,
-      isAllDay: e.isAllDay === true,
-    }));
+    const busyEvents = (events || []).reduce((acc, e) => {
+      const startMs = Number(e?.startMs || 0);
+      const endMs = Number(e?.endMs || 0);
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs <= 0 || endMs <= 0 || endMs <= startMs) return acc;
+      acc.push({
+        startMs,
+        endMs,
+        isAllDay: e?.isAllDay === true,
+      });
+      return acc;
+    }, []);
 
     const prepared = {
       ...buildDefaultProfile(),

@@ -3525,13 +3525,24 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         }
       };
 
+      const scrollSecretChatToBottom = (behavior = 'auto') => {
+        try {
+          const scroller = chatScrollRef.current;
+          if (scroller) {
+            scroller.scrollTo({ top: scroller.scrollHeight, behavior });
+            return;
+          }
+          messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
+        } catch (_) {}
+      };
+
       // Auto-scroll to bottom ONLY when the user is already near bottom and we are not prepending
       useEffect(() => {
         try {
           if (secretView !== 'chat') return;
           if (chatIsPrependingRef.current) return;
           if (!chatStickToBottomRef.current) return;
-          messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+          scrollSecretChatToBottom('auto');
         } catch (_) {}
       }, [chatMessages, secretView]);
 
@@ -7168,6 +7179,9 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       useEffect(() => {
         resizeChatInput();
+        if (secretView === 'chat' && chatStickToBottomRef.current) {
+          requestAnimationFrame(() => scrollSecretChatToBottom('auto'));
+        }
       }, [newMessageText, editingMessage, replyToMessage]);
 
       useEffect(() => {
@@ -7407,6 +7421,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         setSelfDestruct(false);
         setReplyToMessage(null);
         refocusChatInput();
+        requestAnimationFrame(() => scrollSecretChatToBottom('auto'));
+        setTimeout(() => scrollSecretChatToBottom('auto'), 40);
 
         try {
           const sentRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), payload);
@@ -8469,13 +8485,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </div>
                   )}
                 </div>
-                {secretView !== 'chat' && (
-                  <div className="h-14 border-t border-neutral-900 bg-neutral-950 shrink-0 flex items-center justify-around sticky bottom-0 z-30 md:hidden" style={{ transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}>
-                    <button type="button" onClick={() => { setActiveChat(null); setSecretView('list'); }} className={`text-xs px-3 py-2 rounded-lg border ${secretView === 'list' ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>Chats</button>
-                    <button type="button" onClick={() => setSecretView('settings')} className={`text-xs px-3 py-2 rounded-lg border ${secretView === 'settings' ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>Profil</button>
-                    <button type="button" onClick={() => hideSecretChatNow()} className="text-xs px-3 py-2 rounded-lg border border-red-900/40 text-red-300 bg-red-950/30">Panic</button>
-                  </div>
-                )}
               </div>
             )}
 
@@ -10662,7 +10671,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                             loadMoreChatMessages();
                           }
                         }}
-                        className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 md:p-5 space-y-4 flex flex-col" style={{ WebkitOverflowScrolling: 'touch' }}
+                        className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 md:p-5 space-y-4 flex flex-col" style={{ WebkitOverflowScrolling: 'touch', overflowAnchor: 'none' }}
                       >
                         {chatHasMore && (
                           <div className="-mt-2 mb-2 flex items-center justify-center">
@@ -11103,13 +11112,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </div>
                   )}
                 </div>
-                {secretView !== 'chat' && (
-                  <div className="h-14 border-t border-neutral-900 bg-neutral-950 shrink-0 flex items-center justify-around md:hidden">
-                    <button type="button" onClick={() => { setActiveChat(null); setSecretView('list'); }} className={`text-xs px-3 py-2 rounded-lg border ${secretView === 'list' ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>Chats</button>
-                    <button type="button" onClick={() => setSecretView('settings')} className={`text-xs px-3 py-2 rounded-lg border ${secretView === 'settings' ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>Profil</button>
-                    <button type="button" onClick={() => hideSecretChatNow()} className="text-xs px-3 py-2 rounded-lg border border-red-900/40 text-red-300 bg-red-950/30">Panic</button>
-                  </div>
-                )}
               </div>
               </ErrorBoundary>
               )}

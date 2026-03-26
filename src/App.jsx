@@ -664,7 +664,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [quickEventPreview, setQuickEventPreview] = useState(null);
 
       const [isCalManageModalOpen, setIsCalManageModalOpen] = useState(false);
-      const [calForm, setCalForm] = useState({ id: null, name: '', type: 'normal', color: '', shifts: [] });
+      const [calForm, setCalForm] = useState({ id: null, name: '', type: 'normal', profile: 'private', color: '', shifts: [] });
       
       const [isShareCalModalOpen, setIsShareCalModalOpen] = useState(false);
       const [shareCalData, setShareCalData] = useState(null);
@@ -1057,13 +1057,14 @@ const openNewEventModal = (dateStr = null) => {
   setSelectedEventTemplate('');
   setEventEditScope('series');
   setSelectedDateForEvent(d);
+  const targetProfile = getCalendarProfile(targetCalId);
   setEventForm({
     title: '',
     date: d,
     time: '',
     location: '',
     durationMinutes: '',
-    type: 'Privat',
+    type: (targetProfile === 'work' || targetProfile === 'production') ? 'Arbeit' : 'Privat',
     projectTag: '',
     workStatus: 'planned',
     priority: 'B',
@@ -5399,8 +5400,21 @@ useEffect(() => {
 
 
       function getCalendarById(id) {
-         if (id === 'default') return { id: 'default', name: 'Privat', type: 'normal', ownerId: user?.uid };
+         if (id === 'default') return { id: 'default', name: 'Privat', type: 'normal', profile: 'private', ownerId: user?.uid };
          return customCalendars.find(c => c.id === id);
+      }
+
+      function getCalendarProfile(id) {
+        try {
+          const cal = getCalendarById(id || 'default');
+          if (!cal) return 'private';
+          if (cal.type === 'shift') return 'private';
+          const p = String(cal.profile || (cal.id === 'default' ? 'private' : 'private')).toLowerCase();
+          if (p === 'work' || p === 'production') return p;
+          return 'private';
+        } catch (_) {
+          return 'private';
+        }
       }
 
       const calendarTint = (calId) => {
@@ -6146,15 +6160,15 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
          e.preventDefault();
          try {
              if (calForm.id) {
-                 await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calForm.id), {
-                     name: calForm.name, type: calForm.type, color: (calForm.color || ''), shifts: calForm.shifts
-                 });
+                await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'calendars', calForm.id), {
+                    name: calForm.name, type: calForm.type, profile: (calForm.type === 'shift' ? 'private' : (calForm.profile || 'private')), color: (calForm.color || ''), shifts: calForm.shifts
+                });
                  await writeAudit({ calId: calForm.id, action: 'calendar.update', targetType: 'calendar', targetId: calForm.id, summary: `Kalender aktualisiert: ${calForm.name}` });
                  showToast("Kalender aktualisiert");
              } else {
-                 const newRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars'), {
-                     name: calForm.name, type: calForm.type, color: (calForm.color || ''), shifts: calForm.shifts, ownerId: user?.uid, sharedWith: {}
-                 });
+                const newRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'calendars'), {
+                    name: calForm.name, type: calForm.type, profile: (calForm.type === 'shift' ? 'private' : (calForm.profile || 'private')), color: (calForm.color || ''), shifts: calForm.shifts, ownerId: user?.uid, sharedWith: {}
+                });
                  await writeAudit({ calId: newRef?.id || 'default', action: 'calendar.create', targetType: 'calendar', targetId: newRef?.id || '', summary: `Kalender erstellt: ${calForm.name}` });
                  showToast("Kalender erstellt");
              }
@@ -8218,6 +8232,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       })();
       const completedGoals = normalizeDailyGoals(dailyGoals).filter((g) => g.done && String(g.text || '').trim()).length;
       const activeCalForView = getCalendarById(activeCalendarId);
+      const eventCalendarProfile = getCalendarProfile(eventForm?.calendarId || eventToEdit?.calendarId || activeCalendarId || 'default');
+      const isWorkEventProfile = eventCalendarProfile === 'work' || eventCalendarProfile === 'production';
       const isSecretChatView = currentView === 'secret_chat';
       const mobileBottomInsetClass = isSecretChatView ? 'pb-0' : 'pb-[calc(5.25rem+env(safe-area-inset-bottom))]';
 
@@ -8428,6 +8444,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </div>
                   )}
                 </div>
+                {secretView !== 'chat' && (
+                  <div className="h-14 border-t border-neutral-900 bg-neutral-950 shrink-0 flex items-center justify-around sticky bottom-0 z-30 md:hidden" style={{ transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}>
+                    <button type="button" onClick={() => { setActiveChat(null); setSecretView('list'); }} className={`text-xs px-3 py-2 rounded-lg border ${secretView === 'list' ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>Chats</button>
+                    <button type="button" onClick={() => setSecretView('settings')} className={`text-xs px-3 py-2 rounded-lg border ${secretView === 'settings' ? 'bg-white text-black border-white' : 'bg-black text-neutral-300 border-neutral-800'}`}>Profil</button>
+                    <button type="button" onClick={() => hideSecretChatNow()} className="text-xs px-3 py-2 rounded-lg border border-red-900/40 text-red-300 bg-red-950/30">Panic</button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -9304,7 +9327,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-wider flex items-center gap-2">
                     <CalendarIcon className="w-4 h-4" /> Meine Kalender & Schichten <span aria-hidden="true">🗓️</span>
                   </h3>
-                  <button onClick={() => { setCalForm({ id: null, name: '', type: 'normal', color: PASTEL_COLORS[(Date.now() % PASTEL_COLORS.length)], shifts: [] }); setIsCalManageModalOpen(true); }} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">+ Neu</button>
+                  <button onClick={() => { setCalForm({ id: null, name: '', type: 'normal', profile: 'private', color: PASTEL_COLORS[(Date.now() % PASTEL_COLORS.length)], shifts: [] }); setIsCalManageModalOpen(true); }} className="text-xs bg-white text-black px-3 py-1.5 rounded-md font-medium hover:bg-gray-200 transition-colors">+ Neu</button>
                 </div>
 
                 <div className="space-y-3">
@@ -9343,13 +9366,19 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                   {(customCalendars || []).filter(Boolean).filter(c => c?.ownerId === user?.uid).map(cal => (
                     <div key={cal.id} className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
-                        <p className="font-medium text-white flex items-center gap-2">{cal.name} {cal.type==='shift' && <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-900/50 px-2 py-0.5 rounded-full uppercase">Schichtplan</span>}</p>
+                        <p className="font-medium text-white flex items-center gap-2">
+                          {cal.name}
+                          {cal.type==='shift' && <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-900/50 px-2 py-0.5 rounded-full uppercase">Schichtplan</span>}
+                          {cal.type !== 'shift' && (cal.profile === 'work' || cal.profile === 'production') && (
+                            <span className="text-[10px] bg-emerald-900/30 text-emerald-300 border border-emerald-900/50 px-2 py-0.5 rounded-full uppercase">{cal.profile === 'production' ? 'Produktion' : 'Arbeit'}</span>
+                          )}
+                        </p>
                         <p className="text-xs text-neutral-500 mt-1">Freigegeben für: {Object.keys(cal.sharedWith || {}).length} Nutzer</p>
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => openShareLinkModalForCalendar(cal)} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors" title="Public Busy‑Only Link"><Lock className="w-4 h-4"/></button>
                         <button onClick={() => { setShareCalData(cal); setIsShareCalModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Share2 className="w-4 h-4"/></button>
-                        <button onClick={() => { setCalForm({ ...cal, color: (cal.color || calendarTint(cal.id)) }); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
+                        <button onClick={() => { setCalForm({ ...cal, profile: (cal.type === 'shift' ? 'private' : (cal.profile || 'private')), color: (cal.color || calendarTint(cal.id)) }); setIsCalManageModalOpen(true); }} className="p-2 border border-neutral-800 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"><Settings className="w-4 h-4"/></button>
                         <button onClick={() => deleteCalendar(cal.id)} className="p-2 border border-red-900/30 bg-red-900/10 rounded-lg text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 className="w-4 h-4"/></button>
                       </div>
                     </div>
@@ -9390,7 +9419,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         ...((customCalendars || [])
           .filter(Boolean)
           .filter(c => c?.ownerId === user?.uid)
-          .map(c => ({ value: c.id, label: c.name || 'Kalender', description: c.type === 'shift' ? 'Eigener Schichtplan' : 'Eigener Kalender' })))
+          .map(c => ({ value: c.id, label: c.name || 'Kalender', description: c.type === 'shift' ? 'Eigener Schichtplan' : ((c.profile === 'production' ? 'Produktion' : c.profile === 'work' ? 'Arbeitskalender' : 'Eigener Kalender')) })))
       ]}
       helper="Kein Dropdown mehr: Kalender werden direkt als Auswahlkarten angezeigt."
     />
@@ -10023,7 +10052,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
               <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>
               <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up overflow-hidden overscroll-none" style={{ height: 'var(--app-height, 100vh)', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
                 {/* Geheimer Chat Header */}
-                <header className="h-[4.5rem] md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
+                <header className="h-[4.5rem] md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950 sticky top-0 z-30" style={{ transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}>
                   {secretView === 'chat' && activeChat ? (
                     <div className="flex items-center gap-3">
                       <button onClick={() => { setActiveChat(null); setSecretView('list'); }} className="text-neutral-400 hover:text-white transition-colors mr-2">
@@ -10901,7 +10930,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                         <div ref={messagesEndRef} />
                       </div>
 
-                      <div className="p-3 md:p-4 bg-neutral-950 border-t border-neutral-900 shrink-0">
+                      <div className="p-3 md:p-4 bg-neutral-950 border-t border-neutral-900 shrink-0 sticky bottom-0 z-20" style={{ transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}>
                         {editingMessage && (
                           <div className="flex items-center justify-between bg-neutral-900 border border-neutral-800 p-2 px-3 rounded-t-xl text-xs text-neutral-400 border-b-0">
                             <span className="truncate">Nachricht bearbeiten...</span>
@@ -11590,22 +11619,26 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Dauer</div>
                           <div className="mt-1 text-neutral-200">{(eventForm.durationMinutes !== null && typeof eventForm.durationMinutes !== 'undefined' && String(eventForm.durationMinutes).trim() !== '') ? `${eventForm.durationMinutes} min` : '—'}</div>
                         </div>
-                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
-                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Projekt</div>
-                          <div className="mt-1 text-neutral-200">{eventForm.projectTag || '—'}</div>
-                        </div>
-                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
-                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Status</div>
-                          <div className="mt-1 text-neutral-200">{eventForm.workStatus === 'done' ? 'Erledigt' : eventForm.workStatus === 'in_progress' ? 'In Arbeit' : eventForm.workStatus === 'blocked' ? 'Blockiert' : 'Geplant'}</div>
-                        </div>
-                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
-                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Priorität</div>
-                          <div className="mt-1 text-neutral-200">{eventForm.priority || 'B'}</div>
-                        </div>
-                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
-                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Energie</div>
-                          <div className="mt-1 text-neutral-200">{eventForm.energyLevel === 'high' ? 'Hoch' : eventForm.energyLevel === 'light' ? 'Leicht' : 'Mittel'}</div>
-                        </div>
+                        {isWorkEventProfile && (
+                          <>
+                            <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                              <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Projekt</div>
+                              <div className="mt-1 text-neutral-200">{eventForm.projectTag || '—'}</div>
+                            </div>
+                            <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                              <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Status</div>
+                              <div className="mt-1 text-neutral-200">{eventForm.workStatus === 'done' ? 'Erledigt' : eventForm.workStatus === 'in_progress' ? 'In Arbeit' : eventForm.workStatus === 'blocked' ? 'Blockiert' : 'Geplant'}</div>
+                            </div>
+                            <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                              <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Priorität</div>
+                              <div className="mt-1 text-neutral-200">{eventForm.priority || 'B'}</div>
+                            </div>
+                            <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                              <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Energie</div>
+                              <div className="mt-1 text-neutral-200">{eventForm.energyLevel === 'high' ? 'Hoch' : eventForm.energyLevel === 'light' ? 'Leicht' : 'Mittel'}</div>
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       {(eventForm.recurrenceFreq && eventForm.recurrenceFreq !== 'NONE') && (
@@ -11627,7 +11660,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       ) : (
                         <div className="mt-3 text-[11px] text-neutral-500">Keine Beschreibung.</div>
                       )}
-                      {(eventForm.checklistPrep?.length || eventForm.checklistDo?.length || eventForm.checklistFollowup?.length) ? (
+                      {isWorkEventProfile && (eventForm.checklistPrep?.length || eventForm.checklistDo?.length || eventForm.checklistFollowup?.length) ? (
                         <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3 space-y-1 text-xs text-neutral-300">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold mb-1">Checklisten</div>
                           {eventForm.checklistPrep?.length ? <div>Vorbereitung: {eventForm.checklistPrep.length}</div> : null}
@@ -11635,7 +11668,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                           {eventForm.checklistFollowup?.length ? <div>Nachbereitung: {eventForm.checklistFollowup.length}</div> : null}
                         </div>
                       ) : null}
-                      {eventForm.reminderSequence?.length ? (
+                      {isWorkEventProfile && eventForm.reminderSequence?.length ? (
                         <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Reminder-Kette</div>
                           <div className="mt-1 text-neutral-200 text-sm">{eventForm.reminderSequence.join(', ')} min vorher</div>
@@ -11698,6 +11731,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </div>
                   </div>
 
+                  {isWorkEventProfile && (
                   <div className="bg-black border border-neutral-800 rounded-2xl p-4 space-y-3">
                     <div>
                       <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Vorlage</label>
@@ -11719,6 +11753,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       </div>
                     )}
                   </div>
+                  )}
 
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Titel</label>
@@ -12016,6 +12051,92 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       <option value="Erinnerung" />
                     </datalist>
                   </div>
+
+                  {isWorkEventProfile && (
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Projekt-Tag</label>
+                    <input
+                      value={eventForm.projectTag || ''}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, projectTag: e.target.value }))}
+                      placeholder="z.B. Kunde A / Baustelle B"
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                    />
+                  </div>
+                  )}
+
+                  {isWorkEventProfile && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Status</label>
+                      <select
+                        value={eventForm.workStatus || 'planned'}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, workStatus: e.target.value }))}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="planned">Geplant</option>
+                        <option value="in_progress">In Arbeit</option>
+                        <option value="done">Erledigt</option>
+                        <option value="blocked">Blockiert</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Priorität</label>
+                      <select
+                        value={eventForm.priority || 'B'}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, priority: e.target.value }))}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="A">A – Hoch</option>
+                        <option value="B">B – Mittel</option>
+                        <option value="C">C – Niedrig</option>
+                      </select>
+                    </div>
+                  </div>
+                  )}
+
+                  {isWorkEventProfile && (
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Energielevel</label>
+                    <select
+                      value={eventForm.energyLevel || 'medium'}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, energyLevel: e.target.value }))}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="high">Hoch (Deep Work)</option>
+                      <option value="medium">Mittel</option>
+                      <option value="light">Leicht</option>
+                    </select>
+                  </div>
+                  )}
+
+                  {isWorkEventProfile && (
+                  <div className="bg-black border border-neutral-800 rounded-2xl p-4 space-y-3">
+                    <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Checklisten aus Termin</div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold">Vorbereitung</label>
+                      <textarea value={checklistToTextareaValue(eventForm.checklistPrep)} onChange={(e) => setEventForm(prev => ({ ...prev, checklistPrep: checklistItemsFromTextarea(e.target.value) }))} rows={2} placeholder="Je Zeile ein Punkt" className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold">Durchführung</label>
+                      <textarea value={checklistToTextareaValue(eventForm.checklistDo)} onChange={(e) => setEventForm(prev => ({ ...prev, checklistDo: checklistItemsFromTextarea(e.target.value) }))} rows={2} placeholder="Je Zeile ein Punkt" className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold">Nachbereitung</label>
+                      <textarea value={checklistToTextareaValue(eventForm.checklistFollowup)} onChange={(e) => setEventForm(prev => ({ ...prev, checklistFollowup: checklistItemsFromTextarea(e.target.value) }))} rows={2} placeholder="Je Zeile ein Punkt" className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none" />
+                    </div>
+                  </div>
+                  )}
+
+                  {isWorkEventProfile && (
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Reminder-Kette (Minuten vor Termin)</label>
+                    <input value={(Array.isArray(eventForm.reminderSequence) ? eventForm.reminderSequence : []).join(', ')} onChange={(e) => {
+                      const parsed = String(e.target.value || '').split(',').map(v => parseInt(v.trim(), 10));
+                      setEventForm(prev => ({ ...prev, reminderSequence: normalizeReminderSequence(parsed) }));
+                    }} placeholder="z.B. 1440, 60" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500" />
+                    <p className="mt-1 text-[11px] text-neutral-500">Beispiel: 1440, 60 = 1 Tag + 1 Stunde vorher.</p>
+                  </div>
+                  )}
 
                   <div>
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Projekt-Tag</label>
@@ -12449,7 +12570,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Typ</label>
                     <select
                       value={calForm?.type || 'normal'}
-                      onChange={(e) => setCalForm(prev => ({ ...prev, type: e.target.value, shifts: prev.shifts || [] }))}
+                      onChange={(e) => setCalForm(prev => ({ ...prev, type: e.target.value, profile: e.target.value === 'shift' ? 'private' : (prev.profile || 'private'), shifts: prev.shifts || [] }))}
                       className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
                     >
                       <option value="normal">Normal (Termine)</option>
@@ -12457,6 +12578,22 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     </select>
                     <p className="mt-1 text-[11px] text-neutral-500">Schichtplan: Tippen wechselt Schichten, lang drücken öffnet Auswahl, „Pinsel“ malt mehrere Tage.</p>
                   </div>
+
+                  {calForm?.type !== 'shift' && (
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Profil</label>
+                      <select
+                        value={calForm?.profile || 'private'}
+                        onChange={(e) => setCalForm(prev => ({ ...prev, profile: e.target.value }))}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="private">Privat</option>
+                        <option value="work">Arbeit</option>
+                        <option value="production">Produktion</option>
+                      </select>
+                      <p className="mt-1 text-[11px] text-neutral-500">Arbeit/Produktion zeigt Arbeitsfelder im Terminformular und Überblick-Widgets.</p>
+                    </div>
+                  )}
 
                   {calForm?.type === 'shift' && (
                     <div className="bg-black border border-neutral-800 rounded-xl p-4">

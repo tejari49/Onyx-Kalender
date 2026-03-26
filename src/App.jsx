@@ -663,15 +663,17 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
       const selectedAppTheme = (() => {
-        const validThemes = new Set(['obsidian', 'deepblack', 'midnight', 'gold', 'emerald']);
-        const rawTheme = (userProfile && userProfile?.appTheme) ? userProfile?.appTheme : (() => {
+        const validThemes = new Set(['obsidian', 'deepblack', 'midnight', 'gold', 'emerald', 'paper-light', 'sand-light', 'rose-light', 'sky-light']);
+        const hasProfileTheme = !!(userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'appTheme'));
+        const rawTheme = hasProfileTheme ? userProfile?.appTheme : (() => {
           try { return localStorage.getItem('onyx_app_theme') || 'obsidian'; } catch (_) { return 'obsidian'; }
         })();
         return validThemes.has(rawTheme) ? rawTheme : 'obsidian';
       })();
       const selectedAppBg = (() => {
-        const validBgs = new Set(['none', 'glass-1', 'glass-2', 'glass-3', 'glass-emerald']);
-        const rawBg = (userProfile && userProfile?.appBg) ? userProfile?.appBg : (() => {
+        const validBgs = new Set(['none', 'glass-1', 'glass-2', 'glass-3', 'glass-emerald', 'paper', 'linen', 'sunwash', 'mintwash']);
+        const hasProfileBg = !!(userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'appBg'));
+        const rawBg = hasProfileBg ? userProfile?.appBg : (() => {
           try { return localStorage.getItem('onyx_app_bg') || 'none'; } catch (_) { return 'none'; }
         })();
         return validBgs.has(rawBg) ? rawBg : 'none';
@@ -681,7 +683,6 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
         try {
           const themeValue = selectedAppTheme || 'obsidian';
           const bgValue = selectedAppBg || 'none';
-          const applyDarkTheme = uiTheme === 'dark';
           const html = document.documentElement;
           const body = document.body;
 
@@ -691,14 +692,9 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
           const syncNode = (node) => {
             if (!node) return;
             node.setAttribute('data-mode', uiTheme);
-            if (applyDarkTheme) {
-              node.setAttribute('data-theme', themeValue);
-              if (bgValue && bgValue !== 'none') node.setAttribute('data-bg', bgValue);
-              else node.removeAttribute('data-bg');
-            } else {
-              node.removeAttribute('data-theme');
-              node.removeAttribute('data-bg');
-            }
+            node.setAttribute('data-theme', themeValue);
+            if (bgValue && bgValue !== 'none') node.setAttribute('data-bg', bgValue);
+            else node.removeAttribute('data-bg');
           };
 
           syncNode(html);
@@ -870,6 +866,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
         const stored = localStorage.getItem('onyx_last_chat_visit');
         return stored ? parseInt(stored, 10) : 0;
       });
+      const secretChangelogKey = 'onyx_secret_changelog_seen_2026_03_ui';
 
       const [toasts, setToasts] = useState([]);
       const pressTimer = useRef(null);
@@ -885,6 +882,8 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [secretPinSetupNew, setSecretPinSetupNew] = useState('');
       const [secretPinSetupConfirm, setSecretPinSetupConfirm] = useState('');
       const [secretPinActionBusy, setSecretPinActionBusy] = useState(false);
+      const [secretFriendsAccordion, setSecretFriendsAccordion] = useState({ online: true, offline: true });
+      const [secretChangelogOpen, setSecretChangelogOpen] = useState(false);
 
       const [isRefreshing, setIsRefreshing] = useState(false);
       const [pullDistance, setPullDistance] = useState(0);
@@ -7512,6 +7511,19 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
       const getChatParticipants = (chat) => Array.isArray(chat?.participants) ? chat.participants : [];
       const hasUnreadMessages = myChats.some(chat => chat.updatedAt > lastChatVisit && chat.lastMessageSenderId !== user?.uid);
+      useEffect(() => {
+        if (currentView !== 'secret_chat' || secretView !== 'list') return;
+        try {
+          const alreadySeen = localStorage.getItem(secretChangelogKey) === '1';
+          if (!alreadySeen) setSecretChangelogOpen(true);
+        } catch (_) {
+          setSecretChangelogOpen(true);
+        }
+      }, [currentView, secretView, secretChangelogKey]);
+      const closeSecretChangelog = () => {
+        setSecretChangelogOpen(false);
+        try { localStorage.setItem(secretChangelogKey, '1'); } catch (_) {}
+      };
       
       const exportICS = (exportAll = true) => {
         let eventsToExport = allEvents;
@@ -8890,6 +8902,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       { id: 'midnight', name: 'Midnight Blue', desc: 'Sattes Nachtblau mit kühlem Glow', preview: 'linear-gradient(135deg, #0f2747 0%, #081224 55%, #010409 100%)' },
       { id: 'gold', name: 'Onyx Gold', desc: 'Warmes Schwarz mit kräftigem Goldton', preview: 'linear-gradient(135deg, #3a2507 0%, #181108 50%, #020100 100%)' },
       { id: 'emerald', name: 'Onyx Emerald', desc: 'Onyx mit smaragdgrünem Akzent und tiefem Glow', preview: 'linear-gradient(135deg, #05261f 0%, #06130f 52%, #010504 100%)' },
+      { id: 'paper-light', name: 'Papyrus Light', desc: 'Helles Beige mit natürlichem Papier-Look', preview: 'linear-gradient(135deg, #f7f1e4 0%, #efe4cf 55%, #e7d8bc 100%)' },
+      { id: 'sand-light', name: 'Sandstone', desc: 'Warmes Off-White mit sanftem Kontrast', preview: 'linear-gradient(135deg, #f8f4ea 0%, #eee6d5 60%, #e2d5bd 100%)' },
+      { id: 'rose-light', name: 'Rosé Light', desc: 'Sehr helles Rosé für weichere Flächen', preview: 'linear-gradient(135deg, #fff5f4 0%, #f8e9e6 55%, #efd8d4 100%)' },
+      { id: 'sky-light', name: 'Sky Light', desc: 'Klares, helles Blau-Grau für Fokus', preview: 'linear-gradient(135deg, #f6f9ff 0%, #e8eef9 58%, #dce6f3 100%)' },
     ];
     const APP_BG_OPTIONS = [
       { id: 'none', name: 'Mattes Schwarz', desc: 'Ruhiger Hintergrund ohne Farbglow', preview: 'linear-gradient(135deg, #121212 0%, #060606 60%, #000000 100%)' },
@@ -8897,6 +8913,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       { id: 'glass-1', name: 'Neon Blur', desc: 'Deutlich kräftiger Cyan-Violett-Glow', preview: 'radial-gradient(circle at 18% 20%, rgba(34,211,238,0.95) 0%, rgba(34,211,238,0) 34%), radial-gradient(circle at 82% 18%, rgba(168,85,247,0.9) 0%, rgba(168,85,247,0) 32%), linear-gradient(135deg, #0c1224 0%, #020409 100%)' },
       { id: 'glass-2', name: 'Gold Blur', desc: 'Kräftiger Goldschein mit warmem Ambient', preview: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.9) 0%, rgba(245,158,11,0) 38%), radial-gradient(circle at 82% 76%, rgba(251,191,36,0.75) 0%, rgba(251,191,36,0) 28%), linear-gradient(135deg, #1d1306 0%, #030100 100%)' },
       { id: 'glass-3', name: 'Ruby Blur', desc: 'Kräftige Rot- und Rubin-Akzente', preview: 'radial-gradient(circle at 18% 18%, rgba(244,63,94,0.9) 0%, rgba(244,63,94,0) 34%), radial-gradient(circle at 82% 18%, rgba(234,88,12,0.82) 0%, rgba(234,88,12,0) 30%), linear-gradient(135deg, #1b090d 0%, #030101 100%)' },
+      { id: 'paper', name: 'Papier Beige', desc: 'Heller Papyrus-Hintergrund für Light-Design', preview: 'radial-gradient(circle at 20% 14%, rgba(191,155,102,0.25) 0%, rgba(191,155,102,0) 36%), linear-gradient(135deg, #f8f2e5 0%, #eee2ca 60%, #e5d2b0 100%)' },
+      { id: 'linen', name: 'Linen Soft', desc: 'Leichter Textur-Look in Creme', preview: 'repeating-linear-gradient(45deg, rgba(124,95,54,0.08) 0 2px, rgba(124,95,54,0.02) 2px 6px), linear-gradient(135deg, #fbf7ef 0%, #f1e9db 100%)' },
+      { id: 'sunwash', name: 'Sun Wash', desc: 'Heller Pfirsich-Akzent als warmer Hintergrund', preview: 'radial-gradient(circle at 84% 12%, rgba(251,146,60,0.25) 0%, rgba(251,146,60,0) 34%), linear-gradient(135deg, #fff8ee 0%, #f9ecd7 65%, #f4dec1 100%)' },
+      { id: 'mintwash', name: 'Mint Wash', desc: 'Frischer Mint-Touch auf hellem Untergrund', preview: 'radial-gradient(circle at 12% 18%, rgba(16,185,129,0.22) 0%, rgba(16,185,129,0) 36%), linear-gradient(135deg, #f5fcf8 0%, #e9f3ea 60%, #ddecd8 100%)' },
     ];
     const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
       .filter((field) => isExtraFieldEnabled(field))
@@ -9372,7 +9392,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                      {APP_THEME_OPTIONS.map(t => (
                        <button
                          key={t.id}
-                         onClick={() => updateProfileField('appTheme', t.id === 'obsidian' ? null : t.id)}
+                         onClick={() => updateProfileField('appTheme', t.id)}
                          className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
                        >
                          <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: t.preview }} />
@@ -9394,7 +9414,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                      {APP_BG_OPTIONS.map(bg => (
                        <button
                          key={bg.id}
-                         onClick={() => updateProfileField('appBg', bg.id === 'none' ? null : bg.id)}
+                         onClick={() => updateProfileField('appBg', bg.id)}
                          className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
                        >
                          <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: bg.preview }} />
@@ -9693,10 +9713,6 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             {currentView === 'secret_chat' && (
               <ErrorBoundary onReset={() => { setActiveChat(null); setSecretView('list'); setCurrentView('calendar'); }}>
               <div className="fixed inset-0 z-50 bg-black flex flex-col animate-slide-up overflow-hidden overscroll-none" style={{ height: 'var(--app-height, 100vh)', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
-                <div className="shrink-0">
-                  <AppChromeHeader />
-                </div>
-
                 {/* Geheimer Chat Header */}
                 <header className="h-[4.5rem] md:h-20 border-b border-neutral-800 flex items-center px-4 md:px-8 shrink-0 bg-neutral-950">
                   {secretView === 'chat' && activeChat ? (
@@ -10096,64 +10112,110 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
                   ) : secretView === 'list' ? (
                     <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-3xl w-full mx-auto">
-                      <div className="mb-4 px-2">
-                        <h3 className="text-lg font-medium text-white">Neues Secret Chat</h3>
-                        <p className="text-xs text-neutral-500 mt-1">Direktnachrichten und Gruppen in einer aufgeräumten Übersicht.</p>
-                      </div>
-                      <div className="mb-6 px-2 text-xs text-neutral-500">Freunde hinzufügen/entfernen findest du unter <span className="text-neutral-300">Secret Chat → Einstellungen → Freunde</span>.</div>
-                      <h4 className="text-xs uppercase tracking-widest text-neutral-600 mb-4 font-semibold px-2">Verlauf</h4>
-                      <div className="space-y-2">
-                        {sortedMyChats.length === 0 ? (
-                          <div className="p-8 text-center border border-dashed border-neutral-800 rounded-xl text-neutral-500 text-sm">Noch keine Chats vorhanden.</div>
-                        ) : (
-                          <>
-                            {pinnedChatIds.length > 0 && (
-                              <div className="px-2 pt-1 pb-2 text-[10px] uppercase tracking-widest text-neutral-600">Pinned</div>
+                      {secretChangelogOpen && (
+                        <div className="mb-4 border border-neutral-800 rounded-xl p-4 bg-neutral-950/70">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h3 className="text-sm font-semibold text-white">Changelog – Secret Chat</h3>
+                              <ul className="mt-2 text-xs text-neutral-400 list-disc pl-5 space-y-1">
+                                <li>Doppel-Header entfernt: nur Secret-Chat-Topbar bleibt sichtbar.</li>
+                                <li>Online/Offline jetzt einklappbar.</li>
+                                <li>Pinned-Chats bleiben dauerhaft oben sichtbar.</li>
+                              </ul>
+                            </div>
+                            <button onClick={closeSecretChangelog} className="text-neutral-500 hover:text-white text-xl leading-none px-2">&times;</button>
+                          </div>
+                        </div>
+                      )}
+                      {(() => {
+                        const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
+                        const mutedChatIds = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
+                        const pinnedChats = sortedMyChats.filter((chat) => pinnedChatIds.includes(chat.id));
+                        const unpinnedChats = sortedMyChats.filter((chat) => !pinnedChatIds.includes(chat.id));
+                        const onlineChats = unpinnedChats.filter((chat) => {
+                          const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
+                          const otherUid = isDm ? chat.participants.find((id) => id !== user?.uid) : null;
+                          return !!(otherUid && getPresence(otherUid).online);
+                        });
+                        const offlineChats = unpinnedChats.filter((chat) => {
+                          const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
+                          const otherUid = isDm ? chat.participants.find((id) => id !== user?.uid) : null;
+                          return !!(otherUid && !getPresence(otherUid).online);
+                        });
+                        const groupChats = unpinnedChats.filter((chat) => isGroupChat(chat));
+                        const renderChatRow = (chat) => {
+                          const isPinned = pinnedChatIds.includes(chat.id);
+                          const isMuted = mutedChatIds.includes(chat.id);
+                          const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
+                          const otherUid = isDm ? chat.participants.find(id => id !== user?.uid) : null;
+                          const otherPresence = otherUid ? getPresence(otherUid) : null;
+                          return (
+                            <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
+                              <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
+                                {getChatPartnerAvatar(chat) ? (
+                                  <img src={getChatPartnerAvatar(chat)} className="w-full h-full object-cover cursor-zoom-in" alt="Profilbild" onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatarFull(chat) || getChatPartnerAvatar(chat)); }} />
+                                ) : initialsFrom(getChatPartnerName(chat))}
+                              </div>
+                              <div className="flex-1 overflow-hidden">
+                                <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
+                                {chat.lastMessageSenderId !== user?.uid && chat.updatedAt > lastChatVisit ? (
+                                  <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
+                                ) : (
+                                  <p className="text-xs text-neutral-500 truncate mt-0.5">
+                                    {isDm ? (otherPresence?.online ? 'online' : (otherPresence?.lastSeen ? `zuletzt ${formatTime(otherPresence.lastSeen)}` : 'offline')) : 'Tippen zum Öffnen...'}
+                                  </p>
+                                )}
+                              </div>
+                              <button onClick={(e) => { e.stopPropagation(); toggleMuteChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isMuted ? 'bg-neutral-950 text-white border-neutral-500' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isMuted ? 'Stumm aus' : 'Stumm schalten'}>
+                                {isMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); togglePinChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isPinned ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isPinned ? 'Unpin' : 'Pin'}>
+                                <Pin className="w-4 h-4" />
+                              </button>
+                            </div>
+                          );
+                        };
+                        return (
+                          <div className="space-y-2">
+                            {pinnedChats.length > 0 && (
+                              <>
+                                <div className="px-2 pt-1 pb-2 text-[10px] uppercase tracking-widest text-neutral-600">Pinned</div>
+                                {pinnedChats.map(renderChatRow)}
+                              </>
                             )}
-                            {sortedMyChats.map(chat => {
-                              const isPinned = pinnedChatIds.includes(chat.id);
-                              const prof = (userProfileRef && userProfileRef.current) ? userProfileRef.current : userProfile;
-              const mutedChatIds = (prof && Array.isArray(prof?.mutedChatIds)) ? prof?.mutedChatIds : [];
-                              const isMuted = mutedChatIds.includes(chat.id);
-                              const isDm = !isGroupChat(chat) && Array.isArray(chat.participants) && chat.participants.length === 2;
-                              const otherUid = isDm ? chat.participants.find(id => id !== user?.uid) : null;
-                              const otherPresence = otherUid ? getPresence(otherUid) : null;
-                              return (
-                                <div key={chat.id} onClick={() => { setActiveChat(chat); setSecretView('chat'); }} className="p-4 border border-neutral-800 hover:border-neutral-500 rounded-xl bg-black hover:bg-neutral-950 transition-colors cursor-pointer flex items-center gap-4">
-                                  <div className="w-12 h-12 bg-neutral-900 border border-neutral-700 rounded-full flex items-center justify-center text-neutral-300 font-medium uppercase shrink-0 overflow-hidden">
-                                    {getChatPartnerAvatar(chat) ? (
-                                    <img
-                                      src={getChatPartnerAvatar(chat)}
-                                      className="w-full h-full object-cover cursor-zoom-in"
-                                      alt="Profilbild"
-                                      onClick={(e) => { e.stopPropagation(); openImageViewer(getChatPartnerAvatarFull(chat) || getChatPartnerAvatar(chat)); }}
-                                    />
-                                  ) : initialsFrom(getChatPartnerName(chat))}
+                            {(onlineChats.length > 0 || offlineChats.length > 0 || groupChats.length > 0) ? (
+                              <>
+                                {onlineChats.length > 0 && (
+                                  <div className="pt-2">
+                                    <button onClick={() => setSecretFriendsAccordion((prev) => ({ ...prev, online: !prev.online }))} className="w-full px-2 pb-2 flex items-center justify-between text-[10px] uppercase tracking-widest text-neutral-600">
+                                      <span>Online ({onlineChats.length})</span>
+                                      {secretFriendsAccordion.online ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                    </button>
+                                    {secretFriendsAccordion.online && <div className="space-y-2">{onlineChats.map(renderChatRow)}</div>}
                                   </div>
-                                  <div className="flex-1 overflow-hidden">
-                                    <h4 className="font-medium text-white truncate">{getChatPartnerName(chat)}</h4>
-                                    {chat.lastMessageSenderId !== user?.uid && chat.updatedAt > lastChatVisit ? (
-                                      <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
-                                    ) : (
-                                      <p className="text-xs text-neutral-500 truncate mt-0.5">
-                                        {isDm
-                                          ? (otherPresence?.online ? 'online' : (otherPresence?.lastSeen ? `zuletzt ${formatTime(otherPresence.lastSeen)}` : 'offline'))
-                                          : 'Tippen zum Öffnen...'}
-                                      </p>
-                                    )}
+                                )}
+                                {offlineChats.length > 0 && (
+                                  <div className="pt-2">
+                                    <button onClick={() => setSecretFriendsAccordion((prev) => ({ ...prev, offline: !prev.offline }))} className="w-full px-2 pb-2 flex items-center justify-between text-[10px] uppercase tracking-widest text-neutral-600">
+                                      <span>Offline ({offlineChats.length})</span>
+                                      {secretFriendsAccordion.offline ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                    </button>
+                                    {secretFriendsAccordion.offline && <div className="space-y-2">{offlineChats.map(renderChatRow)}</div>}
                                   </div>
-                                  <button onClick={(e) => { e.stopPropagation(); toggleMuteChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isMuted ? 'bg-neutral-950 text-white border-neutral-500' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isMuted ? 'Stumm aus' : 'Stumm schalten'}>
-                                    {isMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-                                  </button>
-                                  <button onClick={(e) => { e.stopPropagation(); togglePinChat(chat.id); }} className={`p-2 rounded-lg border transition-colors ${isPinned ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-white hover:border-neutral-500'}`} title={isPinned ? 'Unpin' : 'Pin'}>
-                                    <Pin className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </>
-                        )}
-                      </div>
+                                )}
+                                {groupChats.length > 0 && (
+                                  <div className="pt-2">
+                                    <div className="px-2 pb-2 text-[10px] uppercase tracking-widest text-neutral-600">Gruppen ({groupChats.length})</div>
+                                    <div className="space-y-2">{groupChats.map(renderChatRow)}</div>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="p-8 text-center border border-dashed border-neutral-800 rounded-xl text-neutral-500 text-sm">Noch keine Chats vorhanden.</div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <div className="flex-1 min-h-0 flex flex-col w-full max-w-4xl mx-auto border-x border-neutral-900 overflow-hidden" onClick={() => { setSelectedMessageId(null); setMessageReactionPickerFor(null); }}>
@@ -12547,11 +12609,17 @@ function BookingHostManager({ user, userProfile, db, APP_ID, events, showToast }
   const persistBookingProfile = React.useCallback(async (nextProfile, opts = {}) => {
     if (!code) return false;
 
-    const busyEvents = (events || []).map((e) => ({
-      startMs: e.startMs,
-      endMs: e.endMs,
-      isAllDay: e.isAllDay === true,
-    }));
+    const busyEvents = (events || []).reduce((acc, e) => {
+      const startMs = Number(e?.startMs || 0);
+      const endMs = Number(e?.endMs || 0);
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs <= 0 || endMs <= 0 || endMs <= startMs) return acc;
+      acc.push({
+        startMs,
+        endMs,
+        isAllDay: e?.isAllDay === true,
+      });
+      return acc;
+    }, []);
 
     const prepared = {
       ...buildDefaultProfile(),

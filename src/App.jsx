@@ -243,6 +243,22 @@ const AccordionItem = ({
   );
 };
 
+const WORK_TEMPLATES = [
+  { id: 'kundenmeeting', label: 'Kundenmeeting', defaults: { title: 'Kundenmeeting', type: 'Arbeit', workStatus: 'planned', priority: 'A', energyLevel: 'high', durationMinutes: 60, checklistPrep: ['Agenda vorbereiten'], checklistDo: ['Meeting durchführen'], checklistFollowup: ['Zusammenfassung senden'] } },
+  { id: 'angebot', label: 'Angebot erstellen', defaults: { title: 'Angebot erstellen', type: 'Projekt', workStatus: 'planned', priority: 'A', energyLevel: 'high', durationMinutes: 90, checklistPrep: ['Anforderungen sammeln'], checklistDo: ['Angebot erstellen'], checklistFollowup: ['Angebot senden'] } },
+  { id: 'wartung', label: 'Wartung', defaults: { title: 'Wartung', type: 'Arbeit', workStatus: 'planned', priority: 'B', energyLevel: 'medium', durationMinutes: 120, checklistPrep: ['Werkzeug prüfen'], checklistDo: ['Wartung durchführen'], checklistFollowup: ['Protokoll abschließen'] } },
+  { id: 'monatsabschluss', label: 'Monatsabschluss', defaults: { title: 'Monatsabschluss', type: 'Arbeit', workStatus: 'planned', priority: 'A', energyLevel: 'medium', durationMinutes: 180, checklistPrep: ['Belege sammeln'], checklistDo: ['Abschluss durchführen'], checklistFollowup: ['Report teilen'] } },
+];
+
+const TIME_BLOCK_PRESETS = [
+  { id: 'focus', label: 'Fokusblock', title: 'Fokusarbeit', type: 'Arbeit', time: '08:00', durationMinutes: 120, priority: 'A', energyLevel: 'high' },
+  { id: 'meeting', label: 'Meetingblock', title: 'Meetings', type: 'Arbeit', time: '10:30', durationMinutes: 90, priority: 'B', energyLevel: 'medium' },
+  { id: 'admin', label: 'Adminblock', title: 'Admin', type: 'Arbeit', time: '14:00', durationMinutes: 60, priority: 'C', energyLevel: 'light' },
+  { id: 'buffer', label: 'Pufferblock', title: 'Puffer', type: 'Arbeit', time: '16:00', durationMinutes: 60, priority: 'B', energyLevel: 'light' },
+];
+
+const JOURNAL_STORAGE_KEY = 'onyx_work_journal_v1';
+
     // --- Robust helper functions (v20) ---
     
 
@@ -573,8 +589,19 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [eventCanEdit, setEventCanEdit] = useState(true);
       const [calendarViewMode, setCalendarViewMode] = useState('month'); // 'month' | 'agenda'
       const [calendarSearchQuery, setCalendarSearchQuery] = useState('');
+      const [agendaProjectFilter, setAgendaProjectFilter] = useState('all');
+      const [agendaStatusFilter, setAgendaStatusFilter] = useState('all');
+      const [agendaPriorityFilter, setAgendaPriorityFilter] = useState('all');
+      const [agendaEnergyFilter, setAgendaEnergyFilter] = useState('all');
       const [agendaRange, setAgendaRange] = useState('7'); // '7' | '30' | 'month'
       const [eventEditScope, setEventEditScope] = useState('series'); // 'series' | 'single'
+      const [selectedEventTemplate, setSelectedEventTemplate] = useState('');
+      const [weeklyCapacityHours, setWeeklyCapacityHours] = useState(35);
+      const [agendaManagerView, setAgendaManagerView] = useState(false);
+      const [workJournalOpen, setWorkJournalOpen] = useState(false);
+      const [workJournalDate, setWorkJournalDate] = useState(new Date().toISOString().split('T')[0]);
+      const [workJournalForm, setWorkJournalForm] = useState({ planned: '', done: '', moved: '', reason: '' });
+      const [workJournalEntries, setWorkJournalEntries] = useState({});
 
       // Ensure event modal starts at top on open (mobile: content can exceed viewport)
       useEffect(() => {
@@ -589,6 +616,21 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
         return () => clearTimeout(t);
       }, [isModalOpen, eventModalMode, eventToEdit]);
 
+      useEffect(() => {
+        try {
+          const raw = localStorage.getItem(JOURNAL_STORAGE_KEY);
+          if (!raw) return;
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') setWorkJournalEntries(parsed);
+        } catch (_) {}
+      }, []);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem(JOURNAL_STORAGE_KEY, JSON.stringify(workJournalEntries || {}));
+        } catch (_) {}
+      }, [workJournalEntries]);
+
 
       const [eventForm, setEventForm] = useState({
         title: '',
@@ -597,6 +639,14 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
         location: '',
         durationMinutes: '',
         type: 'Privat',
+        projectTag: '',
+        workStatus: 'planned',
+        priority: 'B',
+        energyLevel: 'medium',
+        checklistPrep: [],
+        checklistDo: [],
+        checklistFollowup: [],
+        reminderSequence: [],
         desc: '',
         // Reminder per Termin: 'default' | 'none' | 'custom'
         reminderMode: 'default',
@@ -992,6 +1042,7 @@ const openNewEventModal = (dateStr = null) => {
   } catch (_) {}
 
   setEventToEdit(null);
+  setSelectedEventTemplate('');
   setEventEditScope('series');
   setSelectedDateForEvent(d);
   setEventForm({
@@ -1001,6 +1052,14 @@ const openNewEventModal = (dateStr = null) => {
     location: '',
     durationMinutes: '',
     type: 'Privat',
+    projectTag: '',
+    workStatus: 'planned',
+    priority: 'B',
+    energyLevel: 'medium',
+    checklistPrep: [],
+    checklistDo: [],
+    checklistFollowup: [],
+    reminderSequence: [],
     desc: '',
     reminderMode: 'default',
     reminderMinutes: 15,
@@ -1023,6 +1082,69 @@ initPollDraftFromEvent({ date: d, time: '', calendarId: targetCalId });
   setEventModalMode('create');
   setEventCanEdit(true);
   setIsModalOpen(true);
+};
+
+const applyWorkTemplate = (templateId) => {
+  const tpl = WORK_TEMPLATES.find(t => t.id === templateId);
+  if (!tpl) return;
+  const defaults = tpl.defaults || {};
+  setSelectedEventTemplate(templateId);
+  setEventForm(prev => ({
+    ...prev,
+    title: defaults.title || prev.title,
+    type: defaults.type || prev.type,
+    workStatus: defaults.workStatus || prev.workStatus,
+    priority: defaults.priority || prev.priority,
+    energyLevel: defaults.energyLevel || prev.energyLevel,
+    durationMinutes: (typeof defaults.durationMinutes === 'number') ? defaults.durationMinutes : prev.durationMinutes,
+    checklistPrep: normalizeChecklistItems(defaults.checklistPrep || prev.checklistPrep),
+    checklistDo: normalizeChecklistItems(defaults.checklistDo || prev.checklistDo),
+    checklistFollowup: normalizeChecklistItems(defaults.checklistFollowup || prev.checklistFollowup),
+    reminderSequence: normalizeReminderSequence(prev.reminderSequence?.length ? prev.reminderSequence : [1440, 60]),
+  }));
+  showToast(`Vorlage geladen: ${tpl.label}`);
+};
+
+const createTimeBlockPreset = async (presetId) => {
+  if (!user) return;
+  const preset = TIME_BLOCK_PRESETS.find(p => p.id === presetId);
+  if (!preset) return;
+  const targetCalId = activeCalendarId || 'default';
+  if (targetCalId !== 'default' && !canWriteCalendar(targetCalId)) return showToast("Keine Schreibrechte");
+  const now = new Date();
+  const mondayOffset = now.getDay() === 0 ? -6 : 1 - now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + mondayOffset);
+  const payload = {
+    title: preset.title,
+    date: monday.toISOString().split('T')[0],
+    time: preset.time,
+    location: '',
+    durationMinutes: preset.durationMinutes,
+    type: preset.type || 'Arbeit',
+    projectTag: '',
+    workStatus: 'planned',
+    priority: preset.priority || 'B',
+    energyLevel: preset.energyLevel || 'medium',
+    checklistPrep: [],
+    checklistDo: [],
+    checklistFollowup: [],
+    reminderSequence: [60],
+    desc: `Time-Block: ${preset.label}`,
+    reminderMode: 'default',
+    reminderMinutes: null,
+    recurrence: { freq: 'WEEKLY', interval: 1, byWeekdays: [0, 1, 2, 3, 4], until: '' },
+    exDates: [],
+    overrides: {},
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  try {
+    await addDoc(eventCollectionRefFor(targetCalId), payload);
+    showToast(`Time-Block erstellt: ${preset.label}`);
+  } catch (_) {
+    showToast("Time-Block fehlgeschlagen");
+  }
 };
 
 const persistDisplayName = async (rawName, opts = {}) => {
@@ -1858,6 +1980,37 @@ const writeAudit = async ({ calId, action, targetType, targetId, summary, detail
   await writeCalendarAudit(calId, payload);
 };
 
+const normalizeChecklistItems = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, idx) => {
+      const raw = typeof item === 'string' ? item : (item?.text || '');
+      const text = String(raw || '').trim();
+      if (!text) return null;
+      return { id: String(item?.id || `${Date.now()}_${idx}`), text, done: !!item?.done };
+    })
+    .filter(Boolean);
+};
+
+const checklistItemsFromTextarea = (value) => normalizeChecklistItems(
+  String(value || '')
+    .split('\n')
+    .map(v => v.trim())
+    .filter(Boolean)
+    .map(text => ({ text, done: false }))
+);
+
+const checklistToTextareaValue = (items) => normalizeChecklistItems(items).map(item => item.text).join('\n');
+
+const normalizeReminderSequence = (arr) => {
+  if (!Array.isArray(arr)) return [];
+  return Array.from(new Set(
+    arr
+      .map(v => parseInt(v, 10))
+      .filter(v => !isNaN(v) && v >= 0)
+  )).sort((a, b) => b - a).slice(0, 6);
+};
+
 const saveEvent = async (e) => {
   e.preventDefault();
   if (!user) return;
@@ -1868,7 +2021,15 @@ const saveEvent = async (e) => {
 
   const timeVal = (eventForm.time || '').trim();
   const typeVal = (eventForm.type || 'Privat').trim();
+  const projectTagVal = (eventForm.projectTag || '').trim();
+  const workStatusVal = ['planned', 'in_progress', 'done', 'blocked'].includes(String(eventForm.workStatus || '')) ? String(eventForm.workStatus) : 'planned';
+  const priorityVal = ['A', 'B', 'C'].includes(String(eventForm.priority || '')) ? String(eventForm.priority) : 'B';
+  const energyLevelVal = ['high', 'medium', 'light'].includes(String(eventForm.energyLevel || '')) ? String(eventForm.energyLevel) : 'medium';
   const descVal = (eventForm.desc || '').trim();
+  const checklistPrepVal = normalizeChecklistItems(eventForm.checklistPrep);
+  const checklistDoVal = normalizeChecklistItems(eventForm.checklistDo);
+  const checklistFollowupVal = normalizeChecklistItems(eventForm.checklistFollowup);
+  const reminderSequenceVal = normalizeReminderSequence(eventForm.reminderSequence);
 
   const locationVal = (eventForm.location || '').trim();
   let durationMinutesVal = null;
@@ -1910,6 +2071,14 @@ const saveEvent = async (e) => {
           location: locationVal,
           durationMinutes: durationMinutesVal,
           type: typeVal,
+          projectTag: projectTagVal,
+          workStatus: workStatusVal,
+          priority: priorityVal,
+          energyLevel: energyLevelVal,
+          checklistPrep: checklistPrepVal,
+          checklistDo: checklistDoVal,
+          checklistFollowup: checklistFollowupVal,
+          reminderSequence: reminderSequenceVal,
           desc: descVal,
           reminderMode: reminderModeVal,
           reminderMinutes: reminderMinutesVal
@@ -1936,6 +2105,14 @@ const saveEvent = async (e) => {
     location: locationVal,
     durationMinutes: durationMinutesVal,
     type: typeVal,
+    projectTag: projectTagVal,
+    workStatus: workStatusVal,
+    priority: priorityVal,
+    energyLevel: energyLevelVal,
+    checklistPrep: checklistPrepVal,
+    checklistDo: checklistDoVal,
+    checklistFollowup: checklistFollowupVal,
+    reminderSequence: reminderSequenceVal,
     desc: descVal,
     reminderMode: reminderModeVal,
     reminderMinutes: reminderMinutesVal,
@@ -5585,20 +5762,22 @@ useEffect(() => {
         }
       }
 
-      const effectiveReminderMinutes = (occ) => {
+      const effectiveReminderMinutesList = (occ) => {
         try {
+          const seq = normalizeReminderSequence(occ?.reminderSequence);
+          if (seq.length > 0) return seq;
           const mode = (occ && typeof occ.reminderMode === 'string') ? occ.reminderMode : 'default';
-          if (mode === 'none') return null;
+          if (mode === 'none') return [];
           if (mode === 'custom') {
             const m = (typeof occ.reminderMinutes === 'number') ? occ.reminderMinutes : parseInt(occ.reminderMinutes || 0, 10);
-            if (isNaN(m)) return null;
-            return Math.max(0, m);
+            if (isNaN(m)) return [];
+            return [Math.max(0, m)];
           }
           const def = (userProfile && typeof userProfile?.defaultReminderMinutes === 'number') ? userProfile?.defaultReminderMinutes : null;
-          if (typeof def === 'number' && !isNaN(def)) return Math.max(0, def);
-          return null;
+          if (typeof def === 'number' && !isNaN(def)) return [Math.max(0, def)];
+          return [];
         } catch (e) {
-          return null;
+          return [];
         }
       };
 
@@ -5613,29 +5792,30 @@ useEffect(() => {
           const now = Date.now();
           const idx = [];
           for (const occ of occs) {
-            const mins = effectiveReminderMinutes(occ);
-            if (mins === null) continue;
             if (!occ.time) continue;
             const startMs = parseDateTimeLocalMs(occ.date, occ.time);
             if (!startMs) continue;
-            const dueMs = startMs - (mins * 60000);
-            if (dueMs < (now - 60000)) continue; // zu alt
             const baseId = occ._baseId || occ.id || 'event';
             const occId = occ.id || `${baseId}__${occ.date || ''}`;
             const occDate = occ._occurrenceDate || occ.date || '';
-            const rid = `${baseId}__${occDate}__${startMs}__${mins}`;
-            idx.push({
-              rid,
-              dueMs,
-              startMs,
-              mins,
-              title: occ.title || 'Termin',
-              time: occ.time || '',
-              calendarId: occ.calendarId || 'default',
-              occDate,
-              baseId,
-              occId
-            });
+            const minutesList = effectiveReminderMinutesList(occ);
+            for (const mins of minutesList) {
+              const dueMs = startMs - (mins * 60000);
+              if (dueMs < (now - 60000)) continue; // zu alt
+              const rid = `${baseId}__${occDate}__${startMs}__${mins}`;
+              idx.push({
+                rid,
+                dueMs,
+                startMs,
+                mins,
+                title: occ.title || 'Termin',
+                time: occ.time || '',
+                calendarId: occ.calendarId || 'default',
+                occDate,
+                baseId,
+                occId
+              });
+            }
           }
           idx.sort((a, b) => a.dueMs - b.dueMs);
           remindersIndexRef.current = idx;
@@ -5880,6 +6060,7 @@ useEffect(() => {
          setEventEditScope(isInstance ? 'single' : 'series');
          const ov = (baseEvent.overrides && occDate) ? baseEvent.overrides[occDate] : null;
          const effective = ov ? { ...baseEvent, ...ov, date: occDate } : { ...baseEvent, date: occDate };
+         setSelectedEventTemplate('');
          setEventForm({
            title: effective.title || '',
            date: isInstance ? occDate : (baseEvent.date || new Date().toISOString().split('T')[0]),
@@ -5887,6 +6068,14 @@ useEffect(() => {
            location: (typeof effective.location === 'string') ? effective.location : ((typeof baseEvent.location === 'string') ? baseEvent.location : ''),
            durationMinutes: (typeof effective.durationMinutes === 'number' || typeof effective.durationMinutes === 'string') ? effective.durationMinutes : ((typeof baseEvent.durationMinutes === 'number' || typeof baseEvent.durationMinutes === 'string') ? baseEvent.durationMinutes : ''),
            type: effective.type || 'Privat',
+           projectTag: (typeof effective.projectTag === 'string') ? effective.projectTag : ((typeof baseEvent.projectTag === 'string') ? baseEvent.projectTag : ''),
+           workStatus: (typeof effective.workStatus === 'string') ? effective.workStatus : ((typeof baseEvent.workStatus === 'string') ? baseEvent.workStatus : 'planned'),
+           priority: (typeof effective.priority === 'string') ? effective.priority : ((typeof baseEvent.priority === 'string') ? baseEvent.priority : 'B'),
+           energyLevel: (typeof effective.energyLevel === 'string') ? effective.energyLevel : ((typeof baseEvent.energyLevel === 'string') ? baseEvent.energyLevel : 'medium'),
+           checklistPrep: normalizeChecklistItems(effective.checklistPrep || baseEvent.checklistPrep || []),
+           checklistDo: normalizeChecklistItems(effective.checklistDo || baseEvent.checklistDo || []),
+           checklistFollowup: normalizeChecklistItems(effective.checklistFollowup || baseEvent.checklistFollowup || []),
+           reminderSequence: normalizeReminderSequence(effective.reminderSequence || baseEvent.reminderSequence || []),
            desc: effective.desc || '',
            reminderMode: (typeof effective.reminderMode === 'string') ? effective.reminderMode : ((typeof baseEvent.reminderMode === 'string') ? baseEvent.reminderMode : 'default'),
            reminderMinutes: (typeof effective.reminderMinutes === 'number') ? effective.reminderMinutes : (typeof baseEvent.reminderMinutes === 'number' ? baseEvent.reminderMinutes : 15),
@@ -8450,14 +8639,39 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     }
 
                     let items = getOccurrencesInRange(start, end);
+                    const weekStart = (() => {
+                      const t = new Date();
+                      const offset = t.getDay() === 0 ? -6 : 1 - t.getDay();
+                      const m = new Date(t);
+                      m.setDate(t.getDate() + offset);
+                      return formatDateStr(m);
+                    })();
+                    const weekEnd = addDaysStr(weekStart, 6);
+                    const weekItems = getOccurrencesInRange(weekStart, weekEnd).filter((ev) => ev && ev.type !== 'shift');
+                    const weekMinutes = weekItems.reduce((sum, ev) => {
+                      const n = parseInt(ev.durationMinutes, 10);
+                      return sum + (!isNaN(n) && n > 0 ? n : 0);
+                    }, 0);
+                    const weekHours = weekMinutes / 60;
+                    const capacityRatio = weeklyCapacityHours > 0 ? (weekHours / weeklyCapacityHours) : 0;
+                    const capacityState = capacityRatio > 1 ? 'red' : capacityRatio > 0.85 ? 'yellow' : 'green';
+                    const uniqueProjects = Array.from(new Set(items.map((ev) => String(ev.projectTag || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'de'));
                     const q = (calendarSearchQuery || '').trim().toLowerCase();
                     if (q) {
                       items = items.filter(ev => (
                         (ev.title || '').toLowerCase().includes(q) ||
                         (ev.desc || '').toLowerCase().includes(q) ||
                         (ev.type || '').toLowerCase().includes(q) ||
-                        (ev.time || '').toLowerCase().includes(q)
+                        (ev.time || '').toLowerCase().includes(q) ||
+                        (ev.projectTag || '').toLowerCase().includes(q)
                       ));
+                    }
+                    if (agendaProjectFilter !== 'all') items = items.filter((ev) => String(ev.projectTag || '').trim() === agendaProjectFilter);
+                    if (agendaStatusFilter !== 'all') items = items.filter((ev) => String(ev.workStatus || 'planned') === agendaStatusFilter);
+                    if (agendaPriorityFilter !== 'all') items = items.filter((ev) => String(ev.priority || 'B') === agendaPriorityFilter);
+                    if (agendaEnergyFilter !== 'all') items = items.filter((ev) => String(ev.energyLevel || 'medium') === agendaEnergyFilter);
+                    if (agendaManagerView) {
+                      items = items.filter((ev) => (ev.priority || 'B') === 'A' || (ev.workStatus || '') === 'blocked' || (ev.workStatus || '') === 'in_progress');
                     }
 
                     const map = {};
@@ -8479,6 +8693,59 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                           <button onClick={() => openNewEventModal()} className="text-xs bg-white text-black px-3 py-2 rounded-md font-medium hover:bg-gray-200 transition-colors flex items-center gap-2">
                             <Plus className="w-4 h-4" /> Neu
                           </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <div className={`rounded-xl border px-3 py-2 ${capacityState === 'red' ? 'border-red-900/50 bg-red-950/20' : capacityState === 'yellow' ? 'border-yellow-800/40 bg-yellow-900/10' : 'border-emerald-900/40 bg-emerald-900/10'}`}>
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">Wochenkapazität</div>
+                            <div className="mt-1 text-sm text-white tabular-nums">{weekHours.toFixed(1)}h / {weeklyCapacityHours}h</div>
+                            <div className="mt-1 text-[11px] text-neutral-400">{capacityState === 'red' ? '🔴 Überlastet' : capacityState === 'yellow' ? '🟡 Fast voll' : '🟢 Im Rahmen'}</div>
+                          </div>
+                          <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 flex items-center justify-between gap-2">
+                            <div>
+                              <div className="text-[10px] uppercase tracking-widest text-neutral-500">Wochenlimit (h)</div>
+                              <input type="number" min="1" value={weeklyCapacityHours} onChange={(e) => setWeeklyCapacityHours(Math.max(1, parseInt(e.target.value || '35', 10) || 35))} className="mt-1 w-24 bg-black border border-neutral-800 rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:border-neutral-500" />
+                            </div>
+                            <button type="button" onClick={() => {
+                              const todayStr = new Date().toISOString().split('T')[0];
+                              setWorkJournalDate(todayStr);
+                              const dayEvents = getEventsForDate(todayStr).filter((ev) => ev && ev.type !== 'shift');
+                              setWorkJournalForm({
+                                planned: `${dayEvents.length} Termine`,
+                                done: `${dayEvents.filter((ev) => (ev.workStatus || 'planned') === 'done').length} erledigt`,
+                                moved: `${dayEvents.filter((ev) => (ev.workStatus || '') === 'blocked').length} blockiert`,
+                                reason: '',
+                              });
+                              setWorkJournalOpen(true);
+                            }} className="px-3 py-2 rounded-md border border-neutral-800 text-xs text-neutral-200 hover:border-neutral-500">Tagesabschluss</button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <select value={agendaProjectFilter} onChange={(e) => setAgendaProjectFilter(e.target.value)} className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white">
+                            <option value="all">Projekt: Alle</option>
+                            {uniqueProjects.map((name) => <option key={name} value={name}>{name}</option>)}
+                          </select>
+                          <select value={agendaStatusFilter} onChange={(e) => setAgendaStatusFilter(e.target.value)} className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white">
+                            <option value="all">Status: Alle</option>
+                            <option value="planned">Geplant</option>
+                            <option value="in_progress">In Arbeit</option>
+                            <option value="done">Erledigt</option>
+                            <option value="blocked">Blockiert</option>
+                          </select>
+                          <select value={agendaPriorityFilter} onChange={(e) => setAgendaPriorityFilter(e.target.value)} className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white">
+                            <option value="all">Prio: Alle</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                          </select>
+                          <select value={agendaEnergyFilter} onChange={(e) => setAgendaEnergyFilter(e.target.value)} className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white">
+                            <option value="all">Energie: Alle</option>
+                            <option value="high">Hoch</option>
+                            <option value="medium">Mittel</option>
+                            <option value="light">Leicht</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => setAgendaManagerView(v => !v)} className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${agendaManagerView ? 'bg-white text-black border-white' : 'bg-neutral-900 text-neutral-300 border-neutral-800 hover:border-neutral-500'}`}>Manager-Ansicht</button>
                         </div>
 
                         {dates.length === 0 ? (
@@ -8513,10 +8780,17 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                                         )}
                                       </div>
                                       <div className="text-xs text-neutral-500 mt-1 truncate">
-                                        {ev.type === 'shift' ? 'Schicht' : (ev.time ? `${ev.time} · ` : '')}{ev.type || 'Privat'}{ev.desc ? ` · ${ev.desc}` : ''}
+                                        {ev.type === 'shift' ? 'Schicht' : (ev.time ? `${ev.time} · ` : '')}{ev.type || 'Privat'}{(!agendaManagerView && ev.desc) ? ` · ${ev.desc}` : ''}
                                         {ev.calendarId && (
                                           <span className="text-neutral-600"> · {getCalendarById(ev.calendarId)?.name || 'Kalender'}</span>
                                         )}
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {ev.projectTag ? <span className="text-[10px] px-2 py-0.5 rounded-full border border-neutral-700 text-neutral-300">#{ev.projectTag}</span> : null}
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-neutral-700 text-neutral-300">{ev.workStatus === 'done' ? 'Erledigt' : ev.workStatus === 'in_progress' ? 'In Arbeit' : ev.workStatus === 'blocked' ? 'Blockiert' : 'Geplant'}</span>
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-neutral-700 text-neutral-300">Prio {ev.priority || 'B'}</span>
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-neutral-700 text-neutral-300">{ev.energyLevel === 'high' ? 'Energie hoch' : ev.energyLevel === 'light' ? 'Energie leicht' : 'Energie mittel'}</span>
+                                        {agendaManagerView ? <span className="text-[10px] px-2 py-0.5 rounded-full border border-neutral-700 text-neutral-300">Fortschritt: {((ev.workStatus || 'planned') === 'done') ? '100%' : (ev.workStatus === 'in_progress' ? '60%' : ev.workStatus === 'blocked' ? '20%' : '10%')}</span> : null}
                                       </div>
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-neutral-600 shrink-0 mt-1" />
@@ -10966,6 +11240,38 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         </div>
       )}
 
+      {workJournalOpen && (
+        <div className="fixed inset-0 z-[145] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setWorkJournalOpen(false)}>
+          <div className="w-full max-w-lg rounded-3xl border border-neutral-800 bg-neutral-950 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Arbeitsjournal / Tagesabschluss</h3>
+                <p className="text-xs text-neutral-500">Reflexion für {workJournalDate}</p>
+              </div>
+              <button onClick={() => setWorkJournalOpen(false)} className="p-2 rounded-xl border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-500"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Datum</label>
+                <input type="date" value={workJournalDate} onChange={(e) => setWorkJournalDate(e.target.value)} className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500" />
+              </div>
+              <textarea value={workJournalForm.planned} onChange={(e) => setWorkJournalForm(prev => ({ ...prev, planned: e.target.value }))} rows={2} placeholder="Was war geplant?" className="w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white" />
+              <textarea value={workJournalForm.done} onChange={(e) => setWorkJournalForm(prev => ({ ...prev, done: e.target.value }))} rows={2} placeholder="Was wurde erledigt?" className="w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white" />
+              <textarea value={workJournalForm.moved} onChange={(e) => setWorkJournalForm(prev => ({ ...prev, moved: e.target.value }))} rows={2} placeholder="Was wurde verschoben?" className="w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white" />
+              <textarea value={workJournalForm.reason} onChange={(e) => setWorkJournalForm(prev => ({ ...prev, reason: e.target.value }))} rows={2} placeholder="Warum?" className="w-full bg-black border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white" />
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setWorkJournalOpen(false)} className="px-4 py-2 rounded-lg border border-neutral-800 text-neutral-300">Abbrechen</button>
+                <button type="button" onClick={() => {
+                  setWorkJournalEntries(prev => ({ ...prev, [workJournalDate]: { ...workJournalForm, updatedAt: Date.now() } }));
+                  setWorkJournalOpen(false);
+                  showToast('Arbeitsjournal gespeichert');
+                }} className="px-4 py-2 rounded-lg bg-white text-black font-semibold">Speichern</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isWeatherModalOpen && (
             <div className="fixed inset-0 z-[75] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pb-safe" onClick={() => { setIsWeatherModalOpen(false); setSearchResults([]); }}>
               <div ref={eventModalScrollRef} className="bg-neutral-950 border border-neutral-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-slide-up max-h-[92dvh] overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }} onClick={(e) => e.stopPropagation()}>
@@ -11270,7 +11576,23 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Dauer</div>
                           <div className="mt-1 text-neutral-200">{(eventForm.durationMinutes !== null && typeof eventForm.durationMinutes !== 'undefined' && String(eventForm.durationMinutes).trim() !== '') ? `${eventForm.durationMinutes} min` : '—'}</div>
                         </div>
-</div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Projekt</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.projectTag || '—'}</div>
+                        </div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Status</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.workStatus === 'done' ? 'Erledigt' : eventForm.workStatus === 'in_progress' ? 'In Arbeit' : eventForm.workStatus === 'blocked' ? 'Blockiert' : 'Geplant'}</div>
+                        </div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Priorität</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.priority || 'B'}</div>
+                        </div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Energie</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.energyLevel === 'high' ? 'Hoch' : eventForm.energyLevel === 'light' ? 'Leicht' : 'Mittel'}</div>
+                        </div>
+                      </div>
 
                       {(eventForm.recurrenceFreq && eventForm.recurrenceFreq !== 'NONE') && (
                         <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
@@ -11291,6 +11613,20 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       ) : (
                         <div className="mt-3 text-[11px] text-neutral-500">Keine Beschreibung.</div>
                       )}
+                      {(eventForm.checklistPrep?.length || eventForm.checklistDo?.length || eventForm.checklistFollowup?.length) ? (
+                        <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3 space-y-1 text-xs text-neutral-300">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold mb-1">Checklisten</div>
+                          {eventForm.checklistPrep?.length ? <div>Vorbereitung: {eventForm.checklistPrep.length}</div> : null}
+                          {eventForm.checklistDo?.length ? <div>Durchführung: {eventForm.checklistDo.length}</div> : null}
+                          {eventForm.checklistFollowup?.length ? <div>Nachbereitung: {eventForm.checklistFollowup.length}</div> : null}
+                        </div>
+                      ) : null}
+                      {eventForm.reminderSequence?.length ? (
+                        <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Reminder-Kette</div>
+                          <div className="mt-1 text-neutral-200 text-sm">{eventForm.reminderSequence.join(', ')} min vorher</div>
+                        </div>
+                      ) : null}
                     </div>
 
                     {eventCanEdit && (
@@ -11346,6 +11682,28 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                         Leeren
                       </button>
                     </div>
+                  </div>
+
+                  <div className="bg-black border border-neutral-800 rounded-2xl p-4 space-y-3">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Vorlage</label>
+                      <select value={selectedEventTemplate} onChange={(e) => { const next = e.target.value; setSelectedEventTemplate(next); if (next) applyWorkTemplate(next); }} className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500">
+                        <option value="">Keine Vorlage</option>
+                        {WORK_TEMPLATES.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.label}</option>)}
+                      </select>
+                    </div>
+                    {!eventToEdit && (
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Time-Blocking (Mo–Fr)</label>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          {TIME_BLOCK_PRESETS.map((preset) => (
+                            <button key={preset.id} type="button" onClick={() => createTimeBlockPreset(preset.id)} className="py-2 px-3 rounded-lg text-xs font-semibold border border-neutral-800 text-neutral-200 hover:border-neutral-500 bg-neutral-950 transition-colors">
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -11643,6 +12001,82 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       <option value="Geburtstag" />
                       <option value="Erinnerung" />
                     </datalist>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Projekt-Tag</label>
+                    <input
+                      value={eventForm.projectTag || ''}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, projectTag: e.target.value }))}
+                      placeholder="z.B. Kunde A / Baustelle B"
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Status</label>
+                      <select
+                        value={eventForm.workStatus || 'planned'}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, workStatus: e.target.value }))}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="planned">Geplant</option>
+                        <option value="in_progress">In Arbeit</option>
+                        <option value="done">Erledigt</option>
+                        <option value="blocked">Blockiert</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Priorität</label>
+                      <select
+                        value={eventForm.priority || 'B'}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, priority: e.target.value }))}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="A">A – Hoch</option>
+                        <option value="B">B – Mittel</option>
+                        <option value="C">C – Niedrig</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Energielevel</label>
+                    <select
+                      value={eventForm.energyLevel || 'medium'}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, energyLevel: e.target.value }))}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="high">Hoch (Deep Work)</option>
+                      <option value="medium">Mittel</option>
+                      <option value="light">Leicht</option>
+                    </select>
+                  </div>
+
+                  <div className="bg-black border border-neutral-800 rounded-2xl p-4 space-y-3">
+                    <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Checklisten aus Termin</div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold">Vorbereitung</label>
+                      <textarea value={checklistToTextareaValue(eventForm.checklistPrep)} onChange={(e) => setEventForm(prev => ({ ...prev, checklistPrep: checklistItemsFromTextarea(e.target.value) }))} rows={2} placeholder="Je Zeile ein Punkt" className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold">Durchführung</label>
+                      <textarea value={checklistToTextareaValue(eventForm.checklistDo)} onChange={(e) => setEventForm(prev => ({ ...prev, checklistDo: checklistItemsFromTextarea(e.target.value) }))} rows={2} placeholder="Je Zeile ein Punkt" className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold">Nachbereitung</label>
+                      <textarea value={checklistToTextareaValue(eventForm.checklistFollowup)} onChange={(e) => setEventForm(prev => ({ ...prev, checklistFollowup: checklistItemsFromTextarea(e.target.value) }))} rows={2} placeholder="Je Zeile ein Punkt" className="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 resize-none" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Reminder-Kette (Minuten vor Termin)</label>
+                    <input value={(Array.isArray(eventForm.reminderSequence) ? eventForm.reminderSequence : []).join(', ')} onChange={(e) => {
+                      const parsed = String(e.target.value || '').split(',').map(v => parseInt(v.trim(), 10));
+                      setEventForm(prev => ({ ...prev, reminderSequence: normalizeReminderSequence(parsed) }));
+                    }} placeholder="z.B. 1440, 60" className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500" />
+                    <p className="mt-1 text-[11px] text-neutral-500">Beispiel: 1440, 60 = 1 Tag + 1 Stunde vorher.</p>
                   </div>
 
                   <div>

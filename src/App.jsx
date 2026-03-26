@@ -662,19 +662,35 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       // --- GEHEIMER CHAT STATES ---
       const [secretView, setSecretView] = useState('list');
       const [userProfile, setUserProfile] = useState(null);
+      const modeThemeField = uiTheme === 'light' ? 'appThemeLight' : 'appThemeDark';
+      const modeBgField = uiTheme === 'light' ? 'appBgLight' : 'appBgDark';
       const selectedAppTheme = (() => {
         const validThemes = new Set(['obsidian', 'deepblack', 'midnight', 'gold', 'emerald', 'paper-light', 'sand-light', 'rose-light', 'sky-light']);
-        const hasProfileTheme = !!(userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'appTheme'));
-        const rawTheme = hasProfileTheme ? userProfile?.appTheme : (() => {
-          try { return localStorage.getItem('onyx_app_theme') || 'obsidian'; } catch (_) { return 'obsidian'; }
+        const hasModeTheme = !!(userProfile && Object.prototype.hasOwnProperty.call(userProfile, modeThemeField));
+        const hasLegacyDarkTheme = !!(uiTheme === 'dark' && userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'appTheme'));
+        const rawTheme = hasModeTheme
+          ? userProfile?.[modeThemeField]
+          : hasLegacyDarkTheme
+            ? userProfile?.appTheme
+            : (() => {
+          try {
+            return localStorage.getItem(`onyx_app_theme_${uiTheme}`) || localStorage.getItem('onyx_app_theme') || 'obsidian';
+          } catch (_) { return 'obsidian'; }
         })();
         return validThemes.has(rawTheme) ? rawTheme : 'obsidian';
       })();
       const selectedAppBg = (() => {
         const validBgs = new Set(['none', 'glass-1', 'glass-2', 'glass-3', 'glass-emerald', 'paper', 'linen', 'sunwash', 'mintwash']);
-        const hasProfileBg = !!(userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'appBg'));
-        const rawBg = hasProfileBg ? userProfile?.appBg : (() => {
-          try { return localStorage.getItem('onyx_app_bg') || 'none'; } catch (_) { return 'none'; }
+        const hasModeBg = !!(userProfile && Object.prototype.hasOwnProperty.call(userProfile, modeBgField));
+        const hasLegacyDarkBg = !!(uiTheme === 'dark' && userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'appBg'));
+        const rawBg = hasModeBg
+          ? userProfile?.[modeBgField]
+          : hasLegacyDarkBg
+            ? userProfile?.appBg
+            : (() => {
+          try {
+            return localStorage.getItem(`onyx_app_bg_${uiTheme}`) || localStorage.getItem('onyx_app_bg') || 'none';
+          } catch (_) { return 'none'; }
         })();
         return validBgs.has(rawBg) ? rawBg : 'none';
       })();
@@ -702,8 +718,12 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
 
           localStorage.setItem('onyx_theme_mode', uiTheme);
           localStorage.setItem('onyx_theme', uiTheme);
-          localStorage.setItem('onyx_app_theme', themeValue);
-          localStorage.setItem('onyx_app_bg', bgValue);
+          localStorage.setItem(`onyx_app_theme_${uiTheme}`, themeValue);
+          localStorage.setItem(`onyx_app_bg_${uiTheme}`, bgValue);
+          if (uiTheme === 'dark') {
+            localStorage.setItem('onyx_app_theme', themeValue);
+            localStorage.setItem('onyx_app_bg', bgValue);
+          }
         } catch (_) {}
       }, [uiTheme, selectedAppTheme, selectedAppBg]);
 
@@ -7997,8 +8017,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       })();
       const completedGoals = normalizeDailyGoals(dailyGoals).filter((g) => g.done && String(g.text || '').trim()).length;
       const activeCalForView = getCalendarById(activeCalendarId);
-      const isMobileChatView = currentView === 'secret_chat' && secretView === 'chat';
-      const mobileBottomInsetClass = isMobileChatView ? 'pb-0' : 'pb-[calc(5.25rem+env(safe-area-inset-bottom))]';
+      const isSecretChatView = currentView === 'secret_chat';
+      const mobileBottomInsetClass = isSecretChatView ? 'pb-0' : 'pb-[calc(5.25rem+env(safe-area-inset-bottom))]';
 
       return (
         <div 
@@ -8053,7 +8073,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           </aside>
 
           <nav
-            className={`${isMobileChatView ? 'hidden ' : ''}md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-[80] px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]`}
+            className={`${isSecretChatView ? 'hidden ' : ''}md:hidden w-full h-[calc(5.25rem+env(safe-area-inset-bottom))] bg-black/98 border-t border-neutral-800 z-[80] px-2.5 pt-1.5 pb-[calc(env(safe-area-inset-bottom)+0.45rem)]`}
             style={{ position: 'absolute', left: 0, right: 0, bottom: 0, transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
           >
             <div className="grid grid-cols-5 items-center w-full h-full gap-1">
@@ -8082,7 +8102,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
           <main className="flex-1 flex flex-col h-full overflow-hidden bg-black relative md:pb-0">
             <AppChromeHeader />
-            <div ref={mainRef} className={`flex-1 min-h-0 overflow-y-auto overscroll-contain ${isMobileChatView ? 'pb-0' : 'pb-[calc(5.25rem+env(safe-area-inset-bottom))]'} md:pb-0`}>
+            <div ref={mainRef} className={`flex-1 min-h-0 overflow-y-auto overscroll-contain ${isSecretChatView ? 'pb-0' : 'pb-[calc(5.25rem+env(safe-area-inset-bottom))]'} md:pb-0`}>
             {currentView === 'dashboard' && (
               <div className="p-6 md:p-10 max-w-5xl w-full mx-auto animate-fade-in">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-10">
@@ -9388,17 +9408,18 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                    <h3 className="text-sm font-medium text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-900/50 pb-2 flex items-center gap-2">
                      <MonitorSmartphone className="w-4 h-4" /> App Theme
                    </h3>
+                   <p className="text-xs text-neutral-500 mb-3">Diese Auswahl gilt nur für den aktuell aktiven Modus ({uiTheme === 'light' ? 'Hell ☀️' : 'Dunkel 🌙'}).</p>
                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-3">
                      {APP_THEME_OPTIONS.map(t => (
                        <button
                          key={t.id}
-                         onClick={() => updateProfileField('appTheme', t.id)}
-                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appTheme || 'obsidian') === t.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
+                         onClick={() => updateProfileField(modeThemeField, t.id)}
+                         className={`p-4 rounded-xl border text-left transition-all ${selectedAppTheme === t.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
                        >
                          <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: t.preview }} />
                          <div className="flex items-center justify-between gap-3">
                             <div className="font-semibold text-white text-base sm:text-sm">{t.name}</div>
-                            {(userProfile?.appTheme || 'obsidian') === t.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
+                            {selectedAppTheme === t.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
                          </div>
                          <div className="text-sm sm:text-xs text-neutral-400 mt-2">{t.desc}</div>
                        </button>
@@ -9414,13 +9435,13 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                      {APP_BG_OPTIONS.map(bg => (
                        <button
                          key={bg.id}
-                         onClick={() => updateProfileField('appBg', bg.id)}
-                         className={`p-4 rounded-xl border text-left transition-all ${(userProfile?.appBg || 'none') === bg.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
+                         onClick={() => updateProfileField(modeBgField, bg.id)}
+                         className={`p-4 rounded-xl border text-left transition-all ${selectedAppBg === bg.id ? 'bg-emerald-900/20 border-emerald-500 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]' : 'bg-neutral-950/60 backdrop-blur-sm border-neutral-800 hover:border-neutral-600'}`}
                        >
                          <div className="h-20 rounded-lg border border-white/10 mb-3 shadow-inner" style={{ background: bg.preview }} />
                          <div className="flex items-center justify-between gap-3">
                             <div className="font-semibold text-white text-base sm:text-sm">{bg.name}</div>
-                            {(userProfile?.appBg || 'none') === bg.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
+                            {selectedAppBg === bg.id && <span className="text-[10px] uppercase tracking-widest bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Aktiv</span>}
                          </div>
                          <div className="text-sm sm:text-xs text-neutral-400 mt-2">{bg.desc}</div>
                        </button>

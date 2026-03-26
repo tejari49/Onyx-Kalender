@@ -672,6 +672,10 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [userProfile, setUserProfile] = useState(null);
       const modeThemeField = uiTheme === 'light' ? 'appThemeLight' : 'appThemeDark';
       const modeBgField = uiTheme === 'light' ? 'appBgLight' : 'appBgDark';
+      const darkThemeIds = new Set(['obsidian', 'deepblack', 'midnight', 'gold', 'emerald']);
+      const lightThemeIds = new Set(['paper-light', 'sand-light', 'rose-light', 'sky-light']);
+      const darkBgIds = new Set(['none', 'glass-1', 'glass-2', 'glass-3', 'glass-emerald']);
+      const lightBgIds = new Set(['paper', 'linen', 'sunwash', 'mintwash']);
       const selectedAppTheme = (() => {
         const validThemes = new Set(['obsidian', 'deepblack', 'midnight', 'gold', 'emerald', 'paper-light', 'sand-light', 'rose-light', 'sky-light']);
         const hasModeTheme = !!(userProfile && Object.prototype.hasOwnProperty.call(userProfile, modeThemeField));
@@ -685,7 +689,11 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
             return localStorage.getItem(`onyx_app_theme_${uiTheme}`) || localStorage.getItem('onyx_app_theme') || 'obsidian';
           } catch (_) { return 'obsidian'; }
         })();
-        return validThemes.has(rawTheme) ? rawTheme : 'obsidian';
+        const fallbackTheme = uiTheme === 'light' ? 'paper-light' : 'obsidian';
+        if (!validThemes.has(rawTheme)) return fallbackTheme;
+        if (uiTheme === 'light' && !lightThemeIds.has(rawTheme)) return fallbackTheme;
+        if (uiTheme === 'dark' && !darkThemeIds.has(rawTheme)) return fallbackTheme;
+        return rawTheme;
       })();
       const selectedAppBg = (() => {
         const validBgs = new Set(['none', 'glass-1', 'glass-2', 'glass-3', 'glass-emerald', 'paper', 'linen', 'sunwash', 'mintwash']);
@@ -700,7 +708,11 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
             return localStorage.getItem(`onyx_app_bg_${uiTheme}`) || localStorage.getItem('onyx_app_bg') || 'none';
           } catch (_) { return 'none'; }
         })();
-        return validBgs.has(rawBg) ? rawBg : 'none';
+        const fallbackBg = uiTheme === 'light' ? 'paper' : 'none';
+        if (!validBgs.has(rawBg)) return fallbackBg;
+        if (uiTheme === 'light' && !lightBgIds.has(rawBg)) return fallbackBg;
+        if (uiTheme === 'dark' && !darkBgIds.has(rawBg)) return fallbackBg;
+        return rawBg;
       })();
 
       useEffect(() => {
@@ -8982,27 +8994,29 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
     const visibleTabs = q ? TABS.filter((t) => match(t.keys)) : TABS;
     const activeTab = TABS.find((t) => t.id === settingsTab) || TABS[0];
     const APP_THEME_OPTIONS = [
-      { id: 'obsidian', name: 'Deep Obsidian', desc: 'Kräftiges Graphit mit weichen Kanten', preview: 'linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 55%, #000000 100%)' },
-      { id: 'deepblack', name: 'Deep Black', desc: 'Echtes AMOLED-Schwarz mit maximalem Kontrast', preview: 'linear-gradient(135deg, #050505 0%, #010101 55%, #000000 100%)' },
-      { id: 'midnight', name: 'Midnight Blue', desc: 'Sattes Nachtblau mit kühlem Glow', preview: 'linear-gradient(135deg, #0f2747 0%, #081224 55%, #010409 100%)' },
-      { id: 'gold', name: 'Onyx Gold', desc: 'Warmes Schwarz mit kräftigem Goldton', preview: 'linear-gradient(135deg, #3a2507 0%, #181108 50%, #020100 100%)' },
-      { id: 'emerald', name: 'Onyx Emerald', desc: 'Onyx mit smaragdgrünem Akzent und tiefem Glow', preview: 'linear-gradient(135deg, #05261f 0%, #06130f 52%, #010504 100%)' },
-      { id: 'paper-light', name: 'Papyrus Light', desc: 'Helles Beige mit natürlichem Papier-Look', preview: 'linear-gradient(135deg, #f7f1e4 0%, #efe4cf 55%, #e7d8bc 100%)' },
-      { id: 'sand-light', name: 'Sandstone', desc: 'Warmes Off-White mit sanftem Kontrast', preview: 'linear-gradient(135deg, #f8f4ea 0%, #eee6d5 60%, #e2d5bd 100%)' },
-      { id: 'rose-light', name: 'Rosé Light', desc: 'Sehr helles Rosé für weichere Flächen', preview: 'linear-gradient(135deg, #fff5f4 0%, #f8e9e6 55%, #efd8d4 100%)' },
-      { id: 'sky-light', name: 'Sky Light', desc: 'Klares, helles Blau-Grau für Fokus', preview: 'linear-gradient(135deg, #f6f9ff 0%, #e8eef9 58%, #dce6f3 100%)' },
+      { id: 'obsidian', mode: 'dark', name: 'Deep Obsidian', desc: 'Kräftiges Graphit mit weichen Kanten', preview: 'linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 55%, #000000 100%)' },
+      { id: 'deepblack', mode: 'dark', name: 'Deep Black', desc: 'Echtes AMOLED-Schwarz mit maximalem Kontrast', preview: 'linear-gradient(135deg, #050505 0%, #010101 55%, #000000 100%)' },
+      { id: 'midnight', mode: 'dark', name: 'Midnight Blue', desc: 'Sattes Nachtblau mit kühlem Glow', preview: 'linear-gradient(135deg, #0f2747 0%, #081224 55%, #010409 100%)' },
+      { id: 'gold', mode: 'dark', name: 'Onyx Gold', desc: 'Warmes Schwarz mit kräftigem Goldton', preview: 'linear-gradient(135deg, #3a2507 0%, #181108 50%, #020100 100%)' },
+      { id: 'emerald', mode: 'dark', name: 'Onyx Emerald', desc: 'Onyx mit smaragdgrünem Akzent und tiefem Glow', preview: 'linear-gradient(135deg, #05261f 0%, #06130f 52%, #010504 100%)' },
+      { id: 'paper-light', mode: 'light', name: 'Papyrus Light', desc: 'Helles Beige mit natürlichem Papier-Look', preview: 'linear-gradient(135deg, #f7f1e4 0%, #efe4cf 55%, #e7d8bc 100%)' },
+      { id: 'sand-light', mode: 'light', name: 'Sandstone', desc: 'Warmes Off-White mit sanftem Kontrast', preview: 'linear-gradient(135deg, #f8f4ea 0%, #eee6d5 60%, #e2d5bd 100%)' },
+      { id: 'rose-light', mode: 'light', name: 'Rosé Light', desc: 'Sehr helles Rosé für weichere Flächen', preview: 'linear-gradient(135deg, #fff5f4 0%, #f8e9e6 55%, #efd8d4 100%)' },
+      { id: 'sky-light', mode: 'light', name: 'Sky Light', desc: 'Klares, helles Blau-Grau für Fokus', preview: 'linear-gradient(135deg, #f6f9ff 0%, #e8eef9 58%, #dce6f3 100%)' },
     ];
     const APP_BG_OPTIONS = [
-      { id: 'none', name: 'Mattes Schwarz', desc: 'Ruhiger Hintergrund ohne Farbglow', preview: 'linear-gradient(135deg, #121212 0%, #060606 60%, #000000 100%)' },
-      { id: 'glass-emerald', name: 'Emerald Mist', desc: 'Wie mattes Onyx, aber mit smaragdgrünem Schimmer', preview: 'radial-gradient(circle at 18% 16%, rgba(16,185,129,0.45) 0%, rgba(16,185,129,0) 34%), radial-gradient(circle at 82% 18%, rgba(5,150,105,0.35) 0%, rgba(5,150,105,0) 32%), linear-gradient(135deg, #0a1110 0%, #050908 60%, #000000 100%)' },
-      { id: 'glass-1', name: 'Neon Blur', desc: 'Deutlich kräftiger Cyan-Violett-Glow', preview: 'radial-gradient(circle at 18% 20%, rgba(34,211,238,0.95) 0%, rgba(34,211,238,0) 34%), radial-gradient(circle at 82% 18%, rgba(168,85,247,0.9) 0%, rgba(168,85,247,0) 32%), linear-gradient(135deg, #0c1224 0%, #020409 100%)' },
-      { id: 'glass-2', name: 'Gold Blur', desc: 'Kräftiger Goldschein mit warmem Ambient', preview: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.9) 0%, rgba(245,158,11,0) 38%), radial-gradient(circle at 82% 76%, rgba(251,191,36,0.75) 0%, rgba(251,191,36,0) 28%), linear-gradient(135deg, #1d1306 0%, #030100 100%)' },
-      { id: 'glass-3', name: 'Ruby Blur', desc: 'Kräftige Rot- und Rubin-Akzente', preview: 'radial-gradient(circle at 18% 18%, rgba(244,63,94,0.9) 0%, rgba(244,63,94,0) 34%), radial-gradient(circle at 82% 18%, rgba(234,88,12,0.82) 0%, rgba(234,88,12,0) 30%), linear-gradient(135deg, #1b090d 0%, #030101 100%)' },
-      { id: 'paper', name: 'Papier Beige', desc: 'Heller Papyrus-Hintergrund für Light-Design', preview: 'radial-gradient(circle at 20% 14%, rgba(191,155,102,0.25) 0%, rgba(191,155,102,0) 36%), linear-gradient(135deg, #f8f2e5 0%, #eee2ca 60%, #e5d2b0 100%)' },
-      { id: 'linen', name: 'Linen Soft', desc: 'Leichter Textur-Look in Creme', preview: 'repeating-linear-gradient(45deg, rgba(124,95,54,0.08) 0 2px, rgba(124,95,54,0.02) 2px 6px), linear-gradient(135deg, #fbf7ef 0%, #f1e9db 100%)' },
-      { id: 'sunwash', name: 'Sun Wash', desc: 'Heller Pfirsich-Akzent als warmer Hintergrund', preview: 'radial-gradient(circle at 84% 12%, rgba(251,146,60,0.25) 0%, rgba(251,146,60,0) 34%), linear-gradient(135deg, #fff8ee 0%, #f9ecd7 65%, #f4dec1 100%)' },
-      { id: 'mintwash', name: 'Mint Wash', desc: 'Frischer Mint-Touch auf hellem Untergrund', preview: 'radial-gradient(circle at 12% 18%, rgba(16,185,129,0.22) 0%, rgba(16,185,129,0) 36%), linear-gradient(135deg, #f5fcf8 0%, #e9f3ea 60%, #ddecd8 100%)' },
+      { id: 'none', mode: 'dark', name: 'Mattes Schwarz', desc: 'Ruhiger Hintergrund ohne Farbglow', preview: 'linear-gradient(135deg, #121212 0%, #060606 60%, #000000 100%)' },
+      { id: 'glass-emerald', mode: 'dark', name: 'Emerald Mist', desc: 'Wie mattes Onyx, aber mit smaragdgrünem Schimmer', preview: 'radial-gradient(circle at 18% 16%, rgba(16,185,129,0.45) 0%, rgba(16,185,129,0) 34%), radial-gradient(circle at 82% 18%, rgba(5,150,105,0.35) 0%, rgba(5,150,105,0) 32%), linear-gradient(135deg, #0a1110 0%, #050908 60%, #000000 100%)' },
+      { id: 'glass-1', mode: 'dark', name: 'Neon Blur', desc: 'Deutlich kräftiger Cyan-Violett-Glow', preview: 'radial-gradient(circle at 18% 20%, rgba(34,211,238,0.95) 0%, rgba(34,211,238,0) 34%), radial-gradient(circle at 82% 18%, rgba(168,85,247,0.9) 0%, rgba(168,85,247,0) 32%), linear-gradient(135deg, #0c1224 0%, #020409 100%)' },
+      { id: 'glass-2', mode: 'dark', name: 'Gold Blur', desc: 'Kräftiger Goldschein mit warmem Ambient', preview: 'radial-gradient(circle at 50% 0%, rgba(245,158,11,0.9) 0%, rgba(245,158,11,0) 38%), radial-gradient(circle at 82% 76%, rgba(251,191,36,0.75) 0%, rgba(251,191,36,0) 28%), linear-gradient(135deg, #1d1306 0%, #030100 100%)' },
+      { id: 'glass-3', mode: 'dark', name: 'Ruby Blur', desc: 'Kräftige Rot- und Rubin-Akzente', preview: 'radial-gradient(circle at 18% 18%, rgba(244,63,94,0.9) 0%, rgba(244,63,94,0) 34%), radial-gradient(circle at 82% 18%, rgba(234,88,12,0.82) 0%, rgba(234,88,12,0) 30%), linear-gradient(135deg, #1b090d 0%, #030101 100%)' },
+      { id: 'paper', mode: 'light', name: 'Papier Beige', desc: 'Heller Papyrus-Hintergrund für Light-Design', preview: 'radial-gradient(circle at 20% 14%, rgba(191,155,102,0.25) 0%, rgba(191,155,102,0) 36%), linear-gradient(135deg, #f8f2e5 0%, #eee2ca 60%, #e5d2b0 100%)' },
+      { id: 'linen', mode: 'light', name: 'Linen Soft', desc: 'Leichter Textur-Look in Creme', preview: 'repeating-linear-gradient(45deg, rgba(124,95,54,0.08) 0 2px, rgba(124,95,54,0.02) 2px 6px), linear-gradient(135deg, #fbf7ef 0%, #f1e9db 100%)' },
+      { id: 'sunwash', mode: 'light', name: 'Sun Wash', desc: 'Heller Pfirsich-Akzent als warmer Hintergrund', preview: 'radial-gradient(circle at 84% 12%, rgba(251,146,60,0.25) 0%, rgba(251,146,60,0) 34%), linear-gradient(135deg, #fff8ee 0%, #f9ecd7 65%, #f4dec1 100%)' },
+      { id: 'mintwash', mode: 'light', name: 'Mint Wash', desc: 'Frischer Mint-Touch auf hellem Untergrund', preview: 'radial-gradient(circle at 12% 18%, rgba(16,185,129,0.22) 0%, rgba(16,185,129,0) 36%), linear-gradient(135deg, #f5fcf8 0%, #e9f3ea 60%, #ddecd8 100%)' },
     ];
+    const visibleThemeOptions = APP_THEME_OPTIONS.filter((opt) => opt.mode === uiTheme);
+    const visibleBgOptions = APP_BG_OPTIONS.filter((opt) => opt.mode === uiTheme);
     const enabledExtraCount = ['workClockEnabled', 'dailyGoalsEnabled', 'quickNotesEnabled', 'weatherPlannerEnabled']
       .filter((field) => isExtraFieldEnabled(field))
       .length;
@@ -9471,11 +9485,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                  
                  <div>
                    <h3 className="text-sm font-medium text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-900/50 pb-2 flex items-center gap-2">
-                     <MonitorSmartphone className="w-4 h-4" /> App Theme
+                     <MonitorSmartphone className="w-4 h-4" /> {uiTheme === 'light' ? 'Helles Design' : 'Dunkles Design'}
                    </h3>
                    <p className="text-xs text-neutral-500 mb-3">Diese Auswahl gilt nur für den aktuell aktiven Modus ({uiTheme === 'light' ? 'Hell ☀️' : 'Dunkel 🌙'}).</p>
                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-3">
-                     {APP_THEME_OPTIONS.map(t => (
+                     {visibleThemeOptions.map(t => (
                        <button
                          key={t.id}
                          onClick={() => updateProfileField(modeThemeField, t.id)}
@@ -9494,10 +9508,10 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
                  <div>
                    <h3 className="text-sm font-medium text-emerald-400 uppercase tracking-wider mb-4 border-b border-emerald-900/50 pb-2 flex items-center gap-2">
-                     <LayoutDashboard className="w-4 h-4" /> Glassmorphism & Hintergrund
+                     <LayoutDashboard className="w-4 h-4" /> {uiTheme === 'light' ? 'Heller Hintergrund' : 'Dunkler Hintergrund'}
                    </h3>
                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-3">
-                     {APP_BG_OPTIONS.map(bg => (
+                     {visibleBgOptions.map(bg => (
                        <button
                          key={bg.id}
                          onClick={() => updateProfileField(modeBgField, bg.id)}

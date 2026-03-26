@@ -296,6 +296,109 @@ body[data-bg='mintwash'] {
     linear-gradient(180deg, #f6fcf8 0%, #eaf4ea 64%, #dcead8 100%);
 }
 
+html[data-bg='paper'] .bg-neutral-950,
+html[data-bg='paper'] .bg-neutral-950\/30,
+html[data-bg='paper'] .bg-neutral-950\/40,
+html[data-bg='paper'] .bg-neutral-950\/50,
+html[data-bg='paper'] .bg-neutral-950\/60,
+html[data-bg='paper'] .bg-black,
+html[data-bg='paper'] .bg-black\/40,
+html[data-bg='paper'] .bg-black\/60,
+body[data-bg='paper'] .bg-neutral-950,
+body[data-bg='paper'] .bg-neutral-950\/30,
+body[data-bg='paper'] .bg-neutral-950\/40,
+body[data-bg='paper'] .bg-neutral-950\/50,
+body[data-bg='paper'] .bg-neutral-950\/60,
+body[data-bg='paper'] .bg-black,
+body[data-bg='paper'] .bg-black\/40,
+body[data-bg='paper'] .bg-black\/60 {
+  background-color: rgba(255, 248, 235, 0.78) !important;
+  backdrop-filter: blur(12px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(120%) !important;
+}
+
+html[data-bg='linen'] .bg-neutral-950,
+html[data-bg='linen'] .bg-neutral-950\/30,
+html[data-bg='linen'] .bg-neutral-950\/40,
+html[data-bg='linen'] .bg-neutral-950\/50,
+html[data-bg='linen'] .bg-neutral-950\/60,
+html[data-bg='linen'] .bg-black,
+html[data-bg='linen'] .bg-black\/40,
+html[data-bg='linen'] .bg-black\/60,
+body[data-bg='linen'] .bg-neutral-950,
+body[data-bg='linen'] .bg-neutral-950\/30,
+body[data-bg='linen'] .bg-neutral-950\/40,
+body[data-bg='linen'] .bg-neutral-950\/50,
+body[data-bg='linen'] .bg-neutral-950\/60,
+body[data-bg='linen'] .bg-black,
+body[data-bg='linen'] .bg-black\/40,
+body[data-bg='linen'] .bg-black\/60 {
+  background-color: rgba(252, 246, 235, 0.75) !important;
+  backdrop-filter: blur(10px) saturate(115%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(115%) !important;
+}
+
+html[data-bg='sunwash'] .bg-neutral-950,
+html[data-bg='sunwash'] .bg-neutral-950\/30,
+html[data-bg='sunwash'] .bg-neutral-950\/40,
+html[data-bg='sunwash'] .bg-neutral-950\/50,
+html[data-bg='sunwash'] .bg-neutral-950\/60,
+html[data-bg='sunwash'] .bg-black,
+html[data-bg='sunwash'] .bg-black\/40,
+html[data-bg='sunwash'] .bg-black\/60,
+body[data-bg='sunwash'] .bg-neutral-950,
+body[data-bg='sunwash'] .bg-neutral-950\/30,
+body[data-bg='sunwash'] .bg-neutral-950\/40,
+body[data-bg='sunwash'] .bg-neutral-950\/50,
+body[data-bg='sunwash'] .bg-neutral-950\/60,
+body[data-bg='sunwash'] .bg-black,
+body[data-bg='sunwash'] .bg-black\/40,
+body[data-bg='sunwash'] .bg-black\/60 {
+  background-color: rgba(255, 244, 228, 0.74) !important;
+  backdrop-filter: blur(12px) saturate(118%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(118%) !important;
+}
+
+html[data-bg='mintwash'] .bg-neutral-950,
+html[data-bg='mintwash'] .bg-neutral-950\/30,
+html[data-bg='mintwash'] .bg-neutral-950\/40,
+html[data-bg='mintwash'] .bg-neutral-950\/50,
+html[data-bg='mintwash'] .bg-neutral-950\/60,
+html[data-bg='mintwash'] .bg-black,
+html[data-bg='mintwash'] .bg-black\/40,
+html[data-bg='mintwash'] .bg-black\/60,
+body[data-bg='mintwash'] .bg-neutral-950,
+body[data-bg='mintwash'] .bg-neutral-950\/30,
+body[data-bg='mintwash'] .bg-neutral-950\/40,
+body[data-bg='mintwash'] .bg-neutral-950\/50,
+body[data-bg='mintwash'] .bg-neutral-950\/60,
+body[data-bg='mintwash'] .bg-black,
+body[data-bg='mintwash'] .bg-black\/40,
+body[data-bg='mintwash'] .bg-black\/60 {
+  background-color: rgba(240, 251, 243, 0.72) !important;
+  backdrop-filter: blur(12px) saturate(118%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(118%) !important;
+}
+
+html[data-bg='paper'] .border-neutral-800,
+html[data-bg='paper'] .border-neutral-900,
+html[data-bg='linen'] .border-neutral-800,
+html[data-bg='linen'] .border-neutral-900,
+html[data-bg='sunwash'] .border-neutral-800,
+html[data-bg='sunwash'] .border-neutral-900,
+html[data-bg='mintwash'] .border-neutral-800,
+html[data-bg='mintwash'] .border-neutral-900,
+body[data-bg='paper'] .border-neutral-800,
+body[data-bg='paper'] .border-neutral-900,
+body[data-bg='linen'] .border-neutral-800,
+body[data-bg='linen'] .border-neutral-900,
+body[data-bg='sunwash'] .border-neutral-800,
+body[data-bg='sunwash'] .border-neutral-900,
+body[data-bg='mintwash'] .border-neutral-800,
+body[data-bg='mintwash'] .border-neutral-900 {
+  border-color: rgba(94, 73, 45, 0.18) !important;
+}
+
 html[data-bg^='glass'] .bg-neutral-950,
 html[data-bg^='glass'] .bg-neutral-950\/30,
 html[data-bg^='glass'] .bg-neutral-950\/40,

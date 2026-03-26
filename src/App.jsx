@@ -573,6 +573,10 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [eventCanEdit, setEventCanEdit] = useState(true);
       const [calendarViewMode, setCalendarViewMode] = useState('month'); // 'month' | 'agenda'
       const [calendarSearchQuery, setCalendarSearchQuery] = useState('');
+      const [agendaProjectFilter, setAgendaProjectFilter] = useState('all');
+      const [agendaStatusFilter, setAgendaStatusFilter] = useState('all');
+      const [agendaPriorityFilter, setAgendaPriorityFilter] = useState('all');
+      const [agendaEnergyFilter, setAgendaEnergyFilter] = useState('all');
       const [agendaRange, setAgendaRange] = useState('7'); // '7' | '30' | 'month'
       const [eventEditScope, setEventEditScope] = useState('series'); // 'series' | 'single'
 
@@ -597,6 +601,10 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
         location: '',
         durationMinutes: '',
         type: 'Privat',
+        projectTag: '',
+        workStatus: 'planned',
+        priority: 'B',
+        energyLevel: 'medium',
         desc: '',
         // Reminder per Termin: 'default' | 'none' | 'custom'
         reminderMode: 'default',
@@ -1001,6 +1009,10 @@ const openNewEventModal = (dateStr = null) => {
     location: '',
     durationMinutes: '',
     type: 'Privat',
+    projectTag: '',
+    workStatus: 'planned',
+    priority: 'B',
+    energyLevel: 'medium',
     desc: '',
     reminderMode: 'default',
     reminderMinutes: 15,
@@ -1868,6 +1880,10 @@ const saveEvent = async (e) => {
 
   const timeVal = (eventForm.time || '').trim();
   const typeVal = (eventForm.type || 'Privat').trim();
+  const projectTagVal = (eventForm.projectTag || '').trim();
+  const workStatusVal = ['planned', 'in_progress', 'done', 'blocked'].includes(String(eventForm.workStatus || '')) ? String(eventForm.workStatus) : 'planned';
+  const priorityVal = ['A', 'B', 'C'].includes(String(eventForm.priority || '')) ? String(eventForm.priority) : 'B';
+  const energyLevelVal = ['high', 'medium', 'light'].includes(String(eventForm.energyLevel || '')) ? String(eventForm.energyLevel) : 'medium';
   const descVal = (eventForm.desc || '').trim();
 
   const locationVal = (eventForm.location || '').trim();
@@ -1910,6 +1926,10 @@ const saveEvent = async (e) => {
           location: locationVal,
           durationMinutes: durationMinutesVal,
           type: typeVal,
+          projectTag: projectTagVal,
+          workStatus: workStatusVal,
+          priority: priorityVal,
+          energyLevel: energyLevelVal,
           desc: descVal,
           reminderMode: reminderModeVal,
           reminderMinutes: reminderMinutesVal
@@ -1936,6 +1956,10 @@ const saveEvent = async (e) => {
     location: locationVal,
     durationMinutes: durationMinutesVal,
     type: typeVal,
+    projectTag: projectTagVal,
+    workStatus: workStatusVal,
+    priority: priorityVal,
+    energyLevel: energyLevelVal,
     desc: descVal,
     reminderMode: reminderModeVal,
     reminderMinutes: reminderMinutesVal,
@@ -5887,6 +5911,10 @@ useEffect(() => {
            location: (typeof effective.location === 'string') ? effective.location : ((typeof baseEvent.location === 'string') ? baseEvent.location : ''),
            durationMinutes: (typeof effective.durationMinutes === 'number' || typeof effective.durationMinutes === 'string') ? effective.durationMinutes : ((typeof baseEvent.durationMinutes === 'number' || typeof baseEvent.durationMinutes === 'string') ? baseEvent.durationMinutes : ''),
            type: effective.type || 'Privat',
+           projectTag: (typeof effective.projectTag === 'string') ? effective.projectTag : ((typeof baseEvent.projectTag === 'string') ? baseEvent.projectTag : ''),
+           workStatus: (typeof effective.workStatus === 'string') ? effective.workStatus : ((typeof baseEvent.workStatus === 'string') ? baseEvent.workStatus : 'planned'),
+           priority: (typeof effective.priority === 'string') ? effective.priority : ((typeof baseEvent.priority === 'string') ? baseEvent.priority : 'B'),
+           energyLevel: (typeof effective.energyLevel === 'string') ? effective.energyLevel : ((typeof baseEvent.energyLevel === 'string') ? baseEvent.energyLevel : 'medium'),
            desc: effective.desc || '',
            reminderMode: (typeof effective.reminderMode === 'string') ? effective.reminderMode : ((typeof baseEvent.reminderMode === 'string') ? baseEvent.reminderMode : 'default'),
            reminderMinutes: (typeof effective.reminderMinutes === 'number') ? effective.reminderMinutes : (typeof baseEvent.reminderMinutes === 'number' ? baseEvent.reminderMinutes : 15),
@@ -8450,15 +8478,21 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                     }
 
                     let items = getOccurrencesInRange(start, end);
+                    const uniqueProjects = Array.from(new Set(items.map((ev) => String(ev.projectTag || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'de'));
                     const q = (calendarSearchQuery || '').trim().toLowerCase();
                     if (q) {
                       items = items.filter(ev => (
                         (ev.title || '').toLowerCase().includes(q) ||
                         (ev.desc || '').toLowerCase().includes(q) ||
                         (ev.type || '').toLowerCase().includes(q) ||
-                        (ev.time || '').toLowerCase().includes(q)
+                        (ev.time || '').toLowerCase().includes(q) ||
+                        (ev.projectTag || '').toLowerCase().includes(q)
                       ));
                     }
+                    if (agendaProjectFilter !== 'all') items = items.filter((ev) => String(ev.projectTag || '').trim() === agendaProjectFilter);
+                    if (agendaStatusFilter !== 'all') items = items.filter((ev) => String(ev.workStatus || 'planned') === agendaStatusFilter);
+                    if (agendaPriorityFilter !== 'all') items = items.filter((ev) => String(ev.priority || 'B') === agendaPriorityFilter);
+                    if (agendaEnergyFilter !== 'all') items = items.filter((ev) => String(ev.energyLevel || 'medium') === agendaEnergyFilter);
 
                     const map = {};
                     items.forEach(ev => {
@@ -8479,6 +8513,31 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                           <button onClick={() => openNewEventModal()} className="text-xs bg-white text-black px-3 py-2 rounded-md font-medium hover:bg-gray-200 transition-colors flex items-center gap-2">
                             <Plus className="w-4 h-4" /> Neu
                           </button>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <select value={agendaProjectFilter} onChange={(e) => setAgendaProjectFilter(e.target.value)} className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white">
+                            <option value="all">Projekt: Alle</option>
+                            {uniqueProjects.map((name) => <option key={name} value={name}>{name}</option>)}
+                          </select>
+                          <select value={agendaStatusFilter} onChange={(e) => setAgendaStatusFilter(e.target.value)} className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white">
+                            <option value="all">Status: Alle</option>
+                            <option value="planned">Geplant</option>
+                            <option value="in_progress">In Arbeit</option>
+                            <option value="done">Erledigt</option>
+                            <option value="blocked">Blockiert</option>
+                          </select>
+                          <select value={agendaPriorityFilter} onChange={(e) => setAgendaPriorityFilter(e.target.value)} className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white">
+                            <option value="all">Prio: Alle</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                          </select>
+                          <select value={agendaEnergyFilter} onChange={(e) => setAgendaEnergyFilter(e.target.value)} className="bg-black border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white">
+                            <option value="all">Energie: Alle</option>
+                            <option value="high">Hoch</option>
+                            <option value="medium">Mittel</option>
+                            <option value="light">Leicht</option>
+                          </select>
                         </div>
 
                         {dates.length === 0 ? (
@@ -8517,6 +8576,12 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                                         {ev.calendarId && (
                                           <span className="text-neutral-600"> · {getCalendarById(ev.calendarId)?.name || 'Kalender'}</span>
                                         )}
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {ev.projectTag ? <span className="text-[10px] px-2 py-0.5 rounded-full border border-neutral-700 text-neutral-300">#{ev.projectTag}</span> : null}
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-neutral-700 text-neutral-300">{ev.workStatus === 'done' ? 'Erledigt' : ev.workStatus === 'in_progress' ? 'In Arbeit' : ev.workStatus === 'blocked' ? 'Blockiert' : 'Geplant'}</span>
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-neutral-700 text-neutral-300">Prio {ev.priority || 'B'}</span>
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-neutral-700 text-neutral-300">{ev.energyLevel === 'high' ? 'Energie hoch' : ev.energyLevel === 'light' ? 'Energie leicht' : 'Energie mittel'}</span>
                                       </div>
                                     </div>
                                     <ChevronRight className="w-4 h-4 text-neutral-600 shrink-0 mt-1" />
@@ -11270,7 +11335,23 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                           <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Dauer</div>
                           <div className="mt-1 text-neutral-200">{(eventForm.durationMinutes !== null && typeof eventForm.durationMinutes !== 'undefined' && String(eventForm.durationMinutes).trim() !== '') ? `${eventForm.durationMinutes} min` : '—'}</div>
                         </div>
-</div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Projekt</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.projectTag || '—'}</div>
+                        </div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Status</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.workStatus === 'done' ? 'Erledigt' : eventForm.workStatus === 'in_progress' ? 'In Arbeit' : eventForm.workStatus === 'blocked' ? 'Blockiert' : 'Geplant'}</div>
+                        </div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Priorität</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.priority || 'B'}</div>
+                        </div>
+                        <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
+                          <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Energie</div>
+                          <div className="mt-1 text-neutral-200">{eventForm.energyLevel === 'high' ? 'Hoch' : eventForm.energyLevel === 'light' ? 'Leicht' : 'Mittel'}</div>
+                        </div>
+                      </div>
 
                       {(eventForm.recurrenceFreq && eventForm.recurrenceFreq !== 'NONE') && (
                         <div className="mt-3 bg-neutral-950/60 border border-neutral-800 rounded-xl p-3">
@@ -11643,6 +11724,57 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                       <option value="Geburtstag" />
                       <option value="Erinnerung" />
                     </datalist>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Projekt-Tag</label>
+                    <input
+                      value={eventForm.projectTag || ''}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, projectTag: e.target.value }))}
+                      placeholder="z.B. Kunde A / Baustelle B"
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Status</label>
+                      <select
+                        value={eventForm.workStatus || 'planned'}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, workStatus: e.target.value }))}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="planned">Geplant</option>
+                        <option value="in_progress">In Arbeit</option>
+                        <option value="done">Erledigt</option>
+                        <option value="blocked">Blockiert</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Priorität</label>
+                      <select
+                        value={eventForm.priority || 'B'}
+                        onChange={(e) => setEventForm(prev => ({ ...prev, priority: e.target.value }))}
+                        className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                      >
+                        <option value="A">A – Hoch</option>
+                        <option value="B">B – Mittel</option>
+                        <option value="C">C – Niedrig</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-neutral-500 font-semibold">Energielevel</label>
+                    <select
+                      value={eventForm.energyLevel || 'medium'}
+                      onChange={(e) => setEventForm(prev => ({ ...prev, energyLevel: e.target.value }))}
+                      className="mt-1 w-full bg-black border border-neutral-800 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-neutral-500"
+                    >
+                      <option value="high">Hoch (Deep Work)</option>
+                      <option value="medium">Mittel</option>
+                      <option value="light">Leicht</option>
+                    </select>
                   </div>
 
                   <div>

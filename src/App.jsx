@@ -7539,14 +7539,52 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
-      const acceptSharedEvent = async (eventDetails) => {
-        if (!user) return;
+      const acceptSharedEvent = async (eventDetails, msg = null) => {
+        if (!user || !activeChat?.id || !eventDetails) return;
         try {
-          await addDoc(collection(db, 'artifacts', APP_ID, 'users', user?.uid, 'events'), {
-            title: eventDetails.title, date: eventDetails.date, time: eventDetails.time, type: 'Projekt', desc: 'Geteilter Termin aus Chat', reminderMode: 'default', reminderMinutes: null, createdAt: Date.now(), updatedAt: Date.now(), calendarId: 'default'
-          });
-          showToast("Termin im Kalender gespeichert!");
-        } catch (error) { showToast("Fehler beim Speichern"); }
+          const acceptedBy = Array.isArray(msg?.eventAcceptedBy) ? msg.eventAcceptedBy : [];
+          if (acceptedBy.includes(user?.uid)) {
+            showToast('Termin bereits zugesagt');
+            return;
+          }
+
+          const now = Date.now();
+          const participantIds = Array.from(new Set((Array.isArray(activeChat?.participants) ? activeChat.participants : []).filter(Boolean)));
+          const targetUids = participantIds.length > 0 ? participantIds : [user?.uid];
+          const baseEvent = {
+            title: eventDetails.title || 'Termin',
+            date: eventDetails.date || new Date().toISOString().slice(0, 10),
+            time: eventDetails.time || '12:00',
+            type: 'Projekt',
+            desc: 'Geteilter Termin aus Chat',
+            reminderMode: 'default',
+            reminderMinutes: null,
+            createdAt: now,
+            updatedAt: now,
+            calendarId: 'default',
+            sharedFromChatId: activeChat?.id || null,
+            sharedFromMessageId: msg?.id || null,
+            sharedAcceptedBy: user?.uid || null,
+            sharedAcceptedAt: now
+          };
+
+          await Promise.all(targetUids.map((uid) => (
+            addDoc(collection(db, 'artifacts', APP_ID, 'users', uid, 'events'), { ...baseEvent, ownerUid: uid })
+          )));
+
+          if (msg?.id && !String(msg.id).startsWith('local_')) {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msg.id), {
+              eventAcceptedBy: arrayUnion(user?.uid),
+              [`eventAcceptedAt.${user?.uid}`]: now,
+              updatedAt: now
+            }).catch(() => {});
+          }
+
+          showToast("Termin bei beiden eingetragen");
+        } catch (error) {
+          console.warn('acceptSharedEvent failed', error);
+          showToast("Fehler beim Speichern");
+        }
       };
 
       const deleteMessage = async (msgId) => {
@@ -11017,11 +11055,26 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                                     <div className="text-xs mb-3 opacity-80">
                                       {msg.event.date} um {msg.event.time} Uhr
                                     </div>
-                                    {!isMe && (
-                                      <button onClick={(e) => { e.stopPropagation(); acceptSharedEvent(msg.event); }} className="w-full bg-white text-black py-1.5 rounded-md text-xs font-bold hover:bg-gray-200 transition-colors">
-                                        Zusagen & Eintragen
-                                      </button>
-                                    )}
+                                    {(() => {
+                                      const acceptedBy = Array.isArray(msg?.eventAcceptedBy) ? msg.eventAcceptedBy : [];
+                                      const acceptedCount = acceptedBy.length;
+                                      const acceptedByMe = acceptedBy.includes(user?.uid);
+                                      if (!isMe && !acceptedByMe) {
+                                        return (
+                                          <button onClick={(e) => { e.stopPropagation(); acceptSharedEvent(msg.event, msg); }} className="w-full bg-white text-black py-1.5 rounded-md text-xs font-bold hover:bg-gray-200 transition-colors">
+                                            Zusagen & bei beiden eintragen
+                                          </button>
+                                        );
+                                      }
+                                      if (acceptedCount <= 0) {
+                                        return <div className={`text-[11px] opacity-75 ${isMe ? 'text-black/70' : 'text-neutral-300'}`}>Wartet auf Zusage</div>;
+                                      }
+                                      return (
+                                        <div className={`text-[11px] font-medium px-2.5 py-1.5 rounded-lg border ${isMe ? 'border-black/20 bg-black/10 text-black/80' : 'border-neutral-700 bg-black/30 text-emerald-300'}`}>
+                                          {acceptedByMe ? '✅ Zugesagt & eingetragen' : `✅ Zugesagt (${acceptedCount})`}
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 )}
 

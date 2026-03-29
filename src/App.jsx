@@ -868,6 +868,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [imageEditorTextColor, setImageEditorTextColor] = useState('#ffffff');
       const [imageEditorFontSize, setImageEditorFontSize] = useState(44);
       const [imageEditorMode, setImageEditorMode] = useState('normal');
+      const [eventDecisionModalMsg, setEventDecisionModalMsg] = useState(null);
       const drawingCanvasRef = useRef(null);
       const drawingIsActiveRef = useRef(false);
       const drawingLastPointRef = useRef({ x: 0, y: 0 });
@@ -7612,6 +7613,48 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
+      const declineSharedEvent = async (msg = null) => {
+        if (!user || !activeChat?.id || !msg?.id) return;
+        try {
+          const declinedBy = Array.isArray(msg?.eventDeclinedBy) ? msg.eventDeclinedBy : [];
+          if (declinedBy.includes(user?.uid)) {
+            showToast('Termin bereits abgelehnt');
+            return;
+          }
+          const now = Date.now();
+          await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msg.id), {
+            eventDeclinedBy: arrayUnion(user?.uid),
+            [`eventDeclinedAt.${user?.uid}`]: now,
+            updatedAt: now
+          }).catch(() => {});
+
+          try {
+            const who = userProfile?.displayName || userProfile?.username || user?.email || 'Jemand';
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), {
+              senderId: user?.uid,
+              text: `⛔ ${who} hat den geteilten Termin abgelehnt.`,
+              timestamp: now + 1,
+              createdAt: serverTimestamp(),
+              read: false,
+              systemNotice: true,
+              eventDeclineForMessageId: msg?.id || null
+            });
+          } catch (_) {}
+          showToast('Termin abgelehnt');
+        } catch (error) {
+          console.warn('declineSharedEvent failed', error);
+          showToast('Fehler beim Ablehnen');
+        }
+      };
+
+      const decideSharedEvent = async (decision) => {
+        const msg = eventDecisionModalMsg;
+        setEventDecisionModalMsg(null);
+        if (!msg) return;
+        if (decision === 'accept') await acceptSharedEvent(msg.event, msg);
+        if (decision === 'decline') await declineSharedEvent(msg);
+      };
+
       const deleteMessage = async (msgId) => {
         if (!activeChat || !user) return;
         try {
@@ -11082,14 +11125,19 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                                     </div>
                                     {(() => {
                                       const acceptedBy = Array.isArray(msg?.eventAcceptedBy) ? msg.eventAcceptedBy : [];
+                                      const declinedBy = Array.isArray(msg?.eventDeclinedBy) ? msg.eventDeclinedBy : [];
                                       const acceptedCount = acceptedBy.length;
                                       const acceptedByMe = acceptedBy.includes(user?.uid);
-                                      if (!isMe && !acceptedByMe) {
+                                      const declinedByMe = declinedBy.includes(user?.uid);
+                                      if (!isMe && !acceptedByMe && !declinedByMe) {
                                         return (
-                                          <button onClick={(e) => { e.stopPropagation(); acceptSharedEvent(msg.event, msg); }} className="w-full bg-white text-black py-1.5 rounded-md text-xs font-bold hover:bg-gray-200 transition-colors">
-                                            Zusagen & bei beiden eintragen
+                                          <button onClick={(e) => { e.stopPropagation(); setEventDecisionModalMsg(msg); }} className="w-full bg-white text-black py-1.5 rounded-md text-xs font-bold hover:bg-gray-200 transition-colors">
+                                            Termin entscheiden
                                           </button>
                                         );
+                                      }
+                                      if (declinedByMe) {
+                                        return <div className={`text-[11px] opacity-75 ${isMe ? 'text-black/70' : 'text-red-300'}`}>⛔ Von dir abgelehnt</div>;
                                       }
                                       if (acceptedCount <= 0) {
                                         return <div className={`text-[11px] opacity-75 ${isMe ? 'text-black/70' : 'text-neutral-300'}`}>Wartet auf Zusage</div>;
@@ -13437,6 +13485,35 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           )}
 
           <ShareEventModal isOpen={isShareEventModalOpen} onClose={() => setIsShareEventModalOpen(false)} onShare={(ev) => sendMessage(null, null, null, ev)} />
+
+          {eventDecisionModalMsg && (
+            <div className="fixed inset-0 z-[132] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl p-5">
+                <div className="flex items-center gap-2 text-white font-semibold">
+                  <CalendarIcon className="w-5 h-5" />
+                  Termin-Anfrage
+                </div>
+                <div className="mt-3 text-sm text-neutral-300">
+                  <div className="font-medium text-white">{eventDecisionModalMsg?.event?.title || 'Termin'}</div>
+                  <div className="text-xs text-neutral-400 mt-1">
+                    {(eventDecisionModalMsg?.event?.date || '—')} um {(eventDecisionModalMsg?.event?.time || '—')} Uhr
+                  </div>
+                  <p className="mt-3 text-neutral-300">Möchtest du den Termin annehmen oder ablehnen?</p>
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => decideSharedEvent('decline')} className="px-3 py-2 rounded-xl border border-red-900 bg-red-950/40 text-red-300 text-sm font-semibold hover:bg-red-950/70">
+                    Nein, ablehnen
+                  </button>
+                  <button type="button" onClick={() => decideSharedEvent('accept')} className="px-3 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200">
+                    Ja, annehmen
+                  </button>
+                </div>
+                <button type="button" onClick={() => setEventDecisionModalMsg(null)} className="mt-2 w-full px-3 py-2 rounded-xl border border-neutral-700 text-neutral-300 text-sm hover:bg-neutral-900">
+                  Schließen
+                </button>
+              </div>
+            </div>
+          )}
 
           {isImageTextEditorOpen && (
             <div className="fixed inset-0 z-[135] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">

@@ -7580,6 +7580,19 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             }).catch(() => {});
           }
 
+          try {
+            const accepterName = userProfile?.displayName || userProfile?.username || user?.email || 'Jemand';
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), {
+              senderId: user?.uid,
+              text: `✅ ${accepterName} hat den Termin akzeptiert. Der Termin wurde bei beiden im Kalender eingetragen.`,
+              timestamp: now + 1,
+              createdAt: serverTimestamp(),
+              read: false,
+              systemNotice: true,
+              eventAckForMessageId: msg?.id || null
+            });
+          } catch (_) {}
+
           showToast("Termin bei beiden eingetragen");
         } catch (error) {
           console.warn('acceptSharedEvent failed', error);

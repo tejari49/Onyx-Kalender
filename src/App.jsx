@@ -862,6 +862,12 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [isDrawingPadOpen, setIsDrawingPadOpen] = useState(false);
       const [drawingColor, setDrawingColor] = useState('#111111');
       const [drawingLineWidth, setDrawingLineWidth] = useState(4);
+      const [isImageTextEditorOpen, setIsImageTextEditorOpen] = useState(false);
+      const [imageEditorSource, setImageEditorSource] = useState('');
+      const [imageEditorText, setImageEditorText] = useState('');
+      const [imageEditorTextColor, setImageEditorTextColor] = useState('#ffffff');
+      const [imageEditorFontSize, setImageEditorFontSize] = useState(44);
+      const [imageEditorMode, setImageEditorMode] = useState('normal');
       const drawingCanvasRef = useRef(null);
       const drawingIsActiveRef = useRef(false);
       const drawingLastPointRef = useRef({ x: 0, y: 0 });
@@ -7627,7 +7633,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         try {
           const file = await ensureJpegBlobIfHeic(file0);
           const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
-          await sendMessage(null, compressed, null, null, { forceSelfDestruct: mode === 'viewonce' });
+          openImageTextEditor(compressed, mode);
         } catch (err) {
           console.warn('image compress/upload failed', err);
           showToast('Bild konnte nicht verarbeitet werden');
@@ -7644,7 +7650,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           if (!isProbablyImageFile(file0)) { showToast('Nur Bilder unterstützt'); return; }
           const file = await ensureJpegBlobIfHeic(file0);
           const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
-          await sendMessage(null, compressed, null, null, { forceSelfDestruct: mode === 'viewonce' });
+          openImageTextEditor(compressed, mode);
         } catch (err) {
           console.warn('image drop failed', err);
           showToast('Bild konnte nicht verarbeitet werden');
@@ -7771,6 +7777,93 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }, 0);
         return () => clearTimeout(t);
       }, [isDrawingPadOpen]);
+
+      const openImageTextEditor = (base64Image, mode = 'normal') => {
+        try {
+          if (!base64Image) return;
+          setImageEditorSource(base64Image);
+          setImageEditorText('');
+          setImageEditorTextColor('#ffffff');
+          setImageEditorFontSize(44);
+          setImageEditorMode(mode === 'viewonce' ? 'viewonce' : 'normal');
+          setIsImageTextEditorOpen(true);
+          temporarilySuspendSecretAutoHide(180000);
+        } catch (_) {}
+      };
+
+      const closeImageTextEditor = () => {
+        setIsImageTextEditorOpen(false);
+        setImageEditorSource('');
+        setImageEditorText('');
+        setImageEditorMode('normal');
+      };
+
+      const mergeTextIntoImage = async (src, text) => {
+        const safeSrc = String(src || '');
+        const safeText = String(text || '').trim();
+        if (!safeSrc) throw new Error('NO_IMAGE');
+        if (!safeText) return safeSrc;
+
+        const img = await loadImageFromDataUrl(safeSrc);
+        const canvas = document.createElement('canvas');
+        const w = Math.max(1, Number(img.naturalWidth || img.width || 0));
+        const h = Math.max(1, Number(img.naturalHeight || img.height || 0));
+        if (!w || !h) throw new Error('BAD_IMAGE_SIZE');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('NO_CTX');
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const ratio = Math.max(0.6, Math.min(2.4, w / 1080));
+        const fontSize = Math.max(18, Math.min(120, Number(imageEditorFontSize || 44) * ratio));
+        const lineHeight = Math.round(fontSize * 1.18);
+        const sidePad = Math.round(Math.max(20, w * 0.05));
+        const bottomPad = Math.round(Math.max(22, h * 0.06));
+        const maxTextWidth = Math.max(80, w - sidePad * 2);
+        const words = safeText.split(/\s+/).filter(Boolean);
+        const lines = [];
+
+        ctx.font = `700 ${fontSize}px Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+        let line = '';
+        words.forEach((word) => {
+          const test = line ? `${line} ${word}` : word;
+          if (ctx.measureText(test).width <= maxTextWidth || !line) line = test;
+          else { lines.push(line); line = word; }
+        });
+        if (line) lines.push(line);
+        if (lines.length === 0) lines.push(safeText);
+
+        const blockHeight = lines.length * lineHeight;
+        let y = h - bottomPad - blockHeight;
+        if (y < sidePad) y = sidePad;
+        const textColor = String(imageEditorTextColor || '#ffffff');
+        lines.forEach((ln, idx) => {
+          const tx = sidePad;
+          const ty = y + lineHeight * (idx + 0.9);
+          ctx.strokeStyle = 'rgba(0,0,0,0.68)';
+          ctx.lineWidth = Math.max(3, Math.round(fontSize * 0.12));
+          ctx.lineJoin = 'round';
+          ctx.miterLimit = 2;
+          ctx.strokeText(ln, tx, ty);
+          ctx.fillStyle = textColor;
+          ctx.fillText(ln, tx, ty);
+        });
+
+        return canvas.toDataURL('image/jpeg', 0.84);
+      };
+
+      const sendImageFromEditor = async () => {
+        try {
+          if (!imageEditorSource) return;
+          const merged = await mergeTextIntoImage(imageEditorSource, imageEditorText);
+          await sendMessage(null, merged, null, null, { forceSelfDestruct: imageEditorMode === 'viewonce' });
+          closeImageTextEditor();
+        } catch (err) {
+          console.warn('sendImageFromEditor failed', err);
+          showToast('Bild konnte nicht gesendet werden');
+        }
+      };
 
       const formatTime = (ts) => {
         if (!ts) return '';
@@ -13266,6 +13359,87 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           )}
 
           <ShareEventModal isOpen={isShareEventModalOpen} onClose={() => setIsShareEventModalOpen(false)} onShare={(ev) => sendMessage(null, null, null, ev)} />
+
+          {isImageTextEditorOpen && (
+            <div className="fixed inset-0 z-[135] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="w-full max-w-3xl rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-white font-semibold">Bild bearbeiten</h3>
+                    <p className="text-xs text-neutral-500">Text direkt auf das Foto schreiben und dann senden.</p>
+                  </div>
+                  <button type="button" onClick={closeImageTextEditor} className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-3">
+                  <div className="rounded-xl border border-neutral-800 bg-black p-2">
+                    {imageEditorSource ? (
+                      <div className="relative">
+                        <img src={imageEditorSource} alt="Bild Vorschau" className="w-full max-h-[52vh] object-contain rounded-lg" />
+                        {imageEditorText.trim() && (
+                          <div
+                            className="absolute left-4 right-4 bottom-4 font-extrabold whitespace-pre-wrap break-words"
+                            style={{
+                              color: imageEditorTextColor,
+                              fontSize: `${Math.max(16, Math.min(56, Number(imageEditorFontSize || 44)))}px`,
+                              textShadow: '0 0 10px rgba(0,0,0,.9), 0 2px 5px rgba(0,0,0,.95)'
+                            }}
+                          >
+                            {imageEditorText}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-neutral-500 text-center py-8">Kein Bild geladen.</div>
+                    )}
+                  </div>
+
+                  <textarea
+                    value={imageEditorText}
+                    onChange={(e) => setImageEditorText(e.target.value)}
+                    placeholder="Text ins Bild schreiben..."
+                    rows={2}
+                    className="w-full bg-black border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500 resize-none"
+                  />
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      {['#ffffff', '#111111', '#ef4444', '#22c55e', '#3b82f6', '#eab308'].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setImageEditorTextColor(c)}
+                          className={`w-6 h-6 rounded-full border-2 ${imageEditorTextColor === c ? 'border-white' : 'border-neutral-700'}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-neutral-400">
+                      <span>Größe</span>
+                      <input
+                        type="range"
+                        min="20"
+                        max="72"
+                        value={imageEditorFontSize}
+                        onChange={(e) => setImageEditorFontSize(Number(e.target.value || 44))}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-4 py-3 border-t border-neutral-800 flex items-center justify-end gap-2">
+                  <button type="button" onClick={closeImageTextEditor} className="px-3 py-2 rounded-xl border border-neutral-700 text-neutral-200 hover:bg-neutral-900 text-sm">
+                    Abbrechen
+                  </button>
+                  <button type="button" onClick={sendImageFromEditor} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200">
+                    Bild senden
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {isDrawingPadOpen && (
             <div className="fixed inset-0 z-[140] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">

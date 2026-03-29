@@ -7568,9 +7568,17 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             sharedAcceptedAt: now
           };
 
-          await Promise.all(targetUids.map((uid) => (
-            addDoc(collection(db, 'artifacts', APP_ID, 'users', uid, 'events'), { ...baseEvent, ownerUid: uid })
-          )));
+          let writeOkCount = 0;
+          for (const targetUid of targetUids) {
+            try {
+              await addDoc(collection(db, 'artifacts', APP_ID, 'users', targetUid, 'events'), { ...baseEvent, ownerUid: targetUid });
+              writeOkCount += 1;
+            } catch (e) {
+              // Expected for non-self targets with strict rules.
+              console.warn('shared event write skipped for uid', targetUid, e?.code || e?.message || e);
+            }
+          }
+          if (writeOkCount <= 0) throw new Error('NO_EVENT_WRITES_ALLOWED');
 
           if (msg?.id && !String(msg.id).startsWith('local_')) {
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages', msg.id), {
@@ -7582,9 +7590,12 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
           try {
             const accepterName = userProfile?.displayName || userProfile?.username || user?.email || 'Jemand';
+            const noticeText = (writeOkCount >= Math.max(1, targetUids.length))
+              ? `✅ ${accepterName} hat den Termin akzeptiert. Der Termin wurde bei beiden im Kalender eingetragen.`
+              : `✅ ${accepterName} hat den Termin akzeptiert. Termin ist bei ${accepterName} im Kalender eingetragen.`;
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'chats', activeChat.id, 'messages'), {
               senderId: user?.uid,
-              text: `✅ ${accepterName} hat den Termin akzeptiert. Der Termin wurde bei beiden im Kalender eingetragen.`,
+              text: noticeText,
               timestamp: now + 1,
               createdAt: serverTimestamp(),
               read: false,
@@ -7593,7 +7604,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
             });
           } catch (_) {}
 
-          showToast("Termin bei beiden eingetragen");
+          if (writeOkCount >= Math.max(1, targetUids.length)) showToast("Termin bei beiden eingetragen");
+          else showToast("Termin bei dir eingetragen (für beide automatisch nur mit Server-Funktion)");
         } catch (error) {
           console.warn('acceptSharedEvent failed', error);
           showToast("Fehler beim Speichern");

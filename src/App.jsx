@@ -859,6 +859,12 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [selfDestruct, setSelfDestruct] = useState(false);
       const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
+      const [isDrawingPadOpen, setIsDrawingPadOpen] = useState(false);
+      const [drawingColor, setDrawingColor] = useState('#111111');
+      const [drawingLineWidth, setDrawingLineWidth] = useState(4);
+      const drawingCanvasRef = useRef(null);
+      const drawingIsActiveRef = useRef(false);
+      const drawingLastPointRef = useRef({ x: 0, y: 0 });
       
       const [isRecording, setIsRecording] = useState(false);
       const mediaRecorderRef = useRef(null);
@@ -7645,6 +7651,127 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         }
       };
 
+      const initializeDrawingCanvas = () => {
+        try {
+          const canvas = drawingCanvasRef.current;
+          if (!canvas) return;
+          const parentWidth = canvas.parentElement?.clientWidth || 320;
+          const maxWidth = Math.min(parentWidth, 520);
+          const width = Math.max(260, Math.floor(maxWidth));
+          const height = Math.floor(width * 1.2);
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+        } catch (_) {}
+      };
+
+      const getCanvasPoint = (evt) => {
+        const canvas = drawingCanvasRef.current;
+        if (!canvas) return null;
+        const rect = canvas.getBoundingClientRect();
+        const clientX = Number(evt?.clientX || evt?.touches?.[0]?.clientX || evt?.changedTouches?.[0]?.clientX || 0);
+        const clientY = Number(evt?.clientY || evt?.touches?.[0]?.clientY || evt?.changedTouches?.[0]?.clientY || 0);
+        return {
+          x: Math.max(0, Math.min(canvas.width, clientX - rect.left)),
+          y: Math.max(0, Math.min(canvas.height, clientY - rect.top)),
+        };
+      };
+
+      const startDrawingStroke = (evt) => {
+        try {
+          evt?.preventDefault?.();
+          const p = getCanvasPoint(evt);
+          const canvas = drawingCanvasRef.current;
+          if (!p || !canvas) return;
+          drawingIsActiveRef.current = true;
+          drawingLastPointRef.current = p;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.strokeStyle = drawingColor;
+          ctx.lineWidth = Math.max(1, Number(drawingLineWidth || 4));
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+        } catch (_) {}
+      };
+
+      const drawStroke = (evt) => {
+        try {
+          if (!drawingIsActiveRef.current) return;
+          evt?.preventDefault?.();
+          const p = getCanvasPoint(evt);
+          const canvas = drawingCanvasRef.current;
+          if (!p || !canvas) return;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.strokeStyle = drawingColor;
+          ctx.lineWidth = Math.max(1, Number(drawingLineWidth || 4));
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+          drawingLastPointRef.current = p;
+        } catch (_) {}
+      };
+
+      const endDrawingStroke = (evt) => {
+        try {
+          if (!drawingIsActiveRef.current) return;
+          evt?.preventDefault?.();
+          drawStroke(evt);
+          const canvas = drawingCanvasRef.current;
+          const ctx = canvas?.getContext('2d');
+          if (ctx) ctx.closePath();
+          drawingIsActiveRef.current = false;
+        } catch (_) {}
+      };
+
+      const clearDrawingCanvas = () => {
+        try {
+          const canvas = drawingCanvasRef.current;
+          if (!canvas) return;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } catch (_) {}
+      };
+
+      const openDrawingPad = () => {
+        setIsAttachmentMenuOpen(false);
+        setIsDrawingPadOpen(true);
+        temporarilySuspendSecretAutoHide(180000);
+      };
+
+      const closeDrawingPad = () => {
+        drawingIsActiveRef.current = false;
+        setIsDrawingPadOpen(false);
+      };
+
+      const sendDrawingPadImage = async () => {
+        try {
+          const canvas = drawingCanvasRef.current;
+          if (!canvas) return;
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+          if (!dataUrl) return;
+          await sendMessage(null, dataUrl, null, null, { forceSelfDestruct: false });
+          closeDrawingPad();
+        } catch (err) {
+          console.warn('sendDrawingPadImage failed', err);
+          showToast('Zeichnung konnte nicht gesendet werden');
+        }
+      };
+
+      useEffect(() => {
+        if (!isDrawingPadOpen) return;
+        const t = setTimeout(() => {
+          initializeDrawingCanvas();
+        }, 0);
+        return () => clearTimeout(t);
+      }, [isDrawingPadOpen]);
+
       const formatTime = (ts) => {
         if (!ts) return '';
         try { return new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); } catch(e) { return ''; }
@@ -11050,6 +11177,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                                 />
                               </label>
 
+                              <button
+                                type="button"
+                                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                onClick={openDrawingPad}
+                              >
+                                <Paintbrush className="w-4 h-4 text-neutral-400" /> Zeichnung senden
+                              </button>
+
                               <div className="h-px bg-neutral-800 my-1" />
                               <div className="px-3 pt-1 text-[11px] uppercase tracking-wider text-red-300">1x Ansicht</div>
                               <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
@@ -13132,6 +13267,71 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
           <ShareEventModal isOpen={isShareEventModalOpen} onClose={() => setIsShareEventModalOpen(false)} onShare={(ev) => sendMessage(null, null, null, ev)} />
 
+          {isDrawingPadOpen && (
+            <div className="fixed inset-0 z-[140] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="w-full max-w-2xl rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
+                  <div>
+                    <h3 className="text-white font-semibold">Zeichnung</h3>
+                    <p className="text-xs text-neutral-500">Male auf dem Blatt und sende es direkt im Chat.</p>
+                  </div>
+                  <button type="button" onClick={closeDrawingPad} className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {['#111111', '#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7'].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setDrawingColor(c)}
+                        className={`w-7 h-7 rounded-full border-2 ${drawingColor === c ? 'border-white' : 'border-neutral-700'}`}
+                        style={{ backgroundColor: c }}
+                        title={`Farbe ${c}`}
+                      />
+                    ))}
+                    <div className="flex items-center gap-2 ml-2 text-xs text-neutral-400">
+                      <span>Stift</span>
+                      <input
+                        type="range"
+                        min="1"
+                        max="16"
+                        value={drawingLineWidth}
+                        onChange={(e) => setDrawingLineWidth(Number(e.target.value || 4))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="w-full rounded-xl border border-neutral-800 bg-white overflow-hidden">
+                    <canvas
+                      ref={drawingCanvasRef}
+                      className="w-full touch-none cursor-crosshair"
+                      onPointerDown={startDrawingStroke}
+                      onPointerMove={drawStroke}
+                      onPointerUp={endDrawingStroke}
+                      onPointerLeave={endDrawingStroke}
+                    />
+                  </div>
+                </div>
+
+                <div className="px-4 py-3 border-t border-neutral-800 flex items-center justify-between gap-2">
+                  <button type="button" onClick={clearDrawingCanvas} className="px-3 py-2 rounded-xl border border-neutral-700 text-neutral-200 hover:bg-neutral-900 text-sm">
+                    Leeren
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={closeDrawingPad} className="px-3 py-2 rounded-xl border border-neutral-700 text-neutral-200 hover:bg-neutral-900 text-sm">
+                      Abbrechen
+                    </button>
+                    <button type="button" onClick={sendDrawingPadImage} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200">
+                      Zeichnung senden
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <ImageViewer isOpen={isImageViewerOpen} src={imageViewerSrc} onClose={closeImageViewer} />
 

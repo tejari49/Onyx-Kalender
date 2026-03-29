@@ -859,6 +859,18 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const [selfDestruct, setSelfDestruct] = useState(false);
       const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
       const [isShareEventModalOpen, setIsShareEventModalOpen] = useState(false);
+      const [isDrawingPadOpen, setIsDrawingPadOpen] = useState(false);
+      const [drawingColor, setDrawingColor] = useState('#111111');
+      const [drawingLineWidth, setDrawingLineWidth] = useState(4);
+      const [isImageTextEditorOpen, setIsImageTextEditorOpen] = useState(false);
+      const [imageEditorSource, setImageEditorSource] = useState('');
+      const [imageEditorText, setImageEditorText] = useState('');
+      const [imageEditorTextColor, setImageEditorTextColor] = useState('#ffffff');
+      const [imageEditorFontSize, setImageEditorFontSize] = useState(44);
+      const [imageEditorMode, setImageEditorMode] = useState('normal');
+      const drawingCanvasRef = useRef(null);
+      const drawingIsActiveRef = useRef(false);
+      const drawingLastPointRef = useRef({ x: 0, y: 0 });
       
       const [isRecording, setIsRecording] = useState(false);
       const mediaRecorderRef = useRef(null);
@@ -7621,7 +7633,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         try {
           const file = await ensureJpegBlobIfHeic(file0);
           const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
-          await sendMessage(null, compressed, null, null, { forceSelfDestruct: mode === 'viewonce' });
+          openImageTextEditor(compressed, mode);
         } catch (err) {
           console.warn('image compress/upload failed', err);
           showToast('Bild konnte nicht verarbeitet werden');
@@ -7638,10 +7650,218 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
           if (!isProbablyImageFile(file0)) { showToast('Nur Bilder unterstützt'); return; }
           const file = await ensureJpegBlobIfHeic(file0);
           const compressed = await compressImageFileToDataUrl(file, { maxDim: 1600, quality: 0.72 });
-          await sendMessage(null, compressed, null, null, { forceSelfDestruct: mode === 'viewonce' });
+          openImageTextEditor(compressed, mode);
         } catch (err) {
           console.warn('image drop failed', err);
           showToast('Bild konnte nicht verarbeitet werden');
+        }
+      };
+
+      const initializeDrawingCanvas = () => {
+        try {
+          const canvas = drawingCanvasRef.current;
+          if (!canvas) return;
+          const parentWidth = canvas.parentElement?.clientWidth || 320;
+          const maxWidth = Math.min(parentWidth, 520);
+          const width = Math.max(260, Math.floor(maxWidth));
+          const height = Math.floor(width * 1.2);
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+        } catch (_) {}
+      };
+
+      const getCanvasPoint = (evt) => {
+        const canvas = drawingCanvasRef.current;
+        if (!canvas) return null;
+        const rect = canvas.getBoundingClientRect();
+        const clientX = Number(evt?.clientX || evt?.touches?.[0]?.clientX || evt?.changedTouches?.[0]?.clientX || 0);
+        const clientY = Number(evt?.clientY || evt?.touches?.[0]?.clientY || evt?.changedTouches?.[0]?.clientY || 0);
+        return {
+          x: Math.max(0, Math.min(canvas.width, clientX - rect.left)),
+          y: Math.max(0, Math.min(canvas.height, clientY - rect.top)),
+        };
+      };
+
+      const startDrawingStroke = (evt) => {
+        try {
+          evt?.preventDefault?.();
+          const p = getCanvasPoint(evt);
+          const canvas = drawingCanvasRef.current;
+          if (!p || !canvas) return;
+          drawingIsActiveRef.current = true;
+          drawingLastPointRef.current = p;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.strokeStyle = drawingColor;
+          ctx.lineWidth = Math.max(1, Number(drawingLineWidth || 4));
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+        } catch (_) {}
+      };
+
+      const drawStroke = (evt) => {
+        try {
+          if (!drawingIsActiveRef.current) return;
+          evt?.preventDefault?.();
+          const p = getCanvasPoint(evt);
+          const canvas = drawingCanvasRef.current;
+          if (!p || !canvas) return;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.strokeStyle = drawingColor;
+          ctx.lineWidth = Math.max(1, Number(drawingLineWidth || 4));
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+          drawingLastPointRef.current = p;
+        } catch (_) {}
+      };
+
+      const endDrawingStroke = (evt) => {
+        try {
+          if (!drawingIsActiveRef.current) return;
+          evt?.preventDefault?.();
+          drawStroke(evt);
+          const canvas = drawingCanvasRef.current;
+          const ctx = canvas?.getContext('2d');
+          if (ctx) ctx.closePath();
+          drawingIsActiveRef.current = false;
+        } catch (_) {}
+      };
+
+      const clearDrawingCanvas = () => {
+        try {
+          const canvas = drawingCanvasRef.current;
+          if (!canvas) return;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } catch (_) {}
+      };
+
+      const openDrawingPad = () => {
+        setIsAttachmentMenuOpen(false);
+        setIsDrawingPadOpen(true);
+        temporarilySuspendSecretAutoHide(180000);
+      };
+
+      const closeDrawingPad = () => {
+        drawingIsActiveRef.current = false;
+        setIsDrawingPadOpen(false);
+      };
+
+      const sendDrawingPadImage = async () => {
+        try {
+          const canvas = drawingCanvasRef.current;
+          if (!canvas) return;
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+          if (!dataUrl) return;
+          await sendMessage(null, dataUrl, null, null, { forceSelfDestruct: false });
+          closeDrawingPad();
+        } catch (err) {
+          console.warn('sendDrawingPadImage failed', err);
+          showToast('Zeichnung konnte nicht gesendet werden');
+        }
+      };
+
+      useEffect(() => {
+        if (!isDrawingPadOpen) return;
+        const t = setTimeout(() => {
+          initializeDrawingCanvas();
+        }, 0);
+        return () => clearTimeout(t);
+      }, [isDrawingPadOpen]);
+
+      const openImageTextEditor = (base64Image, mode = 'normal') => {
+        try {
+          if (!base64Image) return;
+          setImageEditorSource(base64Image);
+          setImageEditorText('');
+          setImageEditorTextColor('#ffffff');
+          setImageEditorFontSize(44);
+          setImageEditorMode(mode === 'viewonce' ? 'viewonce' : 'normal');
+          setIsImageTextEditorOpen(true);
+          temporarilySuspendSecretAutoHide(180000);
+        } catch (_) {}
+      };
+
+      const closeImageTextEditor = () => {
+        setIsImageTextEditorOpen(false);
+        setImageEditorSource('');
+        setImageEditorText('');
+        setImageEditorMode('normal');
+      };
+
+      const mergeTextIntoImage = async (src, text) => {
+        const safeSrc = String(src || '');
+        const safeText = String(text || '').trim();
+        if (!safeSrc) throw new Error('NO_IMAGE');
+        if (!safeText) return safeSrc;
+
+        const img = await loadImageFromDataUrl(safeSrc);
+        const canvas = document.createElement('canvas');
+        const w = Math.max(1, Number(img.naturalWidth || img.width || 0));
+        const h = Math.max(1, Number(img.naturalHeight || img.height || 0));
+        if (!w || !h) throw new Error('BAD_IMAGE_SIZE');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('NO_CTX');
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const ratio = Math.max(0.6, Math.min(2.4, w / 1080));
+        const fontSize = Math.max(18, Math.min(120, Number(imageEditorFontSize || 44) * ratio));
+        const lineHeight = Math.round(fontSize * 1.18);
+        const sidePad = Math.round(Math.max(20, w * 0.05));
+        const bottomPad = Math.round(Math.max(22, h * 0.06));
+        const maxTextWidth = Math.max(80, w - sidePad * 2);
+        const words = safeText.split(/\s+/).filter(Boolean);
+        const lines = [];
+
+        ctx.font = `700 ${fontSize}px Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+        let line = '';
+        words.forEach((word) => {
+          const test = line ? `${line} ${word}` : word;
+          if (ctx.measureText(test).width <= maxTextWidth || !line) line = test;
+          else { lines.push(line); line = word; }
+        });
+        if (line) lines.push(line);
+        if (lines.length === 0) lines.push(safeText);
+
+        const blockHeight = lines.length * lineHeight;
+        let y = h - bottomPad - blockHeight;
+        if (y < sidePad) y = sidePad;
+        const textColor = String(imageEditorTextColor || '#ffffff');
+        lines.forEach((ln, idx) => {
+          const tx = sidePad;
+          const ty = y + lineHeight * (idx + 0.9);
+          ctx.strokeStyle = 'rgba(0,0,0,0.68)';
+          ctx.lineWidth = Math.max(3, Math.round(fontSize * 0.12));
+          ctx.lineJoin = 'round';
+          ctx.miterLimit = 2;
+          ctx.strokeText(ln, tx, ty);
+          ctx.fillStyle = textColor;
+          ctx.fillText(ln, tx, ty);
+        });
+
+        return canvas.toDataURL('image/jpeg', 0.84);
+      };
+
+      const sendImageFromEditor = async () => {
+        try {
+          if (!imageEditorSource) return;
+          const merged = await mergeTextIntoImage(imageEditorSource, imageEditorText);
+          await sendMessage(null, merged, null, null, { forceSelfDestruct: imageEditorMode === 'viewonce' });
+          closeImageTextEditor();
+        } catch (err) {
+          console.warn('sendImageFromEditor failed', err);
+          showToast('Bild konnte nicht gesendet werden');
         }
       };
 
@@ -11050,6 +11270,14 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                                 />
                               </label>
 
+                              <button
+                                type="button"
+                                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-neutral-200 hover:bg-neutral-900"
+                                onClick={openDrawingPad}
+                              >
+                                <Paintbrush className="w-4 h-4 text-neutral-400" /> Zeichnung senden
+                              </button>
+
                               <div className="h-px bg-neutral-800 my-1" />
                               <div className="px-3 pt-1 text-[11px] uppercase tracking-wider text-red-300">1x Ansicht</div>
                               <label className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-300 hover:bg-red-950/40">
@@ -13132,6 +13360,152 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
 
           <ShareEventModal isOpen={isShareEventModalOpen} onClose={() => setIsShareEventModalOpen(false)} onShare={(ev) => sendMessage(null, null, null, ev)} />
 
+          {isImageTextEditorOpen && (
+            <div className="fixed inset-0 z-[135] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="w-full max-w-3xl rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-white font-semibold">Bild bearbeiten</h3>
+                    <p className="text-xs text-neutral-500">Text direkt auf das Foto schreiben und dann senden.</p>
+                  </div>
+                  <button type="button" onClick={closeImageTextEditor} className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-3">
+                  <div className="rounded-xl border border-neutral-800 bg-black p-2">
+                    {imageEditorSource ? (
+                      <div className="relative">
+                        <img src={imageEditorSource} alt="Bild Vorschau" className="w-full max-h-[52vh] object-contain rounded-lg" />
+                        {imageEditorText.trim() && (
+                          <div
+                            className="absolute left-4 right-4 bottom-4 font-extrabold whitespace-pre-wrap break-words"
+                            style={{
+                              color: imageEditorTextColor,
+                              fontSize: `${Math.max(16, Math.min(56, Number(imageEditorFontSize || 44)))}px`,
+                              textShadow: '0 0 10px rgba(0,0,0,.9), 0 2px 5px rgba(0,0,0,.95)'
+                            }}
+                          >
+                            {imageEditorText}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-neutral-500 text-center py-8">Kein Bild geladen.</div>
+                    )}
+                  </div>
+
+                  <textarea
+                    value={imageEditorText}
+                    onChange={(e) => setImageEditorText(e.target.value)}
+                    placeholder="Text ins Bild schreiben..."
+                    rows={2}
+                    className="w-full bg-black border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-neutral-500 resize-none"
+                  />
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      {['#ffffff', '#111111', '#ef4444', '#22c55e', '#3b82f6', '#eab308'].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setImageEditorTextColor(c)}
+                          className={`w-6 h-6 rounded-full border-2 ${imageEditorTextColor === c ? 'border-white' : 'border-neutral-700'}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-neutral-400">
+                      <span>Größe</span>
+                      <input
+                        type="range"
+                        min="20"
+                        max="72"
+                        value={imageEditorFontSize}
+                        onChange={(e) => setImageEditorFontSize(Number(e.target.value || 44))}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-4 py-3 border-t border-neutral-800 flex items-center justify-end gap-2">
+                  <button type="button" onClick={closeImageTextEditor} className="px-3 py-2 rounded-xl border border-neutral-700 text-neutral-200 hover:bg-neutral-900 text-sm">
+                    Abbrechen
+                  </button>
+                  <button type="button" onClick={sendImageFromEditor} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200">
+                    Bild senden
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isDrawingPadOpen && (
+            <div className="fixed inset-0 z-[140] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="w-full max-w-2xl rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
+                  <div>
+                    <h3 className="text-white font-semibold">Zeichnung</h3>
+                    <p className="text-xs text-neutral-500">Male auf dem Blatt und sende es direkt im Chat.</p>
+                  </div>
+                  <button type="button" onClick={closeDrawingPad} className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-4 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {['#111111', '#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7'].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setDrawingColor(c)}
+                        className={`w-7 h-7 rounded-full border-2 ${drawingColor === c ? 'border-white' : 'border-neutral-700'}`}
+                        style={{ backgroundColor: c }}
+                        title={`Farbe ${c}`}
+                      />
+                    ))}
+                    <div className="flex items-center gap-2 ml-2 text-xs text-neutral-400">
+                      <span>Stift</span>
+                      <input
+                        type="range"
+                        min="1"
+                        max="16"
+                        value={drawingLineWidth}
+                        onChange={(e) => setDrawingLineWidth(Number(e.target.value || 4))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="w-full rounded-xl border border-neutral-800 bg-white overflow-hidden">
+                    <canvas
+                      ref={drawingCanvasRef}
+                      className="w-full touch-none cursor-crosshair"
+                      onPointerDown={startDrawingStroke}
+                      onPointerMove={drawStroke}
+                      onPointerUp={endDrawingStroke}
+                      onPointerLeave={endDrawingStroke}
+                    />
+                  </div>
+                </div>
+
+                <div className="px-4 py-3 border-t border-neutral-800 flex items-center justify-between gap-2">
+                  <button type="button" onClick={clearDrawingCanvas} className="px-3 py-2 rounded-xl border border-neutral-700 text-neutral-200 hover:bg-neutral-900 text-sm">
+                    Leeren
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={closeDrawingPad} className="px-3 py-2 rounded-xl border border-neutral-700 text-neutral-200 hover:bg-neutral-900 text-sm">
+                      Abbrechen
+                    </button>
+                    <button type="button" onClick={sendDrawingPadImage} className="px-4 py-2 rounded-xl bg-white text-black text-sm font-semibold hover:bg-neutral-200">
+                      Zeichnung senden
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <ImageViewer isOpen={isImageViewerOpen} src={imageViewerSrc} onClose={closeImageViewer} />
 

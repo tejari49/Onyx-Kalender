@@ -720,7 +720,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
       const darkThemeIds = new Set(['obsidian', 'deepblack', 'midnight', 'gold', 'emerald']);
       const lightThemeIds = new Set(['paper-light', 'sand-light', 'rose-light', 'sky-light']);
       const darkBgIds = new Set(['none', 'glass-1', 'glass-2', 'glass-3', 'glass-emerald']);
-      const lightBgIds = new Set(['paper', 'linen', 'sunwash', 'mintwash']);
+      const lightBgIds = new Set(['paper', 'linen', 'sunwash', 'mintwash', 'gridpaper', 'dotmist']);
       const selectedAppTheme = (() => {
         const validThemes = new Set(['obsidian', 'deepblack', 'midnight', 'gold', 'emerald', 'paper-light', 'sand-light', 'rose-light', 'sky-light']);
         const hasModeTheme = !!(userProfile && Object.prototype.hasOwnProperty.call(userProfile, modeThemeField));
@@ -741,7 +741,7 @@ const [pollAutoFinalize, setPollAutoFinalize] = useState(true);
         return rawTheme;
       })();
       const selectedAppBg = (() => {
-        const validBgs = new Set(['none', 'glass-1', 'glass-2', 'glass-3', 'glass-emerald', 'paper', 'linen', 'sunwash', 'mintwash']);
+        const validBgs = new Set(['none', 'glass-1', 'glass-2', 'glass-3', 'glass-emerald', 'paper', 'linen', 'sunwash', 'mintwash', 'gridpaper', 'dotmist']);
         const hasModeBg = !!(userProfile && Object.prototype.hasOwnProperty.call(userProfile, modeBgField));
         const hasLegacyDarkBg = !!(uiTheme === 'dark' && userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'appBg'));
         const rawBg = hasModeBg
@@ -9606,6 +9606,8 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
       { id: 'linen', mode: 'light', name: 'Linen Soft', desc: 'Leichter Textur-Look in Creme', preview: 'repeating-linear-gradient(45deg, rgba(124,95,54,0.08) 0 2px, rgba(124,95,54,0.02) 2px 6px), linear-gradient(135deg, #fbf7ef 0%, #f1e9db 100%)' },
       { id: 'sunwash', mode: 'light', name: 'Sun Wash', desc: 'Heller Pfirsich-Akzent als warmer Hintergrund', preview: 'radial-gradient(circle at 84% 12%, rgba(251,146,60,0.25) 0%, rgba(251,146,60,0) 34%), linear-gradient(135deg, #fff8ee 0%, #f9ecd7 65%, #f4dec1 100%)' },
       { id: 'mintwash', mode: 'light', name: 'Mint Wash', desc: 'Frischer Mint-Touch auf hellem Untergrund', preview: 'radial-gradient(circle at 12% 18%, rgba(16,185,129,0.22) 0%, rgba(16,185,129,0) 36%), linear-gradient(135deg, #f5fcf8 0%, #e9f3ea 60%, #ddecd8 100%)' },
+      { id: 'gridpaper', mode: 'light', name: 'Grid Paper', desc: 'Feines Raster-Muster für Planungsseiten', preview: 'linear-gradient(rgba(125,111,82,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(125,111,82,0.12) 1px, transparent 1px), linear-gradient(135deg, #faf6ec 0%, #f0e7d6 100%)' },
+      { id: 'dotmist', mode: 'light', name: 'Dot Mist', desc: 'Sehr leichtes Punktmuster mit kühlem Ton', preview: 'radial-gradient(circle, rgba(112,130,168,0.22) 1px, transparent 1.6px), linear-gradient(135deg, #f7f9fd 0%, #e8eef7 100%)' },
     ];
     const visibleThemeOptions = APP_THEME_OPTIONS.filter((opt) => opt.mode === uiTheme);
     const visibleBgOptions = APP_BG_OPTIONS.filter((opt) => opt.mode === uiTheme);

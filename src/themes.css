@@ -139,6 +139,9 @@ body[data-theme='sand-light'] {
   --onyx-accent-bg: #2e2a21;
   --onyx-accent-text: #f8f4eb;
   --onyx-ring: rgba(68, 60, 44, 0.18);
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 84% 16%, rgba(173, 149, 102, 0.15) 0%, transparent 34%),
+    linear-gradient(180deg, #fbf7ef 0%, #efe6d7 64%, #e4d5bf 100%);
 }
 
 html[data-theme='rose-light'],
@@ -156,6 +159,9 @@ body[data-theme='rose-light'] {
   --onyx-accent-bg: #3f2725;
   --onyx-accent-text: #fff5f2;
   --onyx-ring: rgba(85, 50, 48, 0.18);
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 16% 14%, rgba(220, 143, 136, 0.16) 0%, transparent 36%),
+    linear-gradient(180deg, #fff8f6 0%, #f8ebe7 64%, #f0dbd6 100%);
 }
 
 html[data-theme='sky-light'],
@@ -173,6 +179,9 @@ body[data-theme='sky-light'] {
   --onyx-accent-bg: #1f3a5c;
   --onyx-accent-text: #f2f7ff;
   --onyx-ring: rgba(31, 58, 92, 0.2);
+  --onyx-app-shell-bg:
+    radial-gradient(circle at 12% 12%, rgba(125, 162, 214, 0.18) 0%, transparent 34%),
+    linear-gradient(180deg, #f8fbff 0%, #ebf1fa 64%, #dde7f4 100%);
 }
 
 html[data-theme='gold'] .text-emerald-400,
@@ -296,6 +305,23 @@ body[data-bg='mintwash'] {
     linear-gradient(180deg, #f6fcf8 0%, #eaf4ea 64%, #dcead8 100%);
 }
 
+html[data-bg='gridpaper'],
+body[data-bg='gridpaper'] {
+  --onyx-app-shell-bg:
+    linear-gradient(rgba(130, 114, 82, 0.13) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(130, 114, 82, 0.13) 1px, transparent 1px),
+    linear-gradient(180deg, #fbf7ee 0%, #f0e6d5 100%);
+  background-size: 30px 30px, 30px 30px, 100% 100%;
+}
+
+html[data-bg='dotmist'],
+body[data-bg='dotmist'] {
+  --onyx-app-shell-bg:
+    radial-gradient(circle, rgba(114, 134, 170, 0.2) 1.2px, transparent 1.8px),
+    linear-gradient(180deg, #f7faff 0%, #e8eef8 100%);
+  background-size: 16px 16px, 100% 100%;
+}
+
 html[data-bg='paper'] .bg-neutral-950,
 html[data-bg='paper'] .bg-neutral-950\/30,
 html[data-bg='paper'] .bg-neutral-950\/40,
@@ -367,6 +393,22 @@ html[data-bg='mintwash'] .bg-neutral-950\/60,
 html[data-bg='mintwash'] .bg-black,
 html[data-bg='mintwash'] .bg-black\/40,
 html[data-bg='mintwash'] .bg-black\/60,
+html[data-bg='gridpaper'] .bg-neutral-950,
+html[data-bg='gridpaper'] .bg-neutral-950\/30,
+html[data-bg='gridpaper'] .bg-neutral-950\/40,
+html[data-bg='gridpaper'] .bg-neutral-950\/50,
+html[data-bg='gridpaper'] .bg-neutral-950\/60,
+html[data-bg='gridpaper'] .bg-black,
+html[data-bg='gridpaper'] .bg-black\/40,
+html[data-bg='gridpaper'] .bg-black\/60,
+html[data-bg='dotmist'] .bg-neutral-950,
+html[data-bg='dotmist'] .bg-neutral-950\/30,
+html[data-bg='dotmist'] .bg-neutral-950\/40,
+html[data-bg='dotmist'] .bg-neutral-950\/50,
+html[data-bg='dotmist'] .bg-neutral-950\/60,
+html[data-bg='dotmist'] .bg-black,
+html[data-bg='dotmist'] .bg-black\/40,
+html[data-bg='dotmist'] .bg-black\/60,
 body[data-bg='mintwash'] .bg-neutral-950,
 body[data-bg='mintwash'] .bg-neutral-950\/30,
 body[data-bg='mintwash'] .bg-neutral-950\/40,
@@ -374,7 +416,23 @@ body[data-bg='mintwash'] .bg-neutral-950\/50,
 body[data-bg='mintwash'] .bg-neutral-950\/60,
 body[data-bg='mintwash'] .bg-black,
 body[data-bg='mintwash'] .bg-black\/40,
-body[data-bg='mintwash'] .bg-black\/60 {
+body[data-bg='mintwash'] .bg-black\/60,
+body[data-bg='gridpaper'] .bg-neutral-950,
+body[data-bg='gridpaper'] .bg-neutral-950\/30,
+body[data-bg='gridpaper'] .bg-neutral-950\/40,
+body[data-bg='gridpaper'] .bg-neutral-950\/50,
+body[data-bg='gridpaper'] .bg-neutral-950\/60,
+body[data-bg='gridpaper'] .bg-black,
+body[data-bg='gridpaper'] .bg-black\/40,
+body[data-bg='gridpaper'] .bg-black\/60,
+body[data-bg='dotmist'] .bg-neutral-950,
+body[data-bg='dotmist'] .bg-neutral-950\/30,
+body[data-bg='dotmist'] .bg-neutral-950\/40,
+body[data-bg='dotmist'] .bg-neutral-950\/50,
+body[data-bg='dotmist'] .bg-neutral-950\/60,
+body[data-bg='dotmist'] .bg-black,
+body[data-bg='dotmist'] .bg-black\/40,
+body[data-bg='dotmist'] .bg-black\/60 {
   background-color: rgba(240, 251, 243, 0.72) !important;
   backdrop-filter: blur(12px) saturate(118%) !important;
   -webkit-backdrop-filter: blur(12px) saturate(118%) !important;
@@ -388,6 +446,10 @@ html[data-bg='sunwash'] .border-neutral-800,
 html[data-bg='sunwash'] .border-neutral-900,
 html[data-bg='mintwash'] .border-neutral-800,
 html[data-bg='mintwash'] .border-neutral-900,
+html[data-bg='gridpaper'] .border-neutral-800,
+html[data-bg='gridpaper'] .border-neutral-900,
+html[data-bg='dotmist'] .border-neutral-800,
+html[data-bg='dotmist'] .border-neutral-900,
 body[data-bg='paper'] .border-neutral-800,
 body[data-bg='paper'] .border-neutral-900,
 body[data-bg='linen'] .border-neutral-800,
@@ -395,7 +457,11 @@ body[data-bg='linen'] .border-neutral-900,
 body[data-bg='sunwash'] .border-neutral-800,
 body[data-bg='sunwash'] .border-neutral-900,
 body[data-bg='mintwash'] .border-neutral-800,
-body[data-bg='mintwash'] .border-neutral-900 {
+body[data-bg='mintwash'] .border-neutral-900,
+body[data-bg='gridpaper'] .border-neutral-800,
+body[data-bg='gridpaper'] .border-neutral-900,
+body[data-bg='dotmist'] .border-neutral-800,
+body[data-bg='dotmist'] .border-neutral-900 {
   border-color: rgba(94, 73, 45, 0.18) !important;
 }
 

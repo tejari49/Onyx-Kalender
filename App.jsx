@@ -2020,6 +2020,59 @@ const openShiftPicker = (dateStr) => {
 };
 
 // --- GEHEIMER CHAT (Long Press auf Tag-Zahl 5 für 3s) ---
+const SECRET_CHAT_DAILY_LIMIT = 3;
+const SECRET_CHAT_ADMIN_EMAIL = 'irajet.ramadani@gmail.com';
+
+const getSecretChatDayKey = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const isSecretChatAdmin = () => {
+  const email = String(userProfile?.emailLower || user?.email || '').trim().toLowerCase();
+  return email === SECRET_CHAT_ADMIN_EMAIL;
+};
+
+const consumeSecretChatDailySlot = async () => {
+  if (isSecretChatAdmin()) return true;
+  if (!user?.uid) return false;
+  const today = getSecretChatDayKey();
+  const lastDay = String(userProfile?.secretChatOpenDate || '');
+  const currentCountRaw = Number(userProfile?.secretChatOpenCount || 0);
+  const currentCount = Number.isFinite(currentCountRaw) ? currentCountRaw : 0;
+  const normalizedCount = (lastDay === today) ? currentCount : 0;
+
+  if (normalizedCount >= SECRET_CHAT_DAILY_LIMIT) {
+    showToast(`Secret Chat heute bereits ${SECRET_CHAT_DAILY_LIMIT}x geöffnet`);
+    return false;
+  }
+
+  const nextPatch = {
+    secretChatOpenDate: today,
+    secretChatOpenCount: normalizedCount + 1,
+    updatedAt: Date.now(),
+  };
+
+  try {
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid), nextPatch, { merge: true });
+    setUserProfile((prev) => ({ ...(prev || {}), ...nextPatch }));
+    return true;
+  } catch (e) {
+    console.warn('consumeSecretChatDailySlot failed', e);
+    showToast('Secret Chat Limit konnte nicht geprüft werden');
+    return false;
+  }
+};
+
+const tryEnterSecretChat = async () => {
+  const ok = await consumeSecretChatDailySlot();
+  if (!ok) return;
+  revealSecretChat();
+};
+
 const revealSecretChat = () => {
   setSelectedMessageId(null);
   setIsMessageSearchOpen(false);
@@ -2049,7 +2102,7 @@ const requestSecretEntry = () => {
     setSecretPinModalOpen(true);
     return;
   }
-  revealSecretChat();
+  tryEnterSecretChat();
 };
 
 const handleOnyxSecretTap = () => {
@@ -2080,7 +2133,7 @@ const verifySecretPinAndEnter = async () => {
     }
     setSecretPinModalOpen(false);
     setSecretPinInput('');
-    revealSecretChat();
+    await tryEnterSecretChat();
   } catch (e) {
     console.warn('verifySecretPinAndEnter failed', e);
     setSecretPinError('PIN konnte nicht geprüft werden');

@@ -81,6 +81,16 @@ Onyx ist eine dunkle Kalender-PWA mit Fokus auf Terminplanung, geteilte Kalender
 - PWA mit Service Worker
 - Vite + React
 
+### Präsenz / „zuletzt online“ in Firebase finden
+
+- **In der Firebase Console:**  
+  Gehe zu **Firestore Database → Data → `artifacts/{APP_ID}/public/data/profiles/{uid}`**.
+- Dort schreibt die App diese Felder:
+  - `presenceStatus` (`online` / `offline`)
+  - `presenceLastSeen` (Unix-Zeitstempel in Millisekunden)
+- In der UI wird „online“ aus `presenceStatus === 'online'` plus einem Frische-Fenster auf Basis von `presenceLastSeen` berechnet.
+- Hinweis: **Authentication → Users → Last sign-in** ist nur der letzte Login, nicht die laufende Präsenz.
+
 ## Bedienidee
 - Home bleibt bewusst kompakt
 - Extras bündelt produktive Werkzeuge

@@ -88,6 +88,7 @@ Onyx ist eine dunkle Kalender-PWA mit Fokus auf Terminplanung, geteilte Kalender
 - Dort schreibt die App diese Felder:
   - `presenceStatus` (`online` / `offline`)
   - `presenceLastSeen` (Unix-Zeitstempel in Millisekunden)
+  - `presenceLastSeenIso` (ISO-Datum/Uhrzeit, z. B. `2026-04-06T12:34:56.789Z`)
 - In der UI wird „online“ aus `presenceStatus === 'online'` plus einem Frische-Fenster auf Basis von `presenceLastSeen` berechnet.
 - Hinweis: **Authentication → Users → Last sign-in** ist nur der letzte Login, nicht die laufende Präsenz.
 

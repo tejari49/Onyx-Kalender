@@ -2723,7 +2723,14 @@ const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
         if (!user) return;
         const profileRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'profiles', user?.uid);
         const setPresence = (status) => {
-          setDoc(profileRef, { presenceStatus: status, presenceLastSeen: Date.now() }, { merge: true }).catch(()=>{});
+          const nowMs = Date.now();
+          setDoc(profileRef, {
+            presenceStatus: status,
+            // Bestehendes Feld für Kompatibilität in der App (Berechnung "online")
+            presenceLastSeen: nowMs,
+            // Lesbare Variante direkt in Firestore
+            presenceLastSeenIso: new Date(nowMs).toISOString(),
+          }, { merge: true }).catch(()=>{});
         };
         setPresence('online');
         const onVisibility = () => {

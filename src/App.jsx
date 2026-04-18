@@ -7983,6 +7983,35 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
         try { return new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); } catch(e) { return ''; }
       };
 
+      const isSameDay = (a, b) => (
+        a?.getFullYear?.() === b?.getFullYear?.()
+        && a?.getMonth?.() === b?.getMonth?.()
+        && a?.getDate?.() === b?.getDate?.()
+      );
+
+      const formatFullDateTime = (ts) => {
+        if (!ts) return '';
+        try {
+          const d = new Date(ts);
+          const date = d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+          return `${date} ${time} Uhr`;
+        } catch (e) {
+          return '';
+        }
+      };
+
+      const formatLastSeen = (ts) => {
+        if (!ts) return '';
+        try {
+          const d = new Date(ts);
+          if (isSameDay(d, new Date())) return `zuletzt online ${formatTime(ts)}`;
+          return `zuletzt online ${formatFullDateTime(ts)}`;
+        } catch (e) {
+          return '';
+        }
+      };
+
       const formatAudioClock = (sec) => {
         const s = Number(sec || 0);
         if (!isFinite(s) || s < 0) return '0:00';
@@ -10437,7 +10466,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                         <div className="flex flex-col">
                           <span className="font-medium text-white leading-tight">{getChatPartnerName(activeChat)}</span>
                           <span className="text-[11px] text-neutral-500">
-                            {isGroupChat(activeChatData) ? (() => { const ids = getChatParticipants(activeChatData); const onlineCount = ids.filter(id => getPresence(id).online).length; return `${onlineCount} online • ${ids.length} Mitglieder`; })() : (() => { const pr = getPresence(partnerId); if (pr.online) return 'online'; if (pr.lastSeen) return `zuletzt gesehen ${formatTime(pr.lastSeen)}`; return 'offline'; })()}
+                            {isGroupChat(activeChatData) ? (() => { const ids = getChatParticipants(activeChatData); const onlineCount = ids.filter(id => getPresence(id).online).length; return `${onlineCount} online • ${ids.length} Mitglieder`; })() : (() => { const pr = getPresence(partnerId); if (pr.online) return 'online'; if (pr.lastSeen) return formatLastSeen(pr.lastSeen); return 'offline'; })()}
                           </span>
                         </div>
                       </div>
@@ -10689,7 +10718,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                               <div key={`fri_ok_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
                                 <div className="min-w-0">
                                   <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
-                                  <div className="text-[11px] text-neutral-500">{getPresence(uid).online ? 'online' : (getPresence(uid).lastSeen ? `zuletzt ${formatTime(getPresence(uid).lastSeen)}` : 'offline')}</div>
+                                  <div className="text-[11px] text-neutral-500">{getPresence(uid).online ? 'online' : (getPresence(uid).lastSeen ? formatLastSeen(getPresence(uid).lastSeen) : 'offline')}</div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <button type="button" onClick={() => startChatWithProfile(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Chat</button>
@@ -10708,7 +10737,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                               <div key={`fri_removed_${uid}`} className="flex items-center justify-between gap-2 border border-neutral-800 rounded-xl p-3 bg-black">
                                 <div className="min-w-0">
                                   <div className="text-sm text-white truncate">{getUserDisplayLabel(uid)}</div>
-                                  <div className="text-[11px] text-neutral-500">{getPresence(uid).online ? 'online' : (getPresence(uid).lastSeen ? `zuletzt ${formatTime(getPresence(uid).lastSeen)}` : 'offline')}</div>
+                                  <div className="text-[11px] text-neutral-500">{getPresence(uid).online ? 'online' : (getPresence(uid).lastSeen ? formatLastSeen(getPresence(uid).lastSeen) : 'offline')}</div>
                                 </div>
                                 <button type="button" onClick={() => restoreRemovedFriend(uid)} className="px-3 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-200 hover:border-neutral-500">Wiederherstellen</button>
                               </div>
@@ -10869,7 +10898,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                                   <span className="inline-block mt-1 px-2 py-0.5 bg-white text-black text-[10px] font-bold rounded-sm uppercase tracking-wider">Neu</span>
                                 ) : (
                                   <p className="text-xs text-neutral-500 truncate mt-0.5">
-                                    {isDm ? (otherPresence?.online ? 'online' : (otherPresence?.lastSeen ? `zuletzt ${formatTime(otherPresence.lastSeen)}` : 'offline')) : 'Tippen zum Öffnen...'}
+                                    {isDm ? (otherPresence?.online ? 'online' : (otherPresence?.lastSeen ? formatLastSeen(otherPresence.lastSeen) : 'offline')) : 'Tippen zum Öffnen...'}
                                   </p>
                                 )}
                               </div>
@@ -11222,6 +11251,11 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                                     </span>
                                   )}
                                 </div>
+                                {showActions && !!msg?.timestamp && (
+                                  <div className={`mt-1 text-[10px] px-2 py-1 rounded-md border w-fit ${isMe ? 'ml-auto border-black/20 bg-black/10 text-black/75' : 'border-neutral-700 bg-black/30 text-neutral-300'}`}>
+                                    {formatFullDateTime(msg.timestamp)}
+                                  </div>
+                                )}
 
                                 {isMe && msg.failed && (
                                   <div className="mt-2 flex items-center justify-end">
@@ -13268,7 +13302,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                             </div>
                             <div className="flex-1">
                               <div className="text-white text-sm font-medium">{p.username}</div>
-                              <div className="text-xs text-neutral-500">{getPresence(p.id).online ? 'online' : (getPresence(p.id).lastSeen ? `zuletzt ${formatTime(getPresence(p.id).lastSeen)}` : 'offline')}</div>
+                              <div className="text-xs text-neutral-500">{getPresence(p.id).online ? 'online' : (getPresence(p.id).lastSeen ? formatLastSeen(getPresence(p.id).lastSeen) : 'offline')}</div>
                             </div>
                             <Plus className="w-4 h-4 text-neutral-400" />
                           </div>
@@ -13365,7 +13399,7 @@ const openEditEventModal = (event, occurrenceDate = null, opts = {}) => {
                                </div>
                                <div className="flex-1">
                                  <div className="text-sm text-white font-medium truncate">{me ? 'Du' : (p?.username || 'Unbekannt')}</div>
-                                 <div className="text-[11px] text-neutral-500">{pr.online ? 'online' : (pr.lastSeen ? `zuletzt ${formatTime(pr.lastSeen)}` : 'offline')}</div>
+                                 <div className="text-[11px] text-neutral-500">{pr.online ? 'online' : (pr.lastSeen ? formatLastSeen(pr.lastSeen) : 'offline')}</div>
                                </div>
                                {isChatAdmin(activeChatData || activeChat) && !me && (
                                  <div className="flex items-center gap-1">
